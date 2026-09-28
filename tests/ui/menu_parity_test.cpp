@@ -1,13 +1,18 @@
-// MO2 menu parity: the Help tree and the keyboard table.
+// Menu shape: the Help tree and the keyboard table.
 //
-// Help menu - MO2 builds it in MainWindow::createHelpMenu()
-// (references/modorganizer/src/mainwindow.cpp:1080-1163) in this exact order:
-// Help on UI, Documentation, Game Support Wiki (only when the managed game
-// carries a support URL), Chat on Discord, Report Issue, Tutorials, About,
-// About Qt. The Tutorials entries come from tutorials/*.js "//TL" headers
-// sorted by their order value (First Steps / Conflict Resolution / Overview).
-// GMM has no Discord presence, so that one entry is dropped rather than left
-// disabled, and the two link entries point at this repo instead of MO2's.
+// Help menu - the order MO2 builds in MainWindow::createHelpMenu()
+// (references/modorganizer/src/mainwindow.cpp:1080-1163) is Help on UI,
+// Documentation, Game Support Wiki (only when the managed game carries a
+// support URL), Chat on Discord, Report Issue, Tutorials, About, About Qt -
+// one level deep throughout, with Tutorials the only submenu. GMM folds
+// Documentation, Report Issue, About and About Qt under a More submenu, which
+// MO2 has no equivalent of: this is a deliberate difference, not parity. The
+// Tutorials entries come from tutorials/*.js "//TL" headers sorted by their
+// order value (First Steps / Conflict Resolution / Overview); nothing ships
+// them yet, so the submenu stands empty, as MO2's does when its directory is
+// empty. GMM has no Discord presence, so that entry is dropped rather than
+// left disabled, and the two link entries point at this repo instead of
+// MO2's.
 //
 // Shortcuts - the eight MO2 binds, read straight out of mainwindow.ui:
 //   Ctrl+M Install Mod   Ctrl+P Profiles    Ctrl+E Executables  Ctrl+I Tool Plugins
@@ -42,22 +47,9 @@
 
 namespace {
 
-// The Help menu as MO2 builds it, minus the support-URL entry (conditional, so
-// it is asserted on its own) and the GMM-only entries appended below it. About
-// keeps GMM's longer "About GameModManager" label - it is the same entry.
-// Chat on Discord is gone: GMM has no Discord presence to point at.
-const std::vector<std::string> kMo2HelpOrder = {
-    "Help on UI", "Documentation",   "Report Issue", "Tutorials",
-    "About GameModManager", "About Qt"};
-
-// The project's own addresses. The Help menu's link entries carry the
-// destination in the QAction's data() so the destination is readable without
-// firing the action.
-const std::string kRepoUrl  = "https://github.com/GameModManager/Core";
-const std::string kIssueUrl = "https://github.com/GameModManager/Core/issues";
-
-// What the user actually sees: entries in order, separators and hidden
-// entries dropped.
+// What the user actually sees at one level: entries in order, separators and
+// hidden entries dropped. A submenu shows up as its own title, so the grouping
+// is not flattened away - the More children are asserted against More.
 std::vector<std::string> menu_entries(const QMenu *menu) {
   std::vector<std::string> out;
   for (const QAction *act : menu->actions()) {
@@ -68,10 +60,32 @@ std::vector<std::string> menu_entries(const QMenu *menu) {
   return out;
 }
 
+// The Help menu bar's own entries, in order. Game Support Wiki is not here: it
+// is gated on a game support URL and none exists, so it is asserted on its own
+// below rather than padding the list with an entry nobody can see.
+const std::vector<std::string> kHelpTopLevel = {
+    "Help on UI", "More", "Tutorials", "Instance Statistics...", "Debug Panel"};
+
+// What More folds one level down, in order. No separators inside it.
+const std::vector<std::string> kMoreOrder = {
+    "Documentation", "Report Issue", "About GameModManager", "About Qt"};
+
+// The project's own addresses. The link entries carry the destination in the
+// QAction's data() so the destination is readable without firing the action.
+const std::string kRepoUrl  = "https://github.com/GameModManager/Core";
+const std::string kIssueUrl = "https://github.com/GameModManager/Core/issues";
+
+// Recursive on purpose: four of the Help entries live under More now, so a
+// flat lookup would miss them and a flattened list would hide the grouping.
 QAction *find_action(const QMenu *menu, const std::string &text) {
-  for (QAction *act : menu->actions())
+  for (QAction *act : menu->actions()) {
     if (act->text().toStdString() == text)
       return act;
+    if (QMenu *sub = act->menu()) {
+      if (QAction *hit = find_action(sub, text))
+        return hit;
+    }
+  }
   return nullptr;
 }
 
@@ -122,7 +136,7 @@ QKeySequence ctrl(int key) {
 
 }  // namespace
 
-TEST_CASE("Help menu mirrors MO2's tree", "[ui][menu][parity]") {
+TEST_CASE("Help menu carries its own tree", "[ui][menu][parity]") {
   qputenv("QT_QPA_PLATFORM", "offscreen");
   const std::filesystem::path root = "/tmp/opencode/gmm_menu_parity/config";
   std::filesystem::remove_all("/tmp/opencode/gmm_menu_parity");
@@ -140,37 +154,51 @@ TEST_CASE("Help menu mirrors MO2's tree", "[ui][menu][parity]") {
   auto *help = menu_named(bar, "&Help");
   REQUIRE(help != nullptr);
 
-  SECTION("MO2's entries appear in MO2's order, unseparated") {
-    const auto entries = menu_entries(help);
-    std::vector<std::string> without_gmm_extras;
-    for (const auto &text : entries) {
-      if (text == "Instance Statistics..." || text == "Debug Panel")
-        continue;  // GMM-only, appended after MO2's block
-      without_gmm_extras.push_back(text);
-    }
-    CHECK(without_gmm_extras == kMo2HelpOrder);
+  SECTION("the menu bar's own entries appear in the requested order") {
+    CHECK(menu_entries(help) == kHelpTopLevel);
   }
 
-  SECTION("the GMM-only entries survive, below MO2's block") {
-    const auto entries = menu_entries(help);
-    const auto mo2_end = std::find(entries.begin(), entries.end(), "About Qt");
-    REQUIRE(mo2_end != entries.end());
-    CHECK(std::find(entries.begin(), entries.end(), "Instance Statistics...") >
-          mo2_end);
-    CHECK(std::find(entries.begin(), entries.end(), "Debug Panel") > mo2_end);
+  SECTION("More folds the four entries one level down, in order") {
+    auto *more = find_action(help, "More");
+    REQUIRE(more != nullptr);
+    REQUIRE(more->menu() != nullptr);
+    CHECK(menu_entries(more->menu()) == kMoreOrder);
+    // Nothing folded twice, and no separator smuggled inside.
+    for (const QAction *act : more->menu()->actions())
+      CHECK(act->menu() == nullptr);
+  }
+
+  SECTION("the separator splits the help block from the GMM-only entries") {
+    // Help on UI / More / Tutorials above it, Instance Statistics and Debug
+    // Panel below: the split position, not just the presence of a separator.
+    const auto actions = help->actions();
+    const auto sep =
+        std::find_if(actions.begin(), actions.end(),
+                     [](const QAction *act) { return act->isSeparator(); });
+    REQUIRE(sep != actions.end());
+    const auto above = std::count_if(actions.begin(), sep, [](const QAction *act) {
+      return !act->isSeparator() && act->isVisible();
+    });
+    CHECK(above == 3);
+    CHECK(std::count_if(sep, actions.end(), [](const QAction *act) {
+            return !act->isSeparator() && act->isVisible();
+          }) == 2);
   }
 
   SECTION("Help on UI is a real entry, not a stub") {
     auto *act = find_action(help, "Help on UI");
     REQUIRE(act != nullptr);
+    CHECK(act->menu() == nullptr);  // stays on the menu bar itself
     CHECK(act->isEnabled());
   }
 
-  SECTION("Tutorials is stubbed disabled: no tutorial content ships yet") {
+  SECTION("Tutorials is a submenu that stands empty, as MO2's does") {
     auto *act = find_action(help, "Tutorials");
     REQUIRE(act != nullptr);
     REQUIRE(act->menu() != nullptr);
-    CHECK_FALSE(act->isEnabled());
+    // MO2 adds the submenu and never disables it
+    // (mainwindow.cpp:1119-1160); an empty one is how it says nothing ships.
+    CHECK(act->isEnabled());
     CHECK(act->menu()->actions().empty());
   }
 
@@ -197,7 +225,8 @@ TEST_CASE("Help menu mirrors MO2's tree", "[ui][menu][parity]") {
   SECTION("the project link entries point at the Core repo") {
     // MO2 hardcodes its own destinations (mainwindow.cpp:2352-2370). GMM points
     // Documentation at the Core repo and issue reporting at its tracker; both
-    // are live, so both entries are enabled.
+    // are live, so both entries are enabled. Folding them under More moved
+    // them, it did not rewire them.
     auto *doc = find_action(help, "Documentation");
     REQUIRE(doc != nullptr);
     CHECK(doc->isEnabled());
