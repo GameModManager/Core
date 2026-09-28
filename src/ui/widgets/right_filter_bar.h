@@ -22,8 +22,8 @@ public:
   // ModFilterBar offers, because MainWindow routes one window-scoped pair of
   // shortcuts across both bars.
   void focus_filter();
-  // Clears the text (fires filter_changed). False when it was already empty.
-  bool clear_filter();
+  // Clears the text (fires filter_changed). Unconditional, like ModFilterBar.
+  void clear_filter();
   [[nodiscard]] bool filter_has_focus() const;
 
   // Apply the current filter text to the given table
