@@ -17,6 +17,15 @@ public:
 
   [[nodiscard]] QString filter_text() const;
 
+  // Ctrl+F / Escape pair, MO2 setFilterShortcuts
+  // (references/modorganizer/src/mainwindow.cpp:204-232) - the same contract
+  // ModFilterBar offers, because MainWindow routes one window-scoped pair of
+  // shortcuts across both bars.
+  void focus_filter();
+  // Clears the text (fires filter_changed). False when it was already empty.
+  bool clear_filter();
+  [[nodiscard]] bool filter_has_focus() const;
+
   // Apply the current filter text to the given table
   void apply_to(QTableWidget *table) const;
 
