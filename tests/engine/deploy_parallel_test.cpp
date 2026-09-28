@@ -3,7 +3,9 @@
 // Pins four contracts the parallel launch deploy depends on:
 //   1. A first-ever full deploy across many mods produces the same tree as the
 //      sequential executor while farming the work across N threads, and
-//      reports monotonic progress that completes at the total.
+//      reports one progress call per work item covering 1..total exactly once
+//      (the calls arrive from the worker threads, so their order is not part
+//      of the contract).
 //   2. A contested target (two enabled mods shipping the same relative path)
 //      is won deterministically by the LAST mod in lexicographic folder order
 //      (the sequential executor let directory_iterator order decide — arbitrary
@@ -15,10 +17,12 @@
 //      holds under parallelism.
 #include "engine/deploy/deploy_utils.h"
 
+#include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <mutex>
 #include <string>
 #include <unistd.h>
 #include <utility>
@@ -76,10 +80,15 @@ TEST_CASE("deploy parallel", "[engine]") {
     }
   }
 
+  // DeployProgressFn runs on the executor's worker threads (deploy_utils.h),
+  // so both progress collectors below are guarded by this mutex: unsynchronised
+  // emplace_back from concurrent workers corrupts the vector's heap block
+  // ("double free or corruption", Workspace-opk9).
+  std::mutex progress_mutex;
   std::vector<std::pair<int, int>> progress_calls;
   bool ok = engine::deploy_all_enabled_mods_parallel(
-      mods, staging, "Data", false, "", true, 4,
-      [&progress_calls](int done, int total) {
+      mods, staging, "Data", false, "", true, 4, [&](int done, int total) {
+        std::lock_guard<std::mutex> lock(progress_mutex);
         progress_calls.emplace_back(done, total);
       });
   check(ok, "parallel full deploy succeeds");
@@ -95,24 +104,26 @@ TEST_CASE("deploy parallel", "[engine]") {
     }
   }
 
-  // Progress: every reported total is 80, done is monotonic and reaches it.
-  bool monotonic  = true;
-  int last        = 0;
-  int final_total = -1;
+  // Progress: one call per work item, every reported total is 80, the calls
+  // cover 1..80 exactly once, and completion at 80 was reported. Checked as a
+  // set because the worker threads deliver in an arbitrary order (deploy_utils
+  // .h makes no ordering promise).
+  std::vector<int> dones;
+  dones.reserve(progress_calls.size());
+  bool totals_ok = !progress_calls.empty();
   for (const auto &[d, t] : progress_calls) {
-    if (t != 80) {
-      final_total = -2;
-      break;
-    }
-    if (d < last || d > t)
-      monotonic = false;
-    last        = d;
-    final_total = t;
+    dones.push_back(d);
+    if (t != 80)
+      totals_ok = false;
   }
-  check(progress_calls.size() > 1, "progress reported incrementally");
-  check(monotonic, "progress is monotonic");
-  check(final_total == 80, "progress total is the full work count");
-  check(last == 80, "progress completes at the total");
+  std::sort(dones.begin(), dones.end());
+  bool each_once = dones.size() == 80;
+  for (size_t i = 0; each_once && i < dones.size(); ++i)
+    each_once = dones[i] == static_cast<int>(i) + 1;
+  check(progress_calls.size() == 80, "progress reported incrementally");
+  check(each_once, "progress reports each work item exactly once");
+  check(totals_ok, "progress total is the full work count");
+  check(!dones.empty() && dones.back() == 80, "progress completes at the total");
 
   // --- 2) Deterministic conflict winner: ModZ and ModA both ship
   // conflict.txt; ModZ also ships a unique zonly.txt. Last lexicographic
@@ -134,8 +145,8 @@ TEST_CASE("deploy parallel", "[engine]") {
   // --- 3a) O(Δ) ledger: an unchanged re-run touches zero files.
   progress_calls.clear();
   ok = engine::deploy_all_enabled_mods_parallel(
-      mods, staging, "Data", false, "", true, 4,
-      [&progress_calls](int done, int total) {
+      mods, staging, "Data", false, "", true, 4, [&](int done, int total) {
+        std::lock_guard<std::mutex> lock(progress_mutex);
         progress_calls.emplace_back(done, total);
       });
   check(ok, "unchanged redeploy succeeds");
