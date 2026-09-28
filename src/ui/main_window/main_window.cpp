@@ -13,6 +13,7 @@
 #include <QMenu>
 #include <QMimeData>
 #include <QResizeEvent>
+#include <QShortcut>
 #include <QSplitter>
 #include <QStatusBar>
 #include <QStyle>
@@ -38,7 +39,10 @@
 #include "ui/widgets/main_tab_container.h"
 #include "ui/widgets/main_toolbar.h"
 #include "ui/widgets/menu_bar.h"
+#include "ui/widgets/mod_filter_bar.h"
+#include "ui/widgets/mod_table_view.h"
 #include "ui/widgets/profile_bar.h"
+#include "ui/widgets/right_filter_bar.h"
 #include "ui/widgets/right_panel.h"
 #include "ui/widgets/smooth_scroll.h"
 #include "ui/widgets/status_bar.h"
@@ -184,6 +188,11 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
   main_splitter_->setStretchFactor(0, 3);
   main_splitter_->setStretchFactor(1, 2);
 
+  // Ctrl+F / Escape for the filter bars - registered here because both bars
+  // exist from this point on (the mod list's in setup_mod_list above, the
+  // right panel's two lines down).
+  setup_filter_shortcuts();
+
   console_splitter_->addWidget(main_area);
 
   // --- Console panel (hidden by default, drag to expand) ---
@@ -321,6 +330,44 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
 // SettingsController, LaunchController, ...) are destroyed here, where every
 // controller header is included (complete types are available).
 MainWindow::~MainWindow() = default;
+
+void MainWindow::setup_filter_shortcuts() {
+  // MO2 parity (G15). Nothing else in the UI claims Ctrl+F or Escape - the
+  // menu bar binds New/Open/Preferences/Quit/SelectAll/Refresh plus a handful
+  // of explicit Ctrl+<letter>s, and Escape is only handled by dialogs, which
+  // own their own window and so are outside a WindowShortcut context.
+  auto *find_filter = new QShortcut(QKeySequence::Find, this);
+  find_filter->setAutoRepeat(false);
+  connect(find_filter, &QShortcut::activated, this, &MainWindow::focus_active_filter);
+
+  auto *clear_filter = new QShortcut(QKeySequence(Qt::Key_Escape), this);
+  clear_filter->setAutoRepeat(false);
+  connect(clear_filter, &QShortcut::activated, this, &MainWindow::clear_active_filter);
+}
+
+void MainWindow::focus_active_filter() {
+  // MO2 gives each list its own pair of hooks (mainwindow.cpp:464-466); here
+  // one window-scoped pair serves both bars, so the bar the user is already
+  // in wins and the mod list is the fallback.
+  if (right_panel_ && right_panel_->filter_bar()->filter_has_focus())
+    right_panel_->filter_bar()->focus_filter();
+  else if (filter_bar_)
+    filter_bar_->focus_filter();
+}
+
+void MainWindow::clear_active_filter() {
+  if (right_panel_ && right_panel_->filter_bar()->filter_has_focus()) {
+    // MO2 hands focus back to the list that owns the filter. GMM's right
+    // panel shares ONE bar across its lazily built tabs (plugins, downloads,
+    // conflicts, saves, data), so there is no single view to return to -
+    // staying in the right panel is the honest equivalent, and stopping here
+    // keeps the mod list from stealing focus across the window.
+    right_panel_->filter_bar()->clear_filter();
+    return;
+  }
+  if (filter_bar_ && filter_bar_->clear_filter())
+    mod_view_->setFocus();
+}
 
 void MainWindow::set_game_info(const std::string &game_id,
                                const std::string &game_display_name,
