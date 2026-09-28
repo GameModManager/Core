@@ -20,9 +20,10 @@ public:
   // (references/modorganizer/src/mainwindow.cpp:204-232). The window owns
   // the shortcuts; the bar owns what they do.
   void focus_filter();
-  // Clears the text (fires filter_changed). False when it was already empty,
-  // so a no-op stays a no-op instead of stealing focus for nothing.
-  bool clear_filter();
+  // Clears the text (fires filter_changed). Unconditional - clearing an
+  // already-empty filter is a no-op here, but the caller still hands focus
+  // back, exactly as MO2's reset lambda does (mainwindow.cpp:211-214).
+  void clear_filter();
   [[nodiscard]] bool filter_has_focus() const;
 
 signals:

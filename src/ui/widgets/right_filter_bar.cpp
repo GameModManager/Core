@@ -44,11 +44,8 @@ void RightFilterBar::focus_filter() {
   filter_edit_->selectAll();
 }
 
-bool RightFilterBar::clear_filter() {
-  if (filter_edit_->text().isEmpty())
-    return false;
+void RightFilterBar::clear_filter() {
   filter_edit_->clear();
-  return true;
 }
 
 bool RightFilterBar::filter_has_focus() const {
