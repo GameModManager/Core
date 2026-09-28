@@ -31,7 +31,11 @@
 //      is resolved once, from the environment the process sees at the first
 //      QSettings call, so this covers anything still built with a native ctor
 //      on Unix, plus the direct file consumers (std::filesystem, QFile) that
-//      follow XDG_CONFIG_HOME. Setting it later is silently ignored.
+//      follow XDG_CONFIG_HOME. Setting it later is silently ignored. It is
+//      Unix-only by nature - Windows has no equivalent variable - and nothing
+//      depends on it: the isolation that matters is step 1 + step 2, which are
+//      platform-independent. No test in the suite reads the config path
+//      directly, so if Windows CI ever appears there is no gap to close here.
 //   4. remove the temp dir at exit.
 //
 // Note on per-test XDG overrides: a test may still call
@@ -49,10 +53,12 @@
 //
 // Escape hatch - the unsandboxed process: GMM_TEST_NATIVE_QSETTINGS=1 skips
 // everything above, so the process sees exactly what a real run sees. Used by
-// qsettings_native_format_test, which asserts the production format is
-// NativeFormat and resolves to the pre-change file; it compares PATHS only
-// because QSettings is lazy and creates nothing until a value is written. Any
-// other test that opts out owns its isolation.
+// qsettings_native_format_test, which exercises the real Settings and
+// PluginSettingsRegistry against a native store and therefore WRITES. It owns
+// its isolation completely: CTest launches it with a throwaway HOME (see
+// tests/CMakeLists.txt) and the test itself refuses to write unless the
+// resolved store is inside that home. Any other test that opts out must do
+// the same.
 
 #include <QDir>
 #include <QSettings>

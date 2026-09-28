@@ -512,21 +512,28 @@ gmm_catch2_test(settings_reset_choices_test ui/settings_reset_choices_test.cpp
     LIBS gmm_ui)
 
 # Workspace-2zm: QSettings isolation. Two halves of the same proof.
-#   qsettings_sandbox_test       - the production QSettings expression, as built
-#     by the shared runner, lands in a temp ini and cannot touch the user's
-#     real config.
-#   qsettings_native_format_test - the same expression with the sandbox opted
-#     out (GMM_TEST_NATIVE_QSETTINGS=1) is NativeFormat and resolves to the
-#     exact file the old (org, app) ctor used. Compare PATHS only; QSettings is
-#     lazy, so neither test reads or writes the user's store.
-# Both are non-UI (no widget, no event loop). The native one uses
-# ENVIRONMENT_MODIFICATION, not ENVIRONMENT, so the TZ=UTC entry from
-# gmm_catch2_test keeps working (see the semicolon note above).
+#   qsettings_sandbox_test       - the production QSettings objects land in a
+#     temp ini when the shared runner has flipped the default format, and
+#     cannot touch the user's real config.
+#   qsettings_native_format_test - the same production objects with the sandbox
+#     opted out (GMM_TEST_NATIVE_QSETTINGS=1), i.e. the real native store, and
+#     the constructor they replaced reads back everything they wrote.
+# Both are non-UI (no widget, no event loop).
+#
+# The native target WRITES, so it must not be able to reach a real config. It
+# relocates the native store root itself, with QSettings::setPath, before it
+# constructs anything - see ui/qsettings_native_format_test.cpp. It is NOT done
+# with a fake HOME env var here: ENVIRONMENT_MODIFICATION takes a ';' list, and
+# an escaped list does not survive catch_discover_tests' -D hand-off (the values
+# arrive as separate arguments and become bogus property names - the same
+# failure mode as the ENVIRONMENT note above), while a single HOME override
+# would not be enough anyway: a developer machine with XDG_CONFIG_HOME set
+# resolves the native store from that, not from HOME.
 gmm_catch2_test(qsettings_sandbox_test ui/qsettings_sandbox_test.cpp
     LIBS gmm_ui Qt6::Core)
 
 gmm_catch2_test(qsettings_native_format_test ui/qsettings_native_format_test.cpp
-    LIBS Qt6::Core
+    LIBS gmm_ui Qt6::Core
     PROPERTIES ENVIRONMENT_MODIFICATION "GMM_TEST_NATIVE_QSETTINGS=set:1")
 
 gmm_catch2_test(remove_mods_dialog_test ui/remove_mods_dialog_test.cpp
