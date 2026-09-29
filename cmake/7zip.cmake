@@ -85,11 +85,21 @@ add_subdirectory(
     "${CMAKE_CURRENT_BINARY_DIR}/7zip"
 )
 
-# The shim only declares INSTALL_INTERFACE include dirs, which are useless
+# The shim declares only INSTALL_INTERFACE include dirs, which are useless
 # in-tree. 7-Zip's headers use relative includes ("../Common/MyWindows.h"), so
 # the source root is the only include directory a consumer needs. BUILD_INTERFACE
 # because FetchContent extracts under the build tree, and because an installed
 # consumer wants the staged headers, not the source checkout.
+#
+# The shim's own INSTALL_INTERFACE entries are dropped rather than appended to.
+# They name a relative "include" prefix, so with no install layout configured
+# they evaluate to "/7zip/CPP" and "/7zip/C", and CMake refuses the target
+# outright the moment something actually links it. Nothing here installs 7-Zip
+# - it is linked in-tree like every other dependency in this project - so the
+# build interface above is the only one that is ever consumed.
+get_target_property(_gmm_7zip_includes 7zip INTERFACE_INCLUDE_DIRECTORIES)
+list(FILTER _gmm_7zip_includes EXCLUDE REGEX "^\\$<INSTALL_INTERFACE:")
+set_target_properties(7zip PROPERTIES INTERFACE_INCLUDE_DIRECTORIES "${_gmm_7zip_includes}")
 target_include_directories(7zip INTERFACE "$<BUILD_INTERFACE:${sevenzip_SOURCE_DIR}>")
 
 # Same name and shape as every other dependency in this project, so consumers

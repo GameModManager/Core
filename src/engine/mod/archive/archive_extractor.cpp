@@ -1,7 +1,9 @@
 #include "engine/mod/archive/archive_extractor.h"
+#include "engine/mod/archive/sevenzip_backend.h"
 #include "engine/core/util/fs_utils.h"
 #include "engine/core/util/process_utils.h"
 #include "engine/core/util/thread_priority.h"
+#include "engine/core/log/logger.h"
 
 #include <archive.h>
 #include <archive_entry.h>
@@ -134,14 +136,18 @@ namespace {
   // RAR fallback via the unrar CLI - the Linux analog of MO2's UnRAR.exe on
   // Windows. libarchive's RAR5 reader refuses archives whose declared window
   // exceeds 64 MiB ("Declared dictionary size is not supported"), and WinRAR-made
-  // mod archives routinely exceed it. unrar has no such cap. extract() only
-  // reaches this for genuine RAR files (magic check), never for other formats
-  // libarchive rejected. No byte-level progress is available, so the caller
-  // switches to an indeterminate bar; on failure `error` holds the reason.
-  bool extract_with_unrar(const std::filesystem::path &archive,
-                          const std::filesystem::path &dest_dir,
-                          std::vector<ExtractedFile> &out_files, std::string &error,
-                          PassphraseSession &session) {
+  // mod archives routinely exceed it. unrar has no such cap. No byte-level
+  // progress is available, so the caller would switch to an indeterminate bar;
+  // on failure `error` holds the reason.
+  //
+  // Nothing reaches this any more: RAR is read by the 7-Zip backend, which has
+  // no dictionary cap and needs no external binary. It stays until the unrar
+  // dependency is removed.
+  [[maybe_unused]] bool extract_with_unrar(const std::filesystem::path &archive,
+                                           const std::filesystem::path &dest_dir,
+                                           std::vector<ExtractedFile> &out_files,
+                                           std::string &error,
+                                           PassphraseSession &session) {
     std::error_code ec;
     std::filesystem::create_directories(dest_dir, ec);
     if (ec) {
@@ -213,14 +219,40 @@ namespace {
     return true;
   }
 
-  // One complete attempt at `archive`: the libarchive read pass, plus the unrar
-  // fallback when this is a RAR libarchive could not read. The whole body
-  // exists so extract() can run it again with a different password, which is
-  // what makes a mistyped password recoverable rather than fatal.
+  // One complete attempt at `archive`: the reader the routing table picked,
+  // which is libarchive for every format it handles and 7-Zip for RAR and 7z.
+  // The whole body exists so extract() can run it again with a different
+  // password, which is what makes a mistyped password recoverable rather than
+  // fatal.
   bool extract_once(const std::filesystem::path &archive,
                     const std::filesystem::path &dest_dir,
                     std::vector<ExtractedFile> &out_files, std::string &error,
                     const ExtractProgressFn &on_progress, PassphraseSession &session) {
+    // RAR (either generation) and 7z are read by 7-Zip: it has no cap on the
+    // dictionary a RAR5 header may declare, which is the whole reason the
+    // unrar CLI existed, and it reads RAR encryption in-process. Every other
+    // format stays on libarchive, the incumbent, which handles them and has the
+    // test coverage. The decision is content-based (route_archive) and logged,
+    // so a format landing on the wrong engine is visible rather than a mystery.
+    const ArchiveEngine engine = route_archive(archive);
+    Logger::instance().debug("ArchiveExtractor: " + archive.filename().string() + " -> " +
+                             archive_engine_name(engine));
+    if (engine == ArchiveEngine::kSevenZip) {
+      // The 7-Zip callbacks ask through the same session as the libarchive
+      // path, so one archive spends one attempt budget no matter which engine
+      // reads it, and a dismissed prompt is still a cancel. The password never
+      // leaves this process: it is handed to 7-Zip as a BSTR on this thread and
+      // is never on a command line, in the environment, or in a temp file.
+      return extract_with_sevenzip(
+          archive, dest_dir, out_files, error, on_progress,
+          [&session](const std::string &name, std::string &passphrase) {
+            if (!request_passphrase(session))
+              return false;  // dismissed, or the attempt budget is spent
+            passphrase = session.passphrase();
+            return true;
+          });
+    }
+
     // Two-pass progress: sum entry sizes up front (header-only, cheap), then
     // report bytes written against that total while extracting.
     int64_t total_bytes = -1;
@@ -363,23 +395,10 @@ namespace {
     if (!failed)
       return true;
 
-    // RAR fallback: libarchive's RAR5 reader caps the declared dictionary at
-    // 64 MiB ("Declared dictionary size is not supported"), which WinRAR-made
-    // mod archives routinely exceed. Retry with the unrar CLI for genuine RAR
-    // files only - never for other formats libarchive rejected. Keep the
-    // libarchive diagnostic as the primary error and append unrar's if the
-    // fallback fails too.
-    if (is_rar_archive(archive)) {
-      if (on_progress)
-        on_progress(0, 0);  // indeterminate bar - no byte totals from unrar
-      out_files.clear();    // drop any partial list from the libarchive pass
-      std::string unrar_error;
-      if (extract_with_unrar(archive, dest_dir, out_files, unrar_error, session)) {
-        return true;
-      }
-      if (!unrar_error.empty())
-        error += "; unrar fallback failed: " + unrar_error;
-    }
+    // No unrar fallback here any more. A RAR never reaches this function at
+    // all: route_archive sends every RAR to 7-Zip, which reads the large
+    // dictionaries libarchive's RAR5 reader refuses. extract_with_unrar and
+    // the unrar dependency are dead and are removed with them.
     return false;
   }
 
