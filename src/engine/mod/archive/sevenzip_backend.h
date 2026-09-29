@@ -53,8 +53,8 @@ enum class ArchiveEngine {
 // `ask_password` is called on the calling thread whenever 7-Zip needs a
 // decryption key, and returns the password to try, or an empty string to
 // refuse. It is wired to the shared PassphraseSession, so this path spends the
-// same attempt budget as the libarchive and unrar paths and a dismissal is a
-// cancel rather than a failure. The password is handed to 7-Zip as a BSTR and
+// same attempt budget as the libarchive path and a dismissal is a cancel
+// rather than a failure. The password is handed to 7-Zip as a BSTR and
 // nowhere else: never a command line, an environment entry or a temp file.
 //
 // `on_progress` receives bytes written against the archive's total, the same
