@@ -46,6 +46,7 @@
 #include "ui/nxm/nxm_ipc.h"
 #include "ui/panels/tab_panels.h"
 #include "ui/settings/settings.h"
+#include "ui/widgets/error_popup.h"
 #include "ui/widgets/right_panel.h"
 #include "ui/widgets/save_info_dialog.h"
 #include "ui/workers/pipeline_worker.h"
@@ -128,7 +129,8 @@ void DownloadsController::setup_pipeline() {
   // (success, failure, cancel). A failed install leaves the download row in
   // its download state - only a failed download marks it Failed.
   connect(w_->pipeline_thread_->worker(), &PipelineWorker::install_complete, this,
-          [this](const std::string &mod_id, bool success, const std::string &,
+          [this](const std::string &mod_id, bool success,
+                 const std::string &error_message,
                  const std::string &installed_folder) {
             hide_install_progress();
             w_->set_ui_enabled(true);
@@ -151,12 +153,29 @@ void DownloadsController::setup_pipeline() {
                 dt->mark_installed(mod_id);
               }
               // Install failure is NOT a download failure: the row keeps its
-              // download state (Complete, retryable Install button). The error
-              // was already logged to the console by the pipeline worker /
-              // extract stage - don't flip the download to Failed here.
+              // download state (Complete, retryable Install button), so the
+              // reason is reported below instead of marking the download
+              // Failed. The reason was already logged to the console by the
+              // pipeline worker / extract stage - only shown once.
             }
             // Persist download state
             save_download_manifest();
+
+            // A failed install is otherwise completely silent: the progress
+            // popup is gone and the row is unchanged, so a corrupt download, a
+            // password-protected archive and a disk error would all look like
+            // nothing happened. Report the reason the failing stage recorded.
+            // A modal is the right weight here - only one install runs at a
+            // time (the UI is locked for its duration), the progress popup has
+            // just been torn down, and a row or status line would be missed.
+            if (!success) {
+              const QString reason = QString::fromStdString(error_message);
+              ui::report_error(
+                  tr("Installation failed"), w_,
+                  reason.isEmpty()
+                      ? tr("No reason was recorded. See the log for details.")
+                      : reason);
+            }
           });
 
   // Install canceled by the user (FOMOD wizard or overwrite dialog): NOT a

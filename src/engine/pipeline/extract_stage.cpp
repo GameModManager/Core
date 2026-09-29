@@ -29,12 +29,14 @@ bool ExtractStage::execute(Mod &mod, PipelineContext &ctx) {
       mod.state = ModState::Extracted;
       return true;
     }
+    ctx.error_message = "no archive path in the mod's files";
     Logger::instance().error("ExtractStage: no archive path in mod files");
     return false;
   }
 
   auto archive_path = std::filesystem::path(mod.files[0].relative_path);
   if (!std::filesystem::exists(archive_path)) {
+    ctx.error_message = "the archive " + archive_path.string() + " does not exist";
     Logger::instance().error("ExtractStage: archive not found: " +
                              archive_path.string());
     return false;
@@ -53,6 +55,8 @@ bool ExtractStage::execute(Mod &mod, PipelineContext &ctx) {
   std::error_code ec;
   std::filesystem::create_directories(staging_dir, ec);
   if (ec) {
+    ctx.error_message =
+        "cannot create the staging directory " + staging_dir.string() + ": " + ec.message();
     Logger::instance().error("ExtractStage: failed to create staging dir " +
                              staging_dir.string() + ": " + ec.message());
     return false;
@@ -64,6 +68,7 @@ bool ExtractStage::execute(Mod &mod, PipelineContext &ctx) {
   // back to an indeterminate stage.
   std::vector<ExtractedFile> extracted;
   std::string extract_error;
+  bool password_canceled = false;
   const std::string extract_status =
       "Extracting " + archive_path.filename().string() + "…";
   const bool extracted_ok = ArchiveExtractor::extract(
@@ -78,8 +83,28 @@ bool ExtractStage::execute(Mod &mod, PipelineContext &ctx) {
         const int pct = static_cast<int>(done * 100 / total);
         ctx.on_stage_progress(std::clamp(pct, 0, 100), extract_status);
       },
-      ctx.low_priority_extraction);
+      ctx.low_priority_extraction,
+      [&ctx](const std::string &name, std::string &passphrase) {
+        // Only an encrypted archive gets here, so a plain mod never asks. The
+        // answer goes straight back to the reader; nothing keeps a copy of it.
+        if (!ctx.passphrase_query_cb)
+          return false;
+        return ctx.passphrase_query_cb(name, passphrase);
+      },
+      &password_canceled);
   if (!extracted_ok) {
+    // The user closed the password prompt. That is a cancel, not a failure:
+    // the download keeps its state and the UI reports nothing, the same as
+    // backing out of the overwrite or name dialogs.
+    if (password_canceled) {
+      ctx.canceled = true;
+      Logger::instance().debug("ExtractStage: install canceled at the password prompt");
+      std::filesystem::remove_all(staging_dir, ec);
+      return false;
+    }
+    // The extractor's own diagnostic is the one thing the user can act on, so
+    // it goes on the context for the UI to show - not just into the log.
+    ctx.error_message = extract_error;
     Logger::instance().error("ExtractStage: extraction failed for " +
                              archive_path.string() + " into " + staging_dir.string() +
                              ": " + extract_error);

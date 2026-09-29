@@ -101,6 +101,19 @@ struct PipelineContext {
                                            const std::string &archive_filename)>
       name_query_cb;
 
+  // Asks for the decryption password of an encrypted archive. Invoked on the
+  // pipeline thread with the archive's filename when a reader needs a key;
+  // return true and write the password to `passphrase` to continue, or false
+  // when the user dismissed the prompt, which cancels the install (it is not a
+  // failure, and no reason is reported). Called again after a rejected password
+  // so a mistyped one can be retyped, a few times at most. Must be thread-safe
+  // (the UI wires it to marshal the dialog onto the main thread). Unset
+  // (headless/CLI): an encrypted archive fails with a reason naming that.
+  // The password is passed to the readers and nowhere else - not logged, not
+  // stored, not persisted.
+  std::function<bool(const std::string &archive_name, std::string &passphrase)>
+      passphrase_query_cb;
+
   // True once FomodStage recognizes the archive as a FOMOD (a fomod/
   // ModuleConfig.xml exists), even when the wizard was skipped via "Manual".
   // InstallStage uses it to skip the non-FOMOD name dialog.
@@ -116,6 +129,14 @@ struct PipelineContext {
   // overwrite dialog Cancel). Pipeline::run stops and reports Canceled, which
   // the caller must not treat as a failure.
   bool canceled = false;
+
+  // Why the pipeline failed, written by the stage that failed (e.g. the
+  // archive extractor's own diagnostic). Empty when the run succeeded, was
+  // canceled, or no failing stage produced one - callers must fall back to a
+  // generic message rather than invent a reason. Cleared at the start of every
+  // run, like the other per-install fields above, so one mod's failure can
+  // never be reported against the next.
+  std::string error_message;
 
   // When the extracted archive is a FOMOD (fomod/ModuleConfig.xml), this
   // callback opens the installer wizard. Invoked on the pipeline thread with

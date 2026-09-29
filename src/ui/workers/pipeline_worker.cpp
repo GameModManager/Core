@@ -160,7 +160,7 @@ void PipelineWorker::install_mod(const std::string &id, const std::string &zip_p
   engine::Logger::instance().debug("Installing mod: " + id);
 
   if (!pipeline_) {
-    emit install_complete(id, false, "No pipeline configured");
+    emit install_complete(id, false, "the install pipeline is not configured");
     return;
   }
 
@@ -207,8 +207,13 @@ void PipelineWorker::install_mod(const std::string &id, const std::string &zip_p
     engine::Logger::instance().debug("Mod install canceled: " + id);
     emit install_canceled(id);
   } else {
+    // The reason the failing stage recorded, so the UI can tell the user what
+    // went wrong instead of a generic failure. The stage already logged it, so
+    // this line stays a breadcrumb naming the mod, not a second copy of the
+    // reason.
+    const std::string &reason = pipeline_->ctx().error_message;
     engine::Logger::instance().error("Failed to install mod: " + id);
-    emit install_complete(id, false, "Pipeline failed");
+    emit install_complete(id, false, reason);
   }
 }
 
