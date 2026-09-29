@@ -57,6 +57,7 @@
 #include "ui/fomod/fomod_wizard_dialog.h"
 #include "ui/game_selection/game_selection_widget.h"
 #include "ui/install/install_name_dialog.h"
+#include "ui/install/password_prompt.h"
 #include "ui/main_window/main_window.h"
 #include "ui/modpack/export_wizard.h"
 #include "ui/modpack/modpack_import_dialog.h"
@@ -364,6 +365,22 @@ void SettingsController::set_game_info(const std::string &game_id,
                                const std::string &archive_filename) {
       w_->downloads_->hide_install_progress();
       return ui::ask_install_name(suggested_name, archive_filename, w_);
+    };
+
+    // An encrypted archive asks for its password. ask_password marshals the
+    // modal onto the main thread like ask_overwrite. Dismissing it returns
+    // false, which cancels the install - no error is reported, and the
+    // password is handed straight to the reader without being logged or
+    // stored.
+    ctx.passphrase_query_cb = [this](const std::string &archive_name,
+                                     std::string &passphrase) {
+      w_->downloads_->hide_install_progress();
+      QString entered;
+      if (!ui::ask_password(QString::fromStdString(archive_name), entered, w_))
+        return false;
+      passphrase = entered.toStdString();
+      entered.clear();
+      return true;
     };
 
     // Set up deploy strategy. The effective strategy (per-instance
