@@ -17,6 +17,8 @@
 //      with nexus_queue_downloads ON, Nexus downloads run ONE at a time even
 //      though a free slot exists, while a LoversLab download can still run
 //      alongside; with it OFF, Nexus downloads parallelize again.
+//   7. A failed install reports the reason the pipeline stage recorded, not a
+//      generic literal - that reason is what the UI shows the user.
 //
 // Hermetic: QCoreApplication (no widgets), fake providers write local files,
 // no network, throwaway temp dir.
@@ -28,6 +30,8 @@
 #include <QThread>
 
 #include "engine/core/log/logger.h"
+#include "engine/pipeline/extract_stage.h"
+#include "engine/pipeline/pipeline.h"
 #include "engine/source/source_provider.h"
 
 #include <atomic>
@@ -38,6 +42,7 @@
 #include <filesystem>
 #include <fstream>
 #include <functional>
+#include <map>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -454,6 +459,63 @@ TEST_CASE("pipeline worker", "[ui]") {
             },
             5000),
         "queueing off: download_complete emitted for both");
+
+  // --- 7) A failed install carries the REAL reason to install_complete. ---
+  // ExtractStage records the extractor's own diagnostic on the pipeline
+  // context; the worker must pass it on as the signal's message, because that
+  // is the only thing the user gets to see. A literal here would make a corrupt
+  // download, a wrong password and a disk error indistinguishable.
+  {
+    auto corrupt = downloads / "corrupt.zip";
+    std::ofstream(corrupt) << "this is not an archive at all";
+
+    auto install_pipeline = std::make_unique<engine::Pipeline>();
+    engine::PipelineContext install_ctx;
+    install_ctx.mods_dir = mods;
+    install_pipeline->set_context(install_ctx);
+    install_pipeline->add_stage(std::make_unique<engine::ExtractStage>());
+
+    ui::PipelineWorker install_worker;
+    install_worker.set_pipeline(std::move(install_pipeline));
+
+    std::map<std::string, std::pair<bool, std::string>> installs;
+    QObject::connect(
+        &install_worker, &ui::PipelineWorker::install_complete, &app,
+        [&](const std::string &id, bool ok, const std::string &message, const std::string &) {
+          installs[id] = {ok, message};
+        });
+    const auto outcome = [&](const std::string &id) {
+      auto it = installs.find(id);
+      return it == installs.end() ? std::pair<bool, std::string>{} : it->second;
+    };
+
+    install_worker.install_mod("corrupt-1", corrupt.string(), "nexus", "1", 1,
+                               "Corrupt Mod");
+    check(wait_until(
+              [&] {
+                return installs.count("corrupt-1") == 1;
+              },
+              5000),
+          "a failed install emits install_complete");
+    const auto [failed, reason] = outcome("corrupt-1");
+    check(!failed, "the unopenable archive reports failure");
+    check(!reason.empty(), "the failure message is not empty");
+    check(reason != "Pipeline failed",
+          "the failure message is the recorded reason, not a generic literal");
+    check(reason.find("cannot open") != std::string::npos,
+          "the failure message is the extractor's own diagnostic");
+
+    // The success path is untouched: the same worker, run again with no archive
+    // to unpack (a metadata-only mod), still reports success and nothing new.
+    install_worker.install_mod("empty-1", std::string{}, "nexus", "2", 2, "Empty Mod");
+    check(wait_until(
+              [&] {
+                return installs.count("empty-1") == 1;
+              },
+              5000),
+          "a successful install still emits install_complete");
+    check(outcome("empty-1").first, "an install with nothing to extract still succeeds");
+  }
 
   std::filesystem::remove_all(base, ec);
 }
