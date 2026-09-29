@@ -102,6 +102,25 @@ list(FILTER _gmm_7zip_includes EXCLUDE REGEX "^\\$<INSTALL_INTERFACE:")
 set_target_properties(7zip PROPERTIES INTERFACE_INCLUDE_DIRECTORIES "${_gmm_7zip_includes}")
 target_include_directories(7zip INTERFACE "$<BUILD_INTERFACE:${sevenzip_SOURCE_DIR}>")
 
+# Put the library in the build tree's lib/ so the build tree mirrors the shipped
+# layout - <prefix>/gamemodmanager next to <prefix>/lib/*.so - which is the one
+# the Linux bundler in .github/workflows/build-linux.yml fills and
+# projects/Packaging/assemble_portable.sh preserves. That mirroring is what lets
+# the app's $ORIGIN/lib RUNPATH resolve both in-tree and after the binary is
+# copied elsewhere with its lib/ directory, and it keeps `ldd` on the build
+# binary resolving to an absolute path so the bundler still collects the library.
+set_target_properties(7zip PROPERTIES
+    LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib"
+)
+
+# The shim's own install() block installs the library to lib/ - the same
+# directory the app's $ORIGIN/lib RUNPATH resolves against, and the one the
+# bundler writes into. It is deliberately not repeated here: a second
+# install(TARGETS) for the same target is a silent double-install. The
+# sevenzip_packaging_test CTest case runs cmake --install and fails if the
+# library stops landing in lib/, so a shim bump that drops the rule is caught
+# there rather than by a second copy of it here.
+
 # Same name and shape as every other dependency in this project, so consumers
 # read identically on every platform (see the if(WIN32) branch in the top-level
 # CMakeLists.txt, which declares the same name against a system install).

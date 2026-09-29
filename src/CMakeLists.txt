@@ -23,6 +23,30 @@ set_target_properties(gamemodmanager PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}"
 )
 
+# 7-Zip is the only dependency built from source here, so it is the only one
+# needing a RUNPATH. Without an explicit value CMake bakes the build-tree
+# directory into the binary, which both leaks the builder's directory layout into
+# the artifact and breaks the binary the moment it leaves that tree. $ORIGIN/lib
+# matches the shipped layout - the binary sits next to the lib/ directory the
+# bundler in .github/workflows/build-linux.yml fills and
+# projects/Packaging/assemble_portable.sh preserves - and keeps the portable
+# distribution relocatable, which a configured install prefix would not.
+# BUILD_WITH_INSTALL_RPATH makes the build-tree binary use that same value, so
+# the build tree is a working copy of what ships and the RUNPATH cannot drift
+# between the two. DT_RUNPATH is searched after LD_LIBRARY_PATH, so the
+# gamemodmanager.sh launcher's LD_LIBRARY_PATH still takes precedence; the
+# RUNPATH is the fallback that makes the bare copied binary load.
+#
+# CMake rewrites $ORIGIN to @loader_path on macOS, where the same target builds
+# 7-Zip from the same shim. Windows resolves 7-Zip from a system install
+# (find_library above) and has no RUNPATH, so it is left alone.
+if(NOT WIN32)
+    set_target_properties(gamemodmanager PROPERTIES
+        INSTALL_RPATH "$ORIGIN/lib"
+        BUILD_WITH_INSTALL_RPATH ON
+    )
+endif()
+
 # Plugins resolve the gmm_* opaque-handle accessors (abi_bridge.cpp) through
 # dlopen, so the executable must export them to its dynamic symbol table.
 # Without this a plugin calling gmm_mod_name()/gmm_instance_game_id() etc.

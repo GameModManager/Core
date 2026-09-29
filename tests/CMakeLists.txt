@@ -657,4 +657,15 @@ if(UNIX AND NOT APPLE)
     set_tests_properties(lsan_selftest PROPERTIES
         ENVIRONMENT "TZ=UTC"
         PASS_REGULAR_EXPRESSION "detected memory leaks")
+
+    # 7-Zip is the only source-built shared library, so it is the only one whose
+    # location a copied binary depends on. Not a Catch2 case: it reads the built
+    # app's dynamic section and the install tree, not the archive code. RUNPATH
+    # must be relative and must name the lib/ the library installs into, so a
+    # binary copied off the build tree still loads lib7zip.so. Linux-only: ELF
+    # RUNPATH, and the bundler that consumes this layout is the Linux one.
+    add_test(NAME sevenzip_packaging_test
+        COMMAND ${CMAKE_COMMAND}
+            -DGMM_BUILD_DIR=${CMAKE_BINARY_DIR}
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/sevenzip_packaging_test.cmake)
 endif()
