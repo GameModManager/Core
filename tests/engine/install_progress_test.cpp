@@ -4,6 +4,7 @@
 // Both must report a real, monotonic 0-100% - the engine side of the
 // MO2-style install progress popup.
 #include "engine/mod/archive/archive_extractor.h"
+#include "engine/mod/archive/sevenzip_backend.h"
 #include "engine/pipeline/extract_stage.h"
 #include "engine/pipeline/install_stage.h"
 #include "engine/pipeline/pipeline.h"
@@ -18,6 +19,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <memory>
 #include <string>
 #include <unistd.h>
 #include <utility>
@@ -153,50 +155,6 @@ void write_dict_128mib_rar(const std::filesystem::path &out) {
   f.write(reinterpret_cast<const char *>(kFixture), sizeof(kFixture));
 }
 
-// Restores PATH when the enclosing block exits, so a failed REQUIRE cannot
-// leave the rest of the suite (and its own unrar probes) without one.
-struct PathGuard {
-  PathGuard() {
-    const char *old = std::getenv("PATH");
-    had_value_      = old != nullptr;
-    if (had_value_)
-      value_ = old;
-  }
-  ~PathGuard() {
-    if (had_value_)
-      setenv("PATH", value_.c_str(), 1);
-    else
-      unsetenv("PATH");
-  }
-  std::string value_;
-  bool had_value_ = false;
-};
-
-// Drop a stub `unrar` in bin_dir, found first on PATH. Pins a fallback outcome
-// without depending on the real unrar package being installed. When
-// `accept_arg` is set the stub also records the arguments it was given to
-// `argv_log` and exits 0 only if that exact argument is present, so a test can
-// prove what the fallback actually passed the password as.
-void install_stub_unrar(const std::filesystem::path &bin_dir, int exit_code,
-                        const std::filesystem::path &argv_log = {},
-                        const std::string &accept_arg        = {}) {
-  std::filesystem::create_directories(bin_dir);
-  const auto stub = bin_dir / "unrar";
-  {
-    std::ofstream f(stub);
-    f << "#!/bin/sh\n";
-    if (!argv_log.empty())
-      f << "for a in \"$@\"; do echo \"$a\" >> '" << argv_log.string() << "'; done\n";
-    if (accept_arg.empty())
-      f << "exit " << exit_code << "\n";
-    else
-      f << "for a in \"$@\"; do [ \"$a\" = '" << accept_arg
-        << "' ] && exit 0; done\nexit " << exit_code << "\n";
-  }
-  std::filesystem::permissions(stub, std::filesystem::perms::owner_all,
-                               std::filesystem::perm_options::replace);
-}
-
 // WinZip AES-256 zip holding one 2-byte file ("a.txt" -> "x\n"), encrypted
 // with kFixturePassword. Embedded as bytes so the suite needs no `7z`, no
 // network and no writable toolchain: writing an AES-encrypted zip by hand is
@@ -230,24 +188,32 @@ void write_encrypted_zip(const std::filesystem::path &out) {
 }
 
 // Records every log line written while it is alive. Logger has no
-// remove_callback, so the callback stays registered but goes inert on scope
-// exit and cannot outlive the check that reads it.
+// remove_callback, so a registered callback outlives the object that registered
+// it and is invoked by every later test; the state is therefore held through a
+// shared_ptr and switched off on scope exit, rather than relying on the
+// LogCapture object still existing when the next test logs something.
 struct LogCapture {
+  struct State {
+    std::vector<std::string> lines;
+    bool active = true;
+  };
+
   explicit LogCapture(const std::filesystem::path &dir) {
+    state_ = std::make_shared<State>();
     engine::Logger::instance().add_callback(
-        [this](engine::LogLevel, const std::string &, const std::string &message) {
-          if (active)
-            lines.push_back(message);
+        [state = state_](engine::LogLevel, const std::string &, const std::string &message) {
+          if (state->active)
+            state->lines.push_back(message);
         });
   }
-  ~LogCapture() { active = false; }
+  ~LogCapture() { state_->active = false; }
   bool contains(const std::string &needle) const {
-    return std::any_of(lines.begin(), lines.end(), [&](const std::string &line) {
+    return std::any_of(state_->lines.begin(), state_->lines.end(), [&](const std::string &line) {
       return line.find(needle) != std::string::npos;
     });
   }
-  std::vector<std::string> lines;
-  bool active = true;
+
+  std::shared_ptr<State> state_;
 };
 
 }  // namespace
@@ -348,31 +314,26 @@ TEST_CASE("install progress", "[engine]") {
                 percents.back());
   }
 
-  // (c) RAR fallback regression: libarchive 3.8.x rejects RAR5 archives whose
-  // declared dictionary exceeds 64 MiB ("Declared dictionary size is not
-  // supported") - a routine reality for WinRAR-made mod archives - so
-  // extract() must fall back to the unrar CLI, and when that CLI is not
-  // installed it must say so.
+  // (c) A RAR libarchive cannot read is a case the 7-Zip backend owns, and
+  // lives in sevenzip_archive_test. What is asserted here is the property that
+  // still holds on this path: an archive that yields no entries is a failure
+  // with a reason, never a successful install that installed nothing. The
+  // 61-byte RAR5 below is truncated - 7-Zip's own CLI rejects it - and it
+  // reaches the 7-Zip reader because routing is by content, not extension.
   {
     TempDir tmp;
     auto archive = tmp.root / "dict128mib.rar";
     write_dict_128mib_rar(archive);
     REQUIRE(engine::is_rar_archive(archive));
+    REQUIRE(engine::route_archive(archive) == engine::ArchiveEngine::kSevenZip);
 
-    // With unrar unreachable (PATH stripped), extract() must fail with the
-    // "not available" diagnostic, not "exited with code 127": execvp failure
-    // surfaces as exit_code 127 with ok == true.
-    {
-      PathGuard path_guard;
-      REQUIRE(path_guard.had_value_);
-      setenv("PATH", "/nonexistent-gmm-test", 1);
-      std::vector<engine::ExtractedFile> missing_files;
-      std::string missing_error;
-      REQUIRE_FALSE(engine::ArchiveExtractor::extract(archive, tmp.root / "out-missing",
-                                                      missing_files, missing_error));
-      REQUIRE(missing_error.find("not available") != std::string::npos);
-    }  // PATH restored here even if an assertion above fails
-    std::printf("PASS: install_progress — missing unrar reported, not code 127\n");
+    std::vector<engine::ExtractedFile> files;
+    std::string error;
+    REQUIRE_FALSE(engine::ArchiveExtractor::extract(archive, tmp.root / "out", files,
+                                                    error));
+    REQUIRE_FALSE(error.empty());
+    REQUIRE(files.empty());
+    std::printf("PASS: install_progress — a corrupt RAR5 fails with a reason\n");
   }
 }
 
@@ -537,68 +498,18 @@ TEST_CASE("archive password", "[engine]") {
     std::printf("PASS: install_progress — unencrypted archive asked nothing\n");
   }
 
-  // (c6) The unrar fallback gets a real password. libarchive cannot read
-  // encrypted RAR at all, so this is the only way an encrypted RAR installs:
-  // the stub records what it was handed and refuses until it sees the
-  // password, which proves both that it was asked for and that it was
-  // forwarded as -p<pw>.
-  {
-    TempDir tmp;
-    auto archive = tmp.root / "dict128mib.rar";
-    write_dict_128mib_rar(archive);
-    REQUIRE(engine::is_rar_archive(archive));
-
-    PathGuard path_guard;
-    const auto argv_log = tmp.root / "unrar_argv.txt";
-    install_stub_unrar(tmp.root / "stub_bin", /*exit_code=*/11, argv_log,
-                       std::string("-p") + kFixturePassword);
-    setenv("PATH", (tmp.root / "stub_bin").c_str(), 1);
-
-    int prompts = 0;
-    std::vector<engine::ExtractedFile> files;
-    std::string error;
-    bool canceled = true;
-    const bool extracted = engine::ArchiveExtractor::extract(
-        archive, tmp.root / "out", files, error, {}, /*low_priority=*/false,
-        [&](const std::string &, std::string &passphrase) {
-          ++prompts;
-          passphrase = kFixturePassword;
-          return true;
-        },
-        &canceled);
-
-    REQUIRE(extracted);
-    REQUIRE_FALSE(canceled);
-    // Asked once: the fallback only asks after unrar has said the password
-    // was wrong, so an unencrypted RAR still costs the user nothing.
-    REQUIRE(prompts == 1);
-
-    std::ifstream log(argv_log);
-    const std::string argv((std::istreambuf_iterator<char>(log)),
-                           std::istreambuf_iterator<char>());
-    // Two runs, both recorded: the first with no password (which is how the
-    // fallback learns the archive is encrypted without asking about a RAR
-    // that is not), the second carrying it as -p<pw>. The stub only exits 0
-    // once it sees the second, so reaching REQUIRE(extracted) is the proof.
-    REQUIRE(argv.find("-p-\n") != std::string::npos);
-    REQUIRE(argv.find(std::string("-p") + kFixturePassword + "\n") !=
-            std::string::npos);
-    std::printf("PASS: install_progress — unrar fallback received the password\n");
-  }
-
   // (c7) Nothing the user can see or the operator can grep for ever contains
   // the password. The stage logs the extractor's own diagnostic and the UI
   // shows it verbatim, so the error string and the log are the two channels
-  // that have to be clean - on success, on the unrar path, and on the
-  // exhausted-retry path.
+  // that have to be clean. Driven through an encrypted RAR5 with a wrong
+  // password, which is the path that reaches 7-Zip and spends the retry budget.
   {
     TempDir tmp;
-    auto archive = tmp.root / "dict128mib.rar";
-    write_dict_128mib_rar(archive);
-
-    PathGuard path_guard;
-    install_stub_unrar(tmp.root / "stub_bin", /*exit_code=*/11);
-    setenv("PATH", (tmp.root / "stub_bin").c_str(), 1);
+    auto archive = tmp.root / "encrypted.rar";
+    std::filesystem::copy_file(
+        std::filesystem::path(__FILE__).parent_path() / "fixtures" / "sevenzip" /
+            "encrypted.rar",
+        archive);
 
     engine::Mod mod;
     mod.id    = "leaky";
@@ -611,8 +522,11 @@ TEST_CASE("archive password", "[engine]") {
     engine::PipelineContext ctx;
     ctx.mods_dir         = tmp.root / "mods";
     std::filesystem::create_directories(ctx.mods_dir);
+    // Deliberately wrong: the fixture is sealed with a different password, so
+    // the install runs the whole retry budget and then fails, which is the case
+    // where a password is most likely to leak into a message.
     ctx.passphrase_query_cb = [](const std::string &, std::string &passphrase) {
-      passphrase = kFixturePassword;
+      passphrase = "wrong-on-purpose";
       return true;
     };
 
@@ -624,9 +538,11 @@ TEST_CASE("archive password", "[engine]") {
     // The install failed, it was not cancelled, and the user is told the
     // password was not accepted - never what it was.
     REQUIRE_FALSE(ctx.canceled);
+    REQUIRE(ctx.error_message.find("wrong-on-purpose") == std::string::npos);
     REQUIRE(ctx.error_message.find(kFixturePassword) == std::string::npos);
     REQUIRE_FALSE(ctx.error_message.empty());
     REQUIRE(log.contains("ExtractStage: extraction failed"));
+    REQUIRE_FALSE(log.contains("wrong-on-purpose"));
     REQUIRE_FALSE(log.contains(kFixturePassword));
     std::printf("PASS: install_progress — password absent from reason and log\n");
   }
