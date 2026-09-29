@@ -51,6 +51,7 @@ core/instance/mod_state.cpp
     game/detect/game_detector.cpp
     game/detect/mod_scanner.cpp
     mod/archive/archive_extractor.cpp
+    mod/archive/sevenzip_backend.cpp
     gmmpack/sha256.cpp
     gmmpack/bsdiff.cpp
     gmmpack/patch.cpp
@@ -237,6 +238,7 @@ target_link_libraries(gmm_engine PRIVATE
     Qt6::Core
     Qt6::Gui # proton_tweaks.cpp: QProcess env + QScreen DPI detection
     PkgConfig::LIBARCHIVE
+    PkgConfig::SEVENZIP
     PkgConfig::SQLITE3
     PkgConfig::YAMLCPP
     PkgConfig::CURL
