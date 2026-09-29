@@ -148,6 +148,13 @@ QString DownloadsTab::column_name(int column) {
   return {};
 }
 
+QStringList DownloadsTab::column_names() {
+  QStringList names;
+  for (int c = 0; c < ColumnCount; ++c)
+    names << column_name(c);
+  return names;
+}
+
 QStringList DownloadsTab::header_tooltips() {
   // MO2's download list has no header tooltips (downloadlist.cpp's
   // headerData only answers DisplayRole; its single ToolTipRole is a cell
@@ -168,19 +175,26 @@ QStringList DownloadsTab::header_tooltips() {
 }
 
 QStringList DownloadsTab::default_hidden_column_names() {
-  // MO2 hides COL_MODNAME, COL_VERSION, COL_ID and COL_SOURCEGAME on a
-  // fresh profile (downloadlistview.cpp:147-151). Of the columns this tab
-  // ships, only COL_ID is in that set. Filetime is one MO2 shows.
-  return {QStringLiteral("Nexus ID")};
+  // MO2 shows six of its eight columns on a fresh profile and hides
+  // COL_MODNAME, COL_VERSION, COL_ID and COL_SOURCEGAME
+  // (downloadlistview.cpp:147-151), which leaves Filetime visible. This build
+  // ships Name, Status and Size alone, so Source and Filetime are hidden here
+  // too - a deliberate departure from MO2, reachable from the header's toggle
+  // menu.
+  return {column_name(Source), column_name(Filetime), column_name(NexusId)};
 }
 
 void DownloadsTab::apply_default_hidden_columns(QTableWidget *table) {
   if (!table || !table->horizontalHeader())
     return;
   const QStringList hidden_names = default_hidden_column_names();
+  // Set both ways, not just hide: a saved state records what the columns
+  // looked like under the previous default, so a column that is not in the
+  // set has to be un-hidden for the new default to take effect at all.
   for (int c = 0; c < ColumnCount; ++c) {
-    if (hidden_names.contains(column_name(c)))
-      table->horizontalHeader()->setSectionHidden(c, true);
+    const bool hidden = hidden_names.contains(column_name(c));
+    if (table->horizontalHeader()->isSectionHidden(c) != hidden)
+      table->horizontalHeader()->setSectionHidden(c, hidden);
   }
 }
 
@@ -199,11 +213,7 @@ DownloadsTab::DownloadsTab(QWidget *parent) : QWidget(parent) {
   top->addWidget(add_url_btn);
   layout->addLayout(top);
 
-  QStringList headers;
-  for (int c = 0; c < ColumnCount; ++c)
-    headers << column_name(c);
-
-  table_ = make_table(ColumnCount, headers, this);
+  table_ = make_table(ColumnCount, column_names(), this);
   table_->setObjectName("downloadsTable");
 
   // Positional: every header needs an entry or the tooltips after the gap

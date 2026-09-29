@@ -73,6 +73,7 @@
 #include "ui/settings/settings_dialog.h"
 #include "ui/theme/icon_manager.h"
 #include "ui/theme/style_manager.h"
+#include "ui/widgets/column_toggle_header.h"
 #include "ui/widgets/console_panel.h"
 #include "ui/widgets/debug_window.h"
 #include "ui/widgets/exec_controls_bar.h"
@@ -95,6 +96,16 @@
 #endif
 
 namespace ui {
+
+namespace {
+// Key holding "the user changed a column's visibility from this tab's header
+// menu", beside that tab's saved header blob. Suffixing the tab text keeps it
+// out of the tab-name keys save_app_state() writes; the restore loop only ever
+// looks a tab's own name up, so the two cannot collide.
+QString columns_touched_key(const QString &tab_text) {
+  return QStringLiteral("%1_columns_touched").arg(tab_text);
+}
+}  // namespace
 
 void configure_instance_restart_dialog(TaskDialog &dlg) {
   dlg.title(QObject::tr("Restart GameModManager"))
@@ -890,6 +901,16 @@ void SettingsController::save_app_state() {
         if (!state.isEmpty()) {
           header_states[tw->tabText(i)] = QString::fromUtf8(state);
         }
+        // A saved blob says which columns are visible, not whether the user
+        // asked for that, so a header whose menu they used is flagged
+        // separately. restore_app_state re-applies the default-hidden set to
+        // an unflagged header, which is what lets a changed default reach a
+        // user who already has a saved blob without overwriting a choice they
+        // made deliberately.
+        if (auto *toggle_header =
+                qobject_cast<ui::ColumnToggleHeaderView *>(table->horizontalHeader()))
+          header_states[columns_touched_key(tw->tabText(i))] =
+              toggle_header->has_user_visibility_choice();
       }
     }
   }
@@ -975,6 +996,16 @@ void SettingsController::restore_app_state() {
         auto state = QByteArray::fromBase64(obj[key].toString().toUtf8());
         if (!state.isEmpty())
           table->horizontalHeader()->restoreState(state);
+        // A header the user has toggled is left exactly as saved. One they
+        // never touched is a record of a shipped default, so a changed
+        // default still applies to it - and is re-seeded on the header so the
+        // flag survives this session's own save.
+        const bool columns_touched =
+            obj.value(columns_touched_key(key)).toBool();
+        if (auto *toggle_header =
+                qobject_cast<ui::ColumnToggleHeaderView *>(table->horizontalHeader()))
+          if (columns_touched)
+            toggle_header->note_user_visibility_choice();
         // Re-apply desired stretch modes so restoreState
         // doesn't permanently override them from old sessions
         if (key == "Data") {
@@ -992,13 +1023,14 @@ void SettingsController::restore_app_state() {
           h->setSectionResizeMode(0, QHeaderView::Stretch);
           for (int c = 1; c < ui::DownloadsTab::ColumnCount; ++c)
             h->setSectionResizeMode(c, QHeaderView::Interactive);
+          // Two reasons to re-apply the default-hidden set after the restore.
           // A state saved before a column existed carries no opinion on it,
-          // and Qt leaves such a section visible - so the default-hidden set
-          // has to be re-applied after the restore, not just in the ctor.
-          // ponytail: unconditional because this tab's header has no
-          // column-toggle menu, so there is no user choice to overwrite;
-          // make it conditional if one is ever added.
-          ui::DownloadsTab::apply_default_hidden_columns(table);
+          // and Qt leaves such a section visible. And a state saved under the
+          // previous default records that default's visibility, which is not
+          // a choice the user made - unless they have used the menu, in which
+          // case the saved flags are theirs and stay.
+          if (!columns_touched)
+            ui::DownloadsTab::apply_default_hidden_columns(table);
         }
       }
     }

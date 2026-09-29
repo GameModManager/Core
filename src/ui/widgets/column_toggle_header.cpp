@@ -19,6 +19,10 @@ void ColumnToggleHeaderView::set_column_labels(const QStringList &labels) {
   labels_ = labels;
 }
 
+void ColumnToggleHeaderView::note_user_visibility_choice() {
+  user_visibility_choice_ = true;
+}
+
 void ColumnToggleHeaderView::set_section_tooltips(const QStringList &tooltips) {
   tooltips_ = tooltips;
 }
@@ -57,6 +61,11 @@ bool ColumnToggleHeaderView::eventFilter(QObject *obj, QEvent *event) {
       QMenu menu(this);
 
       for (int i = 0; i < count(); ++i) {
+        if (i >= labels_.size())
+          // Positional list, and a short one ships a nameless entry: the
+          // caller has to supply a label for every section the view has.
+          qWarning("ColumnToggleHeaderView: no label for section %d of %d sections",
+                   i, count());
         QString label = (i < labels_.size()) ? labels_[i] : tr("Column %1").arg(i + 1);
         QAction *action = menu.addAction(label);
         action->setCheckable(true);
@@ -71,6 +80,7 @@ bool ColumnToggleHeaderView::eventFilter(QObject *obj, QEvent *event) {
         connect(action, &QAction::toggled, this, [this, i](bool checked) {
           const bool hidden = !checked;
           setSectionHidden(i, hidden);
+          note_user_visibility_choice();
           emit section_toggled(i, hidden);
         });
       }
