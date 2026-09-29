@@ -88,7 +88,10 @@ public:
   // leaves the rest visible - so a blob written by a build that predates a
   // column would unhide that column on the next launch. apply_default_
   // hidden_columns() has to run again after every restoreState() for that
-  // reason; SettingsController::restore_app_state does it for this tab.
+  // reason; SettingsController::restore_app_state does it for this tab, and
+  // skips it when the saved flags are the user's own (a saved blob records
+  // visibility, not the choice behind it, so the header separately flags
+  // whether its toggle menu was ever used).
   enum Column {
     Name,
     Source,
@@ -102,20 +105,29 @@ public:
   // Per-column header label, empty for an out-of-range index.
   [[nodiscard]] static QString column_name(int column);
 
+  // Every column's label in column order. The table header and the header's
+  // toggle menu both read this, so the two lists cannot drift apart the way a
+  // hand-written menu label list did when Filetime and Nexus ID were appended.
+  [[nodiscard]] static QStringList column_names();
+
   // Per-column hover text, indexed by column and always ColumnCount long.
   // MO2's download list has no header tooltips at all (only a cell-level
   // ToolTipRole in downloadlist.cpp:214), so these describe what this build
   // actually shows rather than copying wording that does not exist.
   [[nodiscard]] static QStringList header_tooltips();
 
-  // Column names hidden for a newly created instance. MO2 hides COL_ID and
-  // shows COL_FILETIME (downloadlistview.cpp:147-151); of the columns this
-  // tab ships, that is Nexus ID alone.
+  // Column names hidden on a fresh tab and re-applied after a saved header
+  // state is restored. Deliberately not MO2's set: MO2 shows Filetime and
+  // hides only COL_ID (downloadlistview.cpp:147-151), while this build ships
+  // Name, Status and Size alone, so Source and Filetime join Nexus ID here.
   [[nodiscard]] static QStringList default_hidden_column_names();
 
-  // Hide default_hidden_column_names() on `table`'s header. Resolved by name,
-  // so a renamed or retired entry is inert rather than hiding whatever sits
-  // at that index. Idempotent, and safe to call again after restoreState().
+  // Set every column's visibility from default_hidden_column_names() on
+  // `table`'s header - hidden for a listed name, visible for every other, so
+  // it also un-hides a column a saved state had left showing. Resolved by
+  // name, so a renamed or retired entry is inert rather than moving a
+  // column's visibility. Idempotent, and safe to call again after
+  // restoreState().
   static void apply_default_hidden_columns(QTableWidget *table);
 
   explicit DownloadsTab(QWidget *parent = nullptr);
