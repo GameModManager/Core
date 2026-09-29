@@ -348,6 +348,32 @@ TEST_CASE("install progress", "[engine]") {
                 percents.back());
   }
 
+  // (c) RAR fallback regression: libarchive 3.8.x rejects RAR5 archives whose
+  // declared dictionary exceeds 64 MiB ("Declared dictionary size is not
+  // supported") - a routine reality for WinRAR-made mod archives - so
+  // extract() must fall back to the unrar CLI, and when that CLI is not
+  // installed it must say so.
+  {
+    TempDir tmp;
+    auto archive = tmp.root / "dict128mib.rar";
+    write_dict_128mib_rar(archive);
+    REQUIRE(engine::is_rar_archive(archive));
+
+    // With unrar unreachable (PATH stripped), extract() must fail with the
+    // "not available" diagnostic, not "exited with code 127": execvp failure
+    // surfaces as exit_code 127 with ok == true.
+    {
+      PathGuard path_guard;
+      REQUIRE(path_guard.had_value_);
+      setenv("PATH", "/nonexistent-gmm-test", 1);
+      std::vector<engine::ExtractedFile> missing_files;
+      std::string missing_error;
+      REQUIRE_FALSE(engine::ArchiveExtractor::extract(archive, tmp.root / "out-missing",
+                                                      missing_files, missing_error));
+      REQUIRE(missing_error.find("not available") != std::string::npos);
+    }  // PATH restored here even if an assertion above fails
+    std::printf("PASS: install_progress — missing unrar reported, not code 127\n");
+  }
 }
 
 TEST_CASE("archive password", "[engine]") {
