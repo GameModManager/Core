@@ -20,6 +20,20 @@ struct ExtractedFile {
 // bar. Qt-free; the UI wires it to its progress dialog via PipelineContext.
 using ExtractProgressFn = std::function<void(int64_t done, int64_t total)>;
 
+// Install-time passphrase request (MO2's InstallationManager::queryPassword).
+// Invoked on the pipeline thread with the archive's filename when a reader
+// needs a decryption key. Return true and write the password to `passphrase`
+// to continue; return false when the user dismissed the prompt, which aborts
+// the install rather than failing it. Called again after a rejected password
+// so a mistyped one can be retyped, and bounded by a small attempt budget so
+// a wrong password can never loop forever. Qt-free, like ExtractProgressFn.
+//
+// The password is held only in these strings for the lifetime of the
+// extraction: it is never logged, never put in an error string, and never
+// written anywhere.
+using PassphraseFn = std::function<bool(const std::string &archive_name,
+                                         std::string &passphrase)>;
+
 class ArchiveExtractor {
 public:
   // Extract any supported archive (.zip, .7z, .tar, .rar, .gz, .bz2, .xz)
@@ -34,11 +48,22 @@ public:
   // (see engine::set_low_priority). The engine is Qt-free, so the value is
   // supplied by the caller (the UI reads the QSettings toggle and passes it
   // through PipelineContext); it is read on every call, never cached.
+  // `on_passphrase`, when set, is asked for a password if (and only if) a
+  // reader needs one; the same answer is reused by every entry of this
+  // archive, and a reader that rejects it makes extract() ask again, up to a
+  // small attempt budget. When it returns false the extraction is abandoned
+  // and `*canceled` (when non-null) is set to true, which is a cancel, not a
+  // failure. Unset (headless/CLI): an encrypted archive fails with a reason
+  // naming that.
+  // `canceled`, when non-null, is set to true only when the user dismissed the
+  // password prompt; `error` then stays empty.
   static bool extract(const std::filesystem::path &archive,
                       const std::filesystem::path &dest_dir,
                       std::vector<ExtractedFile> &out_files, std::string &error,
-                      const ExtractProgressFn &on_progress = {},
-                      bool low_priority                    = true);
+                      const ExtractProgressFn &on_progress    = {},
+                      bool low_priority                       = true,
+                      const PassphraseFn &on_passphrase       = {},
+                      bool *canceled                          = nullptr);
 };
 
 // True when `archive` carries a RAR signature (RAR4 "Rar!\x1a\x07\x00" or
