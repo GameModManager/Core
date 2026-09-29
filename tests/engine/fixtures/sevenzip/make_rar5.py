@@ -18,8 +18,8 @@ data: bits 0-5 algorithm version, bits 7-9 method, bits 10-14 dictionary exponen
 Get_DictSize64() = 32 << (12 + dictMain), so dictMain=10 declares 128 MiB while
 the file itself stays tiny. Method 0 (Store) means the payload is raw, so the
 oversized dictionary is never actually allocated - which is exactly the shape of
-archive that libarchive's 64 MiB cap rejects and that extract_with_unrar exists
-to work around.
+archive that libarchive's 64 MiB cap rejects and that the 7-Zip backend reads
+without trouble.
 """
 
 import struct

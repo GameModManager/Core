@@ -69,10 +69,4 @@ public:
                       bool *canceled                          = nullptr);
 };
 
-// True when `archive` carries a RAR signature (RAR4 "Rar!\x1a\x07\x00" or
-// RAR5 "Rar!\x1a\x07\x01\x00"). Read by the routing table that sends RAR to
-// the 7-Zip backend, and kept as a free function because it is a useful
-// content check on its own.
-[[nodiscard]] bool is_rar_archive(const std::filesystem::path &archive);
-
 }  // namespace engine
