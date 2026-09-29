@@ -1,7 +1,6 @@
 #include "engine/mod/archive/archive_extractor.h"
 #include "engine/mod/archive/sevenzip_backend.h"
 #include "engine/core/util/fs_utils.h"
-#include "engine/core/util/process_utils.h"
 #include "engine/core/util/thread_priority.h"
 #include "engine/core/log/logger.h"
 
@@ -36,10 +35,10 @@ namespace {
   }
 
   // The password state shared by every reader created for one archive: the
-  // size pre-pass, the extraction pass, and the unrar fallback. The stored
-  // answer is reused by every later request within the same attempt, so one
-  // prompt covers the whole archive; extract() clears it to force a re-prompt
-  // when a reader rejected what it was given.
+  // size pre-pass and the extraction pass, whichever engine ends up reading it.
+  // The stored answer is reused by every later request within the same attempt,
+  // so one prompt covers the whole archive; extract() clears it to force a
+  // re-prompt when a reader rejected what it was given.
   //
   // The deque is deliberate: libarchive asks for a password once per encrypted
   // entry, and a value returned to an earlier request must stay valid while a
@@ -83,10 +82,9 @@ namespace {
     return s->passphrase().c_str();
   }
 
-  // Ask for a password outside a libarchive reader - the unrar fallback, which
-  // cannot prompt for itself (its stdin is /dev/null). Routed through the same
-  // callback so the unrar path and the reader path spend one shared budget
-  // rather than one each.
+  // Ask for a password outside a libarchive reader - the 7-Zip backend, whose
+  // callbacks are driven by 7-Zip rather than by libarchive. Routed through the
+  // same session so both readers spend one shared budget rather than one each.
   bool request_passphrase(PassphraseSession &session) {
     return passphrase_callback(nullptr, &session) != nullptr;
   }
@@ -133,92 +131,6 @@ namespace {
     return total;
   }
 
-  // RAR fallback via the unrar CLI - the Linux analog of MO2's UnRAR.exe on
-  // Windows. libarchive's RAR5 reader refuses archives whose declared window
-  // exceeds 64 MiB ("Declared dictionary size is not supported"), and WinRAR-made
-  // mod archives routinely exceed it. unrar has no such cap. No byte-level
-  // progress is available, so the caller would switch to an indeterminate bar;
-  // on failure `error` holds the reason.
-  //
-  // Nothing reaches this any more: RAR is read by the 7-Zip backend, which has
-  // no dictionary cap and needs no external binary. It stays until the unrar
-  // dependency is removed.
-  [[maybe_unused]] bool extract_with_unrar(const std::filesystem::path &archive,
-                                           const std::filesystem::path &dest_dir,
-                                           std::vector<ExtractedFile> &out_files,
-                                           std::string &error,
-                                           PassphraseSession &session) {
-    std::error_code ec;
-    std::filesystem::create_directories(dest_dir, ec);
-    if (ec) {
-      error = "cannot create " + dest_dir.string() + ": " + ec.message();
-      return false;
-    }
-
-    // -y + -o+ overwrite; -idq silences the percentage spam; the trailing '/'
-    // makes unrar treat dest as a directory (it is created on the fly if
-    // missing). unrar's stdin is /dev/null, so it can never prompt us itself:
-    // the password goes on the command line, or -p- tells it there is none and
-    // it must not ask. (The password is therefore in the child's argv, readable
-    // from /proc for the life of the run. The CLI offers no other channel, and
-    // nothing here writes it to the log or to disk.)
-    for (;;) {
-      std::vector<std::string> args = {
-          "unrar", "x", "-o+", "-y", "-idq",
-          session.has_passphrase() ? "-p" + session.passphrase() : std::string("-p-"),
-          archive.string(), dest_dir.string() + "/"};
-      CapturedProcess proc = run_captured(args);
-      // ok only means fork+waitpid succeeded; a missing unrar still exits 127
-      // via the execvp-failure path (real unrar uses its own codes 0-10), so
-      // 127 means "not installed", not a genuine extraction failure.
-      if (!proc.ok || proc.exit_code == 127) {
-        error = "unrar not available (install the 'unrar' package)";
-        return false;
-      }
-      if (proc.exit_code == 0)
-        break;
-      // Exit 11 is unrar's documented "wrong password". It is also the only way
-      // to learn the archive is encrypted, which is why the first run is made
-      // without a password: an unencrypted RAR exits 0 on that run and the user
-      // is never asked about anything. Only when one is refused do we ask, and
-      // then unrar gets a real -p<pw> to work with.
-      if (proc.exit_code == 11 && !session.has_passphrase() &&
-          request_passphrase(session)) {
-        continue;
-      }
-      if (proc.exit_code == 11) {
-        // Out of password, or out of attempts: extract() re-prompts on the next
-        // round if the budget allows. Name the outcome, never the password.
-        error = session.has_passphrase() ? "unrar rejected the password"
-                                         : "the archive is password protected";
-      } else {
-        error = "unrar exited with code " + std::to_string(proc.exit_code) + ": " +
-                proc.err;
-      }
-      return false;
-    }
-
-    // Rebuild the extracted-file list by walking the tree: every regular file
-    // under dest_dir came from the archive (it was created fresh above).
-    auto it = std::filesystem::recursive_directory_iterator(dest_dir, ec);
-    if (ec)
-      return true;  // nothing listed; extraction itself still succeeded
-    for (const auto &entry : it) {
-      if (entry.is_directory())
-        continue;
-      std::error_code rel_ec;
-      const std::filesystem::path rel =
-          std::filesystem::relative(entry.path(), dest_dir, rel_ec);
-      if (rel_ec)
-        continue;
-      ExtractedFile ef;
-      ef.dest_path    = entry.path();
-      ef.archive_path = engine::normalize_separators(rel.string());
-      out_files.push_back(std::move(ef));
-    }
-    return true;
-  }
-
   // One complete attempt at `archive`: the reader the routing table picked,
   // which is libarchive for every format it handles and 7-Zip for RAR and 7z.
   // The whole body exists so extract() can run it again with a different
@@ -228,12 +140,16 @@ namespace {
                     const std::filesystem::path &dest_dir,
                     std::vector<ExtractedFile> &out_files, std::string &error,
                     const ExtractProgressFn &on_progress, PassphraseSession &session) {
-    // RAR (either generation) and 7z are read by 7-Zip: it has no cap on the
-    // dictionary a RAR5 header may declare, which is the whole reason the
-    // unrar CLI existed, and it reads RAR encryption in-process. Every other
-    // format stays on libarchive, the incumbent, which handles them and has the
-    // test coverage. The decision is content-based (route_archive) and logged,
-    // so a format landing on the wrong engine is visible rather than a mystery.
+    // RAR (either generation) and 7z are read by 7-Zip: it puts no cap on the
+    // dictionary a RAR5 header may declare, and it reads RAR encryption
+    // in-process. Every other format stays on libarchive, the incumbent, which
+    // handles them and has the test coverage. The decision is content-based
+    // (route_archive) and logged, so a format landing on the wrong engine is
+    // visible rather than a mystery.
+    //
+    // The one RAR capability 7-Zip has no API for is merging a recovery volume:
+    // a multi-part set split across a .rev file is unreadable here and fails
+    // like any other archive this cannot open.
     const ArchiveEngine engine = route_archive(archive);
     Logger::instance().debug("ArchiveExtractor: " + archive.filename().string() + " -> " +
                              archive_engine_name(engine));
@@ -395,10 +311,10 @@ namespace {
     if (!failed)
       return true;
 
-    // No unrar fallback here any more. A RAR never reaches this function at
-    // all: route_archive sends every RAR to 7-Zip, which reads the large
-    // dictionaries libarchive's RAR5 reader refuses. extract_with_unrar and
-    // the unrar dependency are dead and are removed with them.
+    // No second reader is tried here. A RAR never reaches this function at all:
+    // route_archive sends every RAR to 7-Zip, which reads the large
+    // dictionaries libarchive's RAR5 reader refuses, so a failure below is
+    // final for this attempt and the reason belongs to the caller.
     return false;
   }
 
@@ -418,8 +334,8 @@ bool ArchiveExtractor::extract(const std::filesystem::path &archive,
   session.ask          = on_passphrase ? &on_passphrase : nullptr;
   session.archive_name = archive.filename().string();
 
-  // Lower CPU priority up front so the whole extraction (header pre-pass, the
-  // read/decompress loop, and the unrar fallback) yields to the rest of the
+  // Lower CPU priority up front so the whole extraction (header pre-pass and the
+  // read/decompress loop, whichever engine runs them) yields to the rest of the
   // system. Runs on the worker thread that drives the pipeline. Best-effort:
   // a failure here is non-fatal and extraction proceeds at normal priority.
   if (low_priority) {
@@ -459,17 +375,6 @@ bool ArchiveExtractor::extract(const std::filesystem::path &archive,
       return false;
     session.forget();
   }
-}
-
-bool is_rar_archive(const std::filesystem::path &archive) {
-  std::ifstream f(archive, std::ios::binary);
-  if (!f)
-    return false;
-  char magic[7] = {};
-  f.read(magic, 7);
-  static constexpr char kRar4[7] = {'R', 'a', 'r', '!', '\x1a', '\x07', '\x00'};
-  static constexpr char kRar5[7] = {'R', 'a', 'r', '!', '\x1a', '\x07', '\x01'};
-  return std::memcmp(magic, kRar4, 7) == 0 || std::memcmp(magic, kRar5, 7) == 0;
 }
 
 }  // namespace engine

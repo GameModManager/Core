@@ -1,9 +1,8 @@
 #pragma once
 
 // Qt-free POSIX subprocess capture, shared by the engine modules that shell
-// out to command-line tools (LOOT's gmm_lootcli, unrar for RAR archives whose
-// dictionary exceeds libarchive's reader, ...). Single source of truth - never
-// hand-roll a fork/exec/poll loop in a caller.
+// out to command-line tools (LOOT's gmm_lootcli, setup executables, ...).
+// Single source of truth - never hand-roll a fork/exec/poll loop in a caller.
 
 #include <string>
 #include <vector>
@@ -56,9 +55,9 @@ inline int pipe_cloexec(int fds[2]) {
 
 // Run `args` (argv[0] resolved through PATH via execvp), capturing stdout and
 // stderr fully, and wait for exit. stdin is redirected from /dev/null so a
-// tool that would otherwise prompt interactively (e.g. unrar asking for a
-// password) fails instead of hanging the caller. `ok` is false only if the
-// process could not be started; exit_code carries the waitpid status otherwise.
+// tool that would otherwise prompt interactively fails instead of hanging the
+// caller. `ok` is false only if the process could not be started; exit_code
+// carries the waitpid status otherwise.
 //
 // `options.env` entries are applied with setenv (overwrite) in the forked
 // child before exec, so they reach the tool without touching the parent's

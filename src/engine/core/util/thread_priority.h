@@ -9,10 +9,10 @@ namespace engine {
 // - Windows: adjusts the current thread only (SetThreadPriority).
 // - Linux/macOS (POSIX): adjusts the current process's nice value
 //   (10 = below normal). This is inherited by the worker thread that runs the
-//   extraction and by any child processes it spawns (e.g. the unrar CLI
-//   fallback), and by the main thread - but the main thread is idle while
-//   extraction runs, so the whole app simply yields to other processes, which
-//   is exactly the desired "keep the system responsive" behavior.
+//   extraction and by any child processes it spawns, and by the main thread -
+//   but the main thread is idle while extraction runs, so the whole app simply
+//   yields to other processes, which is exactly the desired "keep the system
+//   responsive" behavior.
 void set_low_priority() noexcept;
 
 }  // namespace engine

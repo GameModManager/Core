@@ -138,9 +138,8 @@ struct TempDir {
 };
 int TempDir::counter_ = 0;
 
-// A RAR5 archive libarchive 3.8.x rejects ("Declared dictionary size is not
-// supported"), so extract() falls back to the unrar CLI. Used by both fallback
-// cases: the real-binary extraction and the stubbed password refusal.
+// A RAR5 archive that is truncated, not merely hard. libarchive rejects it
+// outright and so does 7-Zip, which is what the failure case below asserts.
 void write_dict_128mib_rar(const std::filesystem::path &out) {
   // RAR5 signature + MAIN block + FILE "hello.txt" (stored, declared 128 MiB
   // dictionary) + ENDARC block.
@@ -159,9 +158,7 @@ void write_dict_128mib_rar(const std::filesystem::path &out) {
 // with kFixturePassword. Embedded as bytes so the suite needs no `7z`, no
 // network and no writable toolchain: writing an AES-encrypted zip by hand is
 // not practical, and libarchive's zip reader is the one in this build that
-// can decrypt an archive (its 7z reader reports encrypted content and
-// encrypted headers as unsupported, and it cannot read encrypted RAR at all -
-// which is what the unrar fallback below exists for).
+// can decrypt it.
 const char kFixturePassword[] = "GMMtestPass1";
 const unsigned char kEncryptedZip[] = {
     0x50, 0x4b, 0x03, 0x04, 0x33, 0x00, 0x01, 0x00, 0x63, 0x00, 0x13, 0x52,
@@ -324,7 +321,6 @@ TEST_CASE("install progress", "[engine]") {
     TempDir tmp;
     auto archive = tmp.root / "dict128mib.rar";
     write_dict_128mib_rar(archive);
-    REQUIRE(engine::is_rar_archive(archive));
     REQUIRE(engine::route_archive(archive) == engine::ArchiveEngine::kSevenZip);
 
     std::vector<engine::ExtractedFile> files;
