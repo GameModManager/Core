@@ -813,7 +813,20 @@ void SettingsController::connect_menu_actions() {
                        "<p>" +
                            tr("Cross-platform game mod manager with multi-repo "
                               "plugin support.") +
-                           "</p>");
+                           "</p>"
+                       "<p><b>" +
+                           tr("Third-party components") +
+                           "</b><br>"
+                           "7-Zip 26.03 - Copyright &copy; 1999-2026 Igor "
+                           "Pavlov. Licensed under the GNU Lesser General Public "
+                           "License, version 2.1 or later, except for the "
+                           "RAR-related sources (CPP/7zip/Compress/Rar*), which "
+                           "additionally carry the unRAR license restriction: the "
+                           "RAR decompression code may not be used to develop a "
+                           "RAR (WinRAR) compatible archiver. The full license "
+                           "text ships in the <tt>LICENSE</tt> file of the "
+                           "source distribution and at "
+                           "<a href=\"https://www.7-zip.org\">7-zip.org</a>.</p>");
   });
   connect(w_->menu_bar_, &AppMenuBar::about_qt_requested, this, [this]() {
     QMessageBox::aboutQt(w_, tr("About Qt"));

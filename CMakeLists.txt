@@ -160,6 +160,11 @@ if(WIN32)
     find_library(ZLIB_LIBRARY NAMES z zlib)
     find_path(LZ4_INCLUDE_DIR lz4.h)
     find_library(LZ4_LIBRARY NAMES lz4)
+    # 7-Zip's public entry point. Declared here so a Windows configure finds
+    # the same target name as the Linux/macOS path, which builds it from source
+    # via cmake/7zip.cmake. Same pattern as every other dependency above.
+    find_path(SEVENZIP_INCLUDE_DIR 7zip/Archive/IArchive.h)
+    find_library(SEVENZIP_LIBRARY NAMES 7zip)
 
     # Imported targets for consistency with the Linux pkg-config path
     add_library(PkgConfig::LIBARCHIVE UNKNOWN IMPORTED)
@@ -202,6 +207,11 @@ if(WIN32)
     set_target_properties(PkgConfig::LZ4 PROPERTIES
         IMPORTED_LOCATION "${LZ4_LIBRARY}"
         INTERFACE_INCLUDE_DIRECTORIES "${LZ4_INCLUDE_DIR}")
+
+    add_library(PkgConfig::SEVENZIP UNKNOWN IMPORTED)
+    set_target_properties(PkgConfig::SEVENZIP PROPERTIES
+        IMPORTED_LOCATION "${SEVENZIP_LIBRARY}"
+        INTERFACE_INCLUDE_DIRECTORIES "${SEVENZIP_INCLUDE_DIR}")
 else()
     find_package(PkgConfig REQUIRED)
     pkg_check_modules(LIBARCHIVE REQUIRED IMPORTED_TARGET libarchive)
@@ -222,6 +232,11 @@ else()
     endif()
     pkg_check_modules(ZLIB REQUIRED IMPORTED_TARGET zlib)
     pkg_check_modules(LZ4 REQUIRED IMPORTED_TARGET liblz4)
+    # 7-Zip 26.03 ships no shared library on any platform, so on Linux/macOS it
+    # is built from a SHA512-pinned source tarball using the vcpkg build shim
+    # vendored in cmake/7zip/. Exposes the same PkgConfig::SEVENZIP name the
+    # Windows branch above declares against a system install.
+    include(cmake/7zip.cmake)
     find_package(OpenSSL REQUIRED)
     # fuse3 is Linux-only (macOS ships no pkg-config fuse3); every consumer
     # guards on FUSE3_FOUND and the VFS deploy strategy degrades without it.
