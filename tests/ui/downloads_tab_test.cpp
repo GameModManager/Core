@@ -56,13 +56,21 @@
 #include <QTableWidgetItem>
 #include <QSet>
 #include <QThread>
+#include <QTreeWidget>
 #include <QUrl>
 
 #include "ui/settings/settings.h"
 #include "ui/theme/icon_manager.h"
 
+#include "engine/core/instance/instance.h"
 #include "engine/core/log/logger.h"
+#include "engine/game/registry/game_capabilities.h"
+#include "engine/game/registry/game_knowledge.h"
+#include "ui/controllers/settings_controller.h"
 #include "ui/main_window/main_window.h"
+#include "ui/widgets/column_toggle_header.h"
+#include "ui/widgets/mod_list_model.h"
+#include "ui/widgets/mod_table_view.h"
 #include "ui/widgets/right_panel.h"
 
 #include <QByteArray>
@@ -1277,16 +1285,18 @@ TEST_CASE("downloads column set matches MO2", "[ui][mo2-parity]") {
     check(!header->toolTip().isEmpty(), "every header carries a tooltip");
   }
 
-  // MO2 hides COL_ID on a fresh profile (downloadlistview.cpp:147-151) and
-  // shows COL_FILETIME. Same here: nothing the user could already see
-  // becomes hidden, and the new Nexus ID column starts out of the way.
+  // MO2 hides COL_ID on a fresh profile and shows COL_FILETIME
+  // (downloadlistview.cpp:147-151). This build shows Name, Status and Size
+  // alone, so Source and Filetime join Nexus ID in the default-hidden set -
+  // a deliberate departure, and all three are one click away in the header's
+  // toggle menu.
   auto *header = table->horizontalHeader();
-  check(!header->isSectionHidden(0), "Name stays visible");
-  check(!header->isSectionHidden(1), "Source stays visible");
-  check(!header->isSectionHidden(2), "Status stays visible");
-  check(!header->isSectionHidden(3), "Size stays visible");
-  check(!header->isSectionHidden(4), "Filetime is visible by default (MO2 shows it)");
-  check(header->isSectionHidden(5), "Nexus ID is hidden by default (MO2 hides it)");
+  check(!header->isSectionHidden(0), "Name is visible by default");
+  check(header->isSectionHidden(1), "Source is hidden by default");
+  check(!header->isSectionHidden(2), "Status is visible by default");
+  check(!header->isSectionHidden(3), "Size is visible by default");
+  check(header->isSectionHidden(4), "Filetime is hidden by default");
+  check(header->isSectionHidden(5), "Nexus ID is hidden by default");
 }
 
 TEST_CASE("downloads new columns carry the data they claim", "[ui][mo2-parity]") {
@@ -1462,14 +1472,36 @@ TEST_CASE("downloads column spec is positionally complete", "[ui][mo2-parity]") 
   check(ui::DownloadsTab::column_name(ui::DownloadsTab::NexusId) == QLatin1String("Nexus ID"),
         "Nexus ID");
 
-  // The default-hidden set, in both directions: exactly MO2's COL_ID, and
-  // nothing MO2 shows.
+  // The default-hidden set, in both directions: every column except Name,
+  // Status and Size, and nothing else. MO2 keeps Filetime visible, so this is
+  // a departure from it rather than a copy.
   const QStringList hidden = ui::DownloadsTab::default_hidden_column_names();
-  check(hidden.size() == 1, "one default-hidden column");
+  check(hidden.size() == 3, "three default-hidden columns");
+  check(hidden.contains(ui::DownloadsTab::column_name(ui::DownloadsTab::Source)),
+        "Source is hidden by default");
+  check(hidden.contains(ui::DownloadsTab::column_name(ui::DownloadsTab::Filetime)),
+        "Filetime is hidden by default");
   check(hidden.contains(ui::DownloadsTab::column_name(ui::DownloadsTab::NexusId)),
         "Nexus ID is hidden by default");
-  check(!hidden.contains(ui::DownloadsTab::column_name(ui::DownloadsTab::Filetime)),
-        "Filetime is not hidden by default");
+  check(!hidden.contains(ui::DownloadsTab::column_name(ui::DownloadsTab::Name)),
+        "Name is not hidden by default");
+  check(!hidden.contains(ui::DownloadsTab::column_name(ui::DownloadsTab::Status)),
+        "Status is not hidden by default");
+  check(!hidden.contains(ui::DownloadsTab::column_name(ui::DownloadsTab::Size)),
+        "Size is not hidden by default");
+
+  // column_names() is what both the table header and the toggle menu read, so
+  // its entries must name every column - a blank one would put an empty menu
+  // entry where the old code used to fall back to "Column N".
+  const QStringList names = ui::DownloadsTab::column_names();
+  check(names.size() == ui::DownloadsTab::ColumnCount,
+        "column_names() is exactly as long as the column list");
+  for (int c = 0; c < ui::DownloadsTab::ColumnCount; ++c) {
+    INFO("column " << c);
+    check(names.value(c) == ui::DownloadsTab::column_name(c),
+          "column_names() keeps column order");
+    check(!names.value(c).isEmpty(), "every column has a non-empty label");
+  }
 
   // Name resolution runs the way the ctor runs it: every stored name is
   // matched against column_name(), so a name that no longer exists matches
@@ -1480,8 +1512,10 @@ TEST_CASE("downloads column spec is positionally complete", "[ui][mo2-parity]") 
       if (ui::DownloadsTab::column_name(c) == name)
         resolved.insert(c);
   }
-  check(resolved.size() == 1, "the default-hidden list resolves to exactly one column");
-  check(resolved.contains(ui::DownloadsTab::NexusId), "and it is Nexus ID");
+  check(resolved.size() == 3, "the default-hidden list resolves to exactly three columns");
+  check(resolved.contains(ui::DownloadsTab::Source), "and one of them is Source");
+  check(resolved.contains(ui::DownloadsTab::Filetime), "and one is Filetime");
+  check(resolved.contains(ui::DownloadsTab::NexusId), "and one is Nexus ID");
 
   // The same resolution over a stored list carrying a retired column name,
   // which is what a future rename would leave behind.
@@ -1495,4 +1529,328 @@ TEST_CASE("downloads column spec is positionally complete", "[ui][mo2-parity]") 
   }
   check(after_rename.size() == 1, "a retired name contributes nothing");
   check(after_rename.contains(ui::DownloadsTab::NexusId), "the live name still resolves");
+}
+
+// The header context menu is built from a positional label list, and a short
+// one ships unnamed entries: whatever sits past the end renders as "Column N".
+// That is how Filetime and Nexus ID ended up unlabelled in the menu. These
+// walk the real wiring (RightPanel::build_tab, not a hand-built stand-in) for
+// every tab that has a toggle header and assert a label per section, so
+// appending a column without a label fails here.
+TEST_CASE("every toggle header labels every column", "[ui]") {
+  qputenv("QT_QPA_PLATFORM", "offscreen");
+  const std::filesystem::path root = "/tmp/gmm_toggle_header_labels";
+  std::filesystem::remove_all(root);
+  std::filesystem::create_directories(root / "config");
+  qputenv("XDG_CONFIG_HOME", (root / "config").c_str());
+  int         test_argc     = 1;
+  char        test_argv0[] = "test";
+  char       *test_argv[]  = {test_argv0, nullptr};
+  QApplication app(test_argc, test_argv);
+  QCoreApplication::setOrganizationName("GameModManager");
+  QCoreApplication::setApplicationName("GameModManager");
+  // Same offscreen hang guard as the MainWindow tests: the nxm handler pops a
+  // modal QMessageBox inside the first processEvents.
+  Settings::instance().set_nxm_handler_check("dont_ask");
+
+  // A game-less window with no instance: these cases only need the tabs built.
+  // Declared BEFORE the window: RightPanel::set_capabilities keeps the raw
+  // pointer, so it must outlive MainWindow.
+  engine::GameCapabilities caps;
+  for (const char *capability : {"plugins", "saves"}) {
+    engine::CapabilityInfo info;
+    info.game_id      = "togglegamelab";
+    info.capability   = capability;
+    info.display_name = capability;
+    caps.register_capability(info);
+  }
+
+  ui::MainWindow w;
+  auto *rp = w.findChild<ui::RightPanel *>();
+  REQUIRE(rp != nullptr);
+  rp->set_capabilities(&caps);
+  rp->set_game("togglegamelab");
+
+  // Downloads is instance-owned, so it is in the tab bar for every game.
+  auto *downloads = rp->ensure_downloads_tab();
+  REQUIRE(downloads != nullptr);
+  auto *plugins = rp->ensure_plugins_tab();
+  REQUIRE(plugins != nullptr);
+  auto *saves = rp->ensure_saves_tab();
+  REQUIRE(saves != nullptr);
+  auto *data = rp->data_tab();
+  REQUIRE(data != nullptr);
+
+  // Each tab that has a toggle header, with the widget whose section count the
+  // header's label list has to match.
+  const std::vector<std::pair<const char *, QWidget *>> checked = {
+      {"downloads", downloads},
+      {"plugins", plugins},
+      {"saves", saves},
+      {"data", data},
+  };
+  for (const auto &[name, widget] : checked) {
+    INFO("tab: " << name);
+    QHeaderView *raw = nullptr;
+    if (auto *table = widget->findChild<QTableWidget *>())
+      raw = table->horizontalHeader();
+    else if (auto *tree = widget->findChild<QTreeWidget *>())
+      raw = tree->header();
+    REQUIRE(raw != nullptr);
+    auto *header = qobject_cast<ui::ColumnToggleHeaderView *>(raw);
+  }
+
+  // The downloads menu is the one that shipped broken: pin the two labels it
+  // was missing, and that they match the tab's own column list.
+  auto *dl_table   = downloads->table();
+  auto *dl_header  = qobject_cast<ui::ColumnToggleHeaderView *>(dl_table->horizontalHeader());
+  REQUIRE(dl_header != nullptr);
+  CHECK(dl_header->column_labels() == ui::DownloadsTab::column_names());
+  CHECK(dl_header->column_labels().value(ui::DownloadsTab::Filetime) ==
+        QLatin1String("Filetime"));
+  CHECK(dl_header->column_labels().value(ui::DownloadsTab::NexusId) ==
+        QLatin1String("Nexus ID"));
+
+  // The mod list's header is the other ColumnToggleHeaderView; Fold carries no
+  // name of its own, so its entry is empty by design.
+  auto *mod_view = w.findChild<ui::ModView *>();
+  REQUIRE(mod_view != nullptr);
+  auto *mod_header =
+      qobject_cast<ui::ColumnToggleHeaderView *>(mod_view->header());
+  REQUIRE(mod_header != nullptr);
+  INFO("mod list label count: " << mod_header->column_labels().size()
+                                << ", section count: " << mod_header->count());
+  CHECK(static_cast<int>(mod_header->column_labels().size()) == mod_header->count());
+  CHECK(mod_header->column_labels().value(ui::ModList::ColumnCount - 1) ==
+        QLatin1String("Priority"));
+}
+
+// apply_default_hidden_columns() is what makes a changed default reach a user
+// who already has a saved header state, so it has to un-hide as well as hide:
+// a saved blob from the previous default shows Source and Filetime, and hiding
+// alone would leave them on screen.
+TEST_CASE("default hidden columns apply in both directions",
+          "[ui][mo2-parity]") {
+  qputenv("QT_QPA_PLATFORM", "offscreen");
+  const std::filesystem::path cfg = "/tmp/gmm_downloads_default_both_ways/config";
+  std::filesystem::remove_all("/tmp/gmm_downloads_default_both_ways");
+  std::filesystem::create_directories(cfg);
+  qputenv("XDG_CONFIG_HOME", cfg.c_str());
+  int         test_argc     = 1;
+  char        test_argv0[] = "test";
+  char       *test_argv[]  = {test_argv0, nullptr};
+  QApplication app(test_argc, test_argv);
+
+  const QStringList hidden = ui::DownloadsTab::default_hidden_column_names();
+
+  // Every column showing, as a saved state under the old default would leave
+  // them (all but Nexus ID).
+  QTableWidget all_visible(0, ui::DownloadsTab::ColumnCount);
+  ui::DownloadsTab::apply_default_hidden_columns(&all_visible);
+  for (int c = 0; c < ui::DownloadsTab::ColumnCount; ++c) {
+    INFO("column " << c);
+    check(all_visible.horizontalHeader()->isSectionHidden(c) ==
+              hidden.contains(ui::DownloadsTab::column_name(c)),
+          "visibility follows the default-hidden list");
+  }
+  check(!all_visible.horizontalHeader()->isSectionHidden(ui::DownloadsTab::Name),
+        "Name is shown");
+  check(!all_visible.horizontalHeader()->isSectionHidden(ui::DownloadsTab::Status),
+        "Status is shown");
+  check(!all_visible.horizontalHeader()->isSectionHidden(ui::DownloadsTab::Size),
+        "Size is shown");
+  check(all_visible.horizontalHeader()->isSectionHidden(ui::DownloadsTab::Source),
+        "a column the old default left showing is hidden");
+  check(all_visible.horizontalHeader()->isSectionHidden(ui::DownloadsTab::Filetime),
+        "a column the old default left showing is hidden");
+
+  // Everything hidden, as a user who hid every column by hand would leave it:
+  // the three that are not in the list have to come back.
+  QTableWidget all_hidden(0, ui::DownloadsTab::ColumnCount);
+  for (int c = 0; c < ui::DownloadsTab::ColumnCount; ++c)
+    all_hidden.horizontalHeader()->setSectionHidden(c, true);
+  ui::DownloadsTab::apply_default_hidden_columns(&all_hidden);
+  check(!all_hidden.horizontalHeader()->isSectionHidden(ui::DownloadsTab::Name),
+        "Name is shown again");
+  check(!all_hidden.horizontalHeader()->isSectionHidden(ui::DownloadsTab::Status),
+        "Status is shown again");
+  check(!all_hidden.horizontalHeader()->isSectionHidden(ui::DownloadsTab::Size),
+        "Size is shown again");
+  check(all_hidden.horizontalHeader()->isSectionHidden(ui::DownloadsTab::NexusId),
+        "Nexus ID stays hidden");
+
+  // Idempotent, and a null table is a no-op.
+  ui::DownloadsTab::apply_default_hidden_columns(&all_visible);
+  for (int c = 0; c < ui::DownloadsTab::ColumnCount; ++c)
+    check(all_visible.horizontalHeader()->isSectionHidden(c) ==
+              hidden.contains(ui::DownloadsTab::column_name(c)),
+          "a second application changes nothing");
+  ui::DownloadsTab::apply_default_hidden_columns(nullptr);
+  check(true, "a null table is ignored");
+}
+
+namespace {
+
+// An instance whose last selected right-panel tab is Downloads, so the tab is
+// built before set_game_info() restores the app state - the only way a saved
+// header blob reaches a table at all (the restore walks built tabs, and the
+// other tabs are still placeholders at that point).
+struct AppStateHarness {
+  engine::GameKnowledge knowledge;
+  engine::GameCapabilities caps;
+
+  void open(const std::filesystem::path &root) {
+    auto              inst           = engine::Instance::installed("TestGame", root);
+    inst.info().game_id = "statedatalab";
+    inst.info().last_tab = "downloads";
+    REQUIRE(inst.create_directories());
+    REQUIRE(inst.write_toml());
+    knowledge.set("statedatalab", "mods_subpath", "Mods");
+    instance_root = inst.info().root;
+  }
+
+  // Mirrors what the MainWindow tests do: the capabilities pointer is kept by
+  // RightPanel, so it has to outlive the window it is handed to.
+  void open_window(ui::MainWindow &w) {
+    w.set_game_knowledge(&knowledge);
+    w.set_game_info("statedatalab", "State Data Lab", "Default", {}, instance_root);
+  }
+
+  std::filesystem::path instance_root;
+};
+
+ui::DownloadsTab *downloads_tab_of(ui::MainWindow &w) {
+  auto *rp = w.findChild<ui::RightPanel *>();
+  REQUIRE(rp != nullptr);
+  auto *tab = rp->ensure_downloads_tab();
+  REQUIRE(tab != nullptr);
+  return tab;
+}
+
+ui::ColumnToggleHeaderView *downloads_header_of(ui::MainWindow &w) {
+  auto *header = qobject_cast<ui::ColumnToggleHeaderView *>(
+      downloads_tab_of(w)->table()->horizontalHeader());
+  REQUIRE(header != nullptr);
+  return header;
+}
+
+}  // namespace
+
+// A saved header state records what the columns looked like under whatever
+// default was in force when it was written, so restoring it verbatim freezes
+// the old visible set in place for everyone who has already run the app. This
+// drives the real startup path (set_game_info() restores the app state) with a
+// blob written the way the previous default would have left it.
+TEST_CASE("a saved downloads header state does not freeze the old visible set",
+          "[ui][mo2-parity]") {
+  qputenv("QT_QPA_PLATFORM", "offscreen");
+  const std::filesystem::path root = "/tmp/gmm_downloads_saved_default";
+  std::filesystem::remove_all(root);
+  std::filesystem::create_directories(root / "config");
+  qputenv("XDG_CONFIG_HOME", (root / "config").c_str());
+  int         test_argc     = 1;
+  char        test_argv0[] = "test";
+  char       *test_argv[]  = {test_argv0, nullptr};
+  QApplication app(test_argc, test_argv);
+  QCoreApplication::setOrganizationName("GameModManager");
+  QCoreApplication::setApplicationName("GameModManager");
+  Settings::instance().set_nxm_handler_check("dont_ask");
+
+  AppStateHarness harness;
+  harness.open(root);
+
+  {
+    ui::MainWindow w;
+    harness.open_window(w);
+    auto *header = downloads_header_of(w);
+    // A fresh tab already ships the new default. The tab's constructor sets
+    // this before RightPanel swaps in the toggle header, so this also covers
+    // that swap carrying the visibility across.
+    for (int c = 0; c < ui::DownloadsTab::ColumnCount; ++c) {
+      INFO("column " << c << " on a fresh tab");
+      check(header->isSectionHidden(c) ==
+                ui::DownloadsTab::default_hidden_column_names()
+                    .contains(ui::DownloadsTab::column_name(c)),
+            "a fresh tab follows the default-hidden list");
+    }
+
+    // ... and the previous default left Source and Filetime showing, with a
+    // widened Size. That is the blob an existing user carries.
+    header->setSectionHidden(ui::DownloadsTab::Source, false);
+    header->setSectionHidden(ui::DownloadsTab::Filetime, false);
+    header->resizeSection(ui::DownloadsTab::Size, 321);
+
+    auto *settings = w.findChild<ui::SettingsController *>();
+    REQUIRE(settings != nullptr);
+    settings->save_app_state();
+  }
+
+  {
+    ui::MainWindow w;
+    harness.open_window(w);
+    auto *header = downloads_header_of(w);
+    INFO("restored Size width: " << header->sectionSize(ui::DownloadsTab::Size));
+    check(header->sectionSize(ui::DownloadsTab::Size) == 321,
+          "the saved width survives the restore");
+    check(!header->isSectionHidden(ui::DownloadsTab::Name), "Name stays visible");
+    check(!header->isSectionHidden(ui::DownloadsTab::Status), "Status stays visible");
+    check(!header->isSectionHidden(ui::DownloadsTab::Size), "Size stays visible");
+    check(header->isSectionHidden(ui::DownloadsTab::Source),
+          "the new default reaches a saved state that showed Source");
+    check(header->isSectionHidden(ui::DownloadsTab::Filetime),
+          "the new default reaches a saved state that showed Filetime");
+    check(header->isSectionHidden(ui::DownloadsTab::NexusId), "Nexus ID stays hidden");
+  }
+}
+
+// The other half: a blob cannot tell a column the user revealed from the menu
+// from one that was simply never hidden, so the header records which of the
+// two a saved state is, and a saved state that is a choice is left alone.
+TEST_CASE("a downloads column shown from the menu survives a restart",
+          "[ui][mo2-parity]") {
+  qputenv("QT_QPA_PLATFORM", "offscreen");
+  const std::filesystem::path root = "/tmp/gmm_downloads_saved_choice";
+  std::filesystem::remove_all(root);
+  std::filesystem::create_directories(root / "config");
+  qputenv("XDG_CONFIG_HOME", (root / "config").c_str());
+  int         test_argc     = 1;
+  char        test_argv0[] = "test";
+  char       *test_argv[]  = {test_argv0, nullptr};
+  QApplication app(test_argc, test_argv);
+  QCoreApplication::setOrganizationName("GameModManager");
+  QCoreApplication::setApplicationName("GameModManager");
+  Settings::instance().set_nxm_handler_check("dont_ask");
+
+  AppStateHarness harness;
+  harness.open(root);
+
+  {
+    ui::MainWindow w;
+    harness.open_window(w);
+    auto *header = downloads_header_of(w);
+    // The menu's toggle handler does exactly this pair of calls.
+    header->setSectionHidden(ui::DownloadsTab::Filetime, false);
+    header->note_user_visibility_choice();
+    check(!header->isSectionHidden(ui::DownloadsTab::Filetime), "Filetime is showing");
+
+    auto *settings = w.findChild<ui::SettingsController *>();
+    REQUIRE(settings != nullptr);
+    settings->save_app_state();
+  }
+
+  {
+    ui::MainWindow w;
+    harness.open_window(w);
+    auto *header = downloads_header_of(w);
+    check(!header->isSectionHidden(ui::DownloadsTab::Filetime),
+          "the revealed column is still showing after a restart");
+    // The rest of the tab still answers to the default rather than to what the
+    // previous default happened to leave: one flag covers the whole tab, so a
+    // header the user has used is restored exactly as saved.
+    check(header->isSectionHidden(ui::DownloadsTab::NexusId), "Nexus ID stays hidden");
+    // Re-seeded onto the header, which is what keeps the next save from
+    // dropping the choice on the floor.
+    check(header->has_user_visibility_choice(),
+          "the choice is recorded on the restored header");
+  }
 }
