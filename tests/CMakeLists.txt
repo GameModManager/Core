@@ -147,6 +147,10 @@ gmm_catch2_test(loverslab_real_test engine/loverslab_real_test.cpp)
 gmm_catch2_test(mod_update_db_client_test engine/mod_update_db_client_test.cpp)
 gmm_catch2_test(update_policy_test engine/update_policy_test.cpp)
 gmm_catch2_test(install_progress_test engine/install_progress_test.cpp)
+
+# 7-Zip IArchive backend: the RAR routing table and the large-dictionary and
+# encrypted-RAR cases libarchive's RAR5 reader refuses outright.
+gmm_catch2_test(sevenzip_archive_test engine/sevenzip_archive_test.cpp)
 gmm_catch2_test(manifest_schema_test engine/manifest_schema_test.cpp)
 gmm_catch2_test(collection_provider_test engine/collection_provider_test.cpp)
 gmm_catch2_test(collection_batch_install_test engine/collection_batch_install_test.cpp)

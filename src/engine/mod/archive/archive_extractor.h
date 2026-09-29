@@ -54,7 +54,10 @@ public:
   // small attempt budget. When it returns false the extraction is abandoned
   // and `*canceled` (when non-null) is set to true, which is a cancel, not a
   // failure. Unset (headless/CLI): an encrypted archive fails with a reason
-  // naming that.
+  // naming that. The budget is shared by every reader, so switching engines
+  // mid-archive cannot buy a fresh set of attempts. The password reaches the
+  // reader in this process and nowhere else: never a command line, an
+  // environment entry or a temp file.
   // `canceled`, when non-null, is set to true only when the user dismissed the
   // password prompt; `error` then stays empty.
   static bool extract(const std::filesystem::path &archive,
@@ -67,8 +70,9 @@ public:
 };
 
 // True when `archive` carries a RAR signature (RAR4 "Rar!\x1a\x07\x00" or
-// RAR5 "Rar!\x1a\x07\x01\x00"). Used by extract() to decide whether the unrar
-// CLI fallback may help when libarchive's RAR reader rejects the archive.
+// RAR5 "Rar!\x1a\x07\x01\x00"). Read by the routing table that sends RAR to
+// the 7-Zip backend, and kept as a free function because it is a useful
+// content check on its own.
 [[nodiscard]] bool is_rar_archive(const std::filesystem::path &archive);
 
 }  // namespace engine
