@@ -18,10 +18,22 @@ static void setup_toggle_header(QTableWidget *table, const QStringList &labels,
                                 const QStringList &tooltips = {}) {
   if (!table)
     return;
+  // A new header view starts with every section visible, and swapping it in
+  // drops whatever visibility the tab's own constructor had set - so carry
+  // that across, or a default-hidden set applied there would silently do
+  // nothing.
+  QList<bool> hidden;
+  for (int i = 0; i < table->columnCount(); ++i)
+    hidden << table->horizontalHeader()->isSectionHidden(i);
+
   auto *header = new ColumnToggleHeaderView(Qt::Horizontal, table);
   header->set_column_labels(labels);
   header->set_section_tooltips(tooltips);
   table->setHorizontalHeader(header);
+  for (int i = 0; i < hidden.size(); ++i) {
+    if (hidden.at(i))
+      header->setSectionHidden(i, true);
+  }
   header->setStretchLastSection(true);
   header->setSectionsMovable(true);
 }
@@ -260,8 +272,9 @@ QWidget *RightPanel::build_tab(const std::string &capability) {
     tab = t;
   } else if (capability == "downloads") {
     auto *t = new DownloadsTab(tab_widget_);
-    setup_toggle_header(t->table(),
-                        {tr("Name"), tr("Source"), tr("Status"), tr("Size")});
+    // The tab's own column list, so an entry added to the enum shows up in the
+    // menu instead of falling through to "Column N".
+    setup_toggle_header(t->table(), ui::DownloadsTab::column_names());
     // Name stretches; Source/Status/Size keep user-set width on resize
     auto *hdr = t->table()->horizontalHeader();
     hdr->setStretchLastSection(false);
