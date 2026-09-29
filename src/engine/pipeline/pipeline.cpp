@@ -22,6 +22,7 @@ PipelineResult Pipeline::run(Mod &mod) {
   ctx_.fomod_choices_json.clear();
   ctx_.installed_mod_folder.clear();
   ctx_.canceled = false;
+  ctx_.error_message.clear();
 
   auto &trace = TraceRecorder::instance();
   trace.begin_flow(flow_id_);

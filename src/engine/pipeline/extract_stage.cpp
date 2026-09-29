@@ -29,12 +29,14 @@ bool ExtractStage::execute(Mod &mod, PipelineContext &ctx) {
       mod.state = ModState::Extracted;
       return true;
     }
+    ctx.error_message = "no archive path in the mod's files";
     Logger::instance().error("ExtractStage: no archive path in mod files");
     return false;
   }
 
   auto archive_path = std::filesystem::path(mod.files[0].relative_path);
   if (!std::filesystem::exists(archive_path)) {
+    ctx.error_message = "the archive " + archive_path.string() + " does not exist";
     Logger::instance().error("ExtractStage: archive not found: " +
                              archive_path.string());
     return false;
@@ -53,6 +55,8 @@ bool ExtractStage::execute(Mod &mod, PipelineContext &ctx) {
   std::error_code ec;
   std::filesystem::create_directories(staging_dir, ec);
   if (ec) {
+    ctx.error_message =
+        "cannot create the staging directory " + staging_dir.string() + ": " + ec.message();
     Logger::instance().error("ExtractStage: failed to create staging dir " +
                              staging_dir.string() + ": " + ec.message());
     return false;
@@ -80,6 +84,9 @@ bool ExtractStage::execute(Mod &mod, PipelineContext &ctx) {
       },
       ctx.low_priority_extraction);
   if (!extracted_ok) {
+    // The extractor's own diagnostic is the one thing the user can act on, so
+    // it goes on the context for the UI to show - not just into the log.
+    ctx.error_message = extract_error;
     Logger::instance().error("ExtractStage: extraction failed for " +
                              archive_path.string() + " into " + staging_dir.string() +
                              ": " + extract_error);

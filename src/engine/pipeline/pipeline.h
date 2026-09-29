@@ -117,6 +117,14 @@ struct PipelineContext {
   // the caller must not treat as a failure.
   bool canceled = false;
 
+  // Why the pipeline failed, written by the stage that failed (e.g. the
+  // archive extractor's own diagnostic). Empty when the run succeeded, was
+  // canceled, or no failing stage produced one - callers must fall back to a
+  // generic message rather than invent a reason. Cleared at the start of every
+  // run, like the other per-install fields above, so one mod's failure can
+  // never be reported against the next.
+  std::string error_message;
+
   // When the extracted archive is a FOMOD (fomod/ModuleConfig.xml), this
   // callback opens the installer wizard. Invoked on the pipeline thread with
   // the FomodViewModel already built (so the wizard drives the same view

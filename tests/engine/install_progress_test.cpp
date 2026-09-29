@@ -133,6 +133,55 @@ struct TempDir {
 };
 int TempDir::counter_ = 0;
 
+// A RAR5 archive libarchive 3.8.x rejects ("Declared dictionary size is not
+// supported"), so extract() falls back to the unrar CLI. Used by both fallback
+// cases: the real-binary extraction and the stubbed password refusal.
+void write_dict_128mib_rar(const std::filesystem::path &out) {
+  // RAR5 signature + MAIN block + FILE "hello.txt" (stored, declared 128 MiB
+  // dictionary) + ENDARC block.
+  static const unsigned char kFixture[] = {
+      0x52, 0x61, 0x72, 0x21, 0x1a, 0x07, 0x01, 0x00, 0xc5, 0x1a, 0x33, 0x32, 0x03,
+      0x01, 0x00, 0x00, 0xd0, 0xee, 0xc8, 0x89, 0x17, 0x02, 0x02, 0x13, 0x04, 0x13,
+      0x00, 0xb9, 0x14, 0x59, 0x8f, 0x80, 0x50, 0x00, 0x09, 0x68, 0x65, 0x6c, 0x6c,
+      0x6f, 0x20, 0x72, 0x61, 0x72, 0x35, 0x20, 0x66, 0x61, 0x6c, 0x6c, 0x62, 0x61,
+      0x63, 0x6b, 0x39, 0xf9, 0xb2, 0x81, 0x02, 0x05, 0x00,
+  };
+  std::ofstream f(out, std::ios::binary);
+  f.write(reinterpret_cast<const char *>(kFixture), sizeof(kFixture));
+}
+
+// Restores PATH when the enclosing block exits, so a failed REQUIRE cannot
+// leave the rest of the suite (and its own unrar probes) without one.
+struct PathGuard {
+  PathGuard() {
+    const char *old = std::getenv("PATH");
+    had_value_      = old != nullptr;
+    if (had_value_)
+      value_ = old;
+  }
+  ~PathGuard() {
+    if (had_value_)
+      setenv("PATH", value_.c_str(), 1);
+    else
+      unsetenv("PATH");
+  }
+  std::string value_;
+  bool had_value_ = false;
+};
+
+// Drop a stub `unrar` in bin_dir, found first on PATH. Pins a fallback outcome
+// without depending on the real unrar package being installed.
+void install_stub_unrar(const std::filesystem::path &bin_dir, int exit_code) {
+  std::filesystem::create_directories(bin_dir);
+  const auto stub = bin_dir / "unrar";
+  {
+    std::ofstream f(stub);
+    f << "#!/bin/sh\nexit " << exit_code << "\n";
+  }
+  std::filesystem::permissions(stub, std::filesystem::perms::owner_all,
+                               std::filesystem::perm_options::replace);
+}
+
 }  // namespace
 
 TEST_CASE("install progress", "[engine]") {
@@ -231,7 +280,39 @@ TEST_CASE("install progress", "[engine]") {
                 percents.back());
   }
 
-  // (c) RAR fallback regression: libarchive 3.8.x rejects RAR5 archives whose
+  // (c) Encrypted archive: the fallback invokes unrar with -p-, which refuses
+  // password prompts by design, so unrar's "wrong password" exit (11) is the
+  // EXPECTED outcome for an encrypted mod archive - not a mystery. The reason
+  // has to read that way, because the install pipeline hands it to the user
+  // verbatim. A stub `unrar` on PATH pins the branch without needing the real
+  // package (or a real encrypted archive) present.
+  {
+    TempDir tmp;
+    auto archive = tmp.root / "dict128mib.rar";
+    write_dict_128mib_rar(archive);
+    REQUIRE(engine::is_rar_archive(archive));
+
+    PathGuard path_guard;
+    install_stub_unrar(tmp.root / "stub_bin", /*exit_code=*/11);
+    setenv("PATH", (tmp.root / "stub_bin").c_str(), 1);
+
+    std::vector<engine::ExtractedFile> files;
+    std::string error;
+    const bool extracted =
+        engine::ArchiveExtractor::extract(archive, tmp.root / "out", files, error);
+    if (extracted) {
+      FAIL("libarchive read the fixture, so the unrar fallback was never taken");
+    }
+    // The libarchive diagnostic stays the primary reason; unrar's is appended.
+    REQUIRE(error.find("unrar fallback failed: ") != std::string::npos);
+    REQUIRE(error.find("password protected") != std::string::npos);
+    REQUIRE(error.find("unrar exited with code") == std::string::npos);
+    std::printf("PASS: install_progress — encrypted archive reads as password "
+                "protected: %s\n",
+                error.c_str());
+  }
+
+  // (d) RAR fallback regression: libarchive 3.8.x rejects RAR5 archives whose
   // declared dictionary exceeds 64 MiB ("Declared dictionary size is not
   // supported") - a routine reality for WinRAR-made mod archives - so
   // extract() must fall back to the unrar CLI. The fixture bytes below were
@@ -241,39 +322,15 @@ TEST_CASE("install progress", "[engine]") {
   {
     TempDir tmp;
     auto archive = tmp.root / "dict128mib.rar";
-    {
-      std::ofstream f(archive, std::ios::binary);
-      // RAR5 signature + MAIN block + FILE "hello.txt" (stored, declared
-      // 128 MiB dictionary) + ENDARC block.
-      static const unsigned char kFixture[] = {
-          0x52, 0x61, 0x72, 0x21, 0x1a, 0x07, 0x01, 0x00, 0xc5, 0x1a, 0x33, 0x32,
-          0x03, 0x01, 0x00, 0x00, 0xd0, 0xee, 0xc8, 0x89, 0x17, 0x02, 0x02, 0x13,
-          0x04, 0x13, 0x00, 0xb9, 0x14, 0x59, 0x8f, 0x80, 0x50, 0x00, 0x09, 0x68,
-          0x65, 0x6c, 0x6c, 0x6f, 0x2e, 0x74, 0x78, 0x74, 0x68, 0x65, 0x6c, 0x6c,
-          0x6f, 0x20, 0x72, 0x61, 0x72, 0x35, 0x20, 0x66, 0x61, 0x6c, 0x6c, 0x62,
-          0x61, 0x63, 0x6b, 0x39, 0xf9, 0xb2, 0x81, 0x02, 0x05, 0x00,
-      };
-      f.write(reinterpret_cast<const char *>(kFixture), sizeof(kFixture));
-    }
+    write_dict_128mib_rar(archive);
     REQUIRE(engine::is_rar_archive(archive));
 
     // With unrar unreachable (PATH stripped), extract() must fail with the
     // "not available" diagnostic, not "exited with code 127": execvp failure
     // surfaces as exit_code 127 with ok == true.
     {
-      const char *old_path = std::getenv("PATH");
-      struct PathGuard {
-        std::string value;
-        bool had_value = false;
-        ~PathGuard() {
-          if (had_value)
-            setenv("PATH", value.c_str(), 1);
-          else
-            unsetenv("PATH");
-        }
-      } path_guard{old_path ? std::string(old_path) : std::string(),
-                   old_path != nullptr};
-      REQUIRE(path_guard.had_value);
+      PathGuard path_guard;
+      REQUIRE(path_guard.had_value_);
       setenv("PATH", "/nonexistent-gmm-test", 1);
       std::vector<engine::ExtractedFile> missing_files;
       std::string missing_error;

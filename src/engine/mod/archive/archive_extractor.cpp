@@ -85,8 +85,15 @@ namespace {
       return false;
     }
     if (proc.exit_code != 0) {
-      error =
-          "unrar exited with code " + std::to_string(proc.exit_code) + ": " + proc.err;
+      // Exit 11 is unrar's documented "wrong password". Because -p- above
+      // refuses prompts by design, that is the expected outcome for an
+      // encrypted archive - so say it instead of leaking a bare exit code, and
+      // do not imply a password prompt the install never shows.
+      error = proc.exit_code == 11
+                  ? "the archive is password protected (this build does not ask for a "
+                    "password)"
+                  : "unrar exited with code " + std::to_string(proc.exit_code) + ": " +
+                        proc.err;
       return false;
     }
 
