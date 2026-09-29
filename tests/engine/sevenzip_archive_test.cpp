@@ -109,14 +109,12 @@ TEST_CASE("archive routing", "[engine][7zip]") {
 
   SECTION("RAR goes to 7-Zip") {
     const auto rar5 = fixture("big_dict.rar");
-    REQUIRE(engine::is_rar_archive(rar5));
     REQUIRE(engine::route_archive(rar5) == engine::ArchiveEngine::kSevenZip);
     REQUIRE(engine::sevenzip_handler_for(rar5) == "Rar5");
   }
 
   SECTION("an encrypted RAR5 is identified the same way") {
     const auto enc = fixture("encrypted.rar");
-    REQUIRE(engine::is_rar_archive(enc));
     REQUIRE(engine::route_archive(enc) == engine::ArchiveEngine::kSevenZip);
     REQUIRE(engine::sevenzip_handler_for(enc) == "Rar5");
   }
@@ -264,7 +262,7 @@ TEST_CASE("an encrypted RAR5 extracts with an in-process password",
 }
 
 // The retry budget and the cancel outcome must survive the engine change: they
-// were built for the libarchive and unrar paths and are shared.
+// were built for the libarchive path and are shared.
 TEST_CASE("encrypted RAR5 retries and cancels", "[engine][7zip]") {
   SECTION("a mistyped password is asked again and then succeeds") {
     TempDir tmp;
