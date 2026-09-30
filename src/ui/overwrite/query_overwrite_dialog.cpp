@@ -1,6 +1,7 @@
 #include "ui/overwrite/query_overwrite_dialog.h"
 
 #include "engine/pipeline/pipeline.h"
+#include "ui/settings/settings.h"
 
 #include <QApplication>
 #include <QCheckBox>
@@ -96,13 +97,22 @@ bool QueryOverwriteDialog::backup() const {
 namespace {
 
   engine::OverwriteDecision ask_overwrite_impl(const QString &mod_name,
-                                               bool default_backup, QWidget *parent) {
-    engine::OverwriteDecision decision;
-    QueryOverwriteDialog dialog(mod_name, default_backup, parent);
+                                               QWidget *parent) {
+    // MO2's testOverwrite seeds the dialog from the stored preference and
+    // stores the answer back on every accepted dialog
+    // (references/modorganizer/src/installationmanager.cpp:387,393), so
+    // unticking "Keep Backup" once sticks. Reading and storing it here rather
+    // than at the call site keeps that a property of the dialog instead of
+    // something every future caller has to remember to wire up.
+    Settings &settings = Settings::instance();
+    QueryOverwriteDialog dialog(mod_name, settings.keep_backup_on_install(), parent);
     if (dialog.exec() != QDialog::Accepted ||
         dialog.action() == engine::OverwriteAction::Cancel) {
-      return decision;  // action stays Cancel
+      return engine::OverwriteDecision{};  // nothing was chosen, nothing stored
     }
+    settings.set_keep_backup_on_install(dialog.backup());
+
+    engine::OverwriteDecision decision;
     decision.action = dialog.action();
     decision.backup = dialog.backup();
 
@@ -124,10 +134,9 @@ namespace {
 
 }  // namespace
 
-engine::OverwriteDecision ask_overwrite(const QString &mod_name, bool default_backup,
-                                        QWidget *parent) {
+engine::OverwriteDecision ask_overwrite(const QString &mod_name, QWidget *parent) {
   if (QThread::currentThread() == qApp->thread()) {
-    return ask_overwrite_impl(mod_name, default_backup, parent);
+    return ask_overwrite_impl(mod_name, parent);
   }
   // Marshal onto the main thread and block until the modal dialog is done.
   // Same pattern as QtKeychainKeyring's run_on_main.
@@ -135,7 +144,7 @@ engine::OverwriteDecision ask_overwrite(const QString &mod_name, bool default_ba
   QMetaObject::invokeMethod(
       qApp,
       [&] {
-        result = ask_overwrite_impl(mod_name, default_backup, parent);
+        result = ask_overwrite_impl(mod_name, parent);
       },
       Qt::BlockingQueuedConnection);
   return result;

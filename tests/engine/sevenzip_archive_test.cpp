@@ -113,6 +113,20 @@ TEST_CASE("archive routing", "[engine][7zip]") {
     REQUIRE(engine::sevenzip_handler_for(rar5) == "Rar5");
   }
 
+  SECTION("RAR4 goes to 7-Zip") {
+    // The other generation, which read_signature keys on separately: 7 bytes,
+    // ending 0x00 where RAR5 continues 0x01 0x00. Both go to 7-Zip, so a
+    // RAR4 that landed on libarchive would silently lose the same large-
+    // dictionary and in-process-password support RAR5 has.
+    const auto rar4 = tmp.root / "four.rar";
+    {
+      std::ofstream f(rar4, std::ios::binary);
+      f.write("Rar!\x1a\x07\x00", 7);
+      f << std::string(64, 'x');
+    }
+    REQUIRE(engine::route_archive(rar4) == engine::ArchiveEngine::kSevenZip);
+  }
+
   SECTION("an encrypted RAR5 is identified the same way") {
     const auto enc = fixture("encrypted.rar");
     REQUIRE(engine::route_archive(enc) == engine::ArchiveEngine::kSevenZip);

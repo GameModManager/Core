@@ -76,14 +76,17 @@ Coverage is deliberately uneven, weighted to what a user actually notices.
 | What's This on the 19 main-window surfaces | **count verified** | 19 `setWhatsThis` call sites, 17 files |
 | `Workspace-lbe1.1` .. `lbe1.12` audit findings | **spot-checked** | every one of the 12 was re-read against the code; corrections noted in-line |
 | Game-native (Isaac) sort-order round-trip | **full** | shipped 0.5.2; the write target and the phantom-row skip are both non-obvious and were worth checking |
+| Section 21 Archive & Installation (20 rows) + section 23's `U175` | **full** | 2026-09-30; 8 of the 20 rows were wrong. See the note below |
 | Everything else (VFS internals, deploy, LOOT, archives, profiles, executables, CLI, packaging, themes, platform layer) | **not re-verified** | left `·` |
 
-**This is a good-faith partial re-verification, not a full re-audit.** 50 of
-the 1023 non-`[win]` rows carry `✔` - under 5% of the file. The other 973 carry
+**This is a good-faith partial re-verification, not a full re-audit.** 73 of
+the 1022 non-`[win]` rows carry `✔` - about 7% of the file. The other 949 carry
 `·` and are exactly as trustworthy - or untrustworthy - as they were on
 2026-09-24. Concentrating on what shipped in five versions bought accuracy where
 it matters most; it did not buy coverage, and the file should not be read as if
-it had.
+it had. (The counts in this paragraph were recounted on 2026-09-30 against the
+table rows; the previous figures - 50 of 1023, and 973 unverified - were off by
+a few rows before that.)
 
 ### Method
 
@@ -103,6 +106,50 @@ For a `✔` row both sides were read, never inferred:
 **Not done**: no build, no test run, no runtime observation. Every claim here
 is a static reading of source. Nothing was marked implemented on the strength
 of a test name.
+
+### Verification note - 2026-09-30, section 21 (Archive & Installation)
+
+Section 21 was re-verified in full, all 20 rows, both sides read. **Eight of
+the twenty rows were wrong as written** - the highest error rate of any section
+checked so far, and three of the wrong ones had already produced tickets.
+
+| Row | Was | Now | Why it was wrong |
+|-----|-----|-----|-----------------|
+| Archive password support | ❌ | ✅ | shipped this week. In-process passphrase for both readers, shared attempt budget, never on a command line |
+| Installation merge/replace | ❌ | ✅ | shipped and tested; the dialog is a faithful port of `queryoverwritedialog.ui` |
+| Backup on install | ❌ | ✅ | the backup was always taken; only the *remembered* checkbox state was missing, and that landed in this pass |
+| U194 installer error strings | ❌ | ⚠️ | shipped since the 2026-09-29 pass: a failed install now reports the real reason. The one MO2 string with no counterpart is unreachable in GMM's stage-claim model |
+| U195 7z error strings | ❌ | ❌ *(reason changed)* | the row was right that they are missing and wrong to assume that means we want them: 3 of 9 are Windows-bound, and the other 6 key on a COM archiver we do not have |
+| U282 filetree abstractions | ⚠️ | ⚠️ *(upgraded)* | understated. `DirFileTree` exists too, with a shared-shape test; only MO2's memoized virtual tree has no counterpart |
+| U285 validationprogressdialog | ❌ | ❌ *(fabrication)* | the dialog validates a **Nexus API key**, not an archive. Nothing in it touches extraction, so the row's own parenthetical was invented |
+| `IPluginInstaller::EInstallResult` | ❌ | ❌ *(deliberate)* | still missing, and now marked as a decision not to port: a 7-state competing-installer enum over a stage-claim model has no meaning here |
+
+**The two U-rows are the lesson worth keeping.** Both were written by reading a
+filename and a row label, not the code. `validationprogressdialog.ui` is a
+Nexus key validator; `getErrorString` switches on an enum belonging to an
+in-process 7z COM archiver. Neither had anything to do with the section they
+were filed under. A `.ui` filename is not a feature description, and a `tr()`
+table is not a requirement.
+
+Citation drift corrected while checking: `module_config.h:314` -> `:327`,
+`condition_tester.h:10` -> `:36`, `fomod_view_model.h:52` -> `:51`,
+`file_installer.h:24,32` -> `:32`, `staging_layout.h:50,58` -> `:51,59`,
+`install_progress_dialog.h:19` -> `:19` (unchanged), `archive_file_tree.h:19`
+(gained its real path, `engine/mod/filetree/`).
+
+**Also fixed, same defect class, section 23**: `U175 QueryOverwriteDialog` was
+❌ while the row directly above it credited the same dialog as ✅. All five
+controls exist (`query_overwrite_dialog.cpp:57-68`).
+
+**Method**: MO2 read from `references/modorganizer` at the vendored tree;
+`installationmanager.{h,cpp}`, `settings.cpp`, `queryoverwritedialog.{h,ui}`,
+`downloadmanager.cpp`, `mainwindow.cpp`, `nxmaccessmanager.h`,
+`validationprogressdialog.ui`. GMM read from `projects/Core/src/` at `36a9a29`.
+The three rows that had already been found wrong (merge/replace, backup, and the
+password row this file still called ❌) were re-confirmed against source rather
+than taken on trust from the earlier analysis.
+
+---
 
 ### Reading the parity number
 
@@ -1002,26 +1049,26 @@ Note: Track B item U200 is skipped - it is an alias of U116 (integrated once in 
 
 | Feature | MO2 | GMM | Status |
 |---------|-----|-----|--------|
-| FOMOD installer | ✅ `IPluginInstaller` | ✅ `FomodInstaller` plugin + engine, `fomod_view_model.h:52` | ✅ · |
-| FOMOD XML parsing | ✅ | ✅ `module_config` (GroupType, Dependency, PluginType), `module_config.h` | ✅ · |
-| FOMOD condition tester | ✅ | ✅ `condition_tester` (file/flag/game/composite), `condition_tester.h:10` | ✅ · |
-| FOMOD C# script detection | ✅ | ✅ `hasCSharpScript()`, `module_config.h:314` | ✅ · |
-| FOMOD view model (step nav) | ✅ | ✅ `FomodViewModel` (step forward/back, flag map), `fomod_view_model.h:52` | ✅ · |
-| FOMOD file installer | ✅ | ✅ `FomodFileInstaller::apply()`, `file_installer.h:24`, `:32` | ✅ · |
-| Archive password support | ✅ `queryPassword` | ❌ (encrypted archives rejected, not supported) | ❌ · |
-| Installation merge/replace | ✅ `merged`, `replaced` | ❌ | ❌ · |
-| Backup on install | ✅ `keepBackupOnInstall` | ❌ | ❌ · |
-| Installation result tracking | ✅ `InstallationResult` | ❌ | ❌ · |
-| Staging layout normalization | ❌ | 🚀 `analyze_staging_layout()` + `normalize_staging_root()`, `staging_layout.h:50`, `:58` | 🚀 · |
-| BSA/BA2 archive listing | ❌ | 🚀 `DataArchive` (libarchive-backed), `data_archive.h:25` | 🚀 · |
-| Install name dialog (smart candidates) | ❌ | 🚀 `InstallNameDialog` (editable combobox), `install_name_dialog.h:18` | 🚀 · |
-| Install progress dialog (modeless) | ❌ | 🚀 `InstallProgressDialog` (300ms show delay), `install_progress_dialog.h:19` | 🚀 · |
-| IPluginInstaller::EInstallResult | ✅ `IPluginInstaller::EInstallResult` | ❌ | ❌ · |
-| Archive file tree representation | ✅ `ArchiveFileTree`, `ArchiveFileEntry` | ✅ `ArchiveFileTree` (libarchive-backed), `archive_file_tree.h:19` | ✅ · |
-| U194 Installer error/progress strings (extraction failed, invalid name, no installer plugins, password prompt...) | ✅ `installationmanager.cpp:73-880` | ❌ | ❌ · |
-| U195 7z error code strings (9 exact) | ✅ `installationmanager.cpp:887-912` | ❌ | ❌ · |
-| U282 VirtualFileTree/qdirfiletree/archivefiletree abstractions | ✅ `virtualfiletree.cpp`, `qdirfiletree.cpp`, `archivefiletree.cpp` | ⚠️ archive file tree exists `archive_file_tree.h:19`; qdirfiletree/virtualfiletree parity unproven | ⚠️ · |
-| U285 validationprogressdialog.ui (extract validation progress) | ✅ `validationprogressdialog.ui` | ❌ | ❌ · |
+| FOMOD installer | ✅ `IPluginInstaller` | ✅ `FomodInstaller` plugin + engine, `fomod_view_model.h:51` | ✅ ✔ |
+| FOMOD XML parsing | ✅ | ✅ `module_config` (GroupType, Dependency, PluginType), `module_config.h` | ✅ ✔ |
+| FOMOD condition tester | ✅ | ✅ `FomodConditionTester` (file/flag/game/composite), `condition_tester.h:36` | ✅ ✔ |
+| FOMOD C# script detection | ✅ | ✅ `hasCSharpScript()`, `module_config.h:327` (was cited as `:314`) | ✅ ✔ |
+| FOMOD view model (step nav) | ✅ | ✅ `FomodViewModel` (step forward/back, flag map), `fomod_view_model.h:51` | ✅ ✔ |
+| FOMOD file installer | ✅ | ✅ `FomodFileInstaller::apply()`, `file_installer.h:32` | ✅ ✔ |
+| Archive password support | ✅ `queryPassword` `installationmanager.cpp:126` | ✅ in-process, both readers. `PassphraseFn` `archive_extractor.h:25`, shared `PassphraseSession` + re-ask budget `archive_extractor.cpp:20,37-52,368-373`, 7-Zip `CryptoGetTextPassword` `sevenzip_backend.cpp:301,475`, `passphrase_query_cb` `pipeline.h:106-115` -> `extract_stage.cpp:87` -> `ask_password` `settings_controller.cpp:386`. Password never reaches argv/env/temp. Tested `sevenzip_archive_test.cpp:218,266,386`, `install_progress_test.cpp:337-543` | ✅ ✔ |
+| Installation merge/replace | ✅ `merged`, `replaced` `installationmanager.h:40-81` | ✅ `OverwriteAction{Merge,Replace,Rename,Cancel}` `pipeline.h:23-28`, all four branches `install_stage.cpp:166-207`, dialog is a faithful port of `queryoverwritedialog.ui` incl. body text and Rename-as-default `query_overwrite_dialog.cpp:46-68`. Tested `pipeline_test.cpp:592,611,649,704` | ✅ ✔ |
+| Backup on install | ✅ `keepBackupOnInstall` `settings.cpp:412-420`, read+written back at `installationmanager.cpp:387,393` | ✅ the backup is taken (`install_stage.cpp:172-181`) **and** the checkbox now opens on the remembered choice and stores the answer (`ask_overwrite_impl` `query_overwrite_dialog.cpp:99-113`, key `extraction/backup_install` `settings.cpp:264-270`, default off = MO2's). Cancel stores nothing. Tested `pipeline_test.cpp:625-638`, `overwrite_dialogs_test.cpp` "the Keep Backup choice is remembered between installs" | ✅ ✔ |
+| Installation result tracking | ✅ `InstallationResult` `installationmanager.h:40-81` | ⚠️ a status enum exists (`PipelineResult{Success,Failed,Canceled}` `pipeline.h:52-56`, `ModVerdict` `batch_installer.h:41-48`) but MO2's `m_merged`/`m_replaced` flags do not. One slice landed: `replaced_archive` `pipeline.h:128-135` is reported to the UI. The remaining flags have no consumer today | ⚠️ ✔ |
+| Staging layout normalization | ❌ | 🚀 `analyze_staging_layout()` + `normalize_staging_root()`, `staging_layout.h:51`, `:59` | 🚀 ✔ |
+| BSA/BA2 archive listing | ❌ | 🚀 `DataArchive` (libarchive-backed), `data_archive.h:25` | 🚀 ✔ |
+| Install name dialog (smart candidates) | ❌ | 🚀 `InstallNameDialog` (editable combobox), `install_name_dialog.h:18` | 🚀 ✔ |
+| Install progress dialog (modeless) | ❌ | 🚀 `InstallProgressDialog` (300ms show delay), `install_progress_dialog.h:19` | 🚀 ✔ |
+| IPluginInstaller::EInstallResult | ✅ `iplugininstaller.h:41-50` (7 values) | ❌ **deliberately not ported.** GMM's installer plugins are ordered stage *claims*, not a competing chain - `plugin_claim_stage.cpp:12-14` collapses the plugin's return to a bool before it leaves the host - so `RESULT_NOTATTEMPTED`/`MANUALREQUESTED`/`CATEGORYREQUESTED` have no counterpart concept. The real gap underneath is an install start/failure hook, which belongs on the EventBus. See Workspace-l5xa (needs a human call) | ❌ ✔ |
+| Archive file tree representation | ✅ `ArchiveFileTree`, `ArchiveFileEntry` | ✅ `ArchiveFileTree` (libarchive-backed), `engine/mod/filetree/archive_file_tree.h:19` | ✅ ✔ |
+| U194 Installer error/progress strings (extraction failed, invalid name, no installer plugins, password prompt...) | ✅ `installationmanager.cpp:73-880` | ⚠️ most shipped: "Installation failed" + the real reason `downloads_controller.cpp:170-176` via `report_error` `error_popup.cpp:28`, batch form `instance_options_widget.cpp:433`, password prompt `ask_password`. The one MO2 string with no counterpart is "None of the available installer plugins were able to handle that archive" (`:875`), and it is **unreachable here**: a non-FOMOD archive always installs as a plain directory (`install_stage.cpp:108-131`), there is no competing-installer chain to come up empty | ⚠️ ✔ |
+| U195 7z error code strings (9 exact) | ✅ `installationmanager.cpp:886-913` - 3 of the 9 name `7z.dll` (`:890,893`) or a loaded COM library (`:905`) | ❌ **not copied, on purpose.** The Windows-bound three are excluded by the no-Windows-code rule. The other six are a taxonomy keyed on MO2's `Archive::Error` enum, which belongs to the in-process 7z COM archiver; GMM links `lib7zip.so` and gets its reasons from the reader that ran - `sevenzip_backend.cpp:604-635` already distinguishes encoding method, bad headers, rejected password and unreadable archive, and libarchive's own text is more specific than "archive invalid". See Workspace-9ff5 and Workspace-U195 | ❌ ✔ |
+| U282 VirtualFileTree/qdirfiletree/archivefiletree abstractions | ✅ `virtualfiletree.cpp`, `qdirfiletree.cpp`, `archivefiletree.cpp` | ✅ for the two trees that carry data: `DirFileTree` + `ArchiveFileTree` (`engine/mod/filetree/`), with the shared-shape exit criterion pinned in `filetree_test.cpp:3-18` (a synthetic archive and a mod folder with identical content produce the same tree). MO2's third, the memoized *virtual* tree over the mods directory (`organizercore.cpp:102-103`), has no counterpart; the mod scan registry is GMM's equivalent and is a different design, not a missing abstraction | ⚠️ ✔ |
+| U285 validationprogressdialog.ui (extract validation progress) | ✅ `validationprogressdialog.ui` - but it is NOT about extraction: title "Validating Nexus Connection", label "Connecting to Nexus...", Cancel + Hide. Its only user is `nxmaccessmanager.h`, the Nexus API key validator | ❌ **row is a fabrication; the parenthetical was wrong.** Nothing in this dialog touches an archive, so there is no extraction-parity item here. A Nexus key-validation progress dialog would belong to the Nexus integration section, not Archive & Installation | ❌ ✔ |
 
 ## 22. Deploy System
 
@@ -1054,7 +1101,7 @@ Note: Track B item U200 is skipped - it is an alias of U116 (integrated once in 
 | Sync overwrite dialog (selective) | ✅ `SyncOverwriteDialog` | ✅ `SyncOverwriteDialog` (per-file combo, game-origin), `sync_overwrite_dialog.h:23` | ✅ · |
 | Move to mod dialog | ❌ | 🚀 `MoveToModDialog` (destination picker), `move_to_mod_dialog.h:16` | 🚀 · |
 | U080 Overwrite row menu (Sync to Mods w/ count guard, Create/Move/Clear, Open in Explorer) | ✅ `modlistcontextmenu.cpp:402-420` | ⚠️ move-content-to-Mod picker exists `move_to_mod_dialog.h:16`; Sync-to-Mods guard unproven | ⚠️ · |
-| U175 QueryOverwriteDialog (Keep Backup / Merge / Replace / Rename / Cancel) | ✅ `queryoverwritedialog.ui` | ❌ | ❌ · |
+| U175 QueryOverwriteDialog (Keep Backup / Merge / Replace / Rename / Cancel) | ✅ `queryoverwritedialog.ui` | ✅ all five controls exist `query_overwrite_dialog.cpp:57-68` (Keep Backup checkbox, Merge/Replace/Rename/Cancel, Rename default, body text `:46-51` vs `.ui:73-76`). This row contradicted the one above it, which already credited the same dialog. | ✅ ✔ |
 | U176 SyncOverwriteDialog columns (Name / Sync To per-file combo) | ✅ `syncoverwritedialog.ui` | ✅ `sync_overwrite_dialog.cpp:27` (Name + Sync-To combo columns) | ✅ · |
 | U177 OverwriteInfoDialog (Open in Explorer + drag&drop hint) | ✅ `overwriteinfodialog.ui` | ⚠️ OverwriteInfoDialog port exists `overwrite/overwrite_info_dialog.h:14` (context menu `:106`); Explorer button + hint text unproven | ⚠️ · |
 

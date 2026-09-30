@@ -556,6 +556,34 @@ void DownloadsTab::mark_installed(const std::string &id) {
   apply_installed_filter();
 }
 
+void DownloadsTab::mark_uninstalled(const std::string &archive_filename) {
+  if (archive_filename.empty())
+    return;
+
+  const std::filesystem::path wanted(archive_filename);
+  for (auto &[id, entry] : downloads_) {
+    if (entry.row < 0 || entry.state != DownloadState::Installed)
+      continue;
+    // Match on the filename only: the old mod's meta.ini records the bare
+    // archive name, while the row holds a full path that moves with the
+    // downloads directory.
+    if (entry.file_path.filename() != wanted)
+      continue;
+
+    // The archive is still on disk and still re-installable, so the honest
+    // state is the one a finished download has - not a new state that would
+    // need a label, a manifest value and a filter rule of its own. MO2 marks
+    // the download "Uninstalled" here (downloadlist.cpp:198); saying "Complete"
+    // tells the same story about the only thing the row is claiming.
+    entry.state = DownloadState::Complete;
+    replace_bar_with_label(id, state_label(entry.state), QColor(), QColor("#4CAF50"));
+    if (entry.total_size > 0)
+      entry.size_item->setText(format_size(entry.total_size));
+    apply_installed_filter();
+    return;
+  }
+}
+
 void DownloadsTab::mark_paused(const std::string &id) {
   auto &entry = entry_for(id);
   if (entry.row < 0)

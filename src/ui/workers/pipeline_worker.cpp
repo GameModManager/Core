@@ -200,6 +200,12 @@ void PipelineWorker::install_mod(const std::string &id, const std::string &zip_p
 
   if (result == engine::PipelineResult::Success) {
     engine::Logger::instance().debug("Mod installed: " + id);
+    if (!pipeline_->ctx().replaced_archive.empty()) {
+      engine::Logger::instance().info("InstallStage: replacing " +
+                                      pipeline_->ctx().replaced_archive +
+                                      " left no mod");
+      emit mod_replaced(pipeline_->ctx().replaced_archive);
+    }
     emit install_complete(id, true, "Success", pipeline_->ctx().installed_mod_folder);
   } else if (result == engine::PipelineResult::Canceled) {
     // User canceled an interactive stage (FOMOD wizard, overwrite dialog).

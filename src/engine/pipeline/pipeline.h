@@ -125,6 +125,15 @@ struct PipelineContext {
   // add just that one row instead of rescanning the whole mods dir.
   std::string installed_mod_folder;
 
+  // The archive filename of the mod folder a Replace just deleted, read off
+  // that folder's meta.ini before the delete took it away. Empty unless this
+  // install answered the Mod Exists dialog with Replace, and only ever set
+  // once: Merge, Rename and Cancel leave it alone. PipelineWorker forwards it
+  // so the UI can stop claiming that archive is still installed - MO2 emits
+  // modReplaced for the same reason
+  // (references/modorganizer/src/installationmanager.cpp:418-424, :320).
+  std::string replaced_archive;
+
   // Set by an interactive stage when the user aborts (FOMOD wizard Cancel,
   // overwrite dialog Cancel). Pipeline::run stops and reports Canceled, which
   // the caller must not treat as a failure.
