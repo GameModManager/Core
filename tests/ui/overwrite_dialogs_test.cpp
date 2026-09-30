@@ -14,6 +14,7 @@
 #include "ui/overwrite/query_overwrite_dialog.h"
 #include "ui/overwrite/sync_overwrite_dialog.h"
 #include "ui/install/install_name_dialog.h"
+#include "ui/settings/settings.h"
 
 #include "engine/mod/overwrite/overwrite_utils.h"
 #include "engine/pipeline/pipeline.h"
@@ -27,6 +28,7 @@
 #include <QMetaObject>
 #include <QModelIndex>
 #include <QPushButton>
+#include <QTimer>
 #include <QTreeWidget>
 #include <QTreeWidgetItem>
 
@@ -334,4 +336,69 @@ TEST_CASE("overwrite dialogs", "[ui]") {
       check(dlg.name() == "Custom Name", "name() follows typed text");
     }
   }
+}
+
+// Drives ui::ask_overwrite end to end, three installs deep. The behaviour under
+// test is the remembered "Keep Backup" default: the dialog must open on the
+// last answer and store this one, so a second collision a user can actually
+// reach starts where they left off.
+TEST_CASE("the Keep Backup choice is remembered between installs", "[ui]") {
+  qputenv("QT_QPA_PLATFORM", "offscreen");
+  int test_argc     = 1;
+  char test_argv0[] = "test";
+  char *test_argv[] = {test_argv0, nullptr};
+  QApplication app(test_argc, test_argv);
+  QCoreApplication::setOrganizationName("GameModManager");
+  QCoreApplication::setApplicationName("GameModManager");
+
+  // Answers the dialog that is about to open: sets "Keep Backup" to `backup`,
+  // records what the checkbox showed on the way in, and clicks Merge. Posted
+  // so it runs once the dialog's own event loop is up, which is the only point
+  // the modal widget exists.
+  bool shown     = false;
+  bool shown_set = false;
+  auto answer    = [&](bool backup) {
+    QTimer::singleShot(0, qApp, [backup, &shown, &shown_set] {
+      auto *dlg =
+          qobject_cast<ui::QueryOverwriteDialog *>(QApplication::activeModalWidget());
+      REQUIRE(dlg != nullptr);
+      auto *box = dlg->findChild<QCheckBox *>();
+      REQUIRE(box != nullptr);
+      shown     = box->isChecked();
+      shown_set = true;
+      box->setChecked(backup);
+      for (auto *b : dlg->findChildren<QPushButton *>())
+        if (b->text() == "Merge")
+          b->click();
+    });
+  };
+
+  auto &settings = Settings::instance();
+
+  // Install 1: nothing stored yet, so unticked - MO2's General/backup_install
+  // default is false, not the BACKUP_YES the checkbox test passes in.
+  check(!settings.keep_backup_on_install(), "no stored choice means unticked");
+  answer(/*backup=*/true);
+  const auto first = ui::ask_overwrite("My Mod");
+  check(shown_set, "the first dialog was answered");
+  check(!shown, "a first install shows Keep Backup unticked");
+  check(first.action == engine::OverwriteAction::Merge, "install 1 merged");
+  check(first.backup, "install 1 reported the ticked box");
+  check(settings.keep_backup_on_install(), "a ticked answer is remembered");
+
+  // Install 2: a different mod that also collides. The box must now be ticked,
+  // and unticking it has to stick in the same way.
+  answer(/*backup=*/false);
+  const auto second = ui::ask_overwrite("Other Mod");
+  check(shown_set && shown, "the second install shows Keep Backup ticked");
+  check(second.action == engine::OverwriteAction::Merge, "install 2 merged");
+  check(!second.backup, "install 2 reported the unticked box");
+  check(!settings.keep_backup_on_install(), "an unticked answer is remembered too");
+
+  // Install 3: the choice is symmetric, so this one is unticked again.
+  answer(/*backup=*/true);
+  const auto third = ui::ask_overwrite("Third Mod");
+  check(shown_set && !shown, "unticking then ticking round-trips");
+  check(third.backup, "install 3 reported the ticked box");
+  check(settings.keep_backup_on_install(), "the remembered value follows the last answer");
 }

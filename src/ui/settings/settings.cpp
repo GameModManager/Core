@@ -261,6 +261,14 @@ void Settings::set_extraction_low_priority(bool on) {
   settings_.setValue("extraction/low_priority", on);
 }
 
+bool Settings::keep_backup_on_install() const {
+  return settings_.value("extraction/backup_install", false).toBool();
+}
+
+void Settings::set_keep_backup_on_install(bool on) {
+  settings_.setValue("extraction/backup_install", on);
+}
+
 bool Settings::performance_multi_core() const {
   return settings_.value("performance/enable_multicore", true).toBool();
 }

@@ -114,6 +114,14 @@ public:
   bool extraction_low_priority() const;  // key: extraction/low_priority
   void set_extraction_low_priority(bool on);
 
+  // Whether the "Keep Backup" checkbox on the Mod Exists dialog starts ticked.
+  // Defaults to OFF, matching MO2's General/backup_install default
+  // (references/modorganizer/src/settings.cpp:412-420). Read on every
+  // collision and written back from the answer the user gave, so the dialog
+  // opens on what they last chose rather than on a fixed value.
+  bool keep_backup_on_install() const;  // key: extraction/backup_install
+  void set_keep_backup_on_install(bool on);
+
   // performance ------------------------------------------------------------
   // Enable multi-core processing for per-item CPU work (mod scanning, etc.).
   // Defaults to ON; off forces engine::parallel::for_each to fall back to
