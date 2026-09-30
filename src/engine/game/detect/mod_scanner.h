@@ -104,14 +104,24 @@ public:
               const std::vector<std::filesystem::path> &ignore_symlink_targets = {});
 
   // Create the disable sentinel file for a mod.
+  //
+  // `error`, when non-null, receives the reason the write failed - the OS
+  // message for a refused create ("Permission denied", "No such file or
+  // directory"), or the OS message from the removal. It is left untouched on
+  // success and when there is nothing to do (the sentinel is already in the
+  // requested state), because that is not a failure. A caller that drops the
+  // sentinel leaves the row reading "off" while the mod stays live on disk,
+  // which the user cannot diagnose without this string.
   [[nodiscard]] static bool disable_mod(const GameKnowledge &knowledge,
                                         const std::string &game_id,
-                                        const std::filesystem::path &mod_folder);
+                                        const std::filesystem::path &mod_folder,
+                                        std::string *error = nullptr);
 
-  // Remove the disable sentinel file to enable a mod.
+  // Remove the disable sentinel file to enable a mod. `error` as above.
   [[nodiscard]] static bool enable_mod(const GameKnowledge &knowledge,
                                        const std::string &game_id,
-                                       const std::filesystem::path &mod_folder);
+                                       const std::filesystem::path &mod_folder,
+                                       std::string *error = nullptr);
 
   // Set the priority of a mod by rewriting its metadata.
   [[nodiscard]] static bool set_priority(const GameKnowledge &knowledge,

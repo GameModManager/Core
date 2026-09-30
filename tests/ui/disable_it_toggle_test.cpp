@@ -29,6 +29,7 @@
 #include <QDir>
 #include <QElapsedTimer>
 #include <QEventLoop>
+#include <QIcon>
 #include <QThread>
 #include <QVariant>
 
@@ -299,4 +300,88 @@ TEST_CASE("Isaac: an external mod's sentinel lands in the game mods dir",
                  Qt::CheckStateRole);
   CHECK(fs::exists(instance_sentinel));
   CHECK_FALSE(fs::exists(game_sentinel));
+}
+
+// The row has to tell the user WHY a toggle did not reach disk. With the mod
+// folder gone, the write cannot land, and the only trace used to be a log line
+// reading "could not write the sentinel" - nothing on the row, so the mod
+// looked disabled and played enabled.
+//
+// Driven through the real window and the real plugin, and driven by removing
+// the folder rather than by chmod: the row's resolution falls through to the
+// (now missing) instance folder, so the reason is the OS's own
+// "No such file or directory" and the assertion can name it exactly.
+TEST_CASE("A toggle that cannot reach disk leaves the reason on the row",
+          "[ui][isaac][disable_it]") {
+  qputenv("QT_QPA_PLATFORM", "offscreen");
+  int app_argc     = 1;
+  char app_argv0[] = "disable_it_toggle_test";
+  char *app_argv[] = {app_argv0, nullptr};
+  QApplication app(app_argc, app_argv);
+  QCoreApplication::setOrganizationName("GameModManager");
+  QCoreApplication::setApplicationName("GameModManager");
+
+  IsaacWorld world("gmm_disable_it_reason");
+  world.setup_dirs();
+
+  fs::create_directories(world.mods_dir / "SampleMod");
+  write_file(world.mods_dir / "SampleMod" / "meta.ini",
+             "[General]\nname=Sample Mod\nversion=1.0\npriority=0\n");
+
+  world.open_window();
+
+  auto *model = world.model();
+  REQUIRE(model != nullptr);
+  REQUIRE(pump_until([&] {
+    return find_mod_row_by_id(model, QStringLiteral("SampleMod")) >= 0;
+  }));
+  const int row = find_mod_row_by_id(model, QStringLiteral("SampleMod"));
+  REQUIRE(row >= 0);
+
+  // Pull the folder out from under the row. No rescan is triggered by a tick,
+  // so the row survives and its resolved target is a path that is not there.
+  std::error_code ec;
+  fs::remove_all(world.mods_dir / "SampleMod", ec);
+  REQUIRE_FALSE(fs::exists(world.mods_dir / "SampleMod"));
+
+  model->setData(model->index(row, ui::ModList::Name), QVariant(Qt::Unchecked),
+                 Qt::CheckStateRole);
+
+  // The row carries the reason, verbatim from the engine: which file, which
+  // folder, and what the OS said. The mod id is the folder name, so the reason
+  // names the mod by construction.
+  const QString reason = model->mods()[static_cast<size_t>(row)].toggle_error;
+  CHECK(!reason.isEmpty());
+  CHECK(reason.contains(QString::fromStdString(kSentinel)));
+  CHECK(reason.contains(QString::fromStdString("SampleMod")));
+  CHECK(reason.contains(QStringLiteral("No such file or directory")));
+
+  // And the user can get at it from the row: a warning badge with the reason
+  // in the Flags tooltip, not a dialog over the list.
+  const auto icons = model->data(model->index(row, ui::ModList::Flags),
+                                 ui::ModList::kFlagIconsRole)
+                         .value<QList<QIcon>>();
+  CHECK(!icons.isEmpty());
+  const QString tip = model->data(model->index(row, ui::ModList::Flags),
+                                  Qt::ToolTipRole)
+                          .toString();
+  CHECK(tip.contains(reason));
+
+  // NEGATIVE CONTROL. Put the folder back and toggle off again: the write
+  // lands, the sentinel exists, and the row stops claiming otherwise. Without
+  // this, a badge that is set once and never cleared would pass the case above
+  // while warning about resolved problems forever.
+  fs::create_directories(world.mods_dir / "SampleMod");
+  model->setData(model->index(row, ui::ModList::Name), QVariant(Qt::Checked),
+                 Qt::CheckStateRole);
+  model->setData(model->index(row, ui::ModList::Name), QVariant(Qt::Unchecked),
+                 Qt::CheckStateRole);
+
+  CHECK(fs::exists(world.mods_dir / "SampleMod" / kSentinel));
+  CHECK(model->mods()[static_cast<size_t>(row)].toggle_error.isEmpty());
+  // The Flags tooltip still carries this mod's unrelated flags (it holds only
+  // a meta.ini, so it is an "Empty mod"); what must be gone is the reason.
+  CHECK(!model->data(model->index(row, ui::ModList::Flags), Qt::ToolTipRole)
+             .toString()
+             .contains(QStringLiteral("game will see")));
 }

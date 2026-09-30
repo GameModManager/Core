@@ -1362,12 +1362,6 @@ QWidget *SettingsContentWidget::build_diagnostics_tab() {
   dumps_spin->setRange(0, 500);
   dumps_spin->setValue(s.max_core_dumps());
 
-  auto *type_combo = new QComboBox(group);
-  type_combo->addItem(tr("Text backtrace"), "text");
-  type_combo->addItem(tr("Full core dump"), "full");
-  int type_idx = type_combo->findData(s.core_dump_type());
-  type_combo->setCurrentIndex(type_idx >= 0 ? type_idx : 0);
-
   auto *level_hint = new QLabel(tr("Applies to new sessions; the GMM_DEBUG "
                                    "environment variable still forces Debug."),
                                 group);
@@ -1376,7 +1370,6 @@ QWidget *SettingsContentWidget::build_diagnostics_tab() {
 
   form->addRow(tr("Log level"), level_combo);
   form->addRow(tr("Maximum crash dumps kept"), dumps_spin);
-  form->addRow(tr("Crash dump type"), type_combo);
   form->addRow(QString(), level_hint);
 
   // DEBUG panel launcher: sits below the log/crash-dump rows. The DEBUG panel
@@ -1403,10 +1396,6 @@ QWidget *SettingsContentWidget::build_diagnostics_tab() {
   connect(dumps_spin, &QSpinBox::valueChanged, this, [&s](int v) {
     s.set_max_core_dumps(v);
   });
-  connect(type_combo, &QComboBox::currentIndexChanged, this,
-          [&s, type_combo](int index) {
-            s.set_core_dump_type(type_combo->itemData(index).toString());
-          });
 
   layout->addStretch(1);
   return page;

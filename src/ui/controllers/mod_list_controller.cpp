@@ -1024,20 +1024,34 @@ void ModListController::sync_mod_enable_state(const QString &mod_id, bool enable
 
   if (enabled) {
     // enable_mod reports false when the sentinel was already absent, which is
-    // the state the toggle asked for, not a failure.
+    // the state the toggle asked for, not a failure - it leaves the reason
+    // empty, and an empty reason clears the badge.
+    std::string reason;
     if (!engine::ModScanner::enable_mod(*w_->knowledge_, w_->current_game_id_,
-                                        mod_folder)) {
-      engine::Logger::instance().debug(
-          "Toggle: '" + mod_id.toStdString() + "' had no sentinel to remove in " +
-          mod_folder.string());
+                                        mod_folder, &reason)) {
+      if (reason.empty())
+        engine::Logger::instance().debug(
+            "Toggle: '" + mod_id.toStdString() + "' had no sentinel to remove in " +
+            mod_folder.string());
+      else
+        engine::Logger::instance().warn("Toggle: " + reason);
     }
-  } else if (!engine::ModScanner::disable_mod(*w_->knowledge_,
-                                              w_->current_game_id_, mod_folder)) {
-    // A sentinel that fails to write leaves the row reading disabled while the
-    // mod stays active on disk - a toggle that silently did nothing.
-    engine::Logger::instance().warn(
-        "Toggle: could not write the sentinel for '" + mod_id.toStdString() +
-        "' in " + mod_folder.string() + " - the mod is still active on disk");
+  } else {
+    std::string reason;
+    if (!engine::ModScanner::disable_mod(*w_->knowledge_, w_->current_game_id_,
+                                         mod_folder, &reason)) {
+      // A sentinel that fails to write leaves the row reading disabled while
+      // the mod stays active on disk - a toggle that silently did nothing. The
+      // row is flagged so the user sees which mod and why, without a modal per
+      // tick for the case where a whole directory is unwritable.
+      engine::Logger::instance().warn(
+          "Toggle: " + (reason.empty() ? std::string("could not write the sentinel")
+                                       : reason) +
+          " for '" + mod_id.toStdString() + "' - the mod is still active on disk");
+      w_->mod_model_->set_toggle_error(mod_id, QString::fromStdString(reason));
+    } else {
+      w_->mod_model_->set_toggle_error(mod_id, QString());
+    }
   }
 
   // Persist the toggle to the active profile's modlist.txt (the per-profile
@@ -1505,12 +1519,20 @@ void ModListController::on_mod_scan_finished(ui::ModScanResult result,
         std::error_code ec;
         if (std::filesystem::is_directory(backup, ec) &&
             !std::filesystem::exists(backup / disable_file, ec)) {
-          std::ofstream sentinel(backup / disable_file);
-          if (!sentinel)
+          std::error_code write_ec;
+          if (!engine::create_empty_file(backup / disable_file, write_ec)) {
+            // The row is unchecked on the strength of this sentinel, so a
+            // refused write leaves a disabled-looking mod that still deploys.
+            // The reason is named instead of logged bare, and the row is
+            // flagged so the discrepancy is visible in the list.
+            const std::string reason =
+                "could not write " + disable_file + " into " +
+                (backup / disable_file).string() + ": " + write_ec.message();
             engine::Logger::instance().warn(
-                "on_mod_scan_finished: failed to write disable sentinel for "
-                "source-missing mirror '" +
-                mod.folder_name + "'");
+                "on_mod_scan_finished: " + reason +
+                " (source-missing mirror '" + mod.folder_name + "')");
+            w_->mod_model_->set_toggle_error(id, QString::fromStdString(reason));
+          }
         }
       }
     }

@@ -10,6 +10,7 @@
 #include "engine/source/nxm/nxm_router.h"
 #include "engine/game/registry/game_knowledge.h"
 #include "ui/main_window/main_window.h"
+#include "ui/widgets/mod_list_model.h"
 
 namespace ui {
 
@@ -40,12 +41,26 @@ void QueueController::flush_pending_changes() {
   for (const auto &pt : w_->pending_changes_) {
     auto mod_folder = w_->resolve_mod_folder(pt.mod_id.toStdString(), mods_subpath,
                                              pt.content_dir.toStdString());
-    if (pt.enabled) {
-      (void)engine::ModScanner::enable_mod(*w_->knowledge_, w_->current_game_id_,
-                                           mod_folder);
+    std::string reason;
+    const bool ok = pt.enabled
+                        ? engine::ModScanner::enable_mod(*w_->knowledge_,
+                                                         w_->current_game_id_, mod_folder,
+                                                         &reason)
+                        : engine::ModScanner::disable_mod(*w_->knowledge_,
+                                                          w_->current_game_id_,
+                                                          mod_folder, &reason);
+    if (ok || reason.empty()) {
+      // ok, or nothing to do (the sentinel was already in the requested
+      // state) - both mean the row now matches disk.
+      w_->mod_model_->set_toggle_error(pt.mod_id, QString());
     } else {
-      (void)engine::ModScanner::disable_mod(*w_->knowledge_, w_->current_game_id_,
-                                            mod_folder);
+      // A queued toggle that could not be applied is not a transient: disk now
+      // disagrees with the row for every later launch of this instance, so the
+      // row is flagged with the reason rather than the result being dropped.
+      engine::Logger::instance().warn(
+          "Queued toggle: " + reason + " for '" + pt.mod_id.toStdString() +
+          "' - the on-disk state was not changed");
+      w_->mod_model_->set_toggle_error(pt.mod_id, QString::fromStdString(reason));
     }
     // P1.3 event bus: mirror MO2 onModStateChanged for the deferred
     // (game-running) toggle path - the state only actually changed on disk
