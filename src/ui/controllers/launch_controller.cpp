@@ -698,8 +698,11 @@ void LaunchController::flush_deferred_disable_queue() {
       engine::Logger::instance().warn("Deferred toggle: " + reason + " for '" +
                                       op.mod_id +
                                       "' - the mod is still active on disk");
-      w_->mod_model_->set_toggle_error(QString::fromStdString(op.mod_id),
-                                       QString::fromStdString(reason));
+      w_->mod_model_->set_toggle_error(
+          QString::fromStdString(op.mod_id),
+          ui::toggle_badge_reason(
+              engine::game_native_disable_for(*w_->knowledge_, w_->current_game_id_),
+              reason));
     }
   }
 

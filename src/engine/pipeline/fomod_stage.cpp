@@ -12,6 +12,7 @@
 
 #include <nlohmann/json.hpp>
 
+#include <cstddef>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
@@ -75,6 +76,19 @@ namespace {
       return {};
     }
     return meta.get("fomod", "choices");
+  }
+
+  // A FOMOD can reference hundreds of files that are not in its archive, and
+  // the list is only useful to a user who can recognise it: name the first few,
+  // count the rest.
+  std::string describe_missing(const std::vector<std::string> &missing) {
+    constexpr std::size_t kMaxNamed = 5;
+    std::string out = std::to_string(missing.size()) + " file(s) referenced by the installer";
+    for (std::size_t i = 0; i < missing.size() && i < kMaxNamed; ++i)
+      out += (i ? ", " : " - ") + missing[i];
+    if (missing.size() > kMaxNamed)
+      out += ", ...";
+    return out;
   }
 
   // Flatten content_root/* into staging_root (used when find_fomod_dir descended
@@ -146,6 +160,10 @@ bool FomodStage::execute(Mod &mod, PipelineContext &ctx) {
   } catch (const XmlParseException &e) {
     Logger::instance().error("FomodStage: error parsing ModuleConfig.xml: " +
                              std::string(e.what()));
+    ctx.error_message = "the FOMOD installer's ModuleConfig.xml could not be read (" +
+                        std::string(e.what()) +
+                        ") - the installer is malformed, so the correct files "
+                        "cannot be chosen";
     return false;
   }
 
@@ -156,6 +174,9 @@ bool FomodStage::execute(Mod &mod, PipelineContext &ctx) {
         "FomodStage: '<csharpScript>' FOMOD installers are not supported - "
         "install '" +
         mod.name + "' manually");
+    ctx.error_message = "this mod's FOMOD installer uses a C# script, which "
+                        "GameModManager does not support - install '" +
+                        mod.name + "' manually instead";
     return false;
   }
 
@@ -217,6 +238,10 @@ bool FomodStage::execute(Mod &mod, PipelineContext &ctx) {
       if (contentRoot != stagingRoot) {
         if (!flatten_into(stagingRoot, contentRoot)) {
           Logger::instance().error("FomodStage: failed to flatten manual install");
+          ctx.error_message =
+              "the manual FOMOD install could not be unpacked - the archive's "
+              "top-level wrapper folder could not be moved into " +
+              stagingRoot.string();
           return false;
         }
       }
@@ -243,6 +268,10 @@ bool FomodStage::execute(Mod &mod, PipelineContext &ctx) {
           "FomodStage: FOMOD installer requires a wizard - run the install "
           "from the GUI (mod '" +
           mod.name + "')");
+      ctx.error_message = "this mod's FOMOD installer has to ask which files to "
+                          "install, and there is no GUI to ask on - run the "
+                          "install from the main window (mod '" +
+                          mod.name + "')";
       return false;
     }
     choicesJson = previousChoices;
@@ -261,6 +290,11 @@ bool FomodStage::execute(Mod &mod, PipelineContext &ctx) {
   FomodFileInstaller installer(contentRoot, viewModel);
   std::vector<std::string> missing;
   if (!installer.apply(&missing)) {
+    ctx.error_message = "the FOMOD installer could not lay down the selected files"
+                        + (missing.empty()
+                               ? std::string(" - see the log for the cause")
+                               : " - " + describe_missing(missing) +
+                                     " are missing from the archive");
     return false;
   }
 
@@ -274,6 +308,10 @@ bool FomodStage::execute(Mod &mod, PipelineContext &ctx) {
           "FomodStage: files referenced by the FOMOD were missing from the "
           "archive - install aborted; re-run and accept the missing-file "
           "warning to force the install");
+      ctx.error_message = describe_missing(missing) +
+                          " are not in the archive - the install was aborted "
+                          "rather than install a broken mod; re-run it and "
+                          "accept the missing-file warning to install anyway";
       return false;
     }
   }
@@ -283,6 +321,9 @@ bool FomodStage::execute(Mod &mod, PipelineContext &ctx) {
   if (contentRoot != stagingRoot) {
     if (!flatten_into(stagingRoot, contentRoot)) {
       Logger::instance().error("FomodStage: failed to flatten installed content");
+      ctx.error_message = "the installed FOMOD content could not be unpacked - the "
+                          "archive's wrapper folder could not be moved into " +
+                          stagingRoot.string();
       return false;
     }
   }

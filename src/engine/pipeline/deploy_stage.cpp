@@ -15,12 +15,17 @@ bool DeployStage::execute(Mod &mod, PipelineContext &ctx) {
 
   if (ctx.game_dir.empty()) {
     Logger::instance().error("DeployStage: no game_dir in context");
+    ctx.error_message =
+        "no game directory is configured for this instance, so there is nowhere "
+        "to deploy the mod into";
     return false;
   }
 
   auto mod_path = ctx.mods_dir / mod.id;
   if (!std::filesystem::exists(mod_path)) {
     Logger::instance().error("DeployStage: mod path not found: " + mod_path.string());
+    ctx.error_message = "the installed mod folder " + mod_path.string() +
+                        " no longer exists, so there is nothing to deploy";
     return false;
   }
 
@@ -71,6 +76,17 @@ bool DeployStage::execute(Mod &mod, PipelineContext &ctx) {
       "DeployStage: deployed " + std::to_string(deployed) + " files" +
       (failed ? ", " + std::to_string(failed) + " failed" : "") + " for " + mod.id);
   mod.state = ModState::Deployed;
+  if (failed != 0) {
+    // The mod is half-deployed: the files that landed are in the game and the
+    // ones that did not are missing, which reads as a broken mod rather than a
+    // failed deploy. Naming the split is the only thing the user can act on.
+    ctx.error_message = std::to_string(failed) + " of " +
+                        std::to_string(deployed + failed) + " files from '" + mod.id +
+                        "' could not be deployed into " + target_base.string() +
+                        " - the mod is only partly installed; check the target "
+                        "is writable and not in use";
+    Logger::instance().error("DeployStage: " + ctx.error_message);
+  }
   return failed == 0;
 }
 

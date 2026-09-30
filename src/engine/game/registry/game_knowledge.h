@@ -61,6 +61,17 @@ inline constexpr const char *kDefaultDisableMechanism = ".gmmdisabled";
 [[nodiscard]] bool delayed_disable_for(const GameKnowledge &knowledge,
                                        const std::string &game_id);
 
+// True when the game plugin declares its own "disable_mechanism" hook. A
+// declared mechanism is the game's own on-disk marker (Isaac's "disable.it"),
+// read directly by the game out of the mod folder, so the sentinel and the
+// game can disagree - a write refused here leaves the row reading disabled
+// while the game keeps loading the mod. Games that declare nothing fall back to
+// kDefaultDisableMechanism, which only the deploy filter consults, and a
+// refusal there resolves at the next deploy rather than lying to the running
+// game - so this is what tells a caller a failed write is worth showing.
+[[nodiscard]] bool game_native_disable_for(const GameKnowledge &knowledge,
+                                           const std::string &game_id);
+
 // Deploy strategy names for the per-game "deploy_strategy" knowledge key.
 // The default is Symlink (direct symlinks into game_dir); a game opts out of
 // that by setting the key to kDeployStrategyOverlayFs, which deploys into a
