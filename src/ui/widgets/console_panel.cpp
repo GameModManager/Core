@@ -31,6 +31,13 @@ ConsolePanel::ConsolePanel(QWidget *parent) : QFrame(parent) {
   output_->setFocusPolicy(Qt::StrongFocus);
   output_->setLineWrapMode(QPlainTextEdit::NoWrap);
   output_->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOn);
+  // Ring the buffer: a session that launches a game and installs mods logs
+  // for hours, and a QTextDocument with every block ever appended gets slow
+  // to scroll and holds the memory forever. Dropping from the top keeps the
+  // log view responsive and keeps the newest entries, which are the ones
+  // being read. Same 1000-line window MO2's log list uses (loglist.cpp
+  // MaxLines). The log FILE is never capped - only what is on screen.
+  output_->setMaximumBlockCount(kMaxLines);
   layout->addWidget(output_);
 
   auto *copyShortcut = new QShortcut(QKeySequence::Copy, output_);

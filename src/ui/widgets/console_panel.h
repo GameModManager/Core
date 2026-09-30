@@ -13,6 +13,10 @@ namespace ui {
 class ConsolePanel : public QFrame {
   Q_OBJECT
 public:
+  // Newest lines kept on screen; older ones are dropped from the top. The log
+  // file itself is never truncated, only the view.
+  static constexpr int kMaxLines = 1000;
+
   explicit ConsolePanel(QWidget *parent = nullptr);
 
   void append_text(const QString &text);
