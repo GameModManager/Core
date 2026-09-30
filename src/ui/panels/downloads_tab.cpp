@@ -337,7 +337,7 @@ void DownloadsTab::set_conflict_resolver(ConflictResolver resolver) {
   conflict_resolver_ = std::move(resolver);
 }
 
-void DownloadsTab::add_download(const std::string &id, const std::string &name,
+bool DownloadsTab::add_download(const std::string &id, const std::string &name,
                                 const std::string &source,
                                 const std::filesystem::path &file_path,
                                 const std::string &nexus_domain, int file_id,
@@ -345,7 +345,7 @@ void DownloadsTab::add_download(const std::string &id, const std::string &name,
                                 const std::string &page_url) {
   auto [it, inserted] = downloads_.emplace(id, DownloadEntry{});
   if (!inserted)
-    return;  // already exists
+    return false;  // already exists
 
   auto &entry = it->second;
   // Append at the end of the table. Do NOT keep a monotonic row counter:
@@ -401,6 +401,7 @@ void DownloadsTab::add_download(const std::string &id, const std::string &name,
   entry.progress_bar = bar;
 
   table_->setRowHeight(entry.row, row_height());
+  return true;
 }
 
 void DownloadsTab::update_filetime(DownloadEntry &entry) {
@@ -617,6 +618,23 @@ void DownloadsTab::mark_downloading(const std::string &id) {
   entry.progress_bar = bar;
 
   table_->setRowHeight(entry.row, row_height());
+}
+
+bool DownloadsTab::blocks_refetch(const std::string &id) const {
+  auto it = downloads_.find(id);
+  if (it == downloads_.end())
+    return false;
+  switch (it->second.state) {
+  case DownloadState::Downloading:
+  case DownloadState::Complete:
+  case DownloadState::Installed:
+    return true;
+  case DownloadState::Paused:
+  case DownloadState::Failed:
+  case DownloadState::Removed:
+    break;
+  }
+  return false;
 }
 
 void DownloadsTab::set_file_path(const std::string &id,
@@ -1252,6 +1270,22 @@ void DownloadsTab::deserialize(const std::string &json,
     // Skip if already loaded
     if (downloads_.count(id))
       continue;
+
+    // A persisted Downloading/Paused state describes a transfer that lived in
+    // the previous process. Nothing is fetching it now, and the link maps that
+    // resume needs are in-memory only, so the row cannot be continued - worse,
+    // has_active_download() counts both states, so leaving one in place wedges
+    // scan_downloads_dir() and the folder watcher stop auto-detecting archives
+    // for the rest of the session. Failed is the one state that tells the truth
+    // ("this did not finish") and that the row can still act on.
+    if (state == DownloadState::Downloading || state == DownloadState::Paused) {
+      engine::Logger::instance().warn(
+          "downloads: '" + id + "' was " + (state == DownloadState::Downloading
+                                                 ? "downloading"
+                                                 : "paused") +
+          " at shutdown and did not survive the restart; marked failed");
+      state = DownloadState::Failed;
+    }
 
     // Verify the archive file still exists
     if (!file_path.empty() && !std::filesystem::exists(file_path)) {
