@@ -1017,11 +1017,21 @@ void ModListController::sync_mod_enable_state(const QString &mod_id, bool enable
                                            row_content_dir.toStdString());
 
   if (enabled) {
-    (void)engine::ModScanner::enable_mod(*w_->knowledge_, w_->current_game_id_,
-                                         mod_folder);
-  } else {
-    (void)engine::ModScanner::disable_mod(*w_->knowledge_, w_->current_game_id_,
-                                          mod_folder);
+    // enable_mod reports false when the sentinel was already absent, which is
+    // the state the toggle asked for, not a failure.
+    if (!engine::ModScanner::enable_mod(*w_->knowledge_, w_->current_game_id_,
+                                        mod_folder)) {
+      engine::Logger::instance().debug(
+          "Toggle: '" + mod_id.toStdString() + "' had no sentinel to remove in " +
+          mod_folder.string());
+    }
+  } else if (!engine::ModScanner::disable_mod(*w_->knowledge_,
+                                              w_->current_game_id_, mod_folder)) {
+    // A sentinel that fails to write leaves the row reading disabled while the
+    // mod stays active on disk - a toggle that silently did nothing.
+    engine::Logger::instance().warn(
+        "Toggle: could not write the sentinel for '" + mod_id.toStdString() +
+        "' in " + mod_folder.string() + " - the mod is still active on disk");
   }
 
   // Persist the toggle to the active profile's modlist.txt (the per-profile

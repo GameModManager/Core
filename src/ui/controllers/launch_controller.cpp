@@ -678,11 +678,21 @@ void LaunchController::flush_deferred_disable_queue() {
   for (const auto &op : w_->deferred_disable_queue_) {
     auto mod_folder = w_->resolve_mod_folder(op.mod_id, mods_subpath, op.content_dir);
     if (op.enabled) {
-      (void)engine::ModScanner::enable_mod(*w_->knowledge_, w_->current_game_id_,
-                                           mod_folder);
-    } else {
-      (void)engine::ModScanner::disable_mod(*w_->knowledge_, w_->current_game_id_,
-                                            mod_folder);
+      // False means the sentinel was already absent - the queued state, not a
+      // failure, so it is not worth a warning.
+      if (!engine::ModScanner::enable_mod(*w_->knowledge_, w_->current_game_id_,
+                                          mod_folder)) {
+        engine::Logger::instance().debug(
+            "Deferred toggle: '" + op.mod_id + "' had no sentinel to remove in " +
+            mod_folder.string());
+      }
+    } else if (!engine::ModScanner::disable_mod(*w_->knowledge_,
+                                                w_->current_game_id_, mod_folder)) {
+      // A sentinel that fails to write here ships to the deploy worker as a
+      // mod that is still active, which is the state the queue asked to undo.
+      engine::Logger::instance().warn(
+          "Deferred toggle: could not write the sentinel for '" + op.mod_id +
+          "' in " + mod_folder.string() + " - the mod is still active on disk");
     }
   }
 
