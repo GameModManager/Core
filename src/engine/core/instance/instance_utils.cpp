@@ -197,7 +197,15 @@ DeployConfig deploy_config_for(const fs::path &instance_root, const fs::path &ga
                                const GameKnowledge &knowledge,
                                const std::string &game_id) {
   DeployConfig cfg;
-  cfg.mods_dir = instance_root / "mods";
+  // One instance, read once: path_for() is the instance's own resolution of
+  // the per-folder overrides (including a path variable), so deploy reads
+  // the same directory the mod list, installer and profile code do. The
+  // previous instance_root/"mods" ignored a configured override entirely,
+  // which broke any instance whose mods directory is not the default.
+  Instance inst = Instance::from_root(instance_root);
+  if (!instance_root.empty())
+    inst.read_toml();
+  cfg.mods_dir = inst.path_for(InstanceKind::Mods);
   cfg.game_dir = game_dir;
   // Deploy-target override (Workspace-6up): instance.toml "game_mods_dir"
   // points at the game's actual mods folder when it lives outside the
@@ -208,11 +216,7 @@ DeployConfig deploy_config_for(const fs::path &instance_root, const fs::path &ga
   // "mods") is honored - deploy_prefix carries it, so no separate
   // resolution here (folding mods_subpath into the root would misplace
   // root-override mods that must land in the game root).
-  if (!instance_root.empty()) {
-    Instance inst = Instance::from_root(instance_root);
-    if (inst.read_toml())
-      cfg.game_mods_dir = inst.info().game_mods_dir;
-  }
+  cfg.game_mods_dir = inst.info().game_mods_dir;
   // Plugin-declared target (Workspace-otx): honored when the user did not
   // override. Absolute values (Isaac on macOS:
   // ~/Library/Application Support/...) and relative values (Isaac on
