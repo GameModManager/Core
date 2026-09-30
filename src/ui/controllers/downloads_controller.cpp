@@ -100,6 +100,30 @@ void DownloadsController::setup_pipeline() {
                 dt->rename_download(id, name);
               dt->mark_complete(id, success);
             }
+            // What the transfer was called. Falls back to the row key, which
+            // is what the row still shows when the provider resolved no name.
+            const std::string label = name.empty() ? id : name;
+            engine::EventBus::instance().dispatch(
+                success ? engine::events::kDownloadComplete
+                        : engine::events::kDownloadFailed,
+                engine::json_obj({{"id", id}, {"name", label}}));
+            // MO2 shows a tray notification on completion and on failure
+            // (downloadmanager.cpp:1825, :2405). There is no tray on this
+            // platform, so the status bar is the surface - the same one every
+            // other transient message uses, and the one the
+            // "Show download notifications" setting has always claimed to
+            // control.
+            if (Settings::instance().show_download_notifications()) {
+              if (success) {
+                w_->on_notification(tr("Download complete"),
+                                    tr("%1 is ready to be installed.")
+                                        .arg(QString::fromStdString(label)));
+              } else {
+                w_->on_notification(tr("Download failed"),
+                                    tr("%1 failed to download.")
+                                        .arg(QString::fromStdString(label)));
+              }
+            }
             // Persist download state
             save_download_manifest();
           });
@@ -214,6 +238,8 @@ void DownloadsController::setup_pipeline() {
             auto *dt = w_->right_panel_->downloads_tab();
             if (dt)
               dt->mark_paused(id);
+            engine::EventBus::instance().dispatch(engine::events::kDownloadPaused,
+                                                  engine::json_obj({{"id", id}}));
             save_download_manifest();
           });
 
@@ -426,6 +452,13 @@ void DownloadsController::wire_downloads_tab() {
       engine::Logger::instance().warn(
           "[Downloads] Resume ignored for '" + id +
           "': no NXM/modl/URL link known this session");
+      // The row offers Resume and says Paused, so a refusal the user cannot
+      // see leaves a control that appears to do nothing. Say why, and say
+      // what does work.
+      w_->on_notification(tr("Cannot resume"),
+                          tr("The download link for this entry is not known "
+                             "after a restart. Download the file again from "
+                             "the mod page."));
       return;
     }
     auto *dtab = w_->right_panel_->downloads_tab();
@@ -472,6 +505,8 @@ void DownloadsController::wire_downloads_tab() {
     w_->nxm_links_.erase(id);
     w_->modl_links_.erase(id);
     w_->url_downloads_.erase(id);
+    engine::EventBus::instance().dispatch(engine::events::kDownloadRemoved,
+                                          engine::json_obj({{"id", id}}));
     save_download_manifest();
   });
 }
@@ -656,6 +691,21 @@ void DownloadsController::handle_nxm_download(const engine::NxmLink &link) {
       " user_id=" + (link.user_id > 0 ? std::to_string(link.user_id) : "none") +
       " url=" + log_url);
 
+  // A link with no file id is not a file download. The router only requires a
+  // domain, so a collection link parses "successfully" with mod_id and file_id
+  // both 0 - and would then queue a "Mod #0 - file 0" row that can only ever
+  // fail. Say so instead. (MO2 stops here too, with a dialog.)
+  if (link.file_id <= 0) {
+    engine::Logger::instance().warn(
+        "[NXM-Download] Rejected a link with no file id for domain '" +
+        link.nexus_domain + "': " + log_url);
+    QMessageBox::information(
+        w_, tr("NXM Download"),
+        tr("That Nexus link does not point at a single file.\n\n"
+           "Download each file from the mod page instead."));
+    return;
+  }
+
   // Find which game_id owns this nexus_domain via managed games
   std::string matched_game_id;
   if (w_->managed_games_) {
@@ -771,6 +821,23 @@ void DownloadsController::handle_nxm_download(const engine::NxmLink &link) {
 
   // Keep the NXM link so a paused download can be resumed later.
   w_->nxm_links_[key] = link;
+
+  // The same link can arrive again - a re-clicked browser button, a second
+  // browser window, a duplicated handler registration. add_download() has
+  // already found the row, so the only question left is whether the transfer
+  // should run at all. See DownloadsTab::blocks_refetch for what a second
+  // transfer costs.
+  if (dt && dt->blocks_refetch(key)) {
+    engine::Logger::instance().debug(
+        "[NXM-Download] '" + key + "' is already queued or on disk; not re-fetching");
+    return;
+  }
+  // Re-assert Downloading. On a fresh row that only rebuilds the progress bar
+  // add_download just made; on a Failed or Paused one it is the retry path -
+  // update_progress ignores a row that is not Downloading, so without this the
+  // bar never moves.
+  if (dt)
+    dt->mark_downloading(key);
 
   // Build paths for the pipeline context
   auto mods_dir = w_->mods_dir_path();
@@ -896,6 +963,16 @@ void DownloadsController::handle_modl_download(const engine::Source::ModlLink &l
   // Keep the modl link so a paused download can be resumed later.
   w_->modl_links_[key] = link;
 
+  // Same repeat-link guard as the NXM path: an entry that is already fetching
+  // or already on disk must not be fetched a second time.
+  if (dt && dt->blocks_refetch(key)) {
+    engine::Logger::instance().debug(
+        "[modl] '" + key + "' is already queued or on disk; not re-fetching");
+    return;
+  }
+  if (dt)
+    dt->mark_downloading(key);
+
   auto mods_dir = w_->mods_dir_path();
 
   QMetaObject::invokeMethod(
@@ -967,6 +1044,16 @@ void DownloadsController::start_loverslab_download(const std::string &url) {
 
   // Keep the URL so a paused download can be resumed later.
   w_->url_downloads_[key] = url;
+
+  // Same repeat-link guard as the NXM path: an entry that is already fetching
+  // or already on disk must not be fetched a second time.
+  if (dt && dt->blocks_refetch(key)) {
+    engine::Logger::instance().debug(
+        "[LoversLab] '" + key + "' is already queued or on disk; not re-fetching");
+    return;
+  }
+  if (dt)
+    dt->mark_downloading(key);
 
   // Build paths for the pipeline context
   auto mods_dir = w_->mods_dir_path();
