@@ -224,7 +224,7 @@ port - their cited GMM symbol names were invented, the features are not.
 | Profile default settings (local INIs, saves, archive invalidation) | ✅ `Settings::profileLocalInis()` etc. | ⚠️ 2 of 3; invalidation default hardcoded false - `profile_creation.cpp:143` | ⚠️ ✔ |
 | Refresh thread count | ✅ `Settings::refreshThreadCount()` | ⏳ no setting, fixed thread pool | ⏳ ✔ |
 | Force enable core files | ✅ `GameSettings::forceEnableCoreFiles()` | ⚠️ zero readers - `settings_content_widget.cpp:1307` | ⚠️ ✔ |
-| Base directory variable (%BASE_DIR%) | ✅ `PathSettings::BaseDirVariable` | ⚠️ `$BASE_DIRECTORY` hinted, never expanded - `instance.cpp:30` | ⚠️ ✔ |
+| Base directory variable (%BASE_DIR%) | ✅ `PathSettings::BaseDirVariable` | ✅ `$BASE_DIRECTORY`/`%BASE_DIR%` expanded in `expand_instance_path` - `instance.cpp:26` | ✅ ✔ |
 | Recent directories | ✅ `PathSettings::recent()` | ⏳ no setting | ⏳ ✔ |
 | Offline mode | ✅ `NetworkSettings::offlineMode()` | ✅ reaches NetworkOptions - `network_options_bridge.cpp:31` | ✅ ✔ |
 | Custom browser command | ✅ `NetworkSettings::customBrowserCommand()` | ⚠️ dead; every link uses QDesktopServices - `settings_content_widget.cpp:1260` | ⚠️ ✔ |
@@ -267,7 +267,7 @@ port - their cited GMM symbol names were invented, the features are not.
 | U130 General > Download List group (4 checkboxes + MODL associate button) | ✅ `settingsdialog.ui:125-197` | ⚠️ compact only; hide-installed is on the downloads tab | ⚠️ ✔ |
 | U133 General > Miscellaneous checkboxes (center dialogs, instance-change confirm, Alt menubar, previews on double-click) | ✅ `settingsdialog.ui:264-325` | ⚠️ 1 of 4: previews on double-click - `settings_content_widget.cpp:137` | ⚠️ ✔ |
 | U134 General buttons (Reset Dialog Choices, Configure Mod Categories) | ✅ `settingsdialog.ui:343-372` | ✅ both: reset at `:232`, categories dialog `categories_dialog.h:21` | ✅ ✔ |
-| U138 Paths tab (7 path rows + %BASE_DIR% hint + writability footer) | ✅ `settingsdialog.ui:846-1054` | ⚠️ 7 rows + hint, but hint never expands, no footer | ⚠️ ✔ |
+| U138 Paths tab (7 path rows + %BASE_DIR% hint + writability footer) | ✅ `settingsdialog.ui:846-1054` | ⚠️ 7 rows + hint + working variable expansion, no footer | ⚠️ ✔ |
 | U139 Paths error strings (create failed, invalid game install) | ✅ `settingsdialogpaths.cpp:100-101`, `:236-237` | ⏳ commits silently, no mkdir, no warning | ⏳ ✔ |
 | U140 Nexus settings tab full page (account, statistics, connection, options, servers groups) (NEXUS-LENS: genericize/provider-scope) | ✅ `settingsdialog.ui:1056-1504` | ⚠️ Sources tab stands in - `settings_content_widget.cpp:65` | ⚠️ ✔ |
 | U142 Nexus custom browser picker file dialog | ✅ `settingsdialognexus.cpp:500-510` | ⏳ downstream of the dead custom-browser feature | ⏳ ✔ |

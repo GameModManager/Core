@@ -718,10 +718,12 @@ QWidget *SettingsContentWidget::build_paths_tab() {
         }
       });
     }
-    auto *folders_hint =
-        new QLabel(tr("Each folder defaults to a subdirectory of the Base Directory. "
-                      "Leave a field empty to keep the default location."),
-                   page);
+    auto *folders_hint = new QLabel(
+        tr("Each folder defaults to a subdirectory of the Base Directory. "
+           "Leave a field empty to keep the default location. $BASE_DIRECTORY, "
+           "%BASE_DIR%, ~ and $NAME environment variables are expanded, and a "
+           "folder may point anywhere on disk."),
+        page);
     folders_hint->setWordWrap(true);
     base_form->addRow(QString(), folders_hint);
 

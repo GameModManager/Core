@@ -1,10 +1,111 @@
 #include "engine/core/instance/instance.h"
 
 #include "engine/core/instance/toml_utils.h"
+#include "platform/platform.h"
 
+#include <cctype>
+#include <cstdlib>
 #include <fstream>
 
 namespace engine {
+
+namespace {
+
+  // All-occurrence literal replace; std::string has no replace_all.
+  void replace_all(std::string &s, const std::string &from, const std::string &to) {
+    if (from.empty())
+      return;
+    for (size_t pos = s.find(from); pos != std::string::npos;
+         pos        = s.find(from, pos + to.size()))
+      s.replace(pos, from.size(), to);
+  }
+
+  // Expands `$NAME` and `%NAME%` environment-variable tokens in one
+  // left-to-right pass. A name that is not set in the environment is copied
+  // through verbatim: substituting nothing for it would silently relocate
+  // the folder - a bare `$UNSET/mods` would collapse to `/mods`, and a
+  // relative leftover anchors at the instance root, so an unknown variable
+  // must stay visible rather than vanish.
+  std::string expand_env_tokens(const std::string &s) {
+    std::string out;
+    out.reserve(s.size());
+    for (size_t i = 0; i < s.size();) {
+      if (s[i] == '%') {
+        const size_t end = s.find('%', i + 1);
+        if (end != std::string::npos) {
+          const std::string name = s.substr(i + 1, end - i - 1);
+          if (const char *v = std::getenv(name.c_str())) {
+            out += v;
+          } else {
+            out += s.substr(i, end - i + 1);
+          }
+          i = end + 1;
+          continue;
+        }
+      } else if (s[i] == '$') {
+        // `$NAME` runs to the first character that cannot be part of a name;
+        // a bare `$` is an ordinary path character and is left alone.
+        size_t stop = i + 1;
+        while (
+            stop < s.size() &&
+            (std::isalnum(static_cast<unsigned char>(s[stop])) != 0 || s[stop] == '_'))
+          ++stop;
+        if (stop > i + 1) {
+          const std::string name = s.substr(i + 1, stop - i - 1);
+          if (const char *v = std::getenv(name.c_str())) {
+            out += v;
+          } else {
+            out.append(s, i, stop - i);
+          }
+          i = stop;
+          continue;
+        }
+      }
+      out += s[i];
+      ++i;
+    }
+    return out;
+  }
+
+}  // namespace
+
+std::filesystem::path expand_instance_path(const std::filesystem::path &path,
+                                           const std::filesystem::path &base) {
+  if (path.empty())
+    return {};
+
+  std::string s = path.string();
+
+  // The base directory, under both spellings: the one the Paths tab
+  // advertises and MO2's %BASE_DIR%. Substituted only when there is a base
+  // to substitute - with an empty base the token would otherwise expand to
+  // nothing and leave a root-level "/mods".
+  if (!base.empty()) {
+    replace_all(s, "$BASE_DIRECTORY", base.string());
+    replace_all(s, "%BASE_DIR%", base.string());
+  }
+
+  // A leading ~ is the home directory, matching the spelling the game
+  // knowledge loader already accepts for a "game_mods_dir" declaration.
+  if (s.size() > 1 && s.front() == '~' && s[1] == '/')
+    s = safe_home_dir().string() + s.substr(1);
+
+  s = expand_env_tokens(s);
+
+  // A relative result is anchored at the instance root so it resolves to
+  // the same directory no matter what the process working directory is.
+  std::filesystem::path resolved(s);
+  if (resolved.is_relative())
+    resolved = base / resolved;
+  const std::string normalized = resolved.lexically_normal().string();
+  // lexically_normal keeps a trailing separator; a directory must compare
+  // equal to the same directory spelled without one, or a plain string
+  // comparison against a resolved path (the self-referential deploy guard,
+  // for one) would miss.
+  if (normalized.size() > 1 && normalized.back() == '/')
+    return std::filesystem::path(normalized.substr(0, normalized.size() - 1));
+  return std::filesystem::path(normalized);
+}
 
 Instance Instance::portable(const std::filesystem::path &root) {
   Instance inst;
@@ -28,25 +129,34 @@ Instance Instance::from_root(const std::filesystem::path &root) {
 }
 
 std::filesystem::path Instance::path_for(InstanceKind kind) const {
+  // A configured override may carry a path variable ($BASE_DIRECTORY,
+  // %BASE_DIR%, $HOME, ...). Resolve it against the instance root here so
+  // every consumer - and the plugin ABI - sees the same concrete directory
+  // while the stored value stays exactly as configured, so a $BASE_DIRECTORY
+  // override keeps following a relocation. An empty override keeps the
+  // default under the root. Overrides may point anywhere; a directory
+  // outside the instance is a valid configuration.
+  const auto configured = [this](const std::filesystem::path &override_value,
+                                 const char *leaf) {
+    return override_value.empty() ? info_.root / leaf
+                                  : expand_instance_path(override_value, info_.root);
+  };
+
   switch (kind) {
   case InstanceKind::Mods:
-    return info_.mods_dir.empty() ? info_.root / "mods" : info_.mods_dir;
+    return configured(info_.mods_dir, "mods");
   case InstanceKind::Downloads:
-    return info_.downloads_dir.empty() ? info_.root / "downloads" : info_.downloads_dir;
+    return configured(info_.downloads_dir, "downloads");
   case InstanceKind::Cache:
-    return info_.cache_dir.empty() ? info_.root / "cache" : info_.cache_dir;
-  case InstanceKind::CacheArchives: {
-    auto base = info_.cache_dir.empty() ? info_.root / "cache" : info_.cache_dir;
-    return base / "archives";
-  }
-  case InstanceKind::CacheThumbnails: {
-    auto base = info_.cache_dir.empty() ? info_.root / "cache" : info_.cache_dir;
-    return base / "thumbnails";
-  }
+    return configured(info_.cache_dir, "cache");
+  case InstanceKind::CacheArchives:
+    return configured(info_.cache_dir, "cache") / "archives";
+  case InstanceKind::CacheThumbnails:
+    return configured(info_.cache_dir, "cache") / "thumbnails";
   case InstanceKind::Profiles:
-    return info_.profiles_dir.empty() ? info_.root / "profiles" : info_.profiles_dir;
+    return configured(info_.profiles_dir, "profiles");
   case InstanceKind::Overwrite:
-    return info_.overwrite_dir.empty() ? info_.root / "overwrite" : info_.overwrite_dir;
+    return configured(info_.overwrite_dir, "overwrite");
   case InstanceKind::Plugins:
     return info_.root / "plugins";
   case InstanceKind::Logs:
