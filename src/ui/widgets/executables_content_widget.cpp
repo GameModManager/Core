@@ -326,31 +326,51 @@ namespace Executables {
 
     // Elevation. Same combo idiom as Output to mod: fixed item data, findData()
     // to restore, itemData() to read back.
+    //
+    // The option set is a property of the machine, not of the selected entry:
+    // the privilege helper is chosen per platform and fakeroot is installed per
+    // machine, and neither changes when another executable is picked. That is
+    // why the items are added once, here. Anything that made the set depend on
+    // the selected entry would have to rebuild them in select_entry() too - the
+    // findData() there only restores the selection, so every other entry would
+    // silently inherit whatever the first one decided.
     elevation_combo_ = new QComboBox(right_panel);
     elevation_combo_->addItem(tr("--- None ---"), QVariant(""));
-    elevation_combo_->addItem(tr("fakeroot (no password)"), QVariant("fakeroot"));
-    elevation_combo_->addItem(tr("root (discouraged)"), QVariant("root"));
+    // "root" is the persisted value; what it does is the platform's own prompt,
+    // so the label names the effect and never the mechanism behind it.
+    elevation_combo_->addItem(tr("Run with elevated privileges"), QVariant("root"));
 
+#ifdef GMM_PLATFORM_LINUX
+    // fakeroot fakes a Unix uid by interposing libc, which is only meaningful
+    // where libc loads the process, so it is not offered elsewhere.
+    elevation_combo_->addItem(tr("fakeroot (no password)"), QVariant("fakeroot"));
+
+    // A greyed-out option with no explanation is a support ticket waiting to
+    // happen, so the reason is part of the control's tooltip.
     const bool fakeroot_ok = engine::fakeroot_available();
     if (!fakeroot_ok) {
-      // A greyed-out option with no explanation is a support ticket waiting to
-      // happen, so the reason is part of the control's tooltip.
       if (auto *model =
               qobject_cast<QStandardItemModel *>(elevation_combo_->model())) {
         if (auto *item = model->item(elevation_combo_->findData(QVariant("fakeroot"))))
           item->setEnabled(false);
       }
     }
+    const QString missing_note =
+        fakeroot_ok ? QString()
+                    : QString::fromUtf8(engine::fakeroot_unavailable_tooltip());
+#else
+    const QString missing_note;
+#endif
+
     elevation_combo_->setToolTip(
-        tr("Run as root: your desktop environment asks you to authorise the launch "
-           "itself, so the password is never seen by GameModManager.\n\n"
+        tr("Elevated launch: your desktop environment asks you to authorise the "
+           "launch itself, so the password is never seen by GameModManager.\n\n"
            "Discouraged - the game already runs inside an unprivileged user "
            "namespace and normally cannot damage the rest of the system, and Linux "
            "and macOS rarely need root at all. For a tool that only has to look "
            "like root (installer, package manager, archiver), prefer fakeroot: it "
            "needs no password and raises no prompt.\n\n%1")
-            .arg(fakeroot_ok ? QString()
-                             : QString::fromUtf8(engine::fakeroot_unavailable_tooltip())));
+            .arg(missing_note));
     form->addRow(tr("Run as:"), elevation_combo_);
 
     // Icon row: checkbox + preview + button
@@ -456,6 +476,25 @@ namespace Executables {
     return entries_;
   }
 
+  QVector<ElevationOption> ContentWidget::elevation_options() const {
+    // QComboBox has no item-enabled API, so the enabled flag lives in the
+    // default QStandardItemModel - the same place the constructor greys an
+    // option out.
+    const auto *model =
+        qobject_cast<const QStandardItemModel *>(elevation_combo_->model());
+
+    QVector<ElevationOption> options;
+    options.reserve(elevation_combo_->count());
+    for (int i = 0; i < elevation_combo_->count(); ++i) {
+      ElevationOption option;
+      option.label   = elevation_combo_->itemText(i);
+      option.value   = elevation_combo_->itemData(i).toString();
+      option.enabled = !model || model->item(i)->isEnabled();
+      options.push_back(option);
+    }
+    return options;
+  }
+
   void ContentWidget::rebuild_list() {
     QSignalBlocker blocker(entry_list_);
     entry_list_->clear();
@@ -497,8 +536,12 @@ namespace Executables {
     else
       output_mod_combo_->setCurrentIndex(0);
 
-    // An unrecognised value (written by a newer build, or fakeroot since
-    // removed) falls back to "--- None ---" rather than leaving the combo unset.
+    // Restores the elevation, and only restores it - the combo's items were added
+    // once in the constructor. So a change to which options are available has to
+    // rebuild them here, otherwise every entry shows whatever the first one
+    // decided. An unrecognised value (written by a newer build, or fakeroot on a
+    // platform that no longer offers it) falls back to "--- None ---" rather than
+    // leaving the combo unset.
     const int elev_idx = elevation_combo_->findData(QVariant(e.elevation));
     elevation_combo_->setCurrentIndex(elev_idx >= 0 ? elev_idx : 0);
 

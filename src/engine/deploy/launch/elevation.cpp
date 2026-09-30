@@ -64,6 +64,38 @@ bool probe_fakeroot() {
   return available;
 }
 
+// The helper that raises the platform's own privilege prompt: polkit's pkexec
+// on Linux, osascript on macOS. Empty means this build has no mechanism at all,
+// which is the honest answer - the caller reports the elevation unavailable
+// rather than launching unelevated behind the user's back.
+const char *privilege_helper_name() {
+#ifdef GMM_PLATFORM_LINUX
+  return "pkexec";
+#elif defined(GMM_PLATFORM_MACOS)
+  return "osascript";
+#else
+  // Windows would call ShellExecuteEx with the "runas" verb to raise the UAC
+  // prompt. That path is deliberately not written yet, so there is no helper to
+  // look for here.
+  return "";
+#endif
+}
+
+std::function<bool()> &privilege_helper_probe() {
+  static std::function<bool()> probe;
+  return probe;
+}
+
+// Installed per machine and cached for the same reason as fakeroot: the answer
+// cannot change while we run, so a PATH scan per evaluation buys nothing.
+bool probe_privilege_helper() {
+  static const bool available = [] {
+    const char *name = privilege_helper_name();
+    return name[0] != '\0' && found_on_path(name).has_value();
+  }();
+  return available;
+}
+
 // AppleScript source for the macOS privilege prompt. The command and every
 // argument arrive in osascript's own argv, and the script joins them with
 // `quoted form of`, which Apple documents as returning "a string in a form
@@ -106,17 +138,12 @@ bool elevation_supported(Elevation elevation) {
   if (elevation == Elevation::Fakeroot)
     return fakeroot_available();
 
-#ifdef GMM_PLATFORM_LINUX
-  return found_on_path("pkexec").has_value();
-#elif defined(GMM_PLATFORM_MACOS)
-  return found_on_path("osascript").has_value();
-#else
-  // Windows would shell out to ShellExecuteEx with the "runas" verb to raise
-  // the UAC prompt. That path is deliberately not written yet, so root is
-  // reported as unavailable rather than quietly running unelevated.
-  (void)elevation;
-  return false;
-#endif
+  // No helper on this platform is a hard no, whatever a probe says: there is
+  // nothing installed to probe for.
+  if (privilege_helper_name()[0] == '\0')
+    return false;
+  const auto &probe = privilege_helper_probe();
+  return probe ? probe() : probe_privilege_helper();
 }
 
 bool fakeroot_available() {
@@ -125,6 +152,10 @@ bool fakeroot_available() {
 }
 
 void set_fakeroot_probe(std::function<bool()> probe) { fakeroot_probe() = std::move(probe); }
+
+void set_privilege_helper_probe(std::function<bool()> probe) {
+  privilege_helper_probe() = std::move(probe);
+}
 
 const char *fakeroot_unavailable_tooltip() {
   return "fakeroot is not installed on this system, so this option cannot be used.\n"
@@ -187,9 +218,10 @@ ElevationPlan plan_elevation(Elevation elevation,
       plan.argv.push_back(a);
     return plan;
 #else
-    // Absolute, because the launch sites stat() argv[0] and exec the next
-    // element without a PATH search of their own.
-    plan.argv = {helper_path("pkexec").string(), exe};
+    // Non-empty here: elevation_supported() already refused the plan on a
+    // platform with no helper. Absolute, because the launch sites stat()
+    // argv[0] and exec the next element without a PATH search of their own.
+    plan.argv = {helper_path(privilege_helper_name()).string(), exe};
     for (const auto &a : args)
       plan.argv.push_back(a);
     return plan;

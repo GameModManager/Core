@@ -9,10 +9,15 @@ namespace engine {
 
 // How a launched executable asks for extra privilege. Persisted per executable
 // in the instance's executables array as the strings "", "fakeroot" and "root".
+//
+// Root means "the platform's own privilege prompt" and nothing more: the user
+// picks an effect, and the mechanism behind it (pkexec, osascript, the UAC
+// prompt) is resolved per platform. The persisted string stays "root" so a
+// config written by an earlier build keeps loading.
 enum class Elevation {
   None,     // no wrapping (empty string)
-  Fakeroot, // fakeroot <exe> <args...> - unprivileged, fakes uid 0
-  Root,     // the desktop environment's own privilege prompt
+  Fakeroot, // fakeroot <exe> <args...> - unprivileged, fakes uid 0; a Linux tool
+  Root,     // the platform's own privilege prompt
 };
 
 // Maps the persisted string onto the enum. Anything unrecognised (including a
@@ -58,6 +63,12 @@ const char *fakeroot_unavailable_tooltip();
 // branches are deterministic regardless of the machine running the suite.
 // Pass an empty function to restore PATH scanning.
 void set_fakeroot_probe(std::function<bool()> probe);
+
+// Test seam for the privilege helper probe, same contract as the fakeroot one.
+// The probe answers "is the helper installed", never "does this platform have
+// one": a platform with no implemented mechanism stays unavailable whatever a
+// probe claims.
+void set_privilege_helper_probe(std::function<bool()> probe);
 
 // True when this platform has a desktop-environment privilege prompt at all.
 // Windows is not implemented yet, so root is honestly reported as unavailable
