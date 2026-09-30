@@ -97,6 +97,11 @@ namespace Source {
         return true;
       }
       Logger::instance().error("InstallStage: no staging directory found");
+      ctx.error_message =
+          "nothing was extracted from " +
+          (mod.archive_filename.empty() ? std::string("the archive")
+                                        : mod.archive_filename) +
+          ", so there are no files to install";
       return false;
     }
 
@@ -127,6 +132,8 @@ namespace Source {
     }
     if (folder_name.empty()) {
       Logger::instance().error("InstallStage: cannot determine mod folder name");
+      ctx.error_message = "the mod has no name, id or download id, so GameModManager "
+                          "cannot tell which folder to install it into";
       return false;
     }
 
@@ -143,6 +150,8 @@ namespace Source {
     }
     if (mods_dir.empty()) {
       Logger::instance().error("InstallStage: no mods directory in context");
+      ctx.error_message = "this instance has no mods directory configured, so "
+                          "there is nowhere to install the mod";
       return false;
     }
 
@@ -176,6 +185,9 @@ namespace Source {
         if (!copy_recursive(dest_dir, backup_dir)) {
           Logger::instance().error("InstallStage: failed to create backup " +
                                    backup_dir.string());
+          ctx.error_message = "could not back up the existing mod folder " +
+                              dest_dir.string() + " to " + backup_dir.string() +
+                              " - the existing install was left untouched";
           return false;
         }
       }
@@ -189,6 +201,8 @@ namespace Source {
         if (folder_name.empty()) {
           Logger::instance().error(
               "InstallStage: rename produced an empty folder name");
+          ctx.error_message = "the new mod name from the overwrite dialog is empty, "
+                              "so there is no folder to install into";
           return false;
         }
         dest_dir = mods_dir / folder_name;
@@ -228,6 +242,10 @@ namespace Source {
         })) {
       Logger::instance().error("InstallStage: failed to copy files to " +
                                dest_dir.string());
+      ctx.error_message = "could not copy the extracted files into " +
+                          dest_dir.string() +
+                          " - the mod folder is incomplete; check the mods "
+                          "directory is writable and has free space";
       return false;
     }
 

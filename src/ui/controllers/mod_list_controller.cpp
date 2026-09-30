@@ -1041,14 +1041,22 @@ void ModListController::sync_mod_enable_state(const QString &mod_id, bool enable
     if (!engine::ModScanner::disable_mod(*w_->knowledge_, w_->current_game_id_,
                                          mod_folder, &reason)) {
       // A sentinel that fails to write leaves the row reading disabled while
-      // the mod stays active on disk - a toggle that silently did nothing. The
-      // row is flagged so the user sees which mod and why, without a modal per
-      // tick for the case where a whole directory is unwritable.
+      // the mod stays active on disk - a toggle that silently did nothing. For a
+      // game that reads its own sentinel out of the mod folder (Isaac) that is
+      // a lie the user would otherwise act on, so the row is flagged with the
+      // reason rather than the result being dropped. A game with no declared
+      // mechanism only consults the sentinel at deploy time, so there is
+      // nothing for the row to contradict - the log keeps the reason, the row
+      // does not claim one.
       engine::Logger::instance().warn(
           "Toggle: " + (reason.empty() ? std::string("could not write the sentinel")
                                        : reason) +
           " for '" + mod_id.toStdString() + "' - the mod is still active on disk");
-      w_->mod_model_->set_toggle_error(mod_id, QString::fromStdString(reason));
+      w_->mod_model_->set_toggle_error(
+          mod_id, ui::toggle_badge_reason(
+                      engine::game_native_disable_for(*w_->knowledge_,
+                                                      w_->current_game_id_),
+                      reason));
     } else {
       w_->mod_model_->set_toggle_error(mod_id, QString());
     }
@@ -1531,7 +1539,12 @@ void ModListController::on_mod_scan_finished(ui::ModScanResult result,
             engine::Logger::instance().warn(
                 "on_mod_scan_finished: " + reason +
                 " (source-missing mirror '" + mod.folder_name + "')");
-            w_->mod_model_->set_toggle_error(id, QString::fromStdString(reason));
+            // Flagged only where the sentinel is the game's own marker.
+            w_->mod_model_->set_toggle_error(
+                id, ui::toggle_badge_reason(
+                        engine::game_native_disable_for(*w_->knowledge_,
+                                                        w_->current_game_id_),
+                        reason));
           }
         }
       }
