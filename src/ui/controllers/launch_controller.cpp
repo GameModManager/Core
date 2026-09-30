@@ -568,7 +568,7 @@ void LaunchController::launch_with_executable(
   if (elevation != engine::Elevation::None && !engine::elevation_supported(elevation)) {
     const QString title = elevation == engine::Elevation::Fakeroot
                               ? tr("fakeroot is not available")
-                              : tr("Running as administrator is not available");
+                              : tr("Running with elevated privileges is not available");
     engine::Logger::instance().error("Launch blocked - " +
                                      engine::elevation_to_string(elevation) +
                                      " unavailable");
