@@ -207,8 +207,222 @@ TEST_CASE("instance path", "[engine]") {
   require(tab_cleared.info().last_tab.empty(), "cleared last_tab reads empty");
 }
 
+// A configured path may name a variable instead of a literal directory. The
+// Paths tab advertises $BASE_DIRECTORY; MO2 spells the same thing %BASE_DIR%.
+// Both expand to the instance root, ~ and $NAME/%NAME% expand to environment
+// values, an unset variable stays literal so a typo is visible instead of
+// silently pointing at the root, and a relative result anchors at the
+// instance root. The stored value is never rewritten, so an override written
+// before this existed still resolves and still follows a relocation.
+TEST_CASE("instance path variable expansion", "[engine]") {
+  using engine::Instance;
+  using engine::InstanceKind;
+
+  const fs::path root = "/tmp/gmm_instance_path/vars/Test";
+  fs::remove_all(root);
+  fs::create_directories(root);
+
+  // --- $BASE_DIRECTORY and MO2's %BASE_DIR% both name the instance root. ---
+  {
+    Instance inst = Instance::from_root(root);
+    inst.set_path_override(InstanceKind::Mods, "$BASE_DIRECTORY/mods");
+    require(inst.path_for(InstanceKind::Mods) == root / "mods",
+            "$BASE_DIRECTORY expands to the instance root");
+    inst.set_path_override(InstanceKind::Mods, "%BASE_DIR%/mods");
+    require(inst.path_for(InstanceKind::Mods) == root / "mods",
+            "%BASE_DIR% expands to the instance root");
+    inst.set_path_override(InstanceKind::Profiles, "$BASE_DIRECTORY");
+    require(inst.path_for(InstanceKind::Profiles) == root,
+            "a bare $BASE_DIRECTORY is the root itself");
+    // The cache-derived kinds derive from the resolved cache override.
+    inst.set_path_override(InstanceKind::Cache, "$BASE_DIRECTORY/cache");
+    require(inst.path_for(InstanceKind::CacheArchives) == root / "cache" / "archives",
+            "archives follow the expanded cache override");
+    require(inst.path_for(InstanceKind::CacheThumbnails) ==
+                root / "cache" / "thumbnails",
+            "thumbnails follow the expanded cache override");
+    // The stored value is untouched: the field still shows what was typed.
+    inst.set_path_override(InstanceKind::Mods, "$BASE_DIRECTORY/mods");
+    require(inst.path_override(InstanceKind::Mods) == "$BASE_DIRECTORY/mods",
+            "path_override returns the stored value, not the expanded one");
+    require(inst.path_for(InstanceKind::Mods) == root / "mods",
+            "$BASE_DIRECTORY still expands after the roundtrip");
+  }
+
+  // --- ~ and $NAME / %NAME% environment variables. ---
+  {
+    Instance inst = Instance::from_root(root);
+    const fs::path home =
+        std::getenv("HOME") ? fs::path(std::getenv("HOME")) : fs::path();
+    if (!home.empty()) {
+      inst.set_path_override(InstanceKind::Downloads, "~/gmm-vars/downloads");
+      require(inst.path_for(InstanceKind::Downloads) == home / "gmm-vars" / "downloads",
+              "~ expands to the home directory");
+    }
+    inst.set_path_override(InstanceKind::Downloads, "$HOME/gmm-vars/downloads");
+    if (!home.empty())
+      require(inst.path_for(InstanceKind::Downloads) == home / "gmm-vars" / "downloads",
+              "$HOME expands to the environment value");
+    inst.set_path_override(InstanceKind::Overwrite, "%HOME%/gmm-vars/overwrite");
+    if (!home.empty())
+      require(inst.path_for(InstanceKind::Overwrite) == home / "gmm-vars" / "overwrite",
+              "%HOME% expands to the environment value");
+    // Every supported spelling in one path. (A doubled separator is left by
+    // the textual substitution and collapses during normalisation.)
+    inst.set_path_override(InstanceKind::Overwrite, "$BASE_DIRECTORY/ow/%BASE_DIR%/ow");
+    const std::string twice = root.string() + "/ow/" + root.string() + "/ow";
+    require(inst.path_for(InstanceKind::Overwrite) == fs::path(twice),
+            "a path may contain the variable more than once");
+  }
+
+  // --- An unset variable stays literal. Blanking it would relocate the
+  //     folder ("$NOPE/mods" -> "/mods"), which is strictly worse. ---
+  {
+    Instance inst = Instance::from_root(root);
+    inst.set_path_override(InstanceKind::Mods, "$GMM_NOT_SET_9F2A/mods");
+    require(inst.path_for(InstanceKind::Mods) == root / "$GMM_NOT_SET_9F2A" / "mods",
+            "an unset $NAME is left literal and anchors at the instance root");
+    require(inst.path_for(InstanceKind::Mods).string().find("GMM_NOT_SET_9F2A") !=
+                std::string::npos,
+            "the unknown variable survives so the typo is visible");
+    inst.set_path_override(InstanceKind::Mods, "%GMM_NOT_SET_9F2A%/mods");
+    require(inst.path_for(InstanceKind::Mods) == root / "%GMM_NOT_SET_9F2A%" / "mods",
+            "an unset %NAME% is left literal too");
+  }
+
+  // --- Escaping paths: relative, trailing slash, dot segments, unnormalised. ---
+  {
+    Instance inst = Instance::from_root(root);
+    inst.set_path_override(InstanceKind::Mods, "external/mods");
+    require(inst.path_for(InstanceKind::Mods) == root / "external" / "mods",
+            "a relative override anchors at the instance root");
+    inst.set_path_override(InstanceKind::Mods, "external/mods/");
+    require(inst.path_for(InstanceKind::Mods) == root / "external" / "mods",
+            "a trailing slash normalises away");
+    inst.set_path_override(InstanceKind::Mods, "$BASE_DIRECTORY/../mods");
+    require(inst.path_for(InstanceKind::Mods) == root.parent_path() / "mods",
+            "a dot segment resolves the same way the filesystem would");
+    inst.set_path_override(InstanceKind::Mods, "$BASE_DIRECTORY//mods");
+    require(inst.path_for(InstanceKind::Mods) == root / "mods",
+            "a doubled separator collapses");
+  }
+
+  // --- A mods directory OUTSIDE the instance: resolves, is created, scans
+  //     and round-trips. No containment check rejects it. ---
+  {
+    const fs::path instances_root = "/tmp/gmm_instance_path/vars/instances";
+    const fs::path outside        = "/tmp/gmm_instance_path/outside/mods";
+    fs::remove_all(instances_root);
+    fs::remove_all("/tmp/gmm_instance_path/outside");
+
+    engine::DetectedGame game;
+    game.game_id  = "testgame";
+    game.name     = "Test Game";
+    Instance inst = engine::create_instance_for_game(game, instances_root);
+    require(!inst.info().root.empty(), "instance created");
+
+    const fs::path inst_root = inst.info().root;
+    require(inst.write_key("mods_dir", outside.string()),
+            "mods_dir override outside the instance persists");
+    fs::remove_all(outside);
+
+    Instance back = Instance::from_root(inst_root);
+    require(back.read_toml(), "instance with an outside mods dir reads back");
+    require(back.path_for(InstanceKind::Mods) == outside.lexically_normal(),
+            "the outside mods dir resolves to itself, not the instance root");
+    require(back.path_for(InstanceKind::Profiles) == inst_root / "profiles",
+            "unoverridden kinds still use their defaults");
+    // The stored value survives verbatim, so relocation keeps working.
+    require(back.path_override(InstanceKind::Mods) == outside,
+            "the outside path is stored unchanged");
+
+    // create_directories() builds it at the resolved location.
+    require(back.create_directories(), "create_directories succeeds");
+    require(fs::is_directory(outside), "the outside mods dir is created");
+
+    // A mod dropped there is visible to a scan of the resolved path, and
+    // deploy reads the same directory.
+    {
+      fs::create_directories(outside / "SampleMod");
+      std::ofstream meta(outside / "SampleMod" / "meta.ini");
+      meta << "name = \"Sample Mod\"\n";
+    }
+    int seen = 0;
+    for (const auto &entry : fs::directory_iterator(outside))
+      (void)entry, ++seen;
+    require(seen == 1, "the outside mods dir scans");
+
+    engine::GameKnowledge knowledge;
+    const auto cfg =
+        engine::deploy_config_for(inst_root, "/games/test", knowledge, "testgame");
+    require(cfg.mods_dir == outside.lexically_normal(),
+            "deploy reads the configured outside mods dir");
+
+    fs::remove_all(instances_root);
+    fs::remove_all("/tmp/gmm_instance_path/outside");
+  }
+
+  // --- Upgrade path: an instance whose toml already holds a literal
+  //     $BASE_DIRECTORY resolves to the default location instead of a
+  //     directory named "$BASE_DIRECTORY". ---
+  {
+    const fs::path legacy_root = "/tmp/gmm_instance_path/vars/Legacy";
+    fs::remove_all(legacy_root);
+    fs::create_directories(legacy_root);
+    {
+      std::ofstream out(legacy_root / "instance.toml");
+      out << "game_id = \"testgame\"\n"
+             "portable = true\n"
+             "mods_dir = \"$BASE_DIRECTORY/mods\"\n"
+             "profiles_dir = \"$BASE_DIRECTORY/profiles\"\n";
+    }
+    Instance legacy = Instance::from_root(legacy_root);
+    require(legacy.read_toml(), "legacy instance.toml parses");
+    require(legacy.path_for(InstanceKind::Mods) == legacy_root / "mods",
+            "a stored $BASE_DIRECTORY now resolves to the default mods dir");
+    require(legacy.path_for(InstanceKind::Profiles) == legacy_root / "profiles",
+            "a stored $BASE_DIRECTORY resolves for every overridable kind");
+
+    // Re-saving keeps the variable rather than freezing the old root, so
+    // the override still follows a relocation.
+    require(legacy.write_toml(), "write_toml on a legacy instance succeeds");
+    std::ifstream in(legacy_root / "instance.toml");
+    std::ostringstream ss;
+    ss << in.rdbuf();
+    require(ss.str().find("$BASE_DIRECTORY") != std::string::npos,
+            "re-saving preserves the variable instead of freezing the path");
+    fs::remove_all(legacy_root);
+  }
+
+  fs::remove_all(root.parent_path());
+}
+
+// Negative control: with no override set, nothing is expanded and nothing is
+// anchored - the default under the instance root is returned untouched.
+TEST_CASE("instance path without an override", "[engine]") {
+  using engine::Instance;
+  using engine::InstanceKind;
+
+  const fs::path root = "/tmp/gmm_instance_path/vars_none/Test";
+  Instance inst       = Instance::from_root(root);
+  require(inst.path_for(InstanceKind::Mods) == root / "mods",
+          "mods dir is the default under the root");
+  require(inst.path_override(InstanceKind::Mods).empty(), "no override is set");
+  require(inst.path_for(InstanceKind::Overwrite) == root / "overwrite",
+          "overwrite dir is the default under the root");
+
+  // With no instance root there is nothing to substitute, so the variable
+  // stays literal rather than collapsing to a root-level "/mods".
+  Instance headless = Instance::from_root({});
+  headless.set_path_override(InstanceKind::Mods, "$BASE_DIRECTORY/mods");
+  require(headless.path_for(InstanceKind::Mods) == "$BASE_DIRECTORY/mods",
+          "with no instance root the variable is left alone, not collapsed");
+  require(headless.path_for(InstanceKind::Mods) != "/mods",
+          "an empty base never yields a filesystem-root path");
+}
+
 // Workspace-4fu: user-chosen instance names. The display name is sanitized
-// with spaces preserved (it becomes the folder name), an unsanitizable/empty
+// with spaces preserved (it becomes the folder name), an unsanitized/empty
 // name fails, and creating over an existing instance.toml is refused instead
 // of clobbering it.
 TEST_CASE("create_instance_for_game custom display name", "[engine]") {
