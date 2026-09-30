@@ -18,6 +18,7 @@
 // Hermetic: offscreen platform, throwaway XDG_CONFIG_HOME, no network.
 #include "ui/widgets/mod_list_model.h"
 #include "ui/widgets/mod_table_view.h"
+#include "engine/game/registry/game_knowledge.h"
 #include "ui/widgets/column_toggle_header.h"
 #include "ui/settings/settings.h"
 #include "ui/theme/icon_manager.h"
@@ -3260,5 +3261,77 @@ TEST_CASE("mod list flags a toggle that could not be written to disk", "[ui]") {
   // A clean row still shows no reason and no badge at all.
   CHECK(flag_tip("Ok").isEmpty());
   CHECK(flag_icons("Ok") == 0);
+}
+
+// A refused sentinel write is only worth warning about where the sentinel is
+// the GAME's own marker. Otherwise the sentinel is only read by the deploy
+// filter, so a refusal resolves at the next deploy and the row is not lying to
+// anyone - flagging it there would be a warning about a condition the user
+// cannot act on and did not cause.
+//
+// This is the negative control for the badge: the engine produced a real,
+// specific, correctly-worded reason (nothing wrong with it), and it must still
+// not reach the row.
+TEST_CASE("a toggle failure is not flagged for a game with no sentinel of its own",
+          "[ui]") {
+  qputenv("QT_QPA_PLATFORM", "offscreen");
+  const std::filesystem::path cfg = "/tmp/gmm_mod_list_toggle_no_native/config";
+  std::filesystem::remove_all("/tmp/gmm_mod_list_toggle_no_native");
+  std::filesystem::create_directories(cfg);
+  qputenv("XDG_CONFIG_HOME", cfg.c_str());
+  int         argc   = 1;
+  char        arg0[] = "test";
+  char       *argv[] = {arg0, nullptr};
+  QApplication app(argc, argv);
+
+  // A game whose plugin declares no "disable_mechanism": the deploy-only
+  // default applies. A game that DOES declare one (Isaac's "disable.it") takes
+  // the other branch, which the case above covers.
+  engine::GameKnowledge knowledge;
+  CHECK_FALSE(engine::game_native_disable_for(knowledge, "NoSuchGame"));
+  // Declaring it flips the verdict - this is the whole of the special case.
+  knowledge.set("IsaacLikeGame", "disable_mechanism", "disable.it");
+  CHECK(engine::game_native_disable_for(knowledge, "IsaacLikeGame"));
+  // The predicate is about the game, not the sentinel name: a game that
+  // declares nothing still resolves to a sentinel, it just is not the game's.
+  CHECK(engine::disable_mechanism_for(knowledge, "NoSuchGame") ==
+        engine::kDefaultDisableMechanism);
+
+  ui::ModList model;
+  model.add_mod(QStringLiteral("Plain"), QStringLiteral("Plain Mod"),
+                QStringLiteral("1.0"));
+  const auto row = model.index(row_with_id(model, "Plain"), ui::ModList::Flags);
+  const auto tip = model.data(row, Qt::ToolTipRole).toString();
+  const auto icons =
+      model.data(row, ui::ModList::kFlagIconsRole).value<QList<QIcon>>().size();
+  CHECK(tip.isEmpty());
+  CHECK(icons == 0);
+
+  const std::string reason =
+      "could not write .gmmdisabled into /instances/Skyrim/Mods/Plain: "
+      "Permission denied";
+  const bool game_native = engine::game_native_disable_for(knowledge, "NoSuchGame");
+
+  // Same reason, game without a declared sentinel: dropped, so nothing is
+  // drawn and nothing is said.
+  model.set_toggle_error(QStringLiteral("Plain"), ui::toggle_badge_reason(game_native, reason));
+  CHECK(model.data(row, Qt::ToolTipRole).toString().isEmpty());
+  CHECK(model.data(row, ui::ModList::kFlagIconsRole)
+            .value<QList<QIcon>>()
+            .size() == icons);
+  CHECK(!model.data(row, Qt::ToolTipRole)
+             .toString()
+             .contains(QStringLiteral("game will see")));
+
+  // The identical reason on a game that DOES declare one is shown - proving
+  // the suppression above is the game, not the string.
+  model.set_toggle_error(QStringLiteral("Plain"),
+                         ui::toggle_badge_reason(/*game_native=*/true, reason));
+  CHECK(model.data(row, Qt::ToolTipRole)
+            .toString()
+            .contains(QStringLiteral("game will see")));
+  CHECK(model.data(row, ui::ModList::kFlagIconsRole)
+            .value<QList<QIcon>>()
+            .size() == icons + 1);
 }
 

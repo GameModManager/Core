@@ -85,6 +85,11 @@ std::string creation_club_file_for(const GameKnowledge &knowledge,
 bool delayed_disable_for(const GameKnowledge &knowledge, const std::string &game_id) {
   return knowledge.get(game_id, "delayed_disable", "") == "true";
 }
+
+bool game_native_disable_for(const GameKnowledge &knowledge,
+                             const std::string &game_id) {
+  return !knowledge.get(game_id, "disable_mechanism", "").empty();
+}
 std::string plugin_game_mods_dir(const GameKnowledge &knowledge,
                                  const std::string &game_id) {
   std::string dir = knowledge.get(game_id, "game_mods_dir", "");

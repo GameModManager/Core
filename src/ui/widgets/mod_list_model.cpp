@@ -114,7 +114,8 @@ QVariant ModList::data(const QModelIndex &index, int role) const {
     if (m.is_mirrored && m.mirror_source_missing)
       icons << mirror_missing_icon_;
     // The toggle could not be written to disk, so the row is describing a
-    // state the game will not see. The reason is in the Flags tooltip.
+    // state the game will not see. Only reachable for a game with its own
+    // sentinel (see toggle_badge_reason); the reason is in the Flags tooltip.
     if (!m.toggle_error.isEmpty())
       icons << toggle_error_icon_;
     if (m.invalid_data || m.no_metadata)
@@ -1546,6 +1547,10 @@ void ModList::set_mirror_info(const QString &id, bool mirrored, bool source_miss
       return;
     }
   }
+}
+
+QString toggle_badge_reason(bool game_native, const std::string &reason) {
+  return game_native ? QString::fromStdString(reason) : QString();
 }
 
 void ModList::set_toggle_error(const QString &id, const QString &reason) {

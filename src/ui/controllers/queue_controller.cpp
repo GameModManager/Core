@@ -55,12 +55,16 @@ void QueueController::flush_pending_changes() {
       w_->mod_model_->set_toggle_error(pt.mod_id, QString());
     } else {
       // A queued toggle that could not be applied is not a transient: disk now
-      // disagrees with the row for every later launch of this instance, so the
-      // row is flagged with the reason rather than the result being dropped.
+      // disagrees with the row for every later launch of this instance. The
+      // badge is scoped to games whose own sentinel it was.
       engine::Logger::instance().warn(
           "Queued toggle: " + reason + " for '" + pt.mod_id.toStdString() +
           "' - the on-disk state was not changed");
-      w_->mod_model_->set_toggle_error(pt.mod_id, QString::fromStdString(reason));
+      w_->mod_model_->set_toggle_error(
+          pt.mod_id, ui::toggle_badge_reason(
+                          engine::game_native_disable_for(*w_->knowledge_,
+                                                          w_->current_game_id_),
+                          reason));
     }
     // P1.3 event bus: mirror MO2 onModStateChanged for the deferred
     // (game-running) toggle path - the state only actually changed on disk

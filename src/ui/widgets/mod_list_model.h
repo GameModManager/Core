@@ -8,6 +8,8 @@
 #include <QSet>
 #include <QVector>
 
+#include <string>
+
 class QAbstractItemView;
 
 namespace ui {
@@ -23,6 +25,16 @@ struct ModTag {
   QString type;     // "deprecated", "note", "warning", "incompatible", "clean", "dirty"
   QString message;  // The message to display
 };
+
+// The reason a failed on-disk toggle should put on the row, and the single
+// place that decides it. A refused sentinel write only misleads the user where
+// the sentinel is the game's own marker, so `game_native` (see
+// engine::game_native_disable_for) carries that verdict: true keeps the reason
+// for the badge and tooltip, false drops it so the row shows no warning. Every
+// caller passes the engine's reason through here, so no path can surface a
+// toggle failure for a game that has no sentinel to disagree with.
+[[nodiscard]] QString toggle_badge_reason(bool game_native,
+                                          const std::string &reason);
 
 struct ModEntry {
   QString id;

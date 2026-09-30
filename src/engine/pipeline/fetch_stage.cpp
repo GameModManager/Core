@@ -26,6 +26,9 @@ bool FetchStage::execute(Mod &mod, PipelineContext &ctx) {
   if (!provider) {
     Logger::instance().error("[FetchStage] No provider for source type '" +
                              mod.download_source_type + "'");
+    ctx.error_message = "no download provider is registered for source type '" +
+                        mod.download_source_type +
+                        "' - GameModManager does not know how to download this mod";
     return false;
   }
   Logger::instance().debug("[FetchStage] Found provider: " + provider->display_name() +
@@ -91,6 +94,13 @@ bool FetchStage::execute(Mod &mod, PipelineContext &ctx) {
   if (!provider->fetch(mod, ctx, dest_path)) {
     Logger::instance().error("[FetchStage] Provider fetch returned false for " +
                              mod.id);
+    // The provider reports its own cause to the log; the stage can only name
+    // what it knows - which provider refused, what it was fetching, and where
+    // the file would have landed.
+    ctx.error_message = "the download from " + provider->display_name() + " failed (" +
+                        mod.download_source_type + " mod " +
+                        mod.download_source_id + " -> " + dest_path.string() +
+                        ") - nothing was written there; see the log for the cause";
     return false;
   }
 
