@@ -133,7 +133,9 @@ public:
   explicit DownloadsTab(QWidget *parent = nullptr);
   [[nodiscard]] QTableWidget *table() const { return table_; }
 
-  void add_download(const std::string &id, const std::string &name,
+  // Returns false when `id` already has a row, so the caller can tell a new
+  // download from a repeat of one it already queued.
+  bool add_download(const std::string &id, const std::string &name,
                     const std::string &source,
                     const std::filesystem::path &file_path = {},
                     const std::string &nexus_domain = {}, int file_id = 0,
@@ -149,6 +151,16 @@ public:
   void mark_uninstalled(const std::string &archive_filename);
   void mark_paused(const std::string &id);
   void mark_downloading(const std::string &id);
+
+  // True when `id` already names a download that must not be fetched again.
+  // Two cases, both of which lose data if a repeat link is queued again:
+  // an in-flight transfer (a second one opens the same destination file for
+  // writing while the first is still appending to it) and a finished one
+  // (re-fetching resumes from a complete file, gets HTTP 416, and the failed
+  // request removes the archive). A Failed row is deliberately NOT covered -
+  // there is no Retry action on a row, so re-queueing its link is how a failed
+  // download is retried. Neither is Paused: a fresh link means "carry on".
+  [[nodiscard]] bool blocks_refetch(const std::string &id) const;
 
   // Update the displayed name of a download entry (e.g. the real mod name,
   // resolved from the source after the download was queued with a
