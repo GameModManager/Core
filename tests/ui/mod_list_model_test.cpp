@@ -3192,3 +3192,73 @@ TEST_CASE("mod list cell tooltips match MO2", "[ui][mo2-parity]") {
         headers.at(ui::ModList::Flags).toStdString());
 }
 
+// A toggle whose on-disk write failed must be visible on the row, with the
+// engine's reason reproduced verbatim. A badge, not a modal: a user ticking
+// fifty mods onto a read-only mount should not meet fifty dialogs, and the
+// row is the thing that is lying.
+TEST_CASE("mod list flags a toggle that could not be written to disk", "[ui]") {
+  qputenv("QT_QPA_PLATFORM", "offscreen");
+  const std::filesystem::path cfg = "/tmp/gmm_mod_list_toggle_error/config";
+  std::filesystem::remove_all("/tmp/gmm_mod_list_toggle_error");
+  std::filesystem::create_directories(cfg);
+  qputenv("XDG_CONFIG_HOME", cfg.c_str());
+  int         argc   = 1;
+  char        arg0[] = "test";
+  char       *argv[] = {arg0, nullptr};
+  QApplication app(argc, argv);
+
+  ui::ModList model;
+  model.add_mod(QStringLiteral("Ok"), QStringLiteral("Fine Mod"),
+                QStringLiteral("1.0"));
+  model.add_mod(QStringLiteral("Broken"), QStringLiteral("Broken Mod"),
+                QStringLiteral("1.0"));
+
+  const auto flag_tip = [&model](const char *id) {
+    return model.data(model.index(row_with_id(model, id), ui::ModList::Flags),
+                      Qt::ToolTipRole)
+        .toString();
+  };
+  const auto flag_icons = [&model](const char *id) {
+    return model.data(model.index(row_with_id(model, id), ui::ModList::Flags),
+                      ui::ModList::kFlagIconsRole)
+        .value<QList<QIcon>>()
+        .size();
+  };
+
+  // The reason as the engine produces it: sentinel, folder, OS message.
+  const QString reason =
+      QStringLiteral("could not write disable.it into "
+                     "/instances/Fallout 4/StrikerManMods/SampleMod: "
+                     "Permission denied");
+  model.set_toggle_error(QStringLiteral("Broken"), reason);
+
+  // The tooltip reproduces the engine's string rather than paraphrasing it, so
+  // the user reads the same words the OS gave.
+  CHECK(flag_tip("Broken") ==
+        QStringLiteral("This mod's enabled state is NOT what the game will see: ") +
+            reason);
+  // And the row carries a badge, which the healthy row does not.
+  CHECK(flag_icons("Broken") >= 1);
+  CHECK(flag_icons("Ok") == 0);
+  CHECK(flag_tip("Ok").isEmpty());
+
+  // A row can hold other flags too - the toggle badge adds to them rather than
+  // replacing them.
+  model.set_hidden_files(QStringLiteral("Broken"), true);
+  const int with_hidden = flag_icons("Broken");
+  model.set_no_metadata(QStringLiteral("Broken"), true);
+  CHECK(flag_icons("Broken") > with_hidden);
+  CHECK(flag_tip("Broken").contains(QStringLiteral("Contains hidden files")));
+
+  // NEGATIVE CONTROL. A successful toggle clears the reason, and the badge goes
+  // with it - exactly one icon fewer, the other flags untouched. Without this,
+  // a stale badge would keep warning about a failure that no longer applies.
+  const int before_clear = flag_icons("Broken");
+  model.set_toggle_error(QStringLiteral("Broken"), QString());
+  CHECK(!flag_tip("Broken").contains(QStringLiteral("game will see")));
+  CHECK(flag_icons("Broken") == before_clear - 1);
+  // A clean row still shows no reason and no badge at all.
+  CHECK(flag_tip("Ok").isEmpty());
+  CHECK(flag_icons("Ok") == 0);
+}
+

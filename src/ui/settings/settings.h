@@ -224,8 +224,6 @@ public:
   void set_log_level(const QString &level);
   int max_core_dumps() const;
   void set_max_core_dumps(int n);
-  QString core_dump_type() const;  // "text"/"full"
-  void set_core_dump_type(const QString &type);
 
   // colors -------------------------------------------------------------------
   bool color_separator_scrollbar() const;
