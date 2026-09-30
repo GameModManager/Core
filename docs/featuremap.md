@@ -186,103 +186,103 @@ port - their cited GMM symbol names were invented, the features are not.
 
 | Feature | MO2 | GMM | Status |
 |---------|-----|-----|--------|
-| Executables blacklist | ✅ `Settings::isExecutableBlacklisted` `settings.cpp:305` | ⚠️ round-trips, nothing reads it - `settings_content_widget.cpp:1298` | ⚠️ · |
-| Skip file suffixes | ✅ `Settings::skipFileSuffixes` | ⚠️ no scanner consumer - `settings.h:184` | ⚠️ · |
-| Skip directories | ✅ `Settings::skipDirectories` | ⚠️ no consumer - `settings.h:186` | ⚠️ · |
-| Force load libraries | ✅ `ExecutableForcedLoadSetting` | ⚠️ profile copy only - `profile_creation.cpp:199` | ⚠️ · |
-| USVFS log level | ✅ `Settings::logLevel` | ✅ applied to `Logger::set_level` - `core.cpp:170` | ✅ · |
-| USVFS spawn delay | ✅ `Settings::spawnDelay` | ❌ `spawn_delay` absent repo-wide | ❌ · [win] |
-| Geometry persistence | ✅ `GeometrySettings` (window, splitter, toolbar) | ✅ `saveGeometry()`/`restoreGeometry()` - `mod_info_dialog.cpp:329` | ✅ · |
-| Widget state persistence | ✅ `WidgetSettings` (tree expand, combo, tab index) | ✅ splitters, headers - `settings_controller.cpp:789` | ✅ · |
-| Color settings (conflict coloring) | ✅ `ColorSettings` (8+ color options) | ✅ QColorDialog + conflict colors - `settings.h:215` | ✅ · |
-| Plugin blacklist | ✅ `Settings::blacklisted` | ⚠️ executables blacklist only - `settings_content_widget.cpp:1292` | ⚠️ · |
-| Network settings (proxy, offline mode) | ✅ `NetworkSettings` | ✅ offline, custom browser, proxy bridge - `network_options_bridge.cpp:7` | ✅ · |
-| Splash screen | ✅ `Settings::useSplash` | ❌ | ❌ · |
-| Prerelease updates toggle | ✅ `Settings::usePrereleases` | ✅ `settings_content_widget.cpp:113` `use_prereleases()` UI toggle | ✅ · |
-| Low-priority extraction | ✅ | 🚀 `pipeline_worker.cpp:199` `extraction_low_priority()` | 🚀 · |
-| Full UI mode (tabs vs popups) | ❌ | 🚀 `settings_content_widget.cpp:120` `full_ui_mode()` | 🚀 · |
-| Multi-core processing toggle | ❌ | 🚀 `settings.h:111` `performance/enable_multicore` + `parallel.h:31` gate | 🚀 · |
-| Language selection (i18n picker) | ✅ `InterfaceSettings::language()` | ❌ | ❌ · |
-| Style/Theme selection (QStyle + .qss) | ✅ `InterfaceSettings::styleName()` | ❌ | ❌ · |
-| Collapsible separators settings | ✅ `InterfaceSettings` (ascending, descending, highlight, icons) | ✅ `settings.h:35` `collapsible_separators_*` + UI `settings_content_widget.cpp:493` | ✅ · |
-| Save filters toggle | ✅ `InterfaceSettings::saveFilters()` | ✅ `settings_content_widget.cpp:459` `save_filters()` UI | ✅ · |
-| Auto-collapse on hover | ✅ `InterfaceSettings::autoCollapseOnHover()` | ✅ `settings_content_widget.cpp:462` `auto_collapse_on_hover()` UI | ✅ · |
-| Display foreign mods | ✅ `InterfaceSettings::displayForeign()` | ❌ | ❌ · |
-| Meta downloads display | ✅ `InterfaceSettings::metaDownloads()` | ❌ | ❌ · |
-| Hide downloads after installation | ✅ `InterfaceSettings::hideDownloadsAfterInstallation()` | ❌ | ❌ · |
-| Show download notifications | ✅ `InterfaceSettings::showDownloadNotifications()` | ⚠️ key and checkbox round-trip, nothing reads it - `settings.h:24` | ⚠️ ✔ |
-| Hide API counter | ✅ `InterfaceSettings::hideAPICounter()` | ❌ | ❌ · |
-| Lock GUI during executables | ✅ `InterfaceSettings::lockGUI()` | ❌ | ❌ · |
-| Center dialogs on parent | ✅ `GeometrySettings::centerDialogs()` | ❌ | ❌ · |
-| Show change game confirmation | ✅ `InterfaceSettings::showChangeGameConfirmation()` | ❌ | ❌ · |
-| Show menubar on Alt | ✅ `InterfaceSettings::showMenubarOnAlt()` | ❌ | ❌ · |
-| Double-clicks open previews | ✅ `InterfaceSettings::doubleClicksOpenPreviews()` | ✅ consumed on three file trees - `filetree_tab.cpp:68` | ✅ ✔ |
-| Tutorial completion tracking | ✅ `InterfaceSettings::isTutorialCompleted()` | ❌ | ❌ · |
-| Filter widget options | ✅ `InterfaceSettings::filterOptions()` | ❌ | ❌ · |
-| Archive parsing toggle | ✅ `Settings::archiveParsing()` | ❌ | ❌ · |
-| Keep backup on install | ✅ `Settings::keepBackupOnInstall()` | ❌ | ❌ · |
-| Profile default settings (local INIs, saves, archive invalidation) | ✅ `Settings::profileLocalInis()` etc. | ❌ | ❌ · |
-| Refresh thread count | ✅ `Settings::refreshThreadCount()` | ❌ | ❌ · |
-| Force enable core files | ✅ `GameSettings::forceEnableCoreFiles()` | ✅ `Settings::force_enable_core_files()` `settings.cpp:478`, setting `settings_content_widget.cpp:1286` | ✅ · |
-| Base directory variable (%BASE_DIR%) | ✅ `PathSettings::BaseDirVariable` | ❌ | ❌ · |
-| Recent directories | ✅ `PathSettings::recent()` | ❌ | ❌ · |
-| Offline mode | ✅ `NetworkSettings::offlineMode()` | ✅ `settings_content_widget.cpp:1227` + `network_options_bridge.cpp:16` | ✅ · |
-| Custom browser command | ✅ `NetworkSettings::customBrowserCommand()` | ✅ `settings_content_widget.cpp:1239` `custom_browser_command()` | ✅ · |
-| Download speed tracking per server | ✅ `NetworkSettings::setDownloadSpeed()` | ❌ | ❌ · |
-| Server preference list | ✅ `NetworkSettings::servers()` | ❌ | ❌ · |
-| Nexus endorsement integration setting | ✅ `NexusSettings::endorsementIntegration()` | ✅ `settings.h:161` + applied `nexus_source_panel.cpp:41` | ✅ · |
-| Nexus tracked integration setting | ✅ `NexusSettings::trackedIntegration()` | ✅ `settings.h:163` + applied `nexus_source_panel.cpp:46` | ✅ · |
-| Nexus category mappings setting | ✅ `NexusSettings::categoryMappings()` | ✅ `settings.h:165` `category_mappings()` | ✅ · |
-| NXM handler registration (settings) | ✅ `NexusSettings::registerAsNXMHandler()` | ❌ | ❌ · [win] |
-| MODL handler registration (settings) | ✅ `Settings::registerAsMODLHandler()` | ❌ | ❌ · [win] |
-| Download handler registration | ✅ `Settings::registerDownloadHandlers()` | ❌ | ❌ · [win] |
-| Steam app ID override | ✅ `SteamSettings::appID()` | ❌ | ❌ · [win] |
-| Steam login (credential store) | ✅ `SteamSettings::login()` (Windows Credential Store) | ❌ | ❌ · [win] |
-| First start detection | ✅ `Settings::firstStart()` | ❌ | ❌ · |
-| MO version tracking in settings | ✅ `Settings::version()` | ❌ | ❌ · |
-| Settings migration (auto-upgrade between versions) | ✅ `Settings::processUpdates()` | ❌ | ❌ · |
-| BSA date backdating | ✅ `settingsdialogworkarounds` (on_bsaDateBtn_clicked) | ❌ | ❌ · |
-| Reset geometry settings | ✅ `settingsdialogworkarounds` (on_resetGeometryBtn_clicked) | ❌ | ❌ · |
-| Reset dialog choices | ✅ `settingsdialoggeneral` (onResetDialogs) | ✅ General-tab Reset button, `settings_content_widget.cpp:232` → `settings.cpp:373` (a sibling Reset geometry button at `:226`) | ✅ ✔ |
-| Color separator scrollbar | ✅ `ColorSettings::colorSeparatorScrollbar()` | ✅ `settings.h:204` + gate `mod_list_model.cpp:125` | ✅ · |
-| Toolbar state persistence | ✅ `GeometrySettings::saveToolbars()` / `restoreToolbars()` | ✅ `settings_controller.cpp:789` `saveState()` / `:876` `restoreState()` | ✅ · |
-| Dock state persistence | ✅ `GeometrySettings::saveDocks()` / `restoreDocks()` | ❌ | ❌ · |
-| Widget visibility persistence | ✅ `GeometrySettings::saveVisibility()` / `restoreVisibility()` | ❌ | ❌ · |
-| Remember question dialog buttons | ✅ `WidgetSettings::QuestionBoxMemory` | ❌ | ❌ · |
-| Tree expand/check state persistence | ✅ `WidgetSettings::saveTreeCheckState` / `saveTreeExpandState` | ❌ | ❌ · |
-| Tab widget index persistence | ✅ `WidgetSettings::saveIndex(QTabWidget)` | ❌ | ❌ · |
-| Combobox index persistence | ✅ `WidgetSettings::saveIndex(QComboBox)` | ❌ | ❌ · |
-| Checkable button state persistence | ✅ `WidgetSettings::saveChecked(QAbstractButton)` | ❌ | ❌ · |
-| Tab-based settings dialog (8 tabs) | ✅ `settingsdialog.cpp` (General, Theme, ModList, Paths, Diagnostics, Nexus, Plugins, Workarounds) | ✅ `settings_content_widget.cpp:68` `tabs_->addTab(...)` multi-tab | ✅ · |
-| Settings change logging | ✅ `settingsutilities.h` `logChange()` | ❌ | ❌ · |
-| Color table (visual color picker with delegates) | ✅ `colortable.h/cpp` | ❌ | ❌ · |
-| Center on main window monitor | ✅ `GeometrySettings::centerOnMainWindowMonitor()` | ❌ | ❌ · |
+| Executables blacklist | ✅ `Settings::isExecutableBlacklisted` `settings.cpp:305` | ⚠️ line edit, zero readers - `settings_content_widget.cpp:1298` | ⚠️ ✔ |
+| Skip file suffixes | ✅ `Settings::skipFileSuffixes` | ⚠️ line edit, no scanner reader - `settings_content_widget.cpp:1296` | ⚠️ ✔ |
+| Skip directories | ✅ `Settings::skipDirectories` | ⚠️ line edit, zero readers - `settings_content_widget.cpp:1297` | ⚠️ ✔ |
+| Force load libraries | ✅ `ExecutableForcedLoadSetting` | ⚠️ profile key copied, zero readers - `profile_creation.cpp:205` | ⚠️ ✔ |
+| USVFS log level | ✅ `Settings::logLevel` | ✅ Logger + console panel - `core.cpp:170`, `console_panel.cpp:53` | ✅ ✔ |
+| USVFS spawn delay | ✅ `Settings::spawnDelay` | 🚫 Windows-shaped, no Linux subject | 🚫 ✔ |
+| Geometry persistence | ✅ `GeometrySettings` (window, splitter, toolbar) | ✅ 4 dialogs restore - `list_dialog.cpp:43`, `mod_info_dialog.cpp:333` | ✅ ✔ |
+| Widget state persistence | ✅ `WidgetSettings` (tree expand, combo, tab index) | ✅ splitters, headers - `settings_controller.cpp:869` | ✅ ✔ |
+| Color settings (conflict coloring) | ✅ `ColorSettings` (7 colors) | ⚠️ 5 of 7 read; 2 archive colors dead - `mod_list_model.cpp:2203` | ⚠️ ✔ |
+| Plugin blacklist | ✅ `Settings::blacklisted` | ✅ `disabled_plugins` reaches the loader - `core.cpp:248` | ✅ ✔ |
+| Network settings (proxy, offline mode) | ✅ `NetworkSettings` | ⚠️ offline+proxy live; custom browser dead - `network_options_bridge.cpp:31` | ⚠️ ✔ |
+| Splash screen | ✅ `Settings::useSplash` | ⏳ cosmetic, no component | ⏳ ✔ |
+| Prerelease updates toggle | ✅ `Settings::usePrereleases` | ⚠️ checkbox; whole updater has no callers | ⚠️ ✔ |
+| Low-priority extraction | ✅ | 🚀 `pipeline_worker.cpp:199` `extraction_low_priority()` | 🚀 ✔ |
+| Full UI mode (tabs vs popups) | ❌ | 🚀 `settings_content_widget.cpp:120` `full_ui_mode()` | 🚀 ✔ |
+| Multi-core processing toggle | ❌ | 🚀 `settings.h:130` + `parallel::set_enabled` | 🚀 ✔ |
+| Language selection (i18n picker) | ✅ `InterfaceSettings::language()` | ⚠️ picker + loader live, help link absent - `core.cpp:137` | ⚠️ ✔ |
+| Style/Theme selection (QStyle + .qss) | ✅ `InterfaceSettings::styleName()` | ✅ theme, style, icon pack - `settings_controller.cpp:1203` | ✅ ✔ |
+| Collapsible separators settings | ✅ `InterfaceSettings` (ascending, descending, highlight, icons) | ⚠️ 9 keys, zero readers; fold state itself real - `settings.h:46` | ⚠️ ✔ |
+| Save filters toggle | ✅ `InterfaceSettings::saveFilters()` | ⚠️ dead; no mod list filter exists - `settings_content_widget.cpp:481` | ⚠️ ✔ |
+| Auto-collapse on hover | ✅ `InterfaceSettings::autoCollapseOnHover()` | ⚠️ zero readers - `settings_content_widget.cpp:483` | ⚠️ ✔ |
+| Display foreign mods | ✅ `InterfaceSettings::displayForeign()` | ⚠️ zero readers; unmanaged mods always shown - `settings_content_widget.cpp:479` | ⚠️ ✔ |
+| Meta downloads display | ✅ `InterfaceSettings::metaDownloads()` | 🚫 no meta-download concept | 🚫 ✔ |
+| Hide downloads after installation | ✅ `InterfaceSettings::hideDownloadsAfterInstallation()` | ⚠️ GMM filters rows, never auto-removes - `downloads_tab.cpp:905` | ⚠️ ✔ |
+| Show download notifications | ✅ `InterfaceSettings::showDownloadNotifications()` | ✅ gates the status-bar notice - `downloads_controller.cpp:116` | ✅ ✔ |
+| Hide API counter | ✅ `InterfaceSettings::hideAPICounter()` | ⚠️ hides a counter that does not exist - `source_pages.cpp:277` | ⚠️ ✔ |
+| Lock GUI during executables | ✅ `InterfaceSettings::lockGUI()` | ⚠️ Locker ships for downloads, no setting or launch trigger - `ui_locker.cpp:14` | ⚠️ ✔ |
+| Center dialogs on parent | ✅ `GeometrySettings::centerDialogs()` | ⚠️ zero readers - `settings_content_widget.cpp:211` | ⚠️ ✔ |
+| Show change game confirmation | ✅ `InterfaceSettings::showChangeGameConfirmation()` | ❌ key only: no UI row, no reader | ❌ ✔ |
+| Show menubar on Alt | ✅ `InterfaceSettings::showMenubarOnAlt()` | ⏳ MO2 gates Alt on `UILocker`, GMM has no Alt reveal | ⏳ ✔ |
+| Double-clicks open previews | ✅ `InterfaceSettings::doubleClicksOpenPreviews()` | ✅ three file trees - `filetree_tab.cpp:111` | ✅ ✔ |
+| Tutorial completion tracking | ✅ `InterfaceSettings::isTutorialCompleted()` | 🚫 no tutorial content ships, submenu hidden - `menu_bar.cpp:379` | 🚫 ✔ |
+| Filter widget options | ✅ `InterfaceSettings::filterOptions()` | 🚫 no mod list filter exists | 🚫 ✔ |
+| Archive parsing toggle | ✅ `Settings::archiveParsing()` | ⚠️ zero readers - `settings_content_widget.cpp:1309` | ⚠️ ✔ |
+| Keep backup on install | ✅ `Settings::keepBackupOnInstall()` | ✅ seeds the Mod Exists dialog - `query_overwrite_dialog.cpp:108` | ✅ ✔ |
+| Profile default settings (local INIs, saves, archive invalidation) | ✅ `Settings::profileLocalInis()` etc. | ⚠️ 2 of 3; invalidation default hardcoded false - `profile_creation.cpp:143` | ⚠️ ✔ |
+| Refresh thread count | ✅ `Settings::refreshThreadCount()` | ⏳ no setting, fixed thread pool | ⏳ ✔ |
+| Force enable core files | ✅ `GameSettings::forceEnableCoreFiles()` | ⚠️ zero readers - `settings_content_widget.cpp:1307` | ⚠️ ✔ |
+| Base directory variable (%BASE_DIR%) | ✅ `PathSettings::BaseDirVariable` | ⚠️ `$BASE_DIRECTORY` hinted, never expanded - `instance.cpp:30` | ⚠️ ✔ |
+| Recent directories | ✅ `PathSettings::recent()` | ⏳ no setting | ⏳ ✔ |
+| Offline mode | ✅ `NetworkSettings::offlineMode()` | ✅ reaches NetworkOptions - `network_options_bridge.cpp:31` | ✅ ✔ |
+| Custom browser command | ✅ `NetworkSettings::customBrowserCommand()` | ⚠️ dead; every link uses QDesktopServices - `settings_content_widget.cpp:1260` | ⚠️ ✔ |
+| Download speed tracking per server | ✅ `NetworkSettings::setDownloadSpeed()` | 🚀 rolling average per mirror - `nexus_provider.cpp:322` | 🚀 ✔ |
+| Server preference list | ✅ `NetworkSettings::servers()` | 🚀 rank orders mirror selection - `nexus_provider.cpp:129` | 🚀 ✔ |
+| Nexus endorsement integration setting | ✅ `NexusSettings::endorsementIntegration()` | ✅ `settings.h:161` + applied `nexus_source_panel.cpp:41` | ✅ ✔ |
+| Nexus tracked integration setting | ✅ `NexusSettings::trackedIntegration()` | ✅ `settings.h:163` + applied `nexus_source_panel.cpp:46` | ✅ ✔ |
+| Nexus category mappings setting | ✅ `NexusSettings::categoryMappings()` | ⚠️ disabled "work in progress", never wired - `source_pages.cpp:275` | ⚠️ ✔ |
+| NXM handler registration (settings) | ✅ `NexusSettings::registerAsNXMHandler()` | 🚫 Linux registers via xdg-mime - `source_pages.cpp:429` | 🚫 ✔ |
+| MODL handler registration (settings) | ✅ `Settings::registerAsMODLHandler()` | 🚫 Windows-only file association | 🚫 ✔ |
+| Download handler registration | ✅ `Settings::registerDownloadHandlers()` | 🚫 Windows-only shell integration | 🚫 ✔ |
+| Steam app ID override | ✅ `SteamSettings::appID()` | 🚫 GMM has no Steam client | 🚫 ✔ |
+| Steam login (credential store) | ✅ `SteamSettings::login()` (Windows Credential Store) | 🚫 Windows credential store only | 🚫 ✔ |
+| First start detection | ✅ `Settings::firstStart()` | ⏳ no stored app version | ⏳ ✔ |
+| MO version tracking in settings | ✅ `Settings::version()` | ⏳ `VERSION` is a compile define, never persisted | ⏳ ✔ |
+| Settings migration (auto-upgrade between versions) | ✅ `Settings::processUpdates()` | ⏳ `processUpdates()` has 5 MO2 callers, 0 GMM | ⏳ ✔ |
+| BSA date backdating | ✅ `settingsdialogworkarounds` (on_bsaDateBtn_clicked) | ⏳ no button, no equivalent | ⏳ ✔ |
+| Reset geometry settings | ✅ `settingsdialogworkarounds` (on_resetGeometryBtn_clicked) | ✅ resets every stored dialog geometry - `settings_content_widget.cpp:226` | ✅ ✔ |
+| Reset dialog choices | ✅ `settingsdialoggeneral` (onResetDialogs) | ✅ General-tab Reset button, `settings_content_widget.cpp:232` → `settings.cpp:373` | ✅ ✔ |
+| Color separator scrollbar | ✅ `ColorSettings::colorSeparatorScrollbar()` | ✅ `settings.h:204` + gate `mod_list_model.cpp:134` | ✅ ✔ |
+| Toolbar state persistence | ✅ `GeometrySettings::saveToolbars()` / `restoreToolbars()` | ✅ `settings_controller.cpp:869` / `:966` | ✅ ✔ |
+| Dock state persistence | ✅ `GeometrySettings::saveDocks()` / `restoreDocks()` | 🚫 splitter layout, no docks | 🚫 ✔ |
+| Widget visibility persistence | ✅ `GeometrySettings::saveVisibility()` / `restoreVisibility()` | ⏳ tabbed UI replaces the cheatsheet | ⏳ ✔ |
+| Remember question dialog buttons | ✅ `WidgetSettings::QuestionBoxMemory` | ✅ `dialog_choice` short-circuits the dialog - `task_dialog.cpp:201` | ✅ ✔ |
+| Tree expand/check state persistence | ✅ `WidgetSettings::saveTreeCheckState` / `saveTreeExpandState` | ✅ separator fold persisted per instance - `mod_list_controller.cpp:3995` | ✅ ✔ |
+| Tab widget index persistence | ✅ `WidgetSettings::saveIndex(QTabWidget)` | ⏳ settings tab resets to General | ⏳ ✔ |
+| Combobox index persistence | ✅ `WidgetSettings::saveIndex(QComboBox)` | 🚫 log level is already a setting | 🚫 ✔ |
+| Checkable button state persistence | ✅ `WidgetSettings::saveChecked(QAbstractButton)` | ⏳ every meaningful checkbox is already a setting | ⏳ ✔ |
+| Tab-based settings dialog (8 tabs) | ✅ `settingsdialog.cpp` (General, Theme, ModList, Paths, Diagnostics, Nexus, Plugins, Workarounds) | ✅ same 8, Nexus named Sources - `settings_content_widget.cpp:61` | ✅ ✔ |
+| Settings change logging | ✅ `settingsutilities.h` `logChange()` | ⏳ no change log; ConsolePanel has no settings feed | ⏳ ✔ |
+| Color table (visual color picker with delegates) | ✅ `colortable.h/cpp` | ⚠️ 7 swatch rows, no table or delegate previews - `settings_content_widget.cpp:392` | ⚠️ ✔ |
+| Center on main window monitor | ✅ `GeometrySettings::centerOnMainWindowMonitor()` | ⏳ blocked behind the dead `center_dialogs` | ⏳ ✔ |
 | U006 Ctrl+S = Settings shortcut | ✅ `mainwindow.ui:1736-1756` | ✅ Preferences + explicit Ctrl+S - `menu_bar.cpp:75` | ✅ ✔ |
-| U040 Alt key reveals hidden menubar (showMenubarOnAlt, suppressed while UILocker locked) | ✅ `mainwindow.cpp:4052-4070` | ❌ | ❌ · |
-| U044 Restart-after-settings dialog (Restart / Continue variants) | ✅ `mainwindow.cpp:2768-2780` | ❌ | ❌ · |
-| U046 Network proxy activation progress dialog | ✅ `mainwindow.cpp:2115-2140` | ❌ | ❌ · |
-| U047 Downgrade notice after version drop | ✅ `mainwindow.cpp:2219` | ❌ | ❌ · |
-| U061 dataTabShowFromArchives gated on archiveParsing setting | ✅ `mainwindow.cpp:532-542` | ❌ | ❌ · |
+| U040 Alt key reveals hidden menubar (showMenubarOnAlt, suppressed while UILocker locked) | ✅ `mainwindow.cpp:4052-4070` | ⏳ no menubar visibility state to reveal | ⏳ ✔ |
+| U044 Restart-after-settings dialog (Restart / Continue variants) | ✅ `mainwindow.cpp:2768-2780` | ✅ Restart / Continue dialog - `settings_controller.cpp:110` | ✅ ✔ |
+| U046 Network proxy activation progress dialog | ✅ `mainwindow.cpp:2115-2140` | ⏳ bridge applies options instantly, no wait | ⏳ ✔ |
+| U047 Downgrade notice after version drop | ✅ `mainwindow.cpp:2219` | ⏳ no last-version value to compare | ⏳ ✔ |
+| U061 dataTabShowFromArchives gated on archiveParsing setting | ✅ `mainwindow.cpp:532-542` | ⏳ data tab has no archives sub-filter | ⏳ ✔ |
 | U129 General > Language group (languageBox + "Help translate" LinkLabel) | ✅ `settingsdialog.ui:68-124` | ⚠️ picker works, "Help translate" link absent - `settings_content_widget.cpp:78` | ⚠️ ✔ |
-| U130 General > Download List group (4 checkboxes + MODL associate button) | ✅ `settingsdialog.ui:125-197` | ⚠️ compact-downloads checkbox only - `settings_content_widget.cpp:428` | ⚠️ · |
+| U130 General > Download List group (4 checkboxes + MODL associate button) | ✅ `settingsdialog.ui:125-197` | ⚠️ compact only; hide-installed is on the downloads tab | ⚠️ ✔ |
 | U133 General > Miscellaneous checkboxes (center dialogs, instance-change confirm, Alt menubar, previews on double-click) | ✅ `settingsdialog.ui:264-325` | ⚠️ 1 of 4: previews on double-click - `settings_content_widget.cpp:137` | ⚠️ ✔ |
 | U134 General buttons (Reset Dialog Choices, Configure Mod Categories) | ✅ `settingsdialog.ui:343-372` | ✅ both: reset at `:232`, categories dialog `categories_dialog.h:21` | ✅ ✔ |
-| U138 Paths tab (7 path rows + %BASE_DIR% hint + writability footer) | ✅ `settingsdialog.ui:846-1054` | ❌ | ❌ · |
-| U139 Paths error strings (create failed, invalid game install) | ✅ `settingsdialogpaths.cpp:100-101`, `:236-237` | ❌ | ❌ · |
-| U140 Nexus settings tab full page (account, statistics, connection, options, servers groups) (NEXUS-LENS: genericize/provider-scope) | ✅ `settingsdialog.ui:1056-1504` | ⚠️ Sources tab stands in - `settings_content_widget.cpp:839` | ⚠️ · |
-| U142 Nexus custom browser picker file dialog | ✅ `settingsdialognexus.cpp:500-510` | ❌ | ❌ · |
-| U143 Settings > Plugins tab (plugin details, Enabled 3-state tooltip, settings table, blacklist) | ✅ `settingsdialog.ui:1506-1746` | ⚠️ tab built from live data; 3-state tooltip + blacklist unchecked - `settings_content_widget.cpp:894` | ⚠️ ✔ |
-| U145 Workarounds options (force-enable game files, archives parsing, lock GUI) | ✅ `settingsdialog.ui:1810-1860` | ⚠️ 2 of 3; lock-GUI unproven - `settings_content_widget.cpp:1286` | ⚠️ · |
-| U146 Workarounds > Steam group (AppID/username/password + log blacklist) | ✅ `settingsdialog.ui:1864-1928`, `settingsdialogworkarounds.cpp:17-30` | ❌ | ❌ · |
-| U147 Workarounds > Network group (offline mode, system proxy, custom browser) | ✅ `settingsdialog.ui:1931-2010` | ⚠️ 2 of 3; system-proxy unproven - `settings_content_widget.cpp:1227` | ⚠️ · |
-| U148 Workarounds buttons (Reset Geometries, Back-date BSAs, Executables Blacklist, Skip Suffixes/Directories) | ✅ `settingsdialog.ui:2035-2144`, `settingsdialogworkarounds.cpp:96-200` | ⚠️ tab present, multiline dialogs unproven - `settings_content_widget.cpp:1292` | ⚠️ · |
-| U149 Workarounds footer warning text | ✅ `settingsdialog.ui:2187` | ❌ | ❌ · |
-| U150 Diagnostics tab controls (log level, crash dumps, max dumps, LOOT log level, links) | ✅ `settingsdialog.ui:2197-2320`, `settingsdialogdiagnostics.cpp:22-90` | ⚠️ tab + log-level combo only - `settings_content_widget.cpp:1324` | ⚠️ · |
-| U151 Settings tabs use scroll areas with grouped GroupBoxes | ✅ `settingsdialog.ui:28`, `:1062` | ❌ | ❌ · |
-| U223 Per-plugin translators (every loaded plugin file basename) | ✅ `mainwindow.cpp:~545`, `:2897-2911` | ❌ | ❌ · |
-| U262 QuestionBoxMemory per-dialog choice persistence (.ui + IDs) | ✅ `questionboxmemory` (uibase) | ❌ | ❌ · |
-| U263 FileDialogMemory::restore (remembers dir per named dialog) | ✅ `mainwindow.cpp:506` | ❌ | ❌ · |
-| U287 splash.png + useSplash display component | ✅ `src/splash.png` | ❌ | ❌ · |
+| U138 Paths tab (7 path rows + %BASE_DIR% hint + writability footer) | ✅ `settingsdialog.ui:846-1054` | ⚠️ 7 rows + hint, but hint never expands, no footer | ⚠️ ✔ |
+| U139 Paths error strings (create failed, invalid game install) | ✅ `settingsdialogpaths.cpp:100-101`, `:236-237` | ⏳ commits silently, no mkdir, no warning | ⏳ ✔ |
+| U140 Nexus settings tab full page (account, statistics, connection, options, servers groups) (NEXUS-LENS: genericize/provider-scope) | ✅ `settingsdialog.ui:1056-1504` | ⚠️ Sources tab stands in - `settings_content_widget.cpp:65` | ⚠️ ✔ |
+| U142 Nexus custom browser picker file dialog | ✅ `settingsdialognexus.cpp:500-510` | ⏳ downstream of the dead custom-browser feature | ⏳ ✔ |
+| U143 Settings > Plugins tab (plugin details, Enabled 3-state tooltip, settings table, blacklist) | ✅ `settingsdialog.ui:1506-1746` | ⚠️ details, table, blacklist real; 3-state tooltip absent - `settings_content_widget.cpp:894` | ⚠️ ✔ |
+| U145 Workarounds options (force-enable game files, archives parsing, lock GUI) | ✅ `settingsdialog.ui:1810-1860` | ⚠️ 0 of 3: both checkboxes dead, lock GUI absent - `settings_content_widget.cpp:1307` | ⚠️ ✔ |
+| U146 Workarounds > Steam group (AppID/username/password + log blacklist) | ✅ `settingsdialog.ui:1864-1928`, `settingsdialogworkarounds.cpp:17-30` | 🚫 Windows credential store, no Linux subject | 🚫 ✔ |
+| U147 Workarounds > Network group (offline mode, system proxy, custom browser) | ✅ `settingsdialog.ui:1931-2010` | ⚠️ 2 of 3; custom browser dead - `settings_content_widget.cpp:1259` | ⚠️ ✔ |
+| U148 Workarounds buttons (Reset Geometries, Back-date BSAs, Executables Blacklist, Skip Suffixes/Directories) | ✅ `settingsdialog.ui:2035-2144`, `settingsdialogworkarounds.cpp:96-200` | ⚠️ 1 of 5: Reset Geometries; 3 dead line edits, no back-date | ⚠️ ✔ |
+| U149 Workarounds footer warning text | ✅ `settingsdialog.ui:2187` | ⏳ one static label | ⏳ ✔ |
+| U150 Diagnostics tab controls (log level, crash dumps, max dumps, LOOT log level, links) | ✅ `settingsdialog.ui:2197-2320`, `settingsdialogdiagnostics.cpp:22-90` | ⚠️ log level + max dumps real; LOOT level, links absent - `settings_content_widget.cpp:1324` | ⚠️ ✔ |
+| U151 Settings tabs use scroll areas with grouped GroupBoxes | ✅ `settingsdialog.ui:28`, `:1062` | ⏳ plain pages + GroupBoxes, no scroll areas | ⏳ ✔ |
+| U223 Per-plugin translators (every loaded plugin file basename) | ✅ `mainwindow.cpp:2930-2931` | ⏳ one translator from `language()`, none per plugin - `core.cpp:136` | ⏳ ✔ |
+| U262 QuestionBoxMemory per-dialog choice persistence (.ui + IDs) | ✅ `questionboxmemory` (uibase) | ✅ `dialog_choices/` keys - `settings.cpp:360` | ✅ ✔ |
+| U263 FileDialogMemory::restore (remembers dir per named dialog) | ✅ `mainwindow.cpp:478` | ⏳ every QFileDialog opens in the field's own path | ⏳ ✔ |
+| U287 splash.png + useSplash display component | ✅ `src/splash.png` | ⏳ cosmetic, no component | ⏳ ✔ |
 
 ## 5. Executable Management
 
@@ -1374,7 +1374,7 @@ column.
 | 1. Virtual Filesystem | 5 | 2 | 5 | 0 | 0 | 5 | 5 |
 | 2. Launch Pipeline | 6 | 5 | 5 | 14 | 0 | 2 | 17 |
 | 3. Error Handling & Diagnostics | 8 | 9 | 0 | 0 | 28 | 11 | 35 |
-| 4. Settings & Configuration | 22 | 15 | 3 | 57 | 0 | 0 | 6 |
+| 4. Settings & Configuration | 22 | 33 | 5 | 1 | 12 | 24 | 0 |
 | 5. Executable Management | 8 | 6 | 4 | 9 | 0 | 0 | 0 |
 | 6. Mod Management | 22 | 5 | 8 | 11 | 0 | 0 | 1 |
 | 7. Mod Categories | 6 | 4 | 0 | 10 | 0 | 0 | 0 |
@@ -1385,7 +1385,7 @@ column.
 | 12. Plugin Management | 27 | 8 | 3 | 13 | 0 | 0 | 0 |
 | 13. LOOT Integration | 10 | 2 | 1 | 7 | 0 | 0 | 0 |
 | 14. Profile Management | 26 | 6 | 3 | 6 | 0 | 0 | 0 |
-| 15. Download Management | 18 | 12 | 6 | 24 | 10 | 0 | 0 |
+| 15. Download Management | 19 | 12 | 6 | 24 | 10 | 0 | 0 |
 | 16. Nexus Integration | 8 | 10 | 2 | 20 | 0 | 0 | 0 |
 | 17. Source Providers | 4 | 0 | 7 | 1 | 0 | 0 | 0 |
 | 18. Mod List Features | 18 | 14 | 3 | 16 | 0 | 0 | 0 |
@@ -1422,27 +1422,34 @@ column.
 | 49. CLI Help Grammar | 0 | 0 | 0 | 2 | 0 | 0 | 0 |
 | 50. My Games Resolution | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
 | 51. Conflict Scan Refresh | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
-| **TOTAL** | **306** | **164** | **174** | **339** | **40** | **19** | **68** |
+| **TOTAL** | **306** | **182** | **176** | **283** | **52** | **43** | **62** |
 
 ### The arithmetic
 
 ```
 rows in file                          1093
-scored rows (ok + part + miss)         809
+scored rows (ok + part + miss)         771
 
-MO2 parity        ok   / scored        306 /  809  = 37.8%
-partial           part / scored        164 /  809  = 20.3%
-missing           miss / scored        339 /  809  = 41.9%
-GMM-exclusive     surp / all rows      174 / 1093  = 15.9%   (not scored)
+MO2 parity        ok   / scored        306 /  771  = 39.7%
+partial           part / scored        182 /  771  = 23.6%
+missing           miss / scored        283 /  771  = 36.7%
+GMM-exclusive     surp / all rows      176 / 1093  = 16.1%   (not scored)
 ```
 
-**Parity is 306 / 809 = 37.8%.** 339 rows are outright missing and 164 partial.
+**Parity is 306 / 771 = 39.7%.** 283 rows are outright missing and 182 partial.
 The largest untouched surfaces are **44. Tutorial**, **45. TaskDialog**,
 **46. Notifications / Problems** and **47. Backup / Restore** (zero matched
-rows), then **4. Settings**, **16. Nexus** and **15. Downloads**, which carry
-the most missing rows in absolute terms.
+rows), then **16. Nexus** and **15. Downloads**, which carry the most missing
+rows in absolute terms.
+
+**4. Settings** was re-verified row by row and is no longer a missing-row
+surface: 57 `❌` became 1. What it actually holds is 26 `⚠️` rows where a
+control is visible and correct but nothing reads the value, plus 24 `⏳` rows
+that are real MO2 features with no GMM consumer to attach to. The count of
+absent features was never the real gap in that section.
 
 ### Confidence
 
-187 of 1093 rows carry `✔` (both sides re-read); the rest carry `·` and are
-leads, not findings. The `✔` rows concentrate in sections 3, 15, 21, 18 and 30.
+276 of 1093 rows carry `✔` (both sides re-read); the rest carry `·` and are
+leads, not findings. The `✔` rows concentrate in sections 3, 4, 15, 21, 18 and
+30.
