@@ -1242,6 +1242,64 @@ TEST_CASE("downloads resume without a link keeps the row paused", "[ui]") {
   CHECK(logged);
 }
 
+// Replacing a mod deletes the folder an earlier download had installed, so
+// that download must stop claiming it is installed. Driven through the tab
+// because the Status cell is the only public observable for a row's state.
+TEST_CASE("a replaced mod's download stops claiming it is installed", "[ui]") {
+  qputenv("QT_QPA_PLATFORM", "offscreen");
+  const std::filesystem::path root = "/tmp/gmm_downloads_replaced";
+  std::filesystem::remove_all(root);
+  std::filesystem::create_directories(root / "config");
+  std::filesystem::create_directories(root / "dl");
+  qputenv("XDG_CONFIG_HOME", (root / "config").c_str());
+  int test_argc     = 1;
+  char test_argv0[] = "test";
+  char *test_argv[] = {test_argv0, nullptr};
+  QApplication app(test_argc, test_argv);
+  QCoreApplication::setOrganizationName("GameModManager");
+  QCoreApplication::setApplicationName("GameModManager");
+
+  ui::DownloadsTab tab;
+  tab.set_downloads_dir(root / "dl");
+  auto *table = tab.table();
+  REQUIRE(table != nullptr);
+
+  // Two downloads, both installed. Only one of them installed the mod that
+  // the Replace deleted, and the engine reports that by bare archive name.
+  tab.add_download("a", "Alpha", "Nexus Mods", root / "dl" / "alpha-1.0.zip");
+  tab.add_download("b", "Beta", "Nexus Mods", root / "dl" / "beta-2.0.zip");
+  tab.mark_complete("a", true);
+  tab.mark_complete("b", true);
+  tab.mark_installed("a");
+  tab.mark_installed("b");
+
+  const int row_a = row_with_name(table, "Alpha");
+  const int row_b = row_with_name(table, "Beta");
+  REQUIRE(row_a >= 0);
+  REQUIRE(row_b >= 0);
+  REQUIRE(table->item(row_a, 2)->text() == QLatin1String("Installed"));
+  REQUIRE(table->item(row_b, 2)->text() == QLatin1String("Installed"));
+
+  // A bare name with no directory has to match: meta.ini records the bare
+  // archive name, while the row holds a full path. "Install" is the label a
+  // Complete row carries, so the action comes back with the state.
+  tab.mark_uninstalled("alpha-1.0.zip");
+  REQUIRE(table->item(row_a, 2)->text() != QLatin1String("Installed"));
+  REQUIRE(table->item(row_a, 2)->text() == QLatin1String("Install"));
+  REQUIRE(table->item(row_b, 2)->text() == QLatin1String("Installed"));
+
+  // Only an installed row is touched, and only the one that matches.
+  tab.mark_uninstalled("no-such-archive.zip");
+  REQUIRE(table->item(row_b, 2)->text() == QLatin1String("Installed"));
+  tab.mark_uninstalled("");
+  REQUIRE(table->item(row_b, 2)->text() == QLatin1String("Installed"));
+
+  // "Hide installed" must let the row back, or the user never sees the
+  // archive again.
+  tab.mark_uninstalled("beta-2.0.zip");
+  REQUIRE(table->item(row_b, 2)->text() == QLatin1String("Install"));
+}
+
 // MO2 column parity for the downloads list, locked against the rendered table.
 //
 // MO2 (references/modorganizer/src/downloadlist.h:38-50) has 8 columns:
