@@ -12,12 +12,20 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cerrno>
 #include <cstring>
 
 #if defined(_WIN32)
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <shellapi.h>
+#include <fcntl.h>
+#include <io.h>
+#include <sys/stat.h>
+#else
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <unistd.h>
 #endif
 
 namespace engine {
@@ -232,6 +240,29 @@ namespace {
   }
 
 }  // namespace
+
+bool create_empty_file(const std::filesystem::path &path, std::error_code &ec) {
+  ec.clear();
+#if defined(_WIN32)
+  const std::wstring w = path.wstring();
+  const int fd = ::_wopen(w.c_str(), _O_WRONLY | _O_CREAT | _O_TRUNC | _O_BINARY,
+                          _S_IREAD | _S_IWRITE);
+  if (fd < 0) {
+    ec.assign(errno, std::generic_category());
+    return false;
+  }
+  ::_close(fd);
+#else
+  const std::string p = path.string();
+  const int fd        = ::open(p.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
+  if (fd < 0) {
+    ec.assign(errno, std::generic_category());
+    return false;
+  }
+  ::close(fd);
+#endif
+  return true;
+}
 
 bool remove_path(const std::filesystem::path &path, bool permanent) {
   if (path.empty())

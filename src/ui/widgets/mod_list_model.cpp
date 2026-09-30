@@ -41,6 +41,10 @@ ModList::ModList(QObject *parent) : QAbstractTableModel(parent) {
   // (merge resolves via the Fugue pack fallback, plugin-warning is bundled).
   mirror_icon_         = icons.resolve_icon("merge");
   mirror_missing_icon_ = icons.resolve_icon("plugin-warning");
+  // A toggle whose on-disk write failed. Same key as the missing-source
+  // warning on purpose: both mean "this row does not describe what the game
+  // will see", and neither is a reason to raise a modal over the list.
+  toggle_error_icon_   = icons.resolve_icon("plugin-warning");
   // Vendor icons for the Source column (MO2 COL_GAME analogue): resolved
   // through the same vendor_icon_key() mapping the Source tab uses.
   for (const char *key : {"nexusmods", "loverslab", "steam", "moddb"}) {
@@ -109,6 +113,10 @@ QVariant ModList::data(const QModelIndex &index, int role) const {
       icons << mirror_icon_;
     if (m.is_mirrored && m.mirror_source_missing)
       icons << mirror_missing_icon_;
+    // The toggle could not be written to disk, so the row is describing a
+    // state the game will not see. The reason is in the Flags tooltip.
+    if (!m.toggle_error.isEmpty())
+      icons << toggle_error_icon_;
     if (m.invalid_data || m.no_metadata)
       icons << invalid_icon_;
     return QVariant::fromValue(icons);
@@ -395,7 +403,8 @@ QVariant ModList::data(const QModelIndex &index, int role) const {
     return mod.source_type;
   if (role == Qt::ToolTipRole && index.column() == Flags &&
       (!mod.tags.isEmpty() || mod.is_fomod || mod.root_override || mod.invalid_data ||
-       mod.no_metadata || mod.is_empty || mod.has_hidden_files || mod.is_mirrored)) {
+       mod.no_metadata || mod.is_empty || mod.has_hidden_files || mod.is_mirrored ||
+       !mod.toggle_error.isEmpty())) {
     QStringList lines;
     // MO2 flag texts, in ModInfo::getFlags() order. "Not endorsed yet",
     // "Mod is being tracked on the website" and the alternate-game warning
@@ -427,6 +436,14 @@ QVariant ModList::data(const QModelIndex &index, int role) const {
     }
     if (mod.root_override) {
       lines << tr("Deploys to the game root directory");
+    }
+    // The on-disk write for the last toggle failed. The engine's reason is
+    // reproduced verbatim (it names the sentinel, the path and what the OS
+    // said), with the consequence stated first so the user does not have to
+    // infer which of the two states is lying.
+    if (!mod.toggle_error.isEmpty()) {
+      lines << tr("This mod's enabled state is NOT what the game will see: %1")
+                    .arg(mod.toggle_error);
     }
     for (const auto &tag : mod.tags)
       lines << tr("%1: %2").arg(tag.type.toUpper(), tag.message);
@@ -1524,6 +1541,19 @@ void ModList::set_mirror_info(const QString &id, bool mirrored, bool source_miss
       m.is_mirrored           = mirrored;
       m.mirror_source_missing = source_missing;
       m.mirror_source_path    = source_path;
+      emit dataChanged(index(i, Flags), index(i, Flags),
+                       {Qt::SizeHintRole, kFlagIconsRole, Qt::ToolTipRole});
+      return;
+    }
+  }
+}
+
+void ModList::set_toggle_error(const QString &id, const QString &reason) {
+  for (int i = 0; i < mods_.size(); ++i) {
+    if (mods_[i].id == id) {
+      if (mods_[i].toggle_error == reason)
+        return;
+      mods_[i].toggle_error = reason;
       emit dataChanged(index(i, Flags), index(i, Flags),
                        {Qt::SizeHintRole, kFlagIconsRole, Qt::ToolTipRole});
       return;

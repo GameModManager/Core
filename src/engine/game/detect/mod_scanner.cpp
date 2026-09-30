@@ -776,19 +776,40 @@ std::vector<ScannedMod> ModScanner::scan_folder(
 }
 
 bool ModScanner::disable_mod(const GameKnowledge &knowledge, const std::string &game_id,
-                             const std::filesystem::path &mod_folder) {
+                             const std::filesystem::path &mod_folder,
+                             std::string *error) {
   auto disable_file = disable_mechanism_for(knowledge, game_id);
+  const auto sentinel = mod_folder / disable_file;
 
-  std::ofstream f(mod_folder / disable_file);
-  return f.good();
+  std::error_code ec;
+  if (create_empty_file(sentinel, ec))
+    return true;
+  if (error) {
+    *error = "could not write " + disable_file + " into " + sentinel.string() + ": " +
+             ec.message();
+  }
+  return false;
 }
 
 bool ModScanner::enable_mod(const GameKnowledge &knowledge, const std::string &game_id,
-                            const std::filesystem::path &mod_folder) {
+                            const std::filesystem::path &mod_folder,
+                            std::string *error) {
   auto disable_file = disable_mechanism_for(knowledge, game_id);
+  const auto sentinel = mod_folder / disable_file;
 
   std::error_code ec;
-  return std::filesystem::remove(mod_folder / disable_file, ec);
+  if (std::filesystem::remove(sentinel, ec))
+    return true;
+  if (ec) {
+    // remove() reporting false with an error is a refusal (permissions, a
+    // directory in the way, a read-only mount) - a real failure to report.
+    if (error)
+      *error = "could not remove " + disable_file + " from " + sentinel.string() +
+               ": " + ec.message();
+  }
+  // No error and no removal: the sentinel was already absent, which is the
+  // state the toggle asked for, not a failure. `error` stays empty.
+  return false;
 }
 
 bool ModScanner::set_priority(const GameKnowledge &knowledge,
