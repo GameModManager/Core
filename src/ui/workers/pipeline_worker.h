@@ -165,6 +165,10 @@ signals:
   // dialog). The download's state must be left untouched - this is NOT a
   // failure, and no Failed/Installed mark is applied.
   void install_canceled(const std::string &mod_id);
+  // The archive of a mod a Replace just deleted. The download that installed
+  // it is no longer installed, so its row must stop claiming otherwise.
+  // Emitted only for a Replace, and only on a successful install.
+  void mod_replaced(const std::string &archive_filename);
   void paused(const std::string &mod_id);
   void all_done();
 

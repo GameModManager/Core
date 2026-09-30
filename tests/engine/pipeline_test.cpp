@@ -712,6 +712,69 @@ TEST_CASE("pipeline", "[engine]") {
       REQUIRE(!std::filesystem::exists(dir / "b.txt"));
       std::printf("PASS: install overwrite — cancel aborts cleanly\n");
     }
+
+    // (h) Replace reports the archive the deleted mod came from, read off its
+    // meta.ini before the delete takes it away. That is the whole of
+    // MO2's modReplaced payload (installationmanager.cpp:418-424) and the only
+    // way the UI can find the download row to un-claim.
+    {
+      reset_staging();
+      auto dir = mods / "My Mod";
+      std::error_code ec;
+      std::filesystem::remove_all(dir, ec);
+      std::filesystem::create_directories(dir);
+      std::ofstream(dir / "old.txt") << "old";
+      ModMeta::from_default("My Mod", "nexus", "1234", "old-archive.zip", "1.0")
+          .save_file(dir / "meta.ini");
+      PipelineContext ctx;
+      ctx.mods_dir           = mods;
+      ctx.overwrite_query_cb = [](const std::string &) {
+        return OverwriteDecision{OverwriteAction::Replace};
+      };
+      Mod mod = make_mod(staging);
+      mod.archive_filename = "new-archive.zip";
+      REQUIRE(install(mod, ctx));
+      REQUIRE(ctx.replaced_archive == "old-archive.zip");
+      // The new install's own meta.ini names the new archive, not the old one.
+      const auto after = ModMeta::load_file(dir / "meta.ini");
+      REQUIRE(after.get("General", "installationfile") == "new-archive.zip");
+      std::printf("PASS: install overwrite — replace reports the old archive\n");
+    }
+
+    // (i) Only Replace reports anything. A folder with a meta.ini that Merge,
+    // Rename or Cancel leaves in place must not claim its mod was deleted.
+    {
+      auto leaves_alone = [&](OverwriteAction action, const char *what) {
+        reset_staging();
+        auto dir = mods / "My Mod";
+        std::error_code ec;
+        std::filesystem::remove_all(dir, ec);
+        std::filesystem::create_directories(dir);
+        std::ofstream(dir / "old.txt") << "old";
+        ModMeta::from_default("My Mod", "nexus", "1234", "old-archive.zip", "1.0")
+            .save_file(dir / "meta.ini");
+        PipelineContext ctx;
+        ctx.mods_dir = mods;
+        ctx.overwrite_query_cb = [&](const std::string &) {
+          OverwriteDecision d;
+          d.action = action;
+          if (action == OverwriteAction::Cancel)
+            return d;
+          if (action == OverwriteAction::Rename)
+            d.new_name = "My Mod 9";
+          return d;
+        };
+        Mod mod = make_mod(staging);
+        const bool ok = install(mod, ctx);
+        CAPTURE(what);
+        REQUIRE(ctx.replaced_archive.empty());
+        return ok;
+      };
+      REQUIRE(leaves_alone(OverwriteAction::Merge, "merge"));
+      REQUIRE(leaves_alone(OverwriteAction::Rename, "rename"));
+      REQUIRE_FALSE(leaves_alone(OverwriteAction::Cancel, "cancel"));
+      std::printf("PASS: install overwrite — only Replace reports the old archive\n");
+    }
   }
 
   // normalize_staging_root (MO2 InstallerQuick::getSimpleArchiveBase +
