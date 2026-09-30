@@ -1,11 +1,13 @@
 #include "ui/widgets/executables_entry.h"
 
+#include "engine/deploy/launch/elevation.h"
 #include "ui/theme/icon_manager.h"
 
 #include "ui/settings/settings.h"
 #include "ui/widgets/smooth_scroll.h"
 #include <QAbstractItemModel>
 #include <QComboBox>
+#include <QStandardItemModel>
 #include <QCoreApplication>
 #include <QDialogButtonBox>
 #include <QFileDialog>
@@ -100,6 +102,7 @@ namespace Executables {
     obj["mod"]   = output_mod;
     obj["icon"]  = icon_path;
     obj["env"]   = QJsonArray::fromStringList(environment);
+    obj["elev"]  = elevation;
     return obj;
   }
 
@@ -111,6 +114,7 @@ namespace Executables {
     e.start_in   = obj["cwd"].toString();
     e.output_mod = obj["mod"].toString();
     e.icon_path  = obj["icon"].toString();
+    e.elevation  = obj["elev"].toString();
     e.environment.clear();
     const auto env_arr = obj["env"].toArray();
     e.environment.reserve(env_arr.size());
@@ -320,6 +324,35 @@ namespace Executables {
     }
     form->addRow(tr("Output to mod:"), output_mod_combo_);
 
+    // Elevation. Same combo idiom as Output to mod: fixed item data, findData()
+    // to restore, itemData() to read back.
+    elevation_combo_ = new QComboBox(right_panel);
+    elevation_combo_->addItem(tr("--- None ---"), QVariant(""));
+    elevation_combo_->addItem(tr("fakeroot (no password)"), QVariant("fakeroot"));
+    elevation_combo_->addItem(tr("root (discouraged)"), QVariant("root"));
+
+    const bool fakeroot_ok = engine::fakeroot_available();
+    if (!fakeroot_ok) {
+      // A greyed-out option with no explanation is a support ticket waiting to
+      // happen, so the reason is part of the control's tooltip.
+      if (auto *model =
+              qobject_cast<QStandardItemModel *>(elevation_combo_->model())) {
+        if (auto *item = model->item(elevation_combo_->findData(QVariant("fakeroot"))))
+          item->setEnabled(false);
+      }
+    }
+    elevation_combo_->setToolTip(
+        tr("Run as root: your desktop environment asks you to authorise the launch "
+           "itself, so the password is never seen by GameModManager.\n\n"
+           "Discouraged - the game already runs inside an unprivileged user "
+           "namespace and normally cannot damage the rest of the system, and Linux "
+           "and macOS rarely need root at all. For a tool that only has to look "
+           "like root (installer, package manager, archiver), prefer fakeroot: it "
+           "needs no password and raises no prompt.\n\n%1")
+            .arg(fakeroot_ok ? QString()
+                             : QString::fromUtf8(engine::fakeroot_unavailable_tooltip())));
+    form->addRow(tr("Run as:"), elevation_combo_);
+
     // Icon row: checkbox + preview + button
     auto *icon_row = new QHBoxLayout;
     use_app_icon_check_ =
@@ -396,6 +429,8 @@ namespace Executables {
             &ContentWidget::on_field_changed);
     connect(output_mod_combo_, &QComboBox::editTextChanged, this,
             &ContentWidget::on_field_changed);
+    connect(elevation_combo_, &QComboBox::currentIndexChanged, this,
+            &ContentWidget::on_field_changed);
     connect(env_edit_, &QPlainTextEdit::textChanged, this,
             &ContentWidget::on_field_changed);
 
@@ -461,6 +496,11 @@ namespace Executables {
       output_mod_combo_->setEditText(e.output_mod);
     else
       output_mod_combo_->setCurrentIndex(0);
+
+    // An unrecognised value (written by a newer build, or fakeroot since
+    // removed) falls back to "--- None ---" rather than leaving the combo unset.
+    const int elev_idx = elevation_combo_->findData(QVariant(e.elevation));
+    elevation_combo_->setCurrentIndex(elev_idx >= 0 ? elev_idx : 0);
 
     bool has_custom = !e.icon_path.isEmpty();
     use_app_icon_check_->setChecked(!has_custom);
@@ -818,7 +858,8 @@ namespace Executables {
       e.arguments   = args_edit_->text().trimmed();
       e.start_in    = start_in_edit_->text().trimmed();
       e.output_mod  = current_output_mod_text();
-      e.environment = parse_environment_text(env_edit_->toPlainText());
+    e.environment = parse_environment_text(env_edit_->toPlainText());
+    e.elevation   = elevation_combo_->currentData().toString();
       if (use_app_icon_check_->isChecked())
         e.icon_path.clear();
 

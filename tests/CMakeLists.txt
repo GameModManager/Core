@@ -466,6 +466,13 @@ gmm_catch2_test(executables_parser_test ui/executables_parser_test.cpp
     UI
     LIBS gmm_ui)
 
+# Elevated launch planning + the per-executable elevation field. Asserts the
+# constructed argv only - nothing here executes pkexec/osascript/fakeroot, and
+# the fakeroot probe is injected so both branches are deterministic.
+gmm_catch2_test(elevation_test engine/elevation_test.cpp
+    UI
+    LIBS gmm_ui Qt6::Test)
+
 # Workspace-421: executables seeding also scans macOS app roots outside
 # game_dir (~/Applications, /Applications) and stores those hits absolute.
 gmm_catch2_test(executables_seed_test ui/executables_seed_test.cpp
