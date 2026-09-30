@@ -375,13 +375,19 @@ void ModListController::setup_mod_list(QVBoxLayout *left_layout) {
              const QVector<int> &roles) {
         (void)bottomRight;
         if (roles.contains(Qt::CheckStateRole) && topLeft.column() == ModList::Name) {
-          auto id =
-              w_->mod_model_
-                  ->data(topLeft.sibling(topLeft.row(), ModList::Name), Qt::EditRole)
-                  .toString();
+          // The id is the model row's entry, NOT the Name cell's EditRole:
+          // EditRole carries the display name (Isaac's metadata.xml title,
+          // MO2's [General] name), and every consumer downstream keys on the
+          // folder name - the content_dir lookup, resolve_mod_folder, the
+          // profile modlist and the deferred queue. Feeding the display name
+          // in resolved no folder at all and silently dropped the toggle.
+          const int row = topLeft.row();
+          const auto &entries = w_->mod_model_->mods();
+          if (row < 0 || row >= static_cast<int>(entries.size()))
+            return;
           bool enabled =
               w_->mod_model_->data(topLeft, Qt::CheckStateRole).toInt() == Qt::Checked;
-          sync_mod_enable_state(id, enabled);
+          sync_mod_enable_state(entries[static_cast<size_t>(row)].id, enabled);
 
           // Update the mod-list counter (enabled / total)
           update_mod_count_label();
