@@ -5,6 +5,8 @@
 #include <string>
 #include <vector>
 
+#include "engine/deploy/launch/elevation.h"
+
 namespace engine {
 
 class Platform;
@@ -78,6 +80,11 @@ struct LaunchParams {
   // pre-existing behavior). Relative paths are resolved against game_dir.
   // Applies to every launch path (overlay, LD_PRELOAD, native, Proton).
   std::filesystem::path cwd;
+
+  // Extra privilege requested for the launch: None, Fakeroot (unprivileged,
+  // fakes uid 0) or Root (the desktop environment's own authorisation prompt).
+  // Fakeroot is the usual answer on Linux and macOS; Root is discouraged.
+  Elevation elevation = Elevation::None;
 };
 
 struct LaunchResult {

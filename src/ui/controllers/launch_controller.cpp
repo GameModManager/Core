@@ -1,4 +1,5 @@
 #include "ui/controllers/launch_controller.h"
+#include "engine/deploy/launch/elevation.h"
 #include "platform/platform.h"
 #include "ui/controllers/downloads_controller.h"
 #include "ui/controllers/mod_list_controller.h"
@@ -223,6 +224,7 @@ toml::table exec_entry_to_toml(const Executables::Entry &e) {
   for (const auto &v : e.environment)
     env.push_back(v.toStdString());
   t.emplace("env", std::move(env));
+  t.emplace("elev", e.elevation.toStdString());
   t.is_inline(true);
   return t;
 }
@@ -549,6 +551,35 @@ void LaunchController::launch_with_executable(
 
   auto exec_path = std::filesystem::path(full_path.toStdString());
 
+  // Extra privilege, resolved from the entry the same way output_mod is. The
+  // mechanism is checked here, on the UI thread, before the deploy starts: a
+  // missing helper is then a dialog with a real reason instead of a silent
+  // launch or a failure only after a full mod deploy. Checking here also
+  // matters for the prompt itself - the launch child has no session bus and
+  // its stdio is /dev/null, so the desktop environment's authorisation dialog
+  // can only ever be raised from here, not from the child.
+  std::string elevation_value;
+  if (const auto *match = Executables::entry_for_path(
+          w_->right_panel_->exec_controls()->executable_entries(),
+          w_->current_game_dir_, full_path)) {
+    elevation_value = match->elevation.toStdString();
+  }
+  const auto elevation = engine::parse_elevation(elevation_value);
+  if (elevation != engine::Elevation::None && !engine::elevation_supported(elevation)) {
+    const QString title = elevation == engine::Elevation::Fakeroot
+                              ? tr("fakeroot is not available")
+                              : tr("Running as administrator is not available");
+    engine::Logger::instance().error("Launch blocked - " +
+                                     engine::elevation_to_string(elevation) +
+                                     " unavailable");
+    ui::report_error(
+        title, w_,
+        QString::fromStdString(
+            engine::plan_elevation(elevation, exec_path, {}).reason));
+    trace.end_flow("launch", false, "Elevation mechanism unavailable");
+    return;
+  }
+
   // Output-to-mod routing (MO2 getByBinary parity): an explicit target from
   // the exec-controls combo wins; otherwise the launched binary's configured
   // output mod is resolved from the executable entries, so toolbar shortcuts
@@ -638,6 +669,10 @@ void LaunchController::launch_with_executable(
   req.args = split_arguments(arguments);
   if (!start_in.isEmpty())
     req.cwd = resolve_start_in(w_->current_game_dir_, start_in);
+
+  // Checked above, before the deploy: by the time the engine builds the argv
+  // the mechanism is known to be present, so the engine does not re-report it.
+  req.elevation = elevation;
 
   if (!w_->launch_deploy_thread_) {
     w_->launch_deploy_thread_ = new ui::DeployThread(w_);
