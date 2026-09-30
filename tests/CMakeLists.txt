@@ -620,6 +620,13 @@ gmm_catch2_test(filter_shortcuts_test ui/filter_shortcuts_test.cpp
     UI
     LIBS gmm_ui Qt6::Test)
 
+# In-window log view retention. The panel is fed by engine::Logger for the
+# whole session, so the rendered document needs an on-screen window or it grows
+# without bound; this pins the window and that the tail is what survives.
+gmm_catch2_test(console_panel_test ui/console_panel_test.cpp
+    UI
+    LIBS gmm_ui)
+
 # MO2 menu parity - the Help tree (order, the game-support-URL condition, the
 # stubbed Tutorials submenu) and the keyboard table read off the real
 # AppMenuBar. The menu bar owns every action and its shortcut, so it is built
@@ -647,16 +654,28 @@ if(UNIX AND NOT APPLE)
     add_test(NAME ci_intercept_test COMMAND ci_intercept_test)
     set_tests_properties(ci_intercept_test PROPERTIES ENVIRONMENT "TZ=UTC")
 
-    # Workspace-86bq: deliberate leak that MUST still be reported. The binary
-    # links the same suppression list as every other test; PASS_REGULAR_
-    # EXPRESSION matches LSan's report, so a suppression entry broad enough
-    # to hide our own leaks turns this test red.
-    add_executable(lsan_selftest engine/lsan_selftest.c
-        support/lsan_suppressions.c)
-    add_test(NAME lsan_selftest COMMAND lsan_selftest)
-    set_tests_properties(lsan_selftest PROPERTIES
-        ENVIRONMENT "TZ=UTC"
-        PASS_REGULAR_EXPRESSION "detected memory leaks")
+    # Deliberate leak that MUST still be reported. The binary links the same
+    # suppression list as every other test; PASS_REGULAR_EXPRESSION matches
+    # LSan's report, so a suppression entry broad enough to hide our own
+    # leaks turns this test red.
+    #
+    # Gated on a leak sanitizer being compiled in, not on the platform: the
+    # binary is plain C with no allocator of its own, so the report comes
+    # entirely from the compiler's -fsanitize flag. `-fsanitize=leak` is
+    # standalone LSan; `-fsanitize=address` enables LSan by default on Linux.
+    # Without either, the binary leaks silently and exits 0, so registering
+    # the test unconditionally leaves it permanently red in a default build.
+    # CMAKE_C_FLAGS is what compiles this target, but a project-wide sanitizer
+    # is often set through CXX-only flags, so accept either.
+    if(CMAKE_C_FLAGS MATCHES "fsanitize=(address|leak)"
+       OR CMAKE_CXX_FLAGS MATCHES "fsanitize=(address|leak)")
+        add_executable(lsan_selftest engine/lsan_selftest.c
+            support/lsan_suppressions.c)
+        add_test(NAME lsan_selftest COMMAND lsan_selftest)
+        set_tests_properties(lsan_selftest PROPERTIES
+            ENVIRONMENT "TZ=UTC"
+            PASS_REGULAR_EXPRESSION "detected memory leaks")
+    endif()
 
     # 7-Zip is the only source-built shared library, so it is the only one whose
     # location a copied binary depends on. Not a Catch2 case: it reads the built
