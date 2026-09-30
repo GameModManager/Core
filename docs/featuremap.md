@@ -1,313 +1,56 @@
 # Feature Map - MO2 vs GMM
 
-Living document tracking MO2 feature parity and GMM-exclusive features.
+Lightweight parity tracker. One row per feature, one line per cell: **a status
+plus a pointer, nothing else.**
 
-> ## USVFS is a PLANNED port, not a rejected feature
+> ### USVFS is a PLANNED port, not a rejected feature
 >
-> **USVFS is intended to be ported from MO2. It is a planned feature and it is
-> not a fabrication.** It has simply not been started yet. **Every row in this
-> document whose subject is USVFS machinery and that is missing today carries
-> `⏳`** - dll loading, virtual links, process hooking, the USVFS log stream,
-> USVFS crash capture, the executable blacklist that feeds it, BSA-aware
-> mapping. `⏳` means a **real gap that we want, deferred, blocked on the
-> standing decision not to write Windows code before MO2 parity**. Its absence
-> is the expected state of an unstarted port, not a decision against the
-> feature.
->
-> Two things keep their own status, and neither is a counterexample: rows that
-> are already **partly or fully present** keep `⚠️`/`✅` - "Forced library
-> loading" is `⚠️` because the profile copy already ships, and a partial is not
-> a missing row - and rows whose subject is USVFS but whose absence is caused by
-> something other than the Windows decision keep `❌`.
->
-> **`⏳` is not `🚫`.** A row marked `🚫` is not-applicable: a Windows-shaped
-> mechanism with no Linux counterpart that we do not intend to port. A row
-> marked `⏳` is wanted work. Reading one as the other is a mistake this document
-> previously invited and has now corrected - do not carry it forward.
->
-> Two consequences for anyone reading or editing this file:
->
-> 1. **Do not mark a USVFS row fabricated merely because its symbols are
->    absent today.** Absence is what an unstarted port looks like. Where a
->    *name* is wrong - `describe_usvfs_error` appears nowhere in `src/` or
->    `tests/`, and `usvfsCreateMiniDump` is not a symbol in MO2 - the row says
->    so about **the name only**, and records the real name. The underlying
->    feature stays `⏳`.
-> 2. **USVFS being blocked does not block the rest of the work.** Non-Windows
->    items can and should proceed meanwhile; they are `⚠️`/`❌`, not `[win]`.
->
-> Tracked as a planned port on its own ticket (`Workspace-3br4`); the
-> Windows-blocked rows it covers are listed under
-> [Windows-blocked items](#windows-blocked-items).
+> USVFS is intended to be ported from MO2 and has not been started, so every row
+> whose subject is USVFS machinery is `⏳`. **`⏳` is not `🚫`:** `⏳` is wanted
+> work deferred behind the standing no-Windows-code-before-parity decision,
+> `🚫` is a Windows-shaped mechanism with no Linux subject and is closed for
+> good. **Absence is what an unstarted port looks like** - do not mark a USVFS
+> row fabricated because its symbols are absent. Port tracked on
+> `Workspace-3br4`.
 
-**Legend (feature status):**
-- ✅ = Implemented in GMM
-- ⚠️ = Partially implemented (gaps remain)
-- ❌ = Missing in GMM (MO2 has it) **and worth building**
-- 🚀 = GMM-exclusive (surpasses MO2)
-- 🚫 = **Not applicable - will not port.** MO2 has it; GMM is not missing it and
-  should not add it. The row states the reason, and it is always the same kind
-  of reason: a mechanism that is Windows by construction with no Linux subject
-  at all (`AllocConsole`, NTFS alternate data streams, WMI, FOLDERID GUIDs,
-  Win32 ACLs, elevation restarts, the Windows Event Log service), or a control
-  that would have nothing behind it. Added 2026-09-30 when section 3 turned out
-  to be mostly rows of that shape.
-- ⏳ = **Planned port - not started.** MO2 has it, GMM **wants** it, and it is
-  not built yet. In practice every `⏳` row is also tagged `[win]`, because the
-  port is gated on the standing decision not to write Windows code before MO2
-  parity. `⏳` is a **backlog item that is deferred, not a closed question** -
-  it is deliberately kept in the backlog, where it belongs, and deliberately
-  kept out of the parity denominator, for the same reason `[win]` rows are
-  excluded: blocked by decision, not by effort.
+**Cell format:** `<status> <what it is> - <file:line>`
 
-**Read `❌`, `⏳` and `🚫` as three different things.** `❌` is missing and worth
-building now. `⏳` is missing, wanted, and blocked - a real gap deferred. `🚫`
-is missing, and not going to happen. The first two are work; only the third is
-closed. Folding `⏳` into `🚫` is a mistake: it reports wanted work as rejected
-and hides the feature. Folding `❌` and `⏳` together is also a mistake, in the
-other direction: it implies the blocked rows are schedulable today.
+| Marker | Meaning |
+|--------|---------|
+| `✅` | Shipped, done well |
+| `🚀` | GMM better than MO2, or MO2 lacks it |
+| `⚠️` | Partially there |
+| `❌` | Missing, wanted now |
+| `⏳` | Planned, not started - even when MO2 already has it |
+| `🚫` | Not applicable / will not port |
 
-**Legend (verification), second token in the Status column:**
-- `✔` = re-verified on **2026-09-29** against the vendored MO2 source AND today's
-  `src/` tree. Both sides were read; the row is believed correct as written.
-- `·` = **not re-verified on 2026-09-29.** The status symbol is carried over
-  unchanged from the Sep 23-24 exhaustive proof pass. It may be right, it may
-  be stale, it may be wrong. Treat it as a lead, not a finding.
-- `[win]` = blocked by a standing user decision (no Windows code until MO2
-  parity), not an ordinary gap. Excluded from the parity denominator; see
-  [Windows-blocked items](#windows-blocked-items).
+**A `✅` is only for something GMM does WELL.** Matching a MO2 limitation is
+never a `✅` - it is `🚀` if we do it better, or `❌`/`⏳` if we do not have it.
 
-A `✔` on a row means the row was checked. It does **not** mean the feature is
-complete - a `✔ ❌` is a verified missing feature. A row that could not be
-established either way is left `·`, never guessed.
+**Verification** (second token in Status): `✔` re-verified against the vendored
+MO2 source and the live `src/` tree; `·` carried over unverified, a lead not a
+finding. A `✔` means the row was checked, not that the feature is complete.
 
----
-
-## Verification note - 2026-09-29
-
-**This document was last fully proven on 2026-09-24 (commit `038da90`, 1055
-rows). It was 5 versions stale on 2026-09-29 (doc last touched 2026-09-23,
-`main` at `7ee9d96`, v0.5.12). This pass re-verified it in part. Read the
-`·`/`✔` markers before quoting any number out of this file.**
-
-### Why this pass exists
-
-Five consecutive parity tickets (Workspace-lbe1.2, lbe1.5, lbe1.7, lbe1.11,
-lbe1.12 and the mod-list/downloads work that followed) were drafted from this
-document and had to be corrected against MO2's real source before they could be
-implemented. Confirmed fabrications carried by earlier drafts of this file:
-
-- A downloads column list containing **`Filetype`** and **`File ID`**. MO2's
-  download list has neither. `references/modorganizer/src/downloadlist.h:38-51`
-  is `COL_NAME, COL_STATUS, COL_SIZE, COL_FILETIME, COL_MODNAME, COL_VERSION,
-  COL_ID, COL_SOURCEGAME`. `COL_ID`'s header label is literally `Nexus ID`
-  (`downloadlist.cpp:82-83`).
-- Mod-list cell tooltip strings **"Overwrites: X" / "Overwritten by: Y" /
-  "Conflicting files: N"**. These appear nowhere in MO2. The real strings are
-  `ModList::getConflictFlagText` (`modlist.cpp:154-181`): "Overwrites loose
-  files", "Overwritten loose files", "Loose files Overwrites & Overwritten",
-  "Redundant", plus four archive variants. `modinfo.h:70-81`, which some drafts
-  cited, is the `EConflictFlag` *enum*, not text.
-- A 13-column mod-list claim with the wrong order. `modlist.h:83-96` is the
-  authority: Name, Conflicts, Flags, Content, Category, Author, Uploader,
-  Nexus ID, Source Game, Version, Installation, Priority, Notes.
-- A status-bar "progress bar for mod operations/downloads" and "network rates".
-  MO2's status bar has a `QProgressBar` (`statusbar.cpp:63-80`) but it is only
-  driven by `setProgress(int)` for the "Loading..." text; there is no
-  mod-operation progress bar and no network-rate readout anywhere in it.
-
-The lesson generalises: **a row in this file is a claim, not evidence.** The
-proof must be re-read before the row is trusted.
-
-### What was re-verified on 2026-09-29
-
-Coverage is deliberately uneven, weighted to what a user actually notices.
-
-| Layer | Coverage | Why |
-|-------|----------|-----|
-| Mod list - columns, header tooltips, cell tooltips, default-hidden, double-click | **full** | shipped in 0.5.8-0.5.10; highest chance of being wrong and highest value if right |
-| Downloads tab - columns, default-hidden, header tooltips, context menu, double-click | **full** | shipped in 0.5.9; the fabrications above came from here |
-| Plugin view - columns, header tooltips, context menu, tooltip blocks | **full** | the `lbe1` epic's deepest audit; the doc's rows were badly out of date |
-| Help menu tree + the eight MO2 shortcut keys | **full** | shipped in 0.5.4-0.5.6 |
-| Status bar - context label, source meters, what MO2 has that we do not | **full** | shipped in 0.5.12 |
-| Settings - the rows the 0.5.x commits touched (previews toggle, reset dialog choices, notification flag) | **full** | shipped across 0.5.2-0.5.12 |
-| `doubleClicksOpenPreviews` + the Alt/Ctrl file-tree modifier swap | **full** | shipped in 0.5.2; spans Data, Conflicts and Mod-Info file trees |
-| What's This on the 19 main-window surfaces | **count verified** | 19 `setWhatsThis` call sites, 17 files |
-| `Workspace-lbe1.1` .. `lbe1.12` audit findings | **spot-checked** | every one of the 12 was re-read against the code; corrections noted in-line |
-| Game-native (Isaac) sort-order round-trip | **full** | shipped 0.5.2; the write target and the phantom-row skip are both non-obvious and were worth checking |
-| Section 21 Archive & Installation (20 rows) + section 23's `U175` | **full** | 2026-09-30; 8 of the 20 rows were wrong. See the note below |
-| Everything else (VFS internals, deploy, LOOT, archives, profiles, executables, CLI, packaging, themes, platform layer) | **not re-verified** | left `·` |
-
-**This is a good-faith partial re-verification, not a full re-audit.** 73 of
-the 1022 non-`[win]` rows carry `✔` - about 7% of the file. The other 949 carry
-`·` and are exactly as trustworthy - or untrustworthy - as they were on
-2026-09-24. Concentrating on what shipped in five versions bought accuracy where
-it matters most; it did not buy coverage, and the file should not be read as if
-it had. (The counts in this paragraph were recounted on 2026-09-30 against the
-table rows; the previous figures - 50 of 1023, and 973 unverified - were off by
-a few rows before that.)
-
-### Method
-
-For a `✔` row both sides were read, never inferred:
-
-- **MO2 side**: `references/modorganizer` at `efe2a02d` (upstream master,
-  2026-07-08). Column sets, header labels, header tooltips, cell tooltips and
-  menu trees were taken from the enum/`.ui`/literal, not from a summary.
-- **GMM side**: the live `projects/Core/src/` tree at `7ee9d96`. Structural
-  lookups used the treesitter MCP; `grep` was used for settings keys, string
-  literals and header-line scans.
-- **Both**: the row's status had to be backable by a `file:line` on the GMM
-  side that still resolves. Where a citation had drifted (renumbering, moved
-  functions) the citation was corrected; where the behaviour it pointed at was
-  gone the row was re-scored.
-
-**Not done**: no build, no test run, no runtime observation. Every claim here
-is a static reading of source. Nothing was marked implemented on the strength
-of a test name.
-
-### Verification note - 2026-09-30, section 21 (Archive & Installation)
-
-Section 21 was re-verified in full, all 20 rows, both sides read. **Eight of
-the twenty rows were wrong as written** - the highest error rate of any section
-checked so far, and three of the wrong ones had already produced tickets.
-
-| Row | Was | Now | Why it was wrong |
-|-----|-----|-----|-----------------|
-| Archive password support | ❌ | ✅ | shipped this week. In-process passphrase for both readers, shared attempt budget, never on a command line |
-| Installation merge/replace | ❌ | ✅ | shipped and tested; the dialog is a faithful port of `queryoverwritedialog.ui` |
-| Backup on install | ❌ | ✅ | the backup was always taken; only the *remembered* checkbox state was missing, and that landed in this pass |
-| U194 installer error strings | ❌ | ⚠️ | shipped since the 2026-09-29 pass: a failed install now reports the real reason. The one MO2 string with no counterpart is unreachable in GMM's stage-claim model |
-| U195 7z error strings | ❌ | ❌ *(reason changed)* | the row was right that they are missing and wrong to assume that means we want them: 3 of 9 are Windows-bound, and the other 6 key on a COM archiver we do not have |
-| U282 filetree abstractions | ⚠️ | ⚠️ *(upgraded)* | understated. `DirFileTree` exists too, with a shared-shape test; only MO2's memoized virtual tree has no counterpart |
-| U285 validationprogressdialog | ❌ | ❌ *(fabrication)* | the dialog validates a **Nexus API key**, not an archive. Nothing in it touches extraction, so the row's own parenthetical was invented |
-| `IPluginInstaller::EInstallResult` | ❌ | ❌ *(deliberate)* | still missing, and now marked as a decision not to port: a 7-state competing-installer enum over a stage-claim model has no meaning here |
-
-**The two U-rows are the lesson worth keeping.** Both were written by reading a
-filename and a row label, not the code. `validationprogressdialog.ui` is a
-Nexus key validator; `getErrorString` switches on an enum belonging to an
-in-process 7z COM archiver. Neither had anything to do with the section they
-were filed under. A `.ui` filename is not a feature description, and a `tr()`
-table is not a requirement.
-
-Citation drift corrected while checking: `module_config.h:314` -> `:327`,
-`condition_tester.h:10` -> `:36`, `fomod_view_model.h:52` -> `:51`,
-`file_installer.h:24,32` -> `:32`, `staging_layout.h:50,58` -> `:51,59`,
-`install_progress_dialog.h:19` -> `:19` (unchanged), `archive_file_tree.h:19`
-(gained its real path, `engine/mod/filetree/`).
-
-**Also fixed, same defect class, section 23**: `U175 QueryOverwriteDialog` was
-❌ while the row directly above it credited the same dialog as ✅. All five
-controls exist (`query_overwrite_dialog.cpp:57-68`).
-
-**Method**: MO2 read from `references/modorganizer` at the vendored tree;
-`installationmanager.{h,cpp}`, `settings.cpp`, `queryoverwritedialog.{h,ui}`,
-`downloadmanager.cpp`, `mainwindow.cpp`, `nxmaccessmanager.h`,
-`validationprogressdialog.ui`. GMM read from `projects/Core/src/` at `36a9a29`.
-The three rows that had already been found wrong (merge/replace, backup, and the
-password row this file still called ❌) were re-confirmed against source rather
-than taken on trust from the earlier analysis.
+`[win]` = blocked by the standing decision not to write Windows code until MO2
+parity. Excluded from the parity denominator.
 
 ---
 
 ### Reading the parity number
 
-`MO2 parity` in the summary is `✅ / (✅ + ⚠️ + ❌)` - rows where MO2 has a
-feature and we match it, as a share of every row where MO2 has one. Three
-things follow from that choice and should be said plainly:
-
-1. **🚀 rows are excluded.** A GMM-only capability is neither a success at
-   parity nor a failure of it, so it is not in the denominator.
-2. **[win] rows are excluded.** They are blocked by decision, not by effort.
-   The count is given separately so the exclusion is visible, not hidden.
-3. **The number is a lower bound on the work, not a measure of quality.** A
-   ✅ row is a row where the behaviour matches, which is not the same as a row
-   where the feature is finished. ⚠️ rows carry most of the real remaining
-   surface, and they are counted as not-parity.
+`MO2 parity` = `✅ / (✅ + ⚠️ + ❌)`, and it is a lower bound on the work, not
+a measure of quality: a `✅` row means the behaviour matches, not that the
+feature is finished. `🚀` rows are excluded (a GMM-only capability is neither a
+parity success nor a failure) and `[win]` rows are excluded (blocked by
+decision, not effort). A `·` row is a lead, not a finding.
 
 ### Windows-blocked items
 
-44 rows are tagged `[win]`. All of them are held back by the same standing
-decision: **no Windows code until MO2 parity**. They are excluded from the
-parity denominator below, and none of them should be scheduled as though they
-were ordinary work. But the shared *block* is not a shared *disposition*, and
-these 44 rows split into two kinds that must not be lumped together:
+`[win]` rows split by disposition, and the split matters for scheduling:
 
-- **`⏳` - deferred-planned. Wanted, not started.** USVFS `dll` loading and
-  virtual linking, hooked process creation, the wait-for-all-proxies on exit,
-  the executable-blacklist VFS directive, USVFS crash capture and the USVFS log
-  stream. USVFS is a **planned port from MO2** (see the note at the top of this
-  file). These rows are in the backlog, deferred, blocked on the Windows
-  decision - not closed questions. When the port starts they are the spec.
-- **`🚫` - not-applicable. Genuinely Windows-shaped, will not port.**
-  `CreateJobObjectW` process monitoring, `conhost.exe` filtering, `SteamExe`
-  registry auto-start, `IShellLink` / `IContextMenu` COM shell integration,
-  `TaskProgressManager` taskbar progress, protocol-handler self-registration into
-  the Windows registry, NTFS alternate data streams, WMI security-product
-  enumeration, FOLDERID GUID known folders, Win32 ACLs, elevation restarts.
-  There is no Linux subject for any of these and none is planned.
-
-The distinction matters for scheduling and for reading the backlog: a `⏳` row is
-work we have committed to do later, and a `🚫` row is work that will never be
-done. Both are blocked today.
-
----
-
-## Audit reconciliation - `Workspace-lbe1` .. `lbe1.12`
-
-The 12 audit children of the parity epic were written 2026-09-22 and
-re-verified the same day. Roughly a fifth of what they shipped since has now
-landed. Verdicts below are from re-reading each finding against the code today.
-Where an audit was **wrong**, that matters more than where it was right - those
-are the claims that produced the fabrications listed above.
-
-| Ticket | Verdict |
-|--------|---------|
-| `lbe1.1` mod list | **Largely superseded.** G8/G9 (columns, header tooltips), G10 (name tooltip), G11 (conflict/flag tooltip text) have all shipped. **G11's wording was fabricated** - "Overwrites: X" / "Overwritten by: Y" / "Conflicting files: N" are not MO2 strings. G12-G19 (context menu parity, the deep filter tree, LCD stats, keyboard, double-click mapping, OR/AND filter grammar) remain open. |
-| `lbe1.2` downloads | **Column list was fabricated.** "File Name, Size, File ID, Mod ID, Version, Status, Source, Filetype" - MO2 has no `File ID` and no `Filetype`. G20 and G21 (cell tooltip) remain open; G22 is partial; G24 partial; G26 partial. |
-| `lbe1.3` menus/toolbar/status bar | **G48 was fabricated** - MO2's status bar has no mod-operation progress bar. G47 has shipped. G1 (menus), G2 (shortcuts) have shipped; G3-G7, G49-G51, G54 remain open. |
-| `lbe1.4` profiles | All four still open, unchanged. Not re-verified beyond the audit's own notes. |
-| `lbe1.5` settings | G31/G32 still open. Not re-verified beyond the audit's own notes. |
-| `lbe1.6` executables | G34 fixed before the audit noticed. G33/G35 still open. Not re-verified beyond the audit's own notes. |
-| `lbe1.7` archives | **All four still open, and this is now the least-changed surface in the application** - `archives_tab.cpp` is still a bare one-column `QTreeWidget`. This is the single largest untouched gap. |
-| `lbe1.8` data tab | G40 (5 MO2 columns) still open - GMM has 4. G41/G42 partial, as the audit's re-verification said. |
-| `lbe1.9` mod info dialog | G46 still open. G43/G44/G45 partial as described. Not re-verified beyond the audit's own notes. |
-| `lbe1.10` endorsements | Still open. The Mod Info Source-tab Endorse button exists but opens a browser instead of calling the API. Not re-verified beyond the audit's own notes. |
-| `lbe1.11` notifications | **G55 was fabricated** - MO2 has no left navigation panel at all. Half that ticket was void. G54 (notifications) still open. |
-| `lbe1.12` filter bar | G52 shipped (placeholder is now "Filter"). G15 and G18 shipped. All three of this ticket's items are now done. |
-
-Three of the twelve audit tickets contained at least one fabricated claim. So
-did the document they were written from. That is the pattern this file is
-trying to make visible rather than hide.
-
----
-
-### Features comparison table
-
-Recomputed 2026-09-29 from the rows actually present in this file. See
-[Summary](#summary) for the per-section arithmetic and for what is excluded.
-
-| Criteria | Count | Share of the 848 scored rows |
-|----------|-------|------------------------------|
-| MO2 parity (✅) | 296 | 35% |
-| Partial (⚠️) | 152 | 18% |
-| Missing (❌) | 400 | 47% |
-| **MO2 parity rate** | **296 / 848** | **35%** |
-| GMM-exclusive (🚀), not scored | 175 | 16% of all 1067 rows |
-| Windows-blocked ([win]), not scored | 44 | 4% of all 1067 rows |
-
-**296 / 848 = 34.9%.** That is the figure to quote under the definition above.
-It is *higher* than the 27% this file previously published, and that is not a
-sign that more work landed than it did - it is almost entirely the exclusion of
-[win] rows from the denominator. On the old definition, where every row counted
-and nothing was excluded, today's file scores 296 / 1023 = 28.9%, and **that** is
-the number to compare against the 27% it replaces.
-
-**The instinct that parity is far below 27% is closer to right than the old
-number was**, for a different reason than the percentage suggests: **47% of
-scored rows are outright missing and a further 18% are partial**, and a ✅ row
-only means the behaviour matches, not that the feature is finished. See
-[Summary](#summary) for the working and for which sections carry that mass.
+- `⏳` - wanted, not started, in the backlog. When the USVFS port starts they
+  are the spec.
+- `🚫` - genuinely Windows-shaped, no Linux subject, will never be done.
 
 [Jump to **summary**](#summary)
 
@@ -315,240 +58,145 @@ only means the behaviour matches, not that the feature is finished. See
 
 ## 1. Virtual Filesystem
 
-**USVFS itself is a planned port from MO2 and has not been started.** The rows
-below marked `⏳` are that port: wanted, deferred, blocked on the standing
-decision not to write Windows code before MO2 parity. The `🚀` rows are the
-Linux-native VFS GMM already ships instead - the existing substitute, not a
-rejection of the idea. See the note at the top of this file.
+`⏳` rows are the USVFS port; `🚀` rows are the Linux-native VFS GMM ships
+instead. See the USVFS note at the top of this file.
 
 | Feature | MO2 | GMM | Status |
 |---------|-----|-----|--------|
-| USVFS controller (dll loading) | ✅ `usvfs_x64.dll` | ⏳ planned port, not started. `usvfs_mapping.h:3` is a stub and `launcher.cpp:845` is a Windows-only stub; there is no `UsvfsLibrary` in the tree. None of that means the feature was dropped - the port has not begun (ticket Workspace-3br4) | ⏳ ✔ [win] |
-| VFS create/reset | ✅ `usvfsCreateVFS` | ⏳ planned port, not started. No `UsvfsConnector` in the tree today; the create/reset half of the port is unstarted | ⏳ · [win] |
-| Directory-level virtual links | ✅ `usvfsVirtualLinkDirectoryStatic` | ⏳ planned port, not started. No `UsvfsConnector::updateMapping` yet; the GMM side is the `Vfs` FUSE class below, which is not the same mechanism | ⏳ · [win] |
-| File-level virtual links | ✅ `usvfsVirtualLinkFile` | ⏳ planned port, not started. Overlaps the shipped `path_resolver`/`Vfs` work, but the USVFS virtual-link API itself is unported | ⏳ · [win] |
-| Priority-ordered mod mapping | ✅ `OrganizerCore::fileMapping` | ✅ `instance_utils.cpp:362` (staging lowerdir; priority deploy `deploy_utils.cpp:644`) | ✅ · |
-| Create-target (write destination) | ✅ `LINKFLAG_CREATETARGET` | ✅ `overlay_launcher.cpp:118` (upper dir) + `launcher.h:53` (bind-mount target) | ✅ · |
-| Custom overwrite target | ✅ `customOverwrite` param | ✅ `fs_utils.h:230` `relay_output_to_mod` (MO2 Custom Overwrites parity, `fs_utils.h:214`) | ✅ · |
-| Local saves redirect | ✅ `LocalSavegames::mappings` | ✅ `overlay_launcher.cpp:358` (bind-mount install) | ✅ · |
-| Plugin file-mapper mappings | ✅ `IPluginFileMapper::mappings` | ✅ `plugin_loader.cpp:1202` `cb_v2_register_file_mapper` + `file_mapper_registry.h:25` | ✅ · |
-| VFS auto-mapping (BSA-aware) | ✅ `DirectoryEntry::addFromBSA` | ⏳ planned port, not started - BSA awareness is USVFS's file-mapping layer, which arrives with the port | ⏳ · [win] |
-| Archive load order injection | ✅ `enabledArchives` priority | ⚠️ `archives.txt` write only (`profile_switching.cpp:76`), no dynamic injection | ⚠️ · |
-| Forced library loading | ✅ `usvfs::setForcedLibraries` | ⚠️ preserved in profile copy only (`profile_creation.cpp:199`), no runtime loading | ⚠️ · |
-| OverlayFS (Linux) | ❌ | 🚀 `overlay_launcher.h:14` `OverlayFsLauncher` | 🚀 · |
-| LD_PRELOAD intercept (Linux) | ❌ | 🚀 `preload_interceptor.h:23` `PreloadInterceptor` | 🚀 · |
-| Case-insensitive path resolution | ❌ | 🚀 `path_resolver.h:34` + `fs_utils.h:80` `resolve_regular_file_ci` | 🚀 · |
-| PathResolver registry | ❌ | 🚀 `path_resolver_registry.h:25` `PathResolverRegistry` (per-root cache) | 🚀 · |
-| FUSE-based VFS (Linux) | ❌ | 🚀 `vfs.h:14` `Vfs` (FUSE + `file_map_`) | 🚀 · |
+| USVFS controller (dll loading) | ✅ `usvfs_x64.dll` | ⏳ planned port, not started - Workspace-t83d | ⏳ ✔ [win] |
+| VFS create/reset | ✅ `usvfsCreateVFS` | ⏳ planned port, not started - Workspace-y2tx | ⏳ · [win] |
+| Directory-level virtual links | ✅ `usvfsVirtualLinkDirectoryStatic` | ⏳ planned port, not started - Workspace-y2tx | ⏳ · [win] |
+| File-level virtual links | ✅ `usvfsVirtualLinkFile` | ⏳ planned port, not started - Workspace-mjgr | ⏳ · [win] |
+| Priority-ordered mod mapping | ✅ `OrganizerCore::fileMapping` | ✅ staging lowerdir - `instance_utils.cpp:362` | ✅ · |
+| Create-target (write destination) | ✅ `LINKFLAG_CREATETARGET` | ✅ upper dir - `overlay_launcher.cpp:118` | ✅ · |
+| Custom overwrite target | ✅ `customOverwrite` param | ✅ `relay_output_to_mod` - `fs_utils.h:230` | ✅ · |
+| Local saves redirect | ✅ `LocalSavegames::mappings` | ✅ bind-mount install - `overlay_launcher.cpp:358` | ✅ · |
+| Plugin file-mapper mappings | ✅ `IPluginFileMapper::mappings` | ✅ `cb_v2_register_file_mapper` - `plugin_loader.cpp:1202` | ✅ · |
+| VFS auto-mapping (BSA-aware) | ✅ `DirectoryEntry::addFromBSA` | ⏳ BSA mapping arrives with the port - Workspace-vuam | ⏳ · [win] |
+| Archive load order injection | ✅ `enabledArchives` priority | ⚠️ `archives.txt` write only, no injection - `profile_switching.cpp:76` | ⚠️ · |
+| Forced library loading | ✅ `usvfs::setForcedLibraries` | ⚠️ profile copy only, no runtime load - `profile_creation.cpp:199` | ⚠️ · |
+| OverlayFS (Linux) | ❌ | 🚀 `OverlayFsLauncher` - `overlay_launcher.h:14` | 🚀 · |
+| LD_PRELOAD intercept (Linux) | ❌ | 🚀 `PreloadInterceptor` - `preload_interceptor.h:23` | 🚀 · |
+| Case-insensitive path resolution | ❌ | 🚀 `resolve_regular_file_ci` - `fs_utils.h:80` | 🚀 · |
+| PathResolver registry | ❌ | 🚀 `PathResolverRegistry` - `path_resolver_registry.h:25` | 🚀 · |
+| FUSE-based VFS (Linux) | ❌ | 🚀 `Vfs` (FUSE) - `vfs.h:14` | 🚀 · |
 
 ## 2. Launch Pipeline
 
 | Feature | MO2 | GMM | Status |
 |---------|-----|-----|--------|
-| Hooked process creation | ✅ `usvfsCreateProcessHooked` | ⏳ planned port, not started. `launch_game()`'s Windows path logs "Windows stub - launch not yet implemented" and returns an empty result (`launcher.cpp:843-848`) - a stub awaiting the USVFS port, not a rejected feature | ⏳ ✔ [win] |
-| Plain process creation | ✅ `CreateProcessW` | ✅ `runtime.cpp:69` (execvp) + `windows_platform.cpp:175` (CreateProcessW) | ✅ · |
-| Process monitoring (Job Object) | ✅ `CreateJobObjectW` | ❌ UNPROVEN (was: `UsvfsProcessMonitor` - symbol and `CreateJobObjectW` both absent) | ❌ · [win] |
-| Process monitoring (cgroup v2) | ❌ | 🚀 `launcher.cpp:811` `cgroup_is_empty` + subreaper | 🚀 · |
-| Exponential backoff | ✅ 50ms-2s | ❌ UNPROVEN (was: `UsvfsProcessMonitor` - absent; only network backoff exists `network_manager.cpp:888`) | ❌ · [win] |
-| Interesting process selection | ✅ `findInterestingProcessInTrees` | ❌ UNPROVEN (was: `isHiddenProcess` + `Interest` enum - both absent) | ❌ · [win] |
-| Hidden process filtering | ✅ `conhost.exe` + MO2 exe | ❌ UNPROVEN (was: `conhost.exe` + GMM exe - no such filter found) | ❌ · [win] |
-| Cancel / force-unlock | ✅ `UILocker::Session` | ✅ Unlock button `launch_controller.cpp:1655` | ✅ · |
+| Hooked process creation | ✅ `usvfsCreateProcessHooked` | ⏳ Windows launch path is a stub - `launcher.cpp:843` - Workspace-hclp | ⏳ ✔ [win] |
+| Plain process creation | ✅ `CreateProcessW` | ✅ execvp - `runtime.cpp:69` | ✅ · |
+| Process monitoring (Job Object) | ✅ `CreateJobObjectW` | ❌ no `CreateJobObjectW` in tree | ❌ · [win] |
+| Process monitoring (cgroup v2) | ❌ | 🚀 `cgroup_is_empty` + subreaper - `launcher.cpp:811` | 🚀 · |
+| Exponential backoff | ✅ 50ms-2s | ❌ only network backoff - `network_manager.cpp:888` | ❌ · [win] |
+| Interesting process selection | ✅ `findInterestingProcessInTrees` | ❌ no selection logic | ❌ · [win] |
+| Hidden process filtering | ✅ `conhost.exe` + MO2 exe | ❌ no such filter | ❌ · [win] |
+| Cancel / force-unlock | ✅ `UILocker::Session` | ✅ Unlock button - `launch_controller.cpp:1655` | ✅ · |
 | Exit code capture | ✅ `GetExitCodeProcess` | ✅ `launch_controller.cpp:829` | ✅ · |
-| Wait-for-all on app exit | ✅ `waitForAllUSVFSProcessesWithLock` | ⏳ planned port, not started. Waits on USVFS proxy processes, which exist only once USVFS is ported | ⏳ · [win] |
-| Process tree descendant walk | ✅ | ✅ `launcher.cpp:689` `get_process_descendants()` (PPID chain) | ✅ · [win] |
-| Steam -- set SteamAPPId | ✅ `env::set("SteamAPPId", ...)` | ⚠️ only Proton path sets `STEAM_COMPAT_APP_ID` (`runtime.cpp:184`), no native SteamAPPId env | ⚠️ · |
+| Wait-for-all on app exit | ✅ `waitForAllUSVFSProcessesWithLock` | ⏳ waits on USVFS proxies - Workspace-68y8 | ⏳ · [win] |
+| Process tree descendant walk | ✅ | ✅ `get_process_descendants()` - `launcher.cpp:689` | ✅ · [win] |
+| Steam -- set SteamAPPId | ✅ `env::set("SteamAPPId", ...)` | ⚠️ Proton path only sets `STEAM_COMPAT_APP_ID` - `runtime.cpp:184` | ⚠️ · |
 | Steam -- auto-start | ✅ `checkSteam` + registry `SteamExe` | ❌ | ❌ · [win] |
-| Steam -- elevation mismatch | ✅ `canAccess` + admin dialog | ⚠️ `is_elevated()` generic admin check `windows_platform.cpp:187`, not Steam-specific | ⚠️ · |
-| Steam -- Proton/Wine compat | ❌ | 🚀 `runtime.cpp:181` `STEAM_COMPAT_*` env | 🚀 · |
-| Proton tooling (winetricks/protontricks) | ❌ | 🚀 `proton_tools.cpp:122` `run_proton_tool()` fallback chain | 🚀 · |
-| PATH manipulation | ✅ `env::appendToPath` | ❌ UNPROVEN (was: `appendToPath` - symbol absent repo-wide) | ❌ · [win] |
-| CWD resolution | ✅ `Executable::workingDirectory` | ✅ `launcher.cpp:315` `weakly_canonical` + fallback | ✅ · |
+| Steam -- elevation mismatch | ✅ `canAccess` + admin dialog | ⚠️ generic admin check, not Steam-specific - `windows_platform.cpp:187` | ⚠️ · |
+| Steam -- Proton/Wine compat | ❌ | 🚀 `STEAM_COMPAT_*` env - `runtime.cpp:181` | 🚀 · |
+| Proton tooling (winetricks/protontricks) | ❌ | 🚀 `run_proton_tool()` fallback chain - `proton_tools.cpp:122` | 🚀 · |
+| PATH manipulation | ✅ `env::appendToPath` | ❌ symbol absent repo-wide | ❌ · [win] |
+| CWD resolution | ✅ `Executable::workingDirectory` | ✅ `weakly_canonical` + fallback - `launcher.cpp:315` | ✅ · |
 | Virtualized binary in mods/ | ✅ `adjustForVirtualized` | ❌ | ❌ · [win] |
 | File type dispatch (.bat, .jar) | ✅ `getFileExecutionContext` | ❌ | ❌ · [win] |
 | Java detection for .jar | ✅ `findJavaInstallation` | ❌ | ❌ · [win] |
-| CREATE_BREAKAWAY_FROM_JOB | ✅ | ❌ UNPROVEN (was: `UsvfsLauncher` - absent, no BREAKAWAY handling) | ❌ · [win] |
-| Subreaper + supervisor | ❌ | 🚀 `launcher.cpp:193` `PR_SET_CHILD_SUBREAPER` | 🚀 · |
-| Wine runtime (non-Steam Windows exe) | ❌ | 🚀 `wine_runtime.h:13` `WineRuntime` | 🚀 · |
-| LaunchParams (structured) | ✅ `SpawnParameters` | ✅ `launcher.h:12` `LaunchParams` (pid, overlay, cgroup, capture) | ✅ · |
+| CREATE_BREAKAWAY_FROM_JOB | ✅ | ❌ no BREAKAWAY handling | ❌ · [win] |
+| Subreaper + supervisor | ❌ | 🚀 `PR_SET_CHILD_SUBREAPER` - `launcher.cpp:193` | 🚀 · |
+| Wine runtime (non-Steam Windows exe) | ❌ | 🚀 `WineRuntime` - `wine_runtime.h:13` | 🚀 · |
+| LaunchParams (structured) | ✅ `SpawnParameters` | ✅ `LaunchParams` (pid, overlay, cgroup, capture) - `launcher.h:12` | ✅ · |
 | File association lookup | ✅ `env::getAssociation()` | ❌ | ❌ · [win] |
 | Steam-related error dialogs | ✅ `badSteamReg()`, `startSteamFailed()`, `confirmStartSteam()` | ❌ | ❌ · [win] |
-| U032 Exit confirm while downloads in progress ("Downloads in progress" dialog, pauseAll, wait-for-processes w/ cancel) | ✅ `mainwindow.cpp:1450-1470` | ❌ | ❌ · [win] |
-| U170 UILocker dialog messages (locked/running/output text; Unlock / Exit Now / Cancel) | ✅ `uilocker.cpp:295-349` | ❌ | ❌ · [win] |
-| U235 Env vars set/read (SteamAPPId, STEAM_USERNAME/PASSWORD blacklist, USVFS_*, MO2 vars) | ✅ `settingsdialogworkarounds.cpp:17-30` + `usvfsconnector.cpp` | ⚠️ only Proton/Steam-compat env `runtime.cpp:184`; no STEAM credentials or USVFS_* passthrough | ⚠️ · |
-| U270 SteamUtility (steam process/VDF helpers) | ✅ `steamutility.cpp` (uibase) | ⚠️ VDF/ACF parsing only `game_detector.h:34`; no steam process helpers | ⚠️ · |
-| U284 processrunner (run w/ w/o VFS, waiting UI, cancel, exit code, runApplication API) | ✅ `processrunner.cpp` | ⚠️ cancel + exit code proven `launch_controller.cpp:1655` + `launch_controller.cpp:829`; per-call waiting dialogs unproven | ⚠️ · |
+| U032 Exit confirm while downloads in progress | ✅ `mainwindow.cpp:1450-1470` | ❌ | ❌ · [win] |
+| U170 UILocker dialog messages | ✅ `uilocker.cpp:295-349` | ❌ | ❌ · [win] |
+| U235 Env vars set/read (SteamAPPId, credentials, USVFS_*) | ✅ `settingsdialogworkarounds.cpp:17-30` | ⚠️ Proton env only, no credentials or USVFS_* - `runtime.cpp:184` | ⚠️ · |
+| U270 SteamUtility (steam process/VDF helpers) | ✅ `steamutility.cpp` (uibase) | ⚠️ VDF/ACF parsing only - `game_detector.h:34` | ⚠️ · |
+| U284 processrunner (VFS, waiting UI, cancel, exit code) | ✅ `processrunner.cpp` | ⚠️ cancel + exit code only - `launch_controller.cpp:829` | ⚠️ · |
 
 ## 3. Error Handling & Diagnostics
 
-Re-verified 2026-09-30 against the vendored MO2 source and today's `src/` tree
-at `004fbfd`. Every row below carries a `✔`. The previous state of this section
-carried five invented *symbol names*, five false `❌` and two false `✅`; see
-[Section 3 verification notes](#section-3-verification-notes) for what was wrong.
-Note what is **not** wrong: the USVFS rows in this section are `⏳` - planned
-port, not started, blocked on the Windows decision. They are a real gap we
-intend to close, and this pass corrected their citations, not their status.
-
-Reading the symbols named in the MO2 column: `spawn::dialogs` is
-`references/modorganizer/src/spawn.cpp:45`; the `sanity::` checks are
-`sanitychecks.cpp:9`; `env::` is `env.h`. MO2's `SpawnParameters` carries
-`HANDLE stdOut`/`stdErr` and every `spawn::dialogs` entry point takes a `DWORD`
-error code, so the whole module is Win32-shaped by construction, not by
-convention.
+Every row carries `✔` (re-verified 2026-09-30). The `⏳` rows are the USVFS
+port - their cited GMM symbol names were invented, the features are not.
 
 | Feature | MO2 | GMM | Status |
 |---------|-----|-----|--------|
-| ERROR_INVALID_PARAMETER (AV quarantine) | ✅ `spawn::dialogs::makeContent()` `spawn.cpp:138` (Win32 `DWORD`) | ⏳ planned port, not started. The cited symbol name `describe_usvfs_error` was invented - it is not in `src/`, not in `tests/`, only in this file - so the citation is wrong. **The feature is not**: MO2 runs every `spawn::dialogs` entry point through this USVFS error path, and it is ported together with USVFS | ⏳ ✔ [win] |
-| ERROR_ACCESS_DENIED (AV blocking) | ✅ `spawn.cpp:145` (Win32 `DWORD`) | ⏳ planned port, not started. Same invented name `describe_usvfs_error`; same correction as the row above | ⏳ ✔ [win] |
-| ERROR_FILE_NOT_FOUND (exe missing) | ✅ `spawn.cpp:150` (Win32 `DWORD`) | ⏳ planned port, not started. Same invented name; the portable half (path in a message) is already shipped, see below, so only the USVFS half remains | ⏳ ✔ [win] |
-| ERROR_DIRECTORY (bad cwd) | ✅ `spawn.cpp:153` (Win32 `DWORD`) | ⏳ planned port, not started. Same invented name; same correction as the row above | ⏳ ✔ [win] |
-| ERROR_ELEVATION_REQUIRED (admin restart) | ✅ `confirmRestartAsAdmin` `spawn.cpp:250` + `helper.exe` | 🚫 N/A - Linux has no elevation prompt to restart from | 🚫 ✔ [win] |
-| makeDetails (owner, ACL, DLL presence) | ✅ `spawn.cpp:66-134`; `owner`/`rights` from `env::getFileSecurity` (Win32 ACL), the last line probes the four `usvfs_*.dll`/`*_proxy_*.exe` files | ⚠️ the portable half ships: the exec path goes in the details pane (`launch_controller.cpp:120`, `:798`). `owner`/`rights` are Win32 ACL; the USVFS probe line has no meaning without USVFS. Previously marked `❌` as if nothing existed | ⚠️ ✔ |
-| Blacklist warning dialog | ✅ `confirmBlacklisted` `spawn.cpp:361`, gated on `Settings::isExecutableBlacklisted` `settings.cpp:305`; the list exists only to feed `usvfsBlacklistExecutable` `usvfsconnector.cpp:158` | ⏳ planned port, not started. The blacklist is a VFS directive, and USVFS is a planned port that has not begun - so the dialog is wanted and lands with it. See [row 4 of section 4](#4-settings--configuration): until then `executables_blacklist` has no consumer, and the setting should not be advertised as if it did | ⏳ ✔ [win] |
-| Crash dump type selection | ✅ `CrashDumpsType` `usvfsconnector.cpp:106` (None/Data/Full/Mini - all Win32 minidump flavours) | ⚠️ **the previous `✅` was false.** `settings_content_widget.cpp:1365-1369` offers "Text backtrace" / "Full core dump" and `Settings::core_dump_type()` `settings.cpp:567` round-trips it, but there is no reader: the Linux handler is a POSIX signal handler writing one fixed backtrace, and the `MiniDumpWriteDump` path `crash_handler.cpp:129` is inside `#ifdef _WIN32`. The control advertises a dump type GMM cannot produce | ⚠️ ✔ |
-| USVFS child crash capture | ⏳ the cited `usvfsCreateMiniDump` is **not a symbol in MO2** - the name was invented. Real names: `env::createMiniDump` `env.cpp:1200` and, in the usvfs repo, `usvfs::createMiniDumpImpl` `references/usvfs/src/usvfs_dll/usvfs.cpp:248` | ⏳ planned port, not started. MO2 captures a minidump for every USVFS child process; that is a real capability and it is wanted, but it needs USVFS. The previously cited GMM evidence `crash_handler.cpp:126` is inside `#ifdef _WIN32`, so it is dead code on the shipping platform - a second wrong citation, not a reason to drop the row | ⏳ ✔ [win] |
-| Crash dump pruning | ✅ `cycleDiagnostics` (`mainwindow.cpp`, `organizercore.cpp`) | ✅ real: `core.cpp:116` `prune_old_dumps(max_core_dumps())`; the setting has a live reader | ✅ ✔ |
-| USVFS log worker thread | ✅ `LogWorker` `usvfsconnector.h` (a QThread that offloads USVFS's own log writes) | ⏳ planned port, not started. Nothing to offload today: `Logger::log()` `logger.cpp:80` is synchronous under `mutex_` and GMM writes no second log stream. A worker becomes necessary the moment USVFS is ported and starts writing its own log, so this is deferred with the port - and the shape is worth re-deciding then, since a thread would add latency and a teardown ordering problem | ⏳ ✔ [win] |
-| USVFS log file output | ✅ USVFS writes its own `logs/usvfs-<ts>.log` | ⏳ planned port, not started. GMM writes one log today, `gamemodmanager.log` `core.cpp:64`; the second file is USVFS's to write when USVFS is ported | ⏳ ✔ [win] |
-| USVFS log viewer | ✅ MO2's `logDock` shows the shared `MOBase::log`, which USVFS also writes into | ⏳ planned port, not started, for the USVFS-specific half - the stream does not exist yet. The portable half, an in-app view of our own log, already ships; see the "Log list" row below rather than counting it twice | ⏳ ✔ [win] |
-| EventLog service check | ✅ `eventLogNotRunning` `spawn.cpp:335`; the message is literally "The **Windows** Event Log service is not running ... this can prevent **USVFS** from running" | 🚫 Windows service + exists for USVFS. Twice out of scope. Was untagged | 🚫 ✔ [win] |
-| Sanity checks on startup | ✅ `sanity::checkEnvironment(env)` `sanitychecks.cpp:402`, called from `moapplication.cpp:240`. Note it takes an `env::Environment` (Win32) and only `log::warn`s - there is no dialog | 🚫 the six checks are Windows-shaped as a block (5 of 6 need loaded modules, ACLs, FOLDERID GUIDs or ADS). Not copied. See the individual rows | 🚫 ✔ [win] |
-| Sanity check: blocked files (Zone.Identifier ADS) | ✅ `sanity::checkBlocked()` `sanitychecks.cpp:159` - reads the NTFS `Zone.Identifier` alternate data stream | 🚫 NTFS ADS does not exist on Linux. Was untagged | 🚫 ✔ [win] |
-| Sanity check: missing files (AV deleted) | ✅ `sanity::checkMissingFiles()` `sanitychecks.cpp:178` - 8 hardcoded Windows helper names plus `loot/libloot.dll` and `loot/lootcli.exe` | 🚫 6 of the 8 are Windows helpers GMM has no use for. The 2 loot ones have a GMM equivalent (`tools/gmm_lootcli`), but a packaging install that lost it is obvious without a startup scan. Deliberately not implemented | 🚫 ✔ |
-| Sanity check: incompatible OSD/DLL modules | ✅ `sanity::checkBadOSDs()` `sanitychecks.cpp:205` - regex-matches Nahimic/RivaTuner/Razer overlay DLLs in the loaded-module list | 🚫 iterates `env::Environment::loadedModules()`, a Win32 PEB walk. Was untagged | 🚫 ✔ [win] |
-| Sanity check: USVFS-incompatible DLLs | ✅ `sanity::checkUsvfsIncompatibilites()` `sanitychecks.cpp:259` (Mactype, Citrix) | ⏳ planned port, not started. The check exists only to warn that an injected DLL conflicts with USVFS, so it is meaningless until USVFS is ported - and it is a wanted part of that port, not a closed question | ⏳ ✔ [win] |
-| Sanity check: protected/system directory paths | ✅ `sanity::checkProtected()` `sanitychecks.cpp:339` via `getOptionalKnownFolder` with `FOLDERID_*` GUIDs | 🚫 Win32 known folders. Was untagged | 🚫 ✔ [win] |
-| Sanity check: Microsoft Store game detection | ✅ `sanity::checkMicrosoftStore()` `sanitychecks.cpp:362` - string match on `/ModifiableWindowsApps/` and `/WindowsApps/` | 🚫 Windows Store. Was untagged | 🚫 ✔ [win] |
-| Spawn error: makeContent (contextual) | ✅ `spawn::dialogs::makeContent()` `spawn.cpp:136` | ✅ **already shipped, previously a false `❌`**: `configure_executable_unreachable_dialog` `launch_controller.cpp:114` supplies the contextual content ("If it belongs to a mod, make sure that mod is enabled"), driven at `:782`. Test: `launch_failure_dialog_test` | ✅ ✔ |
-| Spawn error: spawnFailed dialog | ✅ `spawn::dialogs::spawnFailed()` `spawn.cpp:209` | ✅ **already shipped, previously a false `❌`**: `configure_launch_failed_dialog` `launch_controller.cpp:124`, driven at `:798`; plus `ui::report_error` for the post-launch failure path `:1973` | ✅ ✔ |
-| Spawn error: helperFailed dialog | ✅ `spawn::dialogs::helperFailed()` `spawn.cpp:226` | 🚫 N/A - MO2's `helper.exe` exists to make changes needing administrator rights. Linux has neither the binary nor the problem | 🚫 ✔ |
-| Spawn error: confirmRestartAsAdmin | ✅ `spawn::dialogs::confirmRestartAsAdmin()` `spawn.cpp:250` | 🚫 Win32 elevation restart. Was untagged | 🚫 ✔ [win] |
-| Spawn error: makeRightsDetails | ✅ `spawn::dialogs::makeRightsDetails()` `spawn.cpp:48`, renders a `FileRights` list | 🚫 Win32 ACL. Posix permissions are a different model and nothing currently needs them rendered | 🚫 ✔ [win] |
+| ERROR_INVALID_PARAMETER (AV quarantine) | ✅ `spawn.cpp:138` (Win32 `DWORD`) | ⏳ planned port - Workspace-udm5 (prior cite invented) | ⏳ ✔ [win] |
+| ERROR_ACCESS_DENIED (AV blocking) | ✅ `spawn.cpp:145` (Win32 `DWORD`) | ⏳ planned port - Workspace-udm5 (prior cite invented) | ⏳ ✔ [win] |
+| ERROR_FILE_NOT_FOUND (exe missing) | ✅ `spawn.cpp:150` (Win32 `DWORD`) | ⏳ planned port - Workspace-udm5; portable half ships | ⏳ ✔ [win] |
+| ERROR_DIRECTORY (bad cwd) | ✅ `spawn.cpp:153` (Win32 `DWORD`) | ⏳ planned port - Workspace-udm5 (prior cite invented) | ⏳ ✔ [win] |
+| ERROR_ELEVATION_REQUIRED (admin restart) | ✅ `confirmRestartAsAdmin` `spawn.cpp:250` | 🚫 Linux has no elevation prompt - Workspace-9z66 | 🚫 ✔ [win] |
+| makeDetails (owner, ACL, DLL presence) | ✅ `spawn.cpp:66-134` (ACL, USVFS dll probe) | ⚠️ portable half only: exec path in details pane - `launch_controller.cpp:120` | ⚠️ ✔ |
+| Blacklist warning dialog | ✅ `confirmBlacklisted` `spawn.cpp:361` | ⏳ blacklist is a VFS directive - Workspace-av1y | ⏳ ✔ [win] |
+| Crash dump type selection | ✅ `CrashDumpsType` `usvfsconnector.cpp:106` (Win32 minidump flavours) | ⚠️ no reader; handler writes one fixed backtrace - `settings.cpp:567` | ⚠️ ✔ |
+| USVFS child crash capture | ✅ `env::createMiniDump` `env.cpp:1200` (not the cited `usvfsCreateMiniDump`) | ⏳ planned port - Workspace-9nwe | ⏳ ✔ [win] |
+| Crash dump pruning | ✅ `cycleDiagnostics` (`mainwindow.cpp`) | ✅ `prune_old_dumps(max_core_dumps())` - `core.cpp:116` | ✅ ✔ |
+| USVFS log worker thread | ✅ `LogWorker` `usvfsconnector.h` (offloads USVFS log writes) | ⏳ second log stream does not exist yet - Workspace-3br4 | ⏳ ✔ [win] |
+| USVFS log file output | ✅ USVFS writes `logs/usvfs-<ts>.log` | ⏳ GMM writes one log - `core.cpp:64` | ⏳ ✔ [win] |
+| USVFS log viewer | ✅ `logDock` over the shared `MOBase::log` | ⏳ USVFS half only; our own log view ships - Workspace-myzy | ⏳ ✔ [win] |
+| EventLog service check | ✅ `eventLogNotRunning` `spawn.cpp:335` | 🚫 Windows service, exists for USVFS | 🚫 ✔ [win] |
+| Sanity checks on startup | ✅ `sanity::checkEnvironment` `sanitychecks.cpp:402` | 🚫 5 of 6 need modules, ACLs, GUIDs or ADS | 🚫 ✔ [win] |
+| Sanity check: blocked files (Zone.Identifier ADS) | ✅ `sanity::checkBlocked()` `sanitychecks.cpp:159` | 🚫 NTFS ADS has no Linux equivalent | 🚫 ✔ [win] |
+| Sanity check: missing files (AV deleted) | ✅ `sanity::checkMissingFiles()` `sanitychecks.cpp:178` | 🚫 6 of 8 are Windows helpers; loot half has a GMM equivalent | 🚫 ✔ |
+| Sanity check: incompatible OSD/DLL modules | ✅ `sanity::checkBadOSDs()` `sanitychecks.cpp:205` | 🚫 iterates a Win32 PEB walk | 🚫 ✔ [win] |
+| Sanity check: USVFS-incompatible DLLs | ✅ `sanity::checkUsvfsIncompatibilites()` `sanitychecks.cpp:259` | ⏳ meaningless without USVFS - Workspace-3br4 | ⏳ ✔ [win] |
+| Sanity check: protected/system directory paths | ✅ `sanity::checkProtected()` `sanitychecks.cpp:339` | 🚫 `FOLDERID_*` known folders | 🚫 ✔ [win] |
+| Sanity check: Microsoft Store game detection | ✅ `sanity::checkMicrosoftStore()` `sanitychecks.cpp:362` | 🚫 Windows Store | 🚫 ✔ [win] |
+| Spawn error: makeContent (contextual) | ✅ `spawn::dialogs::makeContent()` `spawn.cpp:136` | ✅ `configure_executable_unreachable_dialog` - `launch_controller.cpp:114` | ✅ ✔ |
+| Spawn error: spawnFailed dialog | ✅ `spawn::dialogs::spawnFailed()` `spawn.cpp:209` | ✅ `configure_launch_failed_dialog` - `launch_controller.cpp:124` | ✅ ✔ |
+| Spawn error: helperFailed dialog | ✅ `spawn::dialogs::helperFailed()` `spawn.cpp:226` | 🚫 no helper binary to fail on Linux | 🚫 ✔ |
+| Spawn error: confirmRestartAsAdmin | ✅ `spawn::dialogs::confirmRestartAsAdmin()` `spawn.cpp:250` | 🚫 Win32 elevation restart | 🚫 ✔ [win] |
+| Spawn error: makeRightsDetails | ✅ `spawn::dialogs::makeRightsDetails()` `spawn.cpp:48` | 🚫 Win32 ACL; Posix perms are a different model | 🚫 ✔ [win] |
 | Windows error formatting | ✅ `MOShared::windows_error` exception | 🚫 | 🚫 ✔ [win] |
 | Windows compatibility mode detection | ✅ `WindowsInfo::compatibilityMode()` `envwindows.cpp` | 🚫 | 🚫 ✔ [win] |
-| Windows version info collection | ✅ `WindowsInfo` (reported, real, BuildLab, UBR) | 🚫 | 🚫 ✔ [win] |
-| Process elevation detection | ✅ `WindowsInfo::isElevated()` | ⚠️ **the previous `✅` overstated this.** `is_elevated()` is declared on `Platform` `platform.h:132` and overridden for all three platforms (`linux_platform.cpp:532`, `macos_platform.cpp:117`, `windows_platform.cpp:187`), but nothing outside the platform layer calls it. The doc also cited only the Windows file, which is the platform GMM does not ship | ⚠️ ✔ |
-| Module detection and version info | ✅ `env::Module` (path, version, timestamp, MD5) `envmodule.h` | 🚫 | 🚫 ✔ [win] |
-| Process enumeration and tree | ✅ `env::Process` + `getRunningProcesses()` `envmodule.h` | 🚫 | 🚫 ✔ [win] |
-| DLL load notification (ntdll LdrRegisterDllNotification) | ✅ `Environment::onModuleLoaded()` | 🚫 | 🚫 ✔ [win] |
-| Security product enumeration (WMI) | ✅ `env::SecurityProduct` + `getSecurityProducts()` `envsecurity.h` | 🚫 | 🚫 ✔ [win] |
+| Windows version info collection | ✅ `WindowsInfo` (BuildLab, UBR) | 🚫 | 🚫 ✔ [win] |
+| Process elevation detection | ✅ `WindowsInfo::isElevated()` | ⚠️ declared and overridden, no caller - `platform.h:132` | ⚠️ ✔ |
+| Module detection and version info | ✅ `env::Module` `envmodule.h` | 🚫 | 🚫 ✔ [win] |
+| Process enumeration and tree | ✅ `env::Process` `envmodule.h` | 🚫 | 🚫 ✔ [win] |
+| DLL load notification (LdrRegisterDllNotification) | ✅ `Environment::onModuleLoaded()` | 🚫 | 🚫 ✔ [win] |
+| Security product enumeration (WMI) | ✅ `env::getSecurityProducts()` `envsecurity.h` | 🚫 | 🚫 ✔ [win] |
 | File security/permissions check | ✅ `env::getFileSecurity()` + `FileRights` | 🚫 | 🚫 ✔ [win] |
-| Display metrics collection | ✅ `env::Metrics` + `env::Display` (DPI, refresh rate) `envmetrics.h` | 🚫 | 🚫 ✔ [win] |
-| NT API filesystem walker | ✅ `env::DirectoryWalker` (NtQueryDirectoryFile) | 🚫 | 🚫 ✔ [win] |
-| Windows service status query | ✅ `env::Service` + `getService()` `env.h:223` | 🚫 | 🚫 ✔ [win] |
+| Display metrics collection | ✅ `env::Metrics` + `env::Display` `envmetrics.h` | 🚫 | 🚫 ✔ [win] |
+| NT API filesystem walker | ✅ `env::DirectoryWalker` | 🚫 | 🚫 ✔ [win] |
+| Windows service status query | ✅ `env::getService()` `env.h:223` | 🚫 | 🚫 ✔ [win] |
 | Registry cleanup | ✅ `env::deleteRegistryKeyIfEmpty()` `env.h:285` | 🚫 | 🚫 ✔ [win] |
-| Full environment dump | ✅ `Environment::dump()` `envdump.h` (version, timezone, security, modules, disks) | 🚫 | 🚫 ✔ [win] |
-| Environment timezone collection | ✅ `Environment::timezone()` `env.h:190` | 🚫 not a standalone feature - a field of the Win32 environment dump above | 🚫 ✔ [win] |
-| Core dump creation (self + other process) | ✅ `env::coredump()` `env.cpp:1242` / `env::coredumpOther()` `env.cpp:1269`, both `MiniDumpWriteDump` | ⚠️ self ships: `CrashHandler` installs a POSIX signal handler and writes a backtrace (`crash_handler.cpp:166+`). "other process" is Win32-only | ⚠️ ✔ |
-| Log list (in-app viewer, 1000 entries) | ✅ `LogModel` + `LogList` `loglist.h`, hosted in a `logDock` `mainwindow.ui:1591`; `MaxLines = 1000` `loglist.cpp:28`; level filter and a live level switcher from the same window | ⚠️ **the viewer already exists, previously a false `❌`**: `ConsolePanel` is a live log view in the main window. What was genuinely missing is the bound - the view appended every line for the whole session. Now capped at the same 1000 (`console_panel.h` `kMaxLines`); the log FILE is never truncated | ⚠️ ✔ |
-| Log initialization and configuration | ✅ `initLogging()` (`main.cpp`, `loglist.h`) | ✅ real: `core.cpp:170-176` reads the setting and calls `Logger::set_level`. Timestamps are local time (`logger.cpp:158`), not UTC as MO2 configures - a deliberate difference, since the log is read by the person who ran the app | ✅ ✔ |
-| Log blacklisting (privacy - username masking) | ✅ `log::getDefault().addToBlacklist()` | ✅ **already shipped, previously a false `❌`**: `Logger::sanitize()` `logger.cpp:139-149` rewrites the home directory to `{USER}` in every message before it is stored or dispatched | ✅ ✔ |
-| Console attach/alloc (CLI) | ✅ `env::Console` (RAII `AttachConsole`/`AllocConsole`/`FreeConsole`) | 🚫 Win32 console API. GMM's `ConsolePanel` is a different thing entirely (in-window log + launch output), not a CLI console allocation | 🚫 ✔ [win] |
-| CopyEventFilter (Ctrl+C in views) | ✅ `CopyEventFilter` `copyeventfilter.h` - a `QAbstractItemView` event filter | ✅ effectively covered, not a gap: Qt copies whole-row selections on Ctrl+C on its own, and `ConsolePanel` adds an explicit Copy shortcut `console_panel.cpp:39` for the log view. MO2 needed the class because it builds its views by hand | ✅ ✔ |
-| Problems dialog (plugin diagnostics) | ✅ `ProblemsDialog` `problemsdialog.h` - tree, HTML description, `startFix()` | ⚠️ the data path ships and is consumed: `DiagnoseRegistry` → `PluginLoader::collect_diagnostics` `plugin_loader.cpp:2147` → Plugins-tab tooltip `mod_list_controller.cpp:2959`. The dialog and the Fix button do not exist, and Fix needs a fix-registration mechanism that does not exist either - that is a new ABI surface, not a section-3-sized change | ⚠️ ✔ |
-| Message dialog (fire-and-forget toast) | ✅ `MessageDialog` `messagedialog.h` - borderless, auto-timeout | ⚠️ a stub exists and is a dead end: `InAppBackend` `notification_backend.h` emits `notification_received` but has **zero producers and zero consumers**. A toast would render nothing. Deliberately not built on top of an empty stream | ⚠️ ✔ |
-| Diagnostics settings tab | ✅ `DiagnosticsSettingsTab` `settingsdialogdiagnostics.h` | ✅ real: `build_diagnostics_tab()` `settings_content_widget.cpp:1345`. Caveat on the dump-type row above | ✅ ✔ |
-| U033 Crash-on-exit dialog ("MO crashed while exiting. Some settings may not be saved.") | ✅ `mainwindow.cpp:644-649` - a `try`/`catch (std::exception&)` around `delete ui` in `~MainWindow` | 🚫 not copied, and not a gap: the guard protects a `delete ui` that does not exist in a hand-built widget tree. `~MainWindow` is `= default` `main_window.cpp:341`, so there is no destructor body to protect and wrapping one in `try`/`catch` would be theatre | 🚫 ✔ |
-| U193 UILocker exit flow (canExit download/VFS sequence) | ✅ `uilocker.h` `Reasons::PreventExit`, `waitForAllUSVFSProcesses` `organizercore.h:319` | ⏳ planned port, not started. The flow is "do not exit until every USVFS proxy has exited"; USVFS ships no proxies yet, so the VFS half of the sequence is deferred with the port. The download half is a separate concern and is not gated on this | ⏳ ✔ [win] |
-| U238 IPluginDiagnose (activeProblems -> ProblemsDialog count + Fix) | ✅ `mainwindow.cpp:1031-1054` | ⚠️ correct as written: the registry and `collect_diagnostics` exist and feed a Plugins-tab tooltip; the Problems dialog and its Fix button do not (see above) | ⚠️ ✔ |
-| U268 Report/reportError global error popup | 🚫 MO2 side unverifiable here - `report.cpp` lives in the `uibase` repo, which is not vendored under `references/` | ✅ **already shipped, previously a false `❌`**: `ui::report_error` / `ui::critical_on_top` `error_popup.h:41-43`, implemented in `error_popup.cpp` on the shared `ui::TaskDialog`, with `ui::report_error` in production use at `launch_controller.cpp:1765` and `:1973`. Test: `error_popup_test` | ✅ ✔ |
-| U272 ErrorCodes shared error code mapping | 🚫 MO2 side unverifiable here (`uibase` repo, not vendored) | 🚫 not a gap: GMM surfaces `std::error_code::message()` at the point of failure, so there is no need for a central Win32 error-code table. Nothing to map | 🚫 ✔ |
-| U273 DiagnosisReport diagnose report formatting | 🚫 MO2 side unverifiable here (`uibase` repo, not vendored) | ⚠️ the Linux-shaped equivalent exists: `PluginLoader::collect_diagnostics` `plugin_loader.cpp:2147` returns `GmmDiagnosticProblem` structs from the v2 ABI. No human-readable report formatting on top | ⚠️ ✔ |
-
-### Section 3 verification notes
-
-This section uses three dispositions, and the difference between them is the
-point of the pass:
-
-- **`⏳` (11 rows) - planned port, not started.** USVFS machinery and everything
-  gated on it. **Wanted**, blocked on the standing Windows decision, kept in the
-  backlog. USVFS is a planned port from MO2; it was never rejected and it is
-  not a fabrication. See the note at the top of this file.
-- **`🚫` (28 rows) - not applicable, will not port.** Windows by construction
-  with no Linux subject: Win32 ACLs, elevation, NTFS ADS, WMI, FOLDERID GUIDs,
-  `AllocConsole`, PEB walks, registry and service access, the Windows Event Log.
-  24 of the 28 are `[win]`-tagged, the other 4 are not Windows-specific at all
-  (listed at the end of these notes). Closed questions, correctly closed.
-- **`❌` / `⚠️`** - ordinary backlog and partial rows, on the shipping
-  platform, and where the portable work actually is.
-
-The first two share the `[win]` block and nothing else. Collapsing them reports
-wanted work as rejected, which is why they are separate tokens.
-
-**Invented symbol names corrected (5 rows).** Be precise about what was false:
-the **names were invented**, not the features.
-
-- `describe_usvfs_error` does not exist anywhere in `src/` or `tests/` - it
-  appears only in this file - and it was cited as GMM's side of four rows. That
-  is a wrong citation. The **USVFS error handling those rows describe is real
-  and planned**: MO2 routes every spawn dialog through it, and porting it
-  travels with USVFS. Those four rows are `⏳` and say so.
-- `usvfsCreateMiniDump` is not a symbol in MO2. The real names are
-  `env::createMiniDump` and, in the usvfs repo, `usvfs::createMiniDumpImpl`.
-  Again a wrong name, not a wrong feature: USVFS minidump capture is `⏳`.
-
-A citation that does not resolve is a documentation defect and is fixed as one.
-It is not evidence that the underlying capability was invented, and these rows
-do not record it as such.
-
-**False `❌` corrected (6 rows).** Five were written as missing and are shipped
-and wired: the in-app log view, log blacklisting (`Logger::sanitize`), the
-contextual launch-failure content, the spawn-failure dialog, and the global
-error popup. A sixth, `makeDetails`, was written as entirely absent when the
-portable half - the executable path in the details pane - has been there since
-the launch-failure dialog landed.
-
-**False `✅` corrected to `⚠️` (2 rows).** "Crash dump type selection" and
-"Process elevation detection" both cite code that exists, but neither has a
-consumer. This is the same defect already recorded for
-`show_download_notifications` in section 4: a stored value with no reader is not
-parity.
-
-**Three settings on the shipping platform advertise something GMM does not
-have.** `diagnostics/core_dump_type` (this section),
-`workarounds/executables_blacklist` (section 4), and `interface/double_clicks_open_previews`
-(section 4, which *is* consumed - the other two are not). The first two are
-recorded here and tracked as follow-ups; neither is deleted in this pass
-because both become real the moment USVFS lands, and removing a control is a
-product decision rather than a documentation fix.
-
-**No install-start or install-failure event.** The bus
-(`event_bus.h:34-50`) has `kModInstalled` and `kDownloadFailed` but nothing
-that brackets a mod install, so a plugin that needs to undo partial work has
-no hook to hang on. Engine-only, no ABI change, but it is a plugin-facing
-surface and is left for an explicit decision.
-
-**Windows-tagged rows corrected.** This section previously tagged only 8 rows
-`[win]`. 35 of its 56 rows are Windows-only or USVFS-gated, so **27 rows were
-untagged** and the parity denominator was counting them as ordinary gaps. They
-are tagged now, and they split by disposition: **24 are `🚫`** (not applicable -
-Win32 ACLs, elevation, NTFS ADS, WMI, FOLDERID GUIDs, `AllocConsole`, PEB walks)
-and **11 are `⏳`** (planned USVFS port, not started). Both stay out of the
-denominator for the same reason - blocked by decision - but only the first group
-is a closed question.
-
-The 4 rows left untagged are the ones that are not Windows-specific, and all
-four are `🚫`: `helperFailed` (no helper binary to fail), the crash-on-exit
-`try`/`catch` (guards a `delete ui` that does not exist here), `ErrorCodes`
-(nothing to map), and the missing-files sanity check (partly portable, see the
-row). No `⏳` row is untagged - USVFS being planned does not make it Linux-shaped.
-
+| Full environment dump | ✅ `Environment::dump()` `envdump.h` | 🚫 | 🚫 ✔ [win] |
+| Environment timezone collection | ✅ `Environment::timezone()` `env.h:190` | 🚫 a field of the environment dump above | 🚫 ✔ [win] |
+| Core dump creation (self + other process) | ✅ `env::coredump()` / `coredumpOther()` `env.cpp:1242` | ⚠️ self only: POSIX handler writes a backtrace - `crash_handler.cpp:166` | ⚠️ ✔ |
+| Log list (in-app viewer, 1000 entries) | ✅ `LogModel` + `LogList` `loglist.h`, `MaxLines = 1000` | ⚠️ `ConsolePanel` ships, now capped at 1000 - `console_panel.h` | ⚠️ ✔ |
+| Log initialization and configuration | ✅ `initLogging()` (`main.cpp`) | ✅ reads setting, calls `Logger::set_level`; local time - `core.cpp:170` | ✅ ✔ |
+| Log blacklisting (privacy - username masking) | ✅ `log::getDefault().addToBlacklist()` | ✅ `Logger::sanitize()` rewrites home dir to `{USER}` - `logger.cpp:139` | ✅ ✔ |
+| Console attach/alloc (CLI) | ✅ `env::Console` (`AttachConsole`/`AllocConsole`) | 🚫 Win32 console API; `ConsolePanel` is a different thing | 🚫 ✔ [win] |
+| CopyEventFilter (Ctrl+C in views) | ✅ `copyeventfilter.h` event filter | ✅ Qt copies rows natively; explicit Copy too - `console_panel.cpp:39` | ✅ ✔ |
+| Problems dialog (plugin diagnostics) | ✅ `ProblemsDialog` `problemsdialog.h` | ⚠️ data path ships to a tooltip; no dialog or Fix - `plugin_loader.cpp:2147` | ⚠️ ✔ |
+| Message dialog (fire-and-forget toast) | ✅ `MessageDialog` `messagedialog.h` | ⚠️ backend has zero producers and consumers - `notification_backend.h` | ⚠️ ✔ |
+| Diagnostics settings tab | ✅ `DiagnosticsSettingsTab` `settingsdialogdiagnostics.h` | ✅ `build_diagnostics_tab()` - `settings_content_widget.cpp:1345` | ✅ ✔ |
+| U033 Crash-on-exit dialog | ✅ `try`/`catch` around `delete ui` `mainwindow.cpp:644` | 🚫 guards a `delete ui` a hand-built tree does not have | 🚫 ✔ |
+| U193 UILocker exit flow (canExit) | ✅ `Reasons::PreventExit` `organizercore.h:319` | ⏳ VFS half waits on USVFS proxies - Workspace-68y8 | ⏳ ✔ [win] |
+| U238 IPluginDiagnose (activeProblems + Fix) | ✅ `mainwindow.cpp:1031-1054` | ⚠️ registry feeds a tooltip; no dialog or Fix - `plugin_loader.cpp:2147` | ⚠️ ✔ |
+| U268 Report/reportError global error popup | ✅ `report.cpp` (uibase, not vendored) | ✅ `ui::report_error` / `critical_on_top` - `error_popup.h:41` | ✅ ✔ |
+| U272 ErrorCodes shared error code mapping | ✅ `uibase`, not vendored | 🚫 GMM surfaces `std::error_code::message()` at point of failure | 🚫 ✔ |
+| U273 DiagnosisReport report formatting | ✅ `uibase`, not vendored | ⚠️ returns `GmmDiagnosticProblem` structs, no report format - `plugin_loader.cpp:2147` | ⚠️ ✔ |
 
 ## 4. Settings & Configuration
 
 | Feature | MO2 | GMM | Status |
 |---------|-----|-----|--------|
-| Executables blacklist | ✅ `Settings::executablesBlacklist` `settings.cpp:288`, consumed by `Settings::isExecutableBlacklisted` `settings.cpp:305` and by `usvfsBlacklistExecutable` `usvfsconnector.cpp:158` | ⚠️ **not verified on 2026-09-30.** `settings_content_widget.cpp:1298` populates the field and `:1326` writes it back, but nothing in `src/` reads `executables_blacklist()` - the list exists in MO2 only to tell USVFS which executables not to virtualize, and there is no VFS. Same defect as `show_download_notifications` below: a control that round-trips and has no effect. See section 3 | ⚠️ · |
-| Skip file suffixes | ✅ `Settings::skipFileSuffixes` | ⚠️ `settings.h:184` + UI `settings_content_widget.cpp:1275`, no scanner consumer | ⚠️ · |
-| Skip directories | ✅ `Settings::skipDirectories` | ⚠️ `settings.h:186` + UI `settings_content_widget.cpp:1276`, no consumer | ⚠️ · |
-| Force load libraries | ✅ `ExecutableForcedLoadSetting` | ⚠️ preserved in profile copy only (`profile_creation.cpp:199`) | ⚠️ · |
-| USVFS log level | ✅ `Settings::logLevel` | ✅ `settings.h:196` `log_level()` applied `core.cpp:170` + UI tab | ✅ · |
-| USVFS crash dump type | ✅ `Settings::coreDumpType` | ✅ `settings.cpp:520` `core_dump_type()` + UI tab | ✅ · |
-| USVFS spawn delay | ✅ `Settings::spawnDelay` | ❌ UNPROVEN (was: "data model only" - `spawn_delay` absent repo-wide) | ❌ · [win] |
-| Geometry persistence | ✅ `GeometrySettings` (window, splitter, toolbar) | ✅ `mod_info_dialog.cpp:329` `saveGeometry()`/`restoreGeometry()` | ✅ · |
-| Widget state persistence | ✅ `WidgetSettings` (tree expand, combo, tab index) | ✅ `settings_controller.cpp:789` `saveState()`/`restoreState()` (splitters, headers) | ✅ · |
-| Color settings (conflict coloring) | ✅ `ColorSettings` (8+ color options) | ✅ `settings_content_widget.cpp:353` QColorDialog + `settings.h:215` conflict colors | ✅ · |
-| Plugin blacklist | ✅ `Settings::blacklisted` | ⚠️ executables blacklist exists (`settings_content_widget.cpp:1292`), no plugin-specific blacklist | ⚠️ · |
-| Network settings (proxy, offline mode) | ✅ `NetworkSettings` | ✅ `settings_content_widget.cpp:1227` offline_mode + `:1239` custom_browser, proxy bridge `network_options_bridge.cpp:7` | ✅ · |
+| Executables blacklist | ✅ `Settings::isExecutableBlacklisted` `settings.cpp:305` | ⚠️ round-trips, nothing reads it - `settings_content_widget.cpp:1298` | ⚠️ · |
+| Skip file suffixes | ✅ `Settings::skipFileSuffixes` | ⚠️ no scanner consumer - `settings.h:184` | ⚠️ · |
+| Skip directories | ✅ `Settings::skipDirectories` | ⚠️ no consumer - `settings.h:186` | ⚠️ · |
+| Force load libraries | ✅ `ExecutableForcedLoadSetting` | ⚠️ profile copy only - `profile_creation.cpp:199` | ⚠️ · |
+| USVFS log level | ✅ `Settings::logLevel` | ✅ applied to `Logger::set_level` - `core.cpp:170` | ✅ · |
+| USVFS spawn delay | ✅ `Settings::spawnDelay` | ❌ `spawn_delay` absent repo-wide | ❌ · [win] |
+| Geometry persistence | ✅ `GeometrySettings` (window, splitter, toolbar) | ✅ `saveGeometry()`/`restoreGeometry()` - `mod_info_dialog.cpp:329` | ✅ · |
+| Widget state persistence | ✅ `WidgetSettings` (tree expand, combo, tab index) | ✅ splitters, headers - `settings_controller.cpp:789` | ✅ · |
+| Color settings (conflict coloring) | ✅ `ColorSettings` (8+ color options) | ✅ QColorDialog + conflict colors - `settings.h:215` | ✅ · |
+| Plugin blacklist | ✅ `Settings::blacklisted` | ⚠️ executables blacklist only - `settings_content_widget.cpp:1292` | ⚠️ · |
+| Network settings (proxy, offline mode) | ✅ `NetworkSettings` | ✅ offline, custom browser, proxy bridge - `network_options_bridge.cpp:7` | ✅ · |
 | Splash screen | ✅ `Settings::useSplash` | ❌ | ❌ · |
 | Prerelease updates toggle | ✅ `Settings::usePrereleases` | ✅ `settings_content_widget.cpp:113` `use_prereleases()` UI toggle | ✅ · |
 | Low-priority extraction | ✅ | 🚀 `pipeline_worker.cpp:199` `extraction_low_priority()` | 🚀 · |
@@ -562,13 +210,13 @@ row). No `⏳` row is untagged - USVFS being planned does not make it Linux-shap
 | Display foreign mods | ✅ `InterfaceSettings::displayForeign()` | ❌ | ❌ · |
 | Meta downloads display | ✅ `InterfaceSettings::metaDownloads()` | ❌ | ❌ · |
 | Hide downloads after installation | ✅ `InterfaceSettings::hideDownloadsAfterInstallation()` | ❌ | ❌ · |
-| Show download notifications | ✅ `InterfaceSettings::showDownloadNotifications()` | ⚠️ the key and the General-tab checkbox exist and round-trip (`settings.h:24-25`, `settings_content_widget.cpp:118`, `:165`) but **nothing reads the value** - grep for `show_download_notifications` outside the settings pair returns no consumer. A stored flag with no effect is not parity. | ⚠️ ✔ |
+| Show download notifications | ✅ `InterfaceSettings::showDownloadNotifications()` | ⚠️ key and checkbox round-trip, nothing reads it - `settings.h:24` | ⚠️ ✔ |
 | Hide API counter | ✅ `InterfaceSettings::hideAPICounter()` | ❌ | ❌ · |
 | Lock GUI during executables | ✅ `InterfaceSettings::lockGUI()` | ❌ | ❌ · |
 | Center dialogs on parent | ✅ `GeometrySettings::centerDialogs()` | ❌ | ❌ · |
 | Show change game confirmation | ✅ `InterfaceSettings::showChangeGameConfirmation()` | ❌ | ❌ · |
 | Show menubar on Alt | ✅ `InterfaceSettings::showMenubarOnAlt()` | ❌ | ❌ · |
-| Double-clicks open previews | ✅ `InterfaceSettings::doubleClicksOpenPreviews()` | ✅ `settings.h:28-37` (key `interface/double_clicks_open_previews`), General-tab checkbox `settings_content_widget.cpp:137`, `:179`, and a real consumer on **three** file trees: the Mod-Info file tree, the Mod-Info conflicts tab and the Data tab. `filetree_tab.cpp:68-163`, `conflicts_tab.cpp:206-263`, `data_tab.cpp:716-848` | ✅ ✔ |
+| Double-clicks open previews | ✅ `InterfaceSettings::doubleClicksOpenPreviews()` | ✅ consumed on three file trees - `filetree_tab.cpp:68` | ✅ ✔ |
 | Tutorial completion tracking | ✅ `InterfaceSettings::isTutorialCompleted()` | ❌ | ❌ · |
 | Filter widget options | ✅ `InterfaceSettings::filterOptions()` | ❌ | ❌ · |
 | Archive parsing toggle | ✅ `Settings::archiveParsing()` | ❌ | ❌ · |
@@ -608,29 +256,28 @@ row). No `⏳` row is untagged - USVFS being planned does not make it Linux-shap
 | Tab-based settings dialog (8 tabs) | ✅ `settingsdialog.cpp` (General, Theme, ModList, Paths, Diagnostics, Nexus, Plugins, Workarounds) | ✅ `settings_content_widget.cpp:68` `tabs_->addTab(...)` multi-tab | ✅ · |
 | Settings change logging | ✅ `settingsutilities.h` `logChange()` | ❌ | ❌ · |
 | Color table (visual color picker with delegates) | ✅ `colortable.h/cpp` | ❌ | ❌ · |
-| Mod info tab order persistence | ✅ `GeometrySettings::modInfoTabOrder()` | ❌ | ❌ · |
 | Center on main window monitor | ✅ `GeometrySettings::centerOnMainWindowMonitor()` | ❌ | ❌ · |
-| U006 Ctrl+S = Settings shortcut | ✅ `mainwindow.ui:1736-1756` | ✅ `menu_bar.cpp:75-76` (QKeySequence::Preferences **and** Ctrl+S explicitly, because the two differ on some platforms) | ✅ ✔ |
+| U006 Ctrl+S = Settings shortcut | ✅ `mainwindow.ui:1736-1756` | ✅ Preferences + explicit Ctrl+S - `menu_bar.cpp:75` | ✅ ✔ |
 | U040 Alt key reveals hidden menubar (showMenubarOnAlt, suppressed while UILocker locked) | ✅ `mainwindow.cpp:4052-4070` | ❌ | ❌ · |
 | U044 Restart-after-settings dialog (Restart / Continue variants) | ✅ `mainwindow.cpp:2768-2780` | ❌ | ❌ · |
 | U046 Network proxy activation progress dialog | ✅ `mainwindow.cpp:2115-2140` | ❌ | ❌ · |
 | U047 Downgrade notice after version drop | ✅ `mainwindow.cpp:2219` | ❌ | ❌ · |
 | U061 dataTabShowFromArchives gated on archiveParsing setting | ✅ `mainwindow.cpp:532-542` | ❌ | ❌ · |
-| U129 General > Language group (languageBox + "Help translate" LinkLabel) | ✅ `settingsdialog.ui:68-124` | ⚠️ the picker exists and works - a `Language` group box with a combo built from the shipped `:/i18n/*.qm` files, showing each locale's native name, wired to `s.language()`. `settings_content_widget.cpp:78-103`. MO2's "Help translate" LinkLabel has no counterpart. | ⚠️ ✔ |
-| U130 General > Download List group (4 checkboxes + MODL associate button) | ✅ `settingsdialog.ui:125-197` | ⚠️ compact-downloads checkbox exists `settings_content_widget.cpp:428`; other 3 options + associate button unproven | ⚠️ · |
-| U133 General > Miscellaneous checkboxes (center dialogs, instance-change confirm, Alt menubar, previews on double-click) | ✅ `settingsdialog.ui:264-325` | ⚠️ 1 of 4: **previews on double-click** (`settings_content_widget.cpp:137`). Center dialogs, instance-change confirm and Alt-reveals-menubar have no checkbox. | ⚠️ ✔ |
-| U134 General buttons (Reset Dialog Choices, Configure Mod Categories) | ✅ `settingsdialog.ui:343-372` | ✅ both now. Reset Dialog Choices `settings_content_widget.cpp:232`; a categories dialog exists at `settings/categories_dialog.h:21` | ✅ ✔ |
+| U129 General > Language group (languageBox + "Help translate" LinkLabel) | ✅ `settingsdialog.ui:68-124` | ⚠️ picker works, "Help translate" link absent - `settings_content_widget.cpp:78` | ⚠️ ✔ |
+| U130 General > Download List group (4 checkboxes + MODL associate button) | ✅ `settingsdialog.ui:125-197` | ⚠️ compact-downloads checkbox only - `settings_content_widget.cpp:428` | ⚠️ · |
+| U133 General > Miscellaneous checkboxes (center dialogs, instance-change confirm, Alt menubar, previews on double-click) | ✅ `settingsdialog.ui:264-325` | ⚠️ 1 of 4: previews on double-click - `settings_content_widget.cpp:137` | ⚠️ ✔ |
+| U134 General buttons (Reset Dialog Choices, Configure Mod Categories) | ✅ `settingsdialog.ui:343-372` | ✅ both: reset at `:232`, categories dialog `categories_dialog.h:21` | ✅ ✔ |
 | U138 Paths tab (7 path rows + %BASE_DIR% hint + writability footer) | ✅ `settingsdialog.ui:846-1054` | ❌ | ❌ · |
 | U139 Paths error strings (create failed, invalid game install) | ✅ `settingsdialogpaths.cpp:100-101`, `:236-237` | ❌ | ❌ · |
-| U140 Nexus settings tab full page (account, statistics, connection, options, servers groups) (NEXUS-LENS: genericize/provider-scope) | ✅ `settingsdialog.ui:1056-1504` | ⚠️ Sources tab stands in `settings_content_widget.cpp:839` (queue/hide-counter/manual-key `source_pages.cpp:271`, `:463`); account/statistics/servers groups unproven | ⚠️ · |
+| U140 Nexus settings tab full page (account, statistics, connection, options, servers groups) (NEXUS-LENS: genericize/provider-scope) | ✅ `settingsdialog.ui:1056-1504` | ⚠️ Sources tab stands in - `settings_content_widget.cpp:839` | ⚠️ · |
 | U142 Nexus custom browser picker file dialog | ✅ `settingsdialognexus.cpp:500-510` | ❌ | ❌ · |
-| U143 Settings > Plugins tab (plugin details, Enabled 3-state tooltip, settings table, blacklist) | ✅ `settingsdialog.ui:1506-1746` | ⚠️ the tab exists and is built from live data - per-plugin author / version / description / game / category / ABI version, a per-plugin enable checkbox, and the option rows each plugin registered via `register_settings`. `settings_content_widget.cpp:66`, `:894-906`. The 3-state enable tooltip and the blacklist table are not re-checked. | ⚠️ ✔ |
-| U145 Workarounds options (force-enable game files, archives parsing, lock GUI) | ✅ `settingsdialog.ui:1810-1860` | ⚠️ force-enable + archive parsing checkboxes `settings_content_widget.cpp:1286`, `:1288`; lock-GUI unproven | ⚠️ · |
+| U143 Settings > Plugins tab (plugin details, Enabled 3-state tooltip, settings table, blacklist) | ✅ `settingsdialog.ui:1506-1746` | ⚠️ tab built from live data; 3-state tooltip + blacklist unchecked - `settings_content_widget.cpp:894` | ⚠️ ✔ |
+| U145 Workarounds options (force-enable game files, archives parsing, lock GUI) | ✅ `settingsdialog.ui:1810-1860` | ⚠️ 2 of 3; lock-GUI unproven - `settings_content_widget.cpp:1286` | ⚠️ · |
 | U146 Workarounds > Steam group (AppID/username/password + log blacklist) | ✅ `settingsdialog.ui:1864-1928`, `settingsdialogworkarounds.cpp:17-30` | ❌ | ❌ · |
-| U147 Workarounds > Network group (offline mode, system proxy, custom browser) | ✅ `settingsdialog.ui:1931-2010` | ⚠️ offline mode + custom browser `settings_content_widget.cpp:1227`, `:1238`; system-proxy option unproven | ⚠️ · |
-| U148 Workarounds buttons (Reset Geometries, Back-date BSAs, Executables Blacklist, Skip Suffixes/Directories) | ✅ `settingsdialog.ui:2035-2144`, `settingsdialogworkarounds.cpp:96-200` | ⚠️ workarounds tab present `settings_content_widget.cpp:1292`; the multiline dialogs unproven | ⚠️ · |
+| U147 Workarounds > Network group (offline mode, system proxy, custom browser) | ✅ `settingsdialog.ui:1931-2010` | ⚠️ 2 of 3; system-proxy unproven - `settings_content_widget.cpp:1227` | ⚠️ · |
+| U148 Workarounds buttons (Reset Geometries, Back-date BSAs, Executables Blacklist, Skip Suffixes/Directories) | ✅ `settingsdialog.ui:2035-2144`, `settingsdialogworkarounds.cpp:96-200` | ⚠️ tab present, multiline dialogs unproven - `settings_content_widget.cpp:1292` | ⚠️ · |
 | U149 Workarounds footer warning text | ✅ `settingsdialog.ui:2187` | ❌ | ❌ · |
-| U150 Diagnostics tab controls (log level, crash dumps, max dumps, LOOT log level, links) | ✅ `settingsdialog.ui:2197-2320`, `settingsdialogdiagnostics.cpp:22-90` | ⚠️ diagnostics tab exists `settings_content_widget.cpp:1324` (log-level combo `settings.cpp:504`); dump/LOOT controls unproven | ⚠️ · |
+| U150 Diagnostics tab controls (log level, crash dumps, max dumps, LOOT log level, links) | ✅ `settingsdialog.ui:2197-2320`, `settingsdialogdiagnostics.cpp:22-90` | ⚠️ tab + log-level combo only - `settings_content_widget.cpp:1324` | ⚠️ · |
 | U151 Settings tabs use scroll areas with grouped GroupBoxes | ✅ `settingsdialog.ui:28`, `:1062` | ❌ | ❌ · |
 | U223 Per-plugin translators (every loaded plugin file basename) | ✅ `mainwindow.cpp:~545`, `:2897-2911` | ❌ | ❌ · |
 | U262 QuestionBoxMemory per-dialog choice persistence (.ui + IDs) | ✅ `questionboxmemory` (uibase) | ❌ | ❌ · |
@@ -641,70 +288,68 @@ row). No `⏳` row is untagged - USVFS being planned does not make it Linux-shap
 
 | Feature | MO2 | GMM | Status |
 |---------|-----|-----|--------|
-| Custom executables list | ✅ `ExecutablesList` (CRUD) | ✅ `executables_entry.h:26` `Entry` + `exec_controls_bar.h:31` `ExecControlsBar` | ✅ · |
-| Per-executable arguments | ✅ `Executable::arguments` | ✅ `executables_entry.h:30` `Entry::arguments` (+ UI `executables_content_widget.cpp:313`) | ✅ · |
-| Per-executable working directory | ✅ `Executable::workingDirectory` | ✅ `executables_content_widget.cpp:317` `start_in_edit_` (`Entry::start_in`) | ✅ · |
-| Per-executable Steam App ID | ✅ `Executable::steamAppID` | ⚠️ MO2 importer reads `steamAppID` (`mo2_importer.cpp:220`), not per-executable runtime | ⚠️ · |
+| Custom executables list | ✅ `ExecutablesList` (CRUD) | ✅ `Entry` + `ExecControlsBar` - `executables_entry.h:26` | ✅ · |
+| Per-executable arguments | ✅ `Executable::arguments` | ✅ `Entry::arguments` - `executables_entry.h:30` | ✅ · |
+| Per-executable working directory | ✅ `Executable::workingDirectory` | ✅ `start_in_edit_` - `executables_content_widget.cpp:317` | ✅ · |
+| Per-executable Steam App ID | ✅ `Executable::steamAppID` | ⚠️ MO2 import only, not per-executable - `mo2_importer.cpp:220` | ⚠️ · |
 | Per-executable custom overwrite | ✅ `Executable::customOverwrites` | ❌ | ❌ · |
 | Per-executable forced libraries | ✅ `Executable::forcedLibraries` | ❌ | ❌ · |
-| Per-executable environment variables | ❌ | 🚀 `executables_content_widget.cpp:45` `parse_environment_text` (KEY=VALUE) | 🚀 · |
-| Per-executable output-to-mod routing | ❌ | 🚀 `executables_content_widget.cpp:119` `output_mod` load + `:324` combo | 🚀 · |
-| Toolbar pinning | ✅ `ShowInToolbar` flag | ✅ `main_window.cpp:229` `add_shortcut_to_toolbar` | ✅ · |
-| Desktop shortcut creation | ❌ | 🚀 `main_window.cpp:232` `add_shortcut_to_desktop` (.desktop file) | 🚀 · |
-| Executable ordering (up/down) | ✅ `EditExecutablesDialog` | ✅ `executables_content_widget.cpp:268` up/down + `:289` InternalMove drag | ✅ · |
-| Clone executable | ✅ `EditExecutablesDialog::clone()` | ✅ `executables_content_widget.cpp:276` `on_clone_selected` | ✅ · |
+| Per-executable environment variables | ❌ | 🚀 `parse_environment_text` (KEY=VALUE) - `executables_content_widget.cpp:45` | 🚀 · |
+| Per-executable output-to-mod routing | ❌ | 🚀 `output_mod` load + combo - `executables_content_widget.cpp:119` | 🚀 · |
+| Toolbar pinning | ✅ `ShowInToolbar` flag | ✅ `add_shortcut_to_toolbar` - `main_window.cpp:229` | ✅ · |
+| Desktop shortcut creation | ❌ | 🚀 `add_shortcut_to_desktop` (.desktop file) - `main_window.cpp:232` | 🚀 · |
+| Executable ordering (up/down) | ✅ `EditExecutablesDialog` | ✅ up/down + InternalMove drag - `executables_content_widget.cpp:268` | ✅ · |
+| Clone executable | ✅ `EditExecutablesDialog::clone()` | ✅ `on_clone_selected` - `executables_content_widget.cpp:276` | ✅ · |
 | JAR binary detection | ✅ `setJarBinary` + `findJavaInstallation` | ❌ | ❌ · |
-| Icon extraction (wrestool/QFileIconProvider) | ❌ | 🚀 `exec_controls_bar.cpp:111` `extractExeIcon` | 🚀 · |
-| Executable editor widget | ✅ `EditExecutablesDialog` | ✅ `executables_entry.h:84` `class ContentWidget` (mode-agnostic) | ✅ · |
+| Icon extraction (wrestool/QFileIconProvider) | ❌ | 🚀 `extractExeIcon` - `exec_controls_bar.cpp:111` | 🚀 · |
+| Executable editor widget | ✅ `EditExecutablesDialog` | ✅ `ContentWidget` (mode-agnostic) - `executables_entry.h:84` | ✅ · |
 | Executables list proxy model | ✅ `ExecutablesListProxy` | ❌ | ❌ · |
 | U004 Ctrl+E = Executables... | ✅ `mainwindow.ui:1697-1717` | ❌ | ❌ · |
-| U016 Run menu (one action per pinned exe, statusTip path, custom__ objectName, hidden if none) | ✅ `mainwindow.cpp:755-795` | ⚠️ exec controls bar exists `exec_controls_bar.cpp:224`; Run menu itself unproven | ⚠️ · |
+| U016 Run menu (one action per pinned exe, statusTip, objectName) | ✅ `mainwindow.cpp:755-795` | ⚠️ exec controls bar only, Run menu unproven - `exec_controls_bar.cpp:224` | ⚠️ · |
 | U022 Toolbar context menu "Remove '%1' from the toolbar" | ✅ `mainwindow.cpp:3785-3805` | ❌ | ❌ · |
-| U024 Link button menu (Toolbar and Menu / Desktop / Start Menu shortcuts) | ✅ `mainwindow.cpp:360-367`, `:2695-2719` | ⚠️ desktop shortcut exists `launch_controller.cpp:1340` (add_shortcut_to_desktop); Toolbar-and-Menu/Start-Menu variants unproven | ⚠️ · |
-| U051 Executables combo sentinels ("<Edit...>", "(no executables)") | ✅ `mainwindow.cpp:1866-1920` | ✅ `exec_controls_bar.h:22` kAddNewEntryText = "<Edit...>" | ✅ · |
-| U069 Pinned exe toolbar actions (iconForExecutable, statusTip, custom__ objectName) | ✅ `mainwindow.cpp:769-795` | ⚠️ pinned toolbar action wiring `main_window.cpp:229`; icon/statusTip/objectName trio unproven | ⚠️ · |
+| U024 Link button menu (Toolbar and Menu / Desktop / Start Menu shortcuts) | ✅ `mainwindow.cpp:360-367`, `:2695-2719` | ⚠️ desktop only - `launch_controller.cpp:1340` | ⚠️ · |
+| U051 Executables combo sentinels ("<Edit...>", "(no executables)") | ✅ `mainwindow.cpp:1866-1920` | ✅ kAddNewEntryText = "<Edit...>" - `exec_controls_bar.h:22` | ✅ · |
+| U069 Pinned exe toolbar actions (icon, statusTip, objectName) | ✅ `mainwindow.cpp:769-795` | ⚠️ action wiring only, trio unproven - `main_window.cpp:229` | ⚠️ · |
 | U155 File tree "Enter Name" add-as-executable dialog | ✅ `filetree.cpp:280-301` | ❌ | ❌ · |
-| U156 EditExecutables list context menu (Add from file / Add empty / Clone selected) | ✅ `editexecutablesdialog.cpp:91-99` | ⚠️ "Clone selected" exists `executables_content_widget.cpp:276`; Add-from-file/Add-empty unproven | ⚠️ · |
-| U188 EditExecutablesDialog full control set (list, buttons, fields, Steam AppID override) | ✅ `editexecutablesdialog.ui` | ⚠️ executables content widget exists `executables_content_widget.cpp:276`; MO2's exact control set unproven | ⚠️ · |
+| U156 EditExecutables list context menu (Add from file / Add empty / Clone) | ✅ `editexecutablesdialog.cpp:91-99` | ⚠️ Clone only - `executables_content_widget.cpp:276` | ⚠️ · |
+| U188 EditExecutablesDialog full control set (list, buttons, fields, AppID override) | ✅ `editexecutablesdialog.ui` | ⚠️ widget exists, exact control set unproven - `executables_content_widget.cpp:276` | ⚠️ · |
 | U189 EditExecutables validation dialogs (empty output mod, reset confirm, Java required) | ✅ `editexecutablesdialog.cpp:214-887` | ❌ | ❌ · |
 | U277 ExecutableInfo PE parsing of binaries | ✅ `executableinfo.cpp` (uibase) | ❌ | ❌ · |
 
 ## 6. Mod Management
 
-Note: Track B item U200 is skipped - it is an alias of U116 (integrated once in this section).
-
 | Feature | MO2 | GMM | Status |
 |---------|-----|-----|--------|
-| Mod priority ordering | ✅ `profile.getActiveMods` | ✅ `mod_meta.cpp:484` `ModMeta::set_priority` + `mod_cache.cpp:125` | ✅ · |
-| Mod enable/disable | ✅ `ModInfo::enabled` | ✅ `mod_scanner.cpp:786` `enable_mod` / `:778` `disable_mod` | ✅ · |
-| Overwrite directory | ✅ `Settings::paths().overwrite` | ✅ `instance.h:61` `overwrite_dir` + `instance_utils.cpp:306` create | ✅ · |
-| Custom overwrite target | ✅ `customOverwrite` param | ✅ `fs_utils.h:230` `relay_output_to_mod` (MO2 Custom Overwrites parity) | ✅ · |
-| Mod data-to-game mapping | ✅ `getModMappings` | ✅ `knowledge_` keys `debug_window.cpp:881` `knowledge_->get` | ✅ · |
-| Mod metadata | ✅ `ModInfo` | ✅ `mod_meta.h` (`ModMeta`) + `category_set_registry.h:16` | ✅ · |
-| Core category sets | ❌ | 🚀 `category_set_registry.h:16` `CategorySetRegistry` + plugin hook `register_set` `category_set_registry.cpp:14` | 🚀 · |
-| Plugin-contributed categories | ❌ | 🚀 `plugin_loader.cpp:191` `cb_register_categories` -> `Category::Factory::merge` (was cited: `IPluginCategoryFactory`, symbol does not exist) | 🚀 · |
-| Mod file tree / conflict display | ✅ `DirectoryEntry` | ✅ `filetree/file_tree.h:3` + `conflict_engine.cpp:341` | ✅ · |
+| Mod priority ordering | ✅ `profile.getActiveMods` | ✅ `ModMeta::set_priority` - `mod_meta.cpp:484` | ✅ · |
+| Mod enable/disable | ✅ `ModInfo::enabled` | ✅ `enable_mod` / `disable_mod` - `mod_scanner.cpp:786` | ✅ · |
+| Overwrite directory | ✅ `Settings::paths().overwrite` | ✅ `overwrite_dir` + create - `instance.h:61` | ✅ · |
+| Custom overwrite target | ✅ `customOverwrite` param | ✅ `relay_output_to_mod` - `fs_utils.h:230` | ✅ · |
+| Mod data-to-game mapping | ✅ `getModMappings` | ✅ `knowledge_->get` - `debug_window.cpp:881` | ✅ · |
+| Mod metadata | ✅ `ModInfo` | ✅ `ModMeta` - `mod_meta.h` | ✅ · |
+| Core category sets | ❌ | 🚀 `CategorySetRegistry` + plugin hook - `category_set_registry.h:16` | 🚀 · |
+| Plugin-contributed categories | ❌ | 🚀 `cb_register_categories` -> `Category::Factory::merge` - `plugin_loader.cpp:191` | 🚀 · |
+| Mod file tree / conflict display | ✅ `DirectoryEntry` | ✅ `file_tree.h:3` + `conflict_engine.cpp:341` | ✅ · |
 | BSA/archive extraction | ✅ `BSAExtractor` | ✅ `archive_extractor.cpp:79` | ✅ · |
-| Case-insensitive mod matching | ✅ USVFS handles it | 🚀 `path_resolver.h:34` `PathResolver` | 🚀 · [win] |
-| Mod cache | ✅ | ✅ `mod_cache.h:20` `ModCache` (SQLite) | ✅ · |
+| Case-insensitive mod matching | ✅ USVFS handles it | 🚀 `PathResolver` - `path_resolver.h:34` | 🚀 · [win] |
+| Mod cache | ✅ | ✅ `ModCache` (SQLite) - `mod_cache.h:20` | ✅ · |
 | Mod scanner | ✅ | ✅ `mod_scanner.cpp:434` | ✅ · |
-| Mod renaming | ✅ `ModList::renameMod` | ✅ `mod_actions.cpp:573` `rename_mod_inline` | ✅ · |
-| Mod notes | ✅ `ModInfo::notes()` | ✅ `notes_tab.cpp:24` `NotesTab` (comments + HTML notes + color) | ✅ · |
-| Mod comments | ✅ `ModInfo::comments()` | ✅ `notes_tab.cpp:28` `comments_` + `:88` `on_comments_edited` | ✅ · |
-| Mod color coding | ✅ `ModInfo::color()` | ✅ `notes_tab.cpp:36` Set/Reset color; sidecar `color` key merged on scan, `mod_scan_worker.cpp:364` | ✅ · |
-| Mod author/uploader metadata | ✅ `ModInfo::author()`, `uploader()` | ✅ `plugin_database.cpp:338` `GamePlugin::author` from ESP CNAM (`esp_header.cpp:74`) | ✅ · |
-| Mod description | ✅ `ModInfo::getDescription()` | ✅ `plugin_database.cpp:339` `GamePlugin::description` + BBCode pipeline `bbcode.cpp` | ✅ · |
-| Mod creation time | ✅ `ModInfo::creationTime()` | ✅ `mod_scanner.cpp:434` `install_time`/`changed_time` | ✅ · |
+| Mod renaming | ✅ `ModList::renameMod` | ✅ `rename_mod_inline` - `mod_actions.cpp:573` | ✅ · |
+| Mod notes | ✅ `ModInfo::notes()` | ✅ `NotesTab` (comments, HTML, color) - `notes_tab.cpp:24` | ✅ · |
+| Mod comments | ✅ `ModInfo::comments()` | ✅ `comments_` + `on_comments_edited` - `notes_tab.cpp:28` | ✅ · |
+| Mod color coding | ✅ `ModInfo::color()` | ✅ Set/Reset color; sidecar key merged on scan - `mod_scan_worker.cpp:364` | ✅ · |
+| Mod author/uploader metadata | ✅ `ModInfo::author()`, `uploader()` | ✅ from ESP CNAM - `esp_header.cpp:74` | ✅ · |
+| Mod description | ✅ `ModInfo::getDescription()` | ✅ + BBCode pipeline - `plugin_database.cpp:339` | ✅ · |
+| Mod creation time | ✅ `ModInfo::creationTime()` | ✅ `install_time`/`changed_time` - `mod_scanner.cpp:434` | ✅ · |
 | Mod internal name | ✅ `ModInfo::internalName()` | ❌ | ❌ · |
-| Mod validated flag | ✅ `ModInfo::markValidated` | ✅ `mod_scanner.cpp:853` `mark_validated` | ✅ · |
-| Mod repository tracking | ✅ `ModInfo::repository()` | ✅ `mod_list_controller.cpp:1927` `meta.source_type()` / `source_id` | ✅ · |
-| Plugin settings per mod | ✅ `ModInfoRegular::pluginSetting` | ✅ `settings.h:239` `plugin_setting()` + `plugin_settings_registry.h:43` | ✅ · |
-| Nexus file IDs tracking | ✅ `ModInfoRegular::installedFiles` | ✅ `download_nxm.file_id` (`modpack_install_wizard.cpp:291`) + meta.ini persistence `gmmpack/packer.cpp:194` (no `InstalledFileInfo` class) | ✅ · |
-| Mod tags (deprecated/note/warning/incompatible) | ❌ | 🚀 `mod_list_model.h:22` `struct ModTag` + `set_tags` `:209` | 🚀 · |
-| Visual nesting (parent_id, indent, fold) | ❌ | 🚀 `mod_list_model.cpp:156` indent + `:1590` `set_folded` | 🚀 · |
-| Vendor icons (per-source badges) | ❌ | 🚀 `mod_list_model.cpp:46` (nexusmods, loverslab, steam, moddb) | 🚀 · |
-| MERGED pseudo-mod | ❌ | 🚀 `mod_list_model.h:17` `kMergedModId` | 🚀 · |
-| Game-native mod band | ❌ | 🚀 `mod_list_model.h:291` `native_band_first/last` | 🚀 · |
+| Mod validated flag | ✅ `ModInfo::markValidated` | ✅ `mark_validated` - `mod_scanner.cpp:853` | ✅ · |
+| Mod repository tracking | ✅ `ModInfo::repository()` | ✅ `meta.source_type()` / `source_id` - `mod_list_controller.cpp:1927` | ✅ · |
+| Plugin settings per mod | ✅ `ModInfoRegular::pluginSetting` | ✅ `plugin_setting()` + registry - `plugin_settings_registry.h:43` | ✅ · |
+| Nexus file IDs tracking | ✅ `ModInfoRegular::installedFiles` | ✅ `download_nxm.file_id`, no class - `gmmpack/packer.cpp:194` | ✅ · |
+| Mod tags (deprecated/note/warning/incompatible) | ❌ | 🚀 `ModTag` + `set_tags` - `mod_list_model.h:22` | 🚀 · |
+| Visual nesting (parent_id, indent, fold) | ❌ | 🚀 indent + `set_folded` - `mod_list_model.cpp:156` | 🚀 · |
+| Vendor icons (per-source badges) | ❌ | 🚀 nexusmods, loverslab, steam, moddb - `mod_list_model.cpp:46` | 🚀 · |
+| MERGED pseudo-mod | ❌ | 🚀 `kMergedModId` - `mod_list_model.h:17` | 🚀 · |
+| Game-native mod band | ❌ | 🚀 `native_band_first/last` - `mod_list_model.h:291` | 🚀 · |
 | ModInfoForeign (non-official plugins) | ✅ `ModInfoForeign` | ❌ | ❌ · |
 | ModInfoSeparator | ✅ `ModInfoSeparator` | ❌ | ❌ · |
 | ModInfoWithConflictInfo (conflict data) | ✅ `ModInfoWithConflictInfo` | ❌ | ❌ · |
@@ -713,37 +358,36 @@ Note: Track B item U200 is skipped - it is an alias of U116 (integrated once in 
 | Import strategy (Merge/Overwrite/None) | ✅ `ImportStrategy` enum | ❌ | ❌ · |
 | Activate mods dialog (save-game asset resolution) | ✅ `ActivateModsDialog` | ❌ | ❌ · |
 | U055 5s periodic timer saving mod metas (saveModMetas) | ✅ `mainwindow.cpp:500-504` | ❌ | ❌ · |
-| U116 Rename toasts ("Invalid name", "Name is already in use by another mod") | ✅ `modlist.cpp:490-496` | ❌ | ❌ · |
+| U116 Rename toasts ("Invalid name", "Name is already in use") | ✅ `modlist.cpp:490-496` | ❌ | ❌ · |
 | U117 Mod remove confirmation dialog | ✅ `modlist.cpp:1233-1234` | ❌ | ❌ · |
-| U201 meta.ini full key set enumerated (~29 keys incl. Endorsed/Abstained, tracked, nexus*) | ✅ `modinfo.cpp:80-330`, `modinforegular.cpp:957` | ⚠️ mod_meta covers core keys `mod_meta.cpp:117` (nexuscategory), `:124` (repository), `:736` (modid); full 29-key set unproven | ⚠️ · |
-| U202 meta.ini version / newestVersion / ignoredVersion keys | ✅ `modinforegular.cpp` | ⚠️ newest-version plumbing exists `nexus_source_panel.cpp:255` + version group `mod_meta.h:130`; ignoredVersion unproven | ⚠️ · |
-| U203 meta.ini modId / fileId / repository / gameName keys | ✅ `modinforegular.cpp` | ⚠️ modid + repository handled `mod_meta.cpp:736`, `:297`; fileId/gameName unproven | ⚠️ · |
-| U204 meta.ini category (primary) / categories CSV | ✅ `modinfo.cpp` | ✅ `engine/mod/meta/mod_meta.cpp:739` (category=0 write; categories CSV parse) | ✅ · |
-| U205 meta.ini comments / notes / color (hex) | ✅ `modinfo.cpp` | ⚠️ meta store exists `mod_meta.cpp:292` (General-section get/set pattern `:297`); comments/notes/color accessors unproven | ⚠️ · |
-| U281 DirectoryRefresher progress + error signal ("Loading..." progress) | ✅ `directoryrefresher.cpp`, `mainwindow.cpp:2441-2460` | ⚠️ progress signal exists `engine/core/directory_refresher.h:95`; error signal unproven | ⚠️ · |
+| U201 meta.ini full key set (~29 keys incl. Endorsed/Abstained, tracked, nexus*) | ✅ `modinfo.cpp:80-330` | ⚠️ core keys only, 29-key set unproven - `mod_meta.cpp:117` | ⚠️ · |
+| U202 meta.ini version / newestVersion / ignoredVersion keys | ✅ `modinforegular.cpp` | ⚠️ newestVersion only, ignoredVersion unproven - `nexus_source_panel.cpp:255` | ⚠️ · |
+| U203 meta.ini modId / fileId / repository / gameName keys | ✅ `modinforegular.cpp` | ⚠️ modid + repository only - `mod_meta.cpp:736` | ⚠️ · |
+| U204 meta.ini category (primary) / categories CSV | ✅ `modinfo.cpp` | ✅ category=0 write + CSV parse - `mod_meta.cpp:739` | ✅ · |
+| U205 meta.ini comments / notes / color (hex) | ✅ `modinfo.cpp` | ⚠️ store exists, accessors unproven - `mod_meta.cpp:292` | ⚠️ · |
+| U281 DirectoryRefresher progress + error signal | ✅ `directoryrefresher.cpp`, `mainwindow.cpp:2441` | ⚠️ progress signal only, error signal unproven - `directory_refresher.h:95` | ⚠️ · |
 
 ## 7. Mod Categories
 
 | Feature | MO2 | GMM | Status |
 |---------|-----|-----|--------|
-| Category tree system | ✅ `Categories` (hierarchical) | ✅ `category_factory.h:15` `Category::Factory` + `load` `category_factory.cpp:33` | ✅ · |
-| Nexus category mapping | ✅ `NexusCategory` + `resolveNexusID` | ✅ `mod_meta.cpp:117` `nexuscategory` key applied `mod_list_controller.cpp:1996` (no `NexusCat` type) | ✅ · |
+| Category tree system | ✅ `Categories` (hierarchical) | ✅ `Category::Factory` + `load` - `category_factory.h:15` | ✅ · |
+| Nexus category mapping | ✅ `NexusCategory` + `resolveNexusID` | ✅ `nexuscategory` key applied - `mod_list_controller.cpp:1996` | ✅ · |
 | Category import/export | ✅ `CategoryImportDialog` | ❌ | ❌ · |
-| Multi-category assignment | ✅ `ModInfo::setCategories` | ✅ `category_ids` CSV `[General]` (`mod_list_model.h:65`) + `set_category_ids` `mod_list_model.h:218` | ✅ · |
-| Primary category | ✅ `ModInfo::primaryCategory` | ✅ first entry in category CSV (`mod_list_model.h:65`), `mod_list_controller.cpp:2055` | ✅ · |
-| Special filter categories | ✅ `SpecialCategories` (Checked, UpdateAvailable, Conflict, etc.) | ❌ | ❌ · |
-| Category CRUD editor | ✅ | ✅ `categories_dialog.h:24` `CategoriesDialog` (editable table, full CRUD) | ✅ · |
-| Category filter panel | ✅ | ✅ `category_filter_panel.h:21` `CategoryFilterPanel` (checkable tree) | ✅ · |
-| Category import dialog (Merge/Overwrite/None strategy) | ✅ `CategoryImportDialog` | ❌ | ❌ · |
+| Multi-category assignment | ✅ `ModInfo::setCategories` | ✅ `category_ids` CSV + `set_category_ids` - `mod_list_model.h:65` | ✅ · |
+| Primary category | ✅ `ModInfo::primaryCategory` | ✅ first entry in category CSV - `mod_list_controller.cpp:2055` | ✅ · |
+| Special filter categories | ✅ `SpecialCategories` (Checked, UpdateAvailable, Conflict) | ❌ | ❌ · |
+| Category CRUD editor | ✅ | ✅ `CategoriesDialog` (full CRUD) - `categories_dialog.h:24` | ✅ · |
+| Category filter panel | ✅ | ✅ `CategoryFilterPanel` (checkable tree) - `category_filter_panel.h:21` | ✅ · |
 | Categories table view | ✅ `CategoriesTable` | ❌ | ❌ · |
-| U029 Category setup: GMM ruling = download Nexus category mappings per instance (opt-in import); NO MO2 3-button first-run chooser (user ruling) (NEXUS-LENS: genericize/provider-scope) | ✅ `mainwindow.cpp:1281-1300` | ⚠️ opt-in Nexus category-mapping import via existing NexusCat infra `settings.cpp:418` + `source_pages.cpp:345` (intentionally not wired yet) | ⚠️ · |
-| U030 Category migration dialog (Import Nexus Categories / Open Dialog / Disable Mappings / Close + Don't show again) (NEXUS-LENS: genericize/provider-scope) | ✅ `mainwindow.cpp:1312-1345` | ❌ | ❌ · |
+| U029 Category setup: GMM ruling = opt-in per-instance Nexus mapping import, no MO2 first-run chooser (NEXUS-LENS: genericize/provider-scope) | ✅ `mainwindow.cpp:1281-1300` | ⚠️ opt-in import exists, not wired - `source_pages.cpp:345` | ⚠️ · |
+| U030 Category migration dialog (Import / Open / Disable Mappings / Don't show again) (NEXUS-LENS: genericize/provider-scope) | ✅ `mainwindow.cpp:1312-1345` | ❌ | ❌ · |
 | U076 Category menus as QPushButton-with-menu (addMenuAsPushButton) | ✅ `modlistcontextmenu.cpp:264-271` | ❌ | ❌ · |
-| U078 "Change Categories" menu (recursive checkable items, parent check icon, aboutToHide apply) | ✅ `modlistcontextmenu.cpp:110-156` | ⚠️ add_category_menus exists `mod_context_menu.cpp:459`; parent check-icon + aboutToHide apply unproven | ⚠️ · |
-| U079 "Primary Category" menu (QRadioButton per assigned category) | ✅ `modlistcontextmenu.cpp:180-215` | ⚠️ radio primary-category menu exists `mod_context_menu.cpp:541` (QActionGroup `:549`); aboutToHide apply unproven | ⚠️ · |
+| U078 "Change Categories" menu (recursive checkable items, parent check icon, aboutToHide apply) | ✅ `modlistcontextmenu.cpp:110-156` | ⚠️ menus exist, apply-on-hide unproven - `mod_context_menu.cpp:459` | ⚠️ · |
+| U079 "Primary Category" menu (QRadioButton per assigned category) | ✅ `modlistcontextmenu.cpp:180-215` | ⚠️ radio menu exists, apply-on-hide unproven - `mod_context_menu.cpp:541` | ⚠️ · |
 | U112 Category column "Non-MO" for foreign + auto-unset on removal | ✅ `modlist.cpp:222-244` | ❌ | ❌ · |
 | U126 Separator display strips "_separator" suffix | ✅ `modlist.cpp:110-122` | ❌ | ❌ · |
-| U171 Categories dialog (Refresh from Nexus, import column, drag-assign pane) (NEXUS-LENS: genericize/provider-scope) | ✅ `categoriesdialog.ui` | ⚠️ categories dialog CRUD exists `settings/categories_dialog.h:21`; Nexus refresh/drag-assign pane unproven | ⚠️ · |
+| U171 Categories dialog (Refresh from Nexus, import column, drag-assign pane) (NEXUS-LENS: genericize/provider-scope) | ✅ `categoriesdialog.ui` | ⚠️ CRUD exists, Nexus pane unproven - `categories_dialog.h:21` | ⚠️ · |
 | U172 Category import dialog (Merge/Replace strategy + mapping options) | ✅ `categoryimportdialog.ui` | ❌ | ❌ · |
 | U196 "No category found" install dialog (Proceed / Disable / Stop && Configure) (NEXUS-LENS: genericize/provider-scope) | ✅ `installationmanager.cpp:672-682` | ❌ | ❌ · |
 | U229 Category menu commits on aboutToHide | ✅ `modlistcontextmenu.cpp:145-151` | ❌ | ❌ · |
@@ -753,50 +397,50 @@ Note: Track B item U200 is skipped - it is an alias of U116 (integrated once in 
 | Feature | MO2 | GMM | Status |
 |---------|-----|-----|--------|
 | Loose file conflicts | ✅ `EConflictFlag::OVERWRITE` | ✅ `conflict_engine.cpp:341` | ✅ · |
-| Archive vs loose conflicts | ✅ `FLAG_ARCHIVE_LOOSE_CONFLICT_*` | ✅ four conflict color settings `settings.h:216` (overwritten/overwriting x loose/archive) | ✅ · |
+| Archive vs loose conflicts | ✅ `FLAG_ARCHIVE_LOOSE_CONFLICT_*` | ✅ four conflict color settings - `settings.h:216` | ✅ · |
 | Archive vs archive conflicts | ✅ `FLAG_ARCHIVE_CONFLICT_*` | ❌ | ❌ · |
 | Overwrite folder conflicts | ✅ `FLAG_OVERWRITE_CONFLICT` | ❌ | ❌ · |
 | Conflict dialog (general) | ✅ `GeneralConflictsTab` with counters | ❌ | ❌ · |
 | Conflict dialog (advanced) | ✅ `AdvancedConflictsTab` tree view | ❌ | ❌ · |
-| Conflict context menu | ✅ open/run hooked/preview/explore/hide/goto | ✅ `conflicts_tab.cpp:182` `on_custom_context_menu` (ImageDiff `:201`) | ✅ · |
-| Conflict highlighting | ✅ `EHighlight` (INVALID, CENTER, IMPORTANT, PLUGIN) | ✅ row tint `mod_list_model.cpp:137` + `conflict_highlight_color` `mod_list_model.cpp:2022` + scrollbar marks | ✅ · |
-| Per-mod conflict stats | ❌ | 🚀 `mod_list_controller.cpp:2256` `set_conflict_stats(wins, losses)` | 🚀 · |
-| Blake2b fingerprint cache | ❌ | 🚀 `conflict_index.h:92` blake2b + `conflict_index.cpp:33` `scan(db_path)` | 🚀 · |
-| Image diff (conflict comparison) | ❌ | 🚀 `main_window.cpp:283` `ConflictsTab::image_diff_requested` | 🚀 · |
+| Conflict context menu | ✅ open/run hooked/preview/explore/hide/goto | ✅ `on_custom_context_menu` + ImageDiff - `conflicts_tab.cpp:182` | ✅ · |
+| Conflict highlighting | ✅ `EHighlight` (INVALID, CENTER, IMPORTANT, PLUGIN) | ✅ row tint + scrollbar marks - `mod_list_model.cpp:137` | ✅ · |
+| Per-mod conflict stats | ❌ | 🚀 `set_conflict_stats(wins, losses)` - `mod_list_controller.cpp:2256` | 🚀 · |
+| Blake2b fingerprint cache | ❌ | 🚀 blake2b + `scan(db_path)` - `conflict_index.h:92` | 🚀 · |
+| Image diff (conflict comparison) | ❌ | 🚀 `image_diff_requested` - `main_window.cpp:283` | 🚀 · |
 | ConflictListModel / ConflictItem | ✅ `ConflictListModel`, `ConflictItem` | ❌ | ❌ · |
 | Data tab conflict mode | ✅ `dataTabShowOnlyConflicts` | ❌ | ❌ · |
-| U094 Conflict flag tooltip texts (9 exact strings + FLAG_OVERWRITE_CONFLICT) | ✅ `modlist.cpp:156-180`, `modinfo.h:70-81` | ⚠️ conflict column plumbing `mod_list_model.cpp:345`; exact 9 tooltip strings unproven | ⚠️ · |
-| U119 EConflictFlag enum (10 values: loose/archive/archive-loose + overwrite) | ✅ `modinfo.h:70-81` | ⚠️ conflict-scan result plumbing `mod_list_controller.h:84` (ConflictScanResult); 10-flag enum unproven | ⚠️ · |
+| U094 Conflict flag tooltip texts (9 exact strings + FLAG_OVERWRITE_CONFLICT) | ✅ `modlist.cpp:156-180` | ⚠️ column plumbing, exact strings unproven - `mod_list_model.cpp:345` | ⚠️ · |
+| U119 EConflictFlag enum (10 values: loose/archive/archive-loose + overwrite) | ✅ `modinfo.h:70-81` | ⚠️ result plumbing only, enum unproven - `mod_list_controller.h:84` | ⚠️ · |
 | U120 EHighlight bit values (NONE/INVALID/CENTER/IMPORTANT/PLUGIN) | ✅ `modinfo.h:99-105` | ❌ | ❌ · |
 
 ## 9. Mod Content Analysis
 
 | Feature | MO2 | GMM | Status |
 |---------|-----|-----|--------|
-| Mod data content types | ✅ `ModDataContentHolder` | ✅ `ModContentId` enum `game_feature.h:154` | ✅ · |
-| Mod flags (INVALID, BACKUP, SEPARATOR, etc.) | ✅ `EFlag` | ⚠️ `ModState` is pipeline state (not an MO2-style flag enum); per-mod flags set at `mod_scanner.cpp:604` | ⚠️ · |
+| Mod data content types | ✅ `ModDataContentHolder` | ✅ `ModContentId` enum - `game_feature.h:154` | ✅ · |
+| Mod flags (INVALID, BACKUP, SEPARATOR, etc.) | ✅ `EFlag` | ⚠️ pipeline state, not a flag enum - `mod_scanner.cpp:604` | ⚠️ · |
 | Mod content icons | ✅ `ModContentIconDelegate` | ❌ | ❌ · |
-| Mod conflict icons | ✅ `ModConflictIconDelegate` | ✅ `FlagsDelegate` (per-icon tooltips) `mod_table_view.h:89` | ✅ · |
-| Mod flag icons | ✅ `ModFlagIconDelegate` | ✅ `FlagsDelegate` (wrap + tooltips) `mod_table_view.h:49` | ✅ · |
-| Empty mod flag (dummy icon, tooltip) | ✅ | ✅ `ModList::set_empty` + `plugin-dummy` icon + tooltip `mod_list_model.cpp:39`, `mod_list_model.cpp:1327` | ✅ · |
+| Mod conflict icons | ✅ `ModConflictIconDelegate` | ✅ `FlagsDelegate` (per-icon tooltips) - `mod_table_view.h:89` | ✅ · |
+| Mod flag icons | ✅ `ModFlagIconDelegate` | ✅ `FlagsDelegate` (wrap + tooltips) - `mod_table_view.h:49` | ✅ · |
+| Empty mod flag (dummy icon, tooltip) | ✅ | ✅ `set_empty` + `plugin-dummy` icon - `mod_list_model.cpp:1327` | ✅ · |
 | Mod version delegate (color-coded) | ✅ `ModListVersionDelegate` | ❌ | ❌ · |
-| INI tweaks detection | ✅ `ModInfo::getIniTweaks()` | ⚠️ profile-level initweaks.ini `profile_switching.cpp:36` + plugin INI tooltip `plugin_view.cpp:246` | ⚠️ · |
-| Archive listing per mod | ✅ `ModInfo::archives()` | ✅ `archives_html()` in plugin tooltip `plugin_view.cpp:90`, `plugin_view.cpp:248` | ✅ · |
+| INI tweaks detection | ✅ `ModInfo::getIniTweaks()` | ⚠️ profile initweaks.ini + tooltip - `profile_switching.cpp:36` | ⚠️ · |
+| Archive listing per mod | ✅ `ModInfo::archives()` | ✅ `archives_html()` in plugin tooltip - `plugin_view.cpp:248` | ✅ · |
 | ModDataContent updated signal | ✅ `ModDataContentUpdated` | ❌ | ❌ · |
 | CombinedModDataContent | ✅ `CombinedModDataContent` | ❌ | ❌ · |
 | U042 BSA list context menu "Extract..." | ✅ `mainwindow.cpp:3720-3728` | ❌ | ❌ · |
 | U065 BSA extract errors (read/extract failures, invalid hashes warning) | ✅ `mainwindow.cpp:3614-3715` | ❌ | ❌ · |
-| U093 Flag tooltip texts (8 exact strings incl. different-game + tracked warnings) | ✅ `modlist.cpp:124-153` | ⚠️ per-icon flag tooltip plumbing `mod_table_view.h:93` (flag_tooltips_role); exact strings unproven | ⚠️ · |
-| U104 Mod content column per-icon tooltip (helpEvent -> contentsTooltip table) | ✅ `modcontenticondelegate.cpp:40-56`, `modlist.cpp:1376` | ❌ | ❌ · |
-| U118 EFlag enum (11 flags incl. PLUGIN_SELECTED, ALTERNATE_GAME, TRACKED) | ✅ `modinfo.h:84-97` | ⚠️ flag icon/tooltip delegate roles `mod_table_view.h:96` (FlagsDelegate); 11-flag enum unproven | ⚠️ · |
-| U121 Flag->emblem icon map (7 mapped, 4 without icons, unknown warns) | ✅ `modflagicondelegate.cpp:47-80` | ⚠️ flag-icon delegate roles `mod_table_view.h:49`; exact 7-map + unknown-warning unproven | ⚠️ · |
+| U093 Flag tooltip texts (8 exact strings incl. different-game + tracked warnings) | ✅ `modlist.cpp:124-153` | ⚠️ plumbing only, exact strings unproven - `mod_table_view.h:93` | ⚠️ · |
+| U104 Mod content column per-icon tooltip (helpEvent -> contentsTooltip table) | ✅ `modcontenticondelegate.cpp:40-56` | ❌ | ❌ · |
+| U118 EFlag enum (11 flags incl. PLUGIN_SELECTED, ALTERNATE_GAME, TRACKED) | ✅ `modinfo.h:84-97` | ⚠️ delegate roles only, enum unproven - `mod_table_view.h:96` | ⚠️ · |
+| U121 Flag->emblem icon map (7 mapped, 4 without icons, unknown warns) | ✅ `modflagicondelegate.cpp:47-80` | ⚠️ roles only, exact 7-map unproven - `mod_table_view.h:49` | ⚠️ · |
 | U122 Flag delegate returns zero icons for FLAG_OVERWRITE rows | ✅ `modflagicondelegate.cpp:20-24` | ❌ | ❌ · |
 | U123 Flag icon sizeHint = count*40 x 20 clamped | ✅ `modflagicondelegate.cpp:90-110` | ❌ | ❌ · |
-| U125 ModInfoRegular flag conditions (NOTENDORSED, TRACKED, INVALID, NOTES, PLUGIN_SELECTED, ALTERNATE_GAME, HIDDEN_FILES) | ✅ `modinforegular.cpp:689-711` | ⚠️ endorsement/tracked gating `nexus_source_panel.cpp:41` + hidden-file flags `data_tab_build_worker.h:49`; full 7-condition matrix unproven | ⚠️ · |
-| U128 Generic icon + no-edit delegates (beyond version delegate) | ✅ `modlistversiondelegate.cpp`, `genericicondelegate.cpp`, `noeditdelegate.cpp` | ❌ | ❌ · |
-| U161 Data tab checkboxes + tooltips (conflicts/archives/hidden filters, Refresh tip) | ✅ `mainwindow.ui:1095-1195` | ⚠️ refresh + status-tips exist `data_tab.cpp:830` (tip `:833`); the three filter-checkbox tooltips unproven | ⚠️ · |
+| U125 ModInfoRegular flag conditions (NOTENDORSED, TRACKED, INVALID, NOTES, PLUGIN_SELECTED, ALTERNATE_GAME, HIDDEN_FILES) | ✅ `modinforegular.cpp:689-711` | ⚠️ 2 of 7 conditions - `nexus_source_panel.cpp:41` | ⚠️ · |
+| U128 Generic icon + no-edit delegates (beyond version delegate) | ✅ `modlistversiondelegate.cpp`, `genericicondelegate.cpp` | ❌ | ❌ · |
+| U161 Data tab checkboxes + tooltips (conflicts/archives/hidden filters, Refresh tip) | ✅ `mainwindow.ui:1095-1195` | ⚠️ refresh + status-tips only - `data_tab.cpp:830` | ⚠️ · |
 | U211 markConverted (converted/working flag) | ✅ `modlistviewactions` | ❌ | ❌ · |
-| U212 validated flag (ignore missing data) | ✅ `modinfo` | ✅ `engine/game/detect/mod_scanner.cpp:853` mark_validated writes [General] validated=true (read `:599`) | ✅ · |
+| U212 validated flag (ignore missing data) | ✅ `modinfo` | ✅ writes `[General] validated=true`, read at `:599` - `mod_scanner.cpp:853` | ✅ · |
 | U213 hidden files list (restoreHiddenFiles) | ✅ `modinforegular` | ❌ | ❌ · |
 | U218 FileTree menu ordering + bold-first-enabled via doubleClicksOpenPreviews | ✅ `filetree.cpp:749-772` | ❌ | ❌ · |
 
@@ -804,39 +448,39 @@ Note: Track B item U200 is skipped - it is an alias of U116 (integrated once in 
 
 | Feature | MO2 | GMM | Status |
 |---------|-----|-----|--------|
-| File tree tab | ✅ `ModInfoDialogFileTree` | ✅ `filetree_tab` `filetree_tab.cpp:117` | ✅ · |
-| ESP/plugin tab | ✅ `ModInfoDialogEsps` | ✅ `esps_tab` (registered `mod_info_dialog.cpp:8-14`) | ✅ · |
-| Nexus tab (embedded page) | ✅ `ModInfoDialogNexus` (endorse/track) | ✅ `source_tab` (registered `mod_info_dialog.cpp:8-14`) | ✅ · |
-| Images tab (gallery, DDS) | ✅ `ModInfoDialogImages` (380 lines) | ✅ `images_tab` (registered `mod_info_dialog.cpp:8-14`) | ✅ · |
-| Text files tab | ✅ `ModInfoDialogTextFiles` | ✅ `text_files_tab` `text_files_tab.cpp:16` | ✅ · |
-| INI files tab | ✅ `IniFilesTab` | ✅ `config_files_tab` (registered `mod_info_dialog.cpp:8-14`) | ✅ · |
-| Categories tab | ✅ `ModInfoDialogCategories` | ✅ `categories_tab` `categories_tab.cpp:83` | ✅ · |
-| Conflicts tab | ✅ `ModInfoDialogConflicts` | ✅ `conflicts_tab` `conflicts_tab.cpp:182` | ✅ · |
-| Notes tab (comments + notes + color) | ✅ `ModInfoNotesTab` | ✅ `notes_tab` `notes_tab.cpp:24` | ✅ · |
-| Generic files tab | ❌ | 🚀 `generic_files_tab` `generic_files_tab.cpp:1` | 🚀 · |
-| Tab reordering | ✅ `onTabMoved` + `saveTabOrder` | ⚠️ internal `tab_order_` vector `mod_info_dialog.cpp:58`, not user-draggable | ⚠️ · |
+| File tree tab | ✅ `ModInfoDialogFileTree` | ✅ `filetree_tab` - `filetree_tab.cpp:117` | ✅ · |
+| ESP/plugin tab | ✅ `ModInfoDialogEsps` | ✅ `esps_tab` - `mod_info_dialog.cpp:8` | ✅ · |
+| Nexus tab (embedded page) | ✅ `ModInfoDialogNexus` (endorse/track) | ✅ `source_tab` - `mod_info_dialog.cpp:8` | ✅ · |
+| Images tab (gallery, DDS) | ✅ `ModInfoDialogImages` | ✅ `images_tab` - `mod_info_dialog.cpp:8` | ✅ · |
+| Text files tab | ✅ `ModInfoDialogTextFiles` | ✅ `text_files_tab` - `text_files_tab.cpp:16` | ✅ · |
+| INI files tab | ✅ `IniFilesTab` | ✅ `config_files_tab` - `mod_info_dialog.cpp:8` | ✅ · |
+| Categories tab | ✅ `ModInfoDialogCategories` | ✅ `categories_tab` - `categories_tab.cpp:83` | ✅ · |
+| Conflicts tab | ✅ `ModInfoDialogConflicts` | ✅ `conflicts_tab` - `conflicts_tab.cpp:182` | ✅ · |
+| Notes tab (comments + notes + color) | ✅ `ModInfoNotesTab` | ✅ `notes_tab` - `notes_tab.cpp:24` | ✅ · |
+| Generic files tab | ❌ | 🚀 `generic_files_tab` - `generic_files_tab.cpp:1` | 🚀 · |
+| Tab reordering | ✅ `onTabMoved` + `saveTabOrder` | ⚠️ internal `tab_order_` vector, not draggable - `mod_info_dialog.cpp:58` | ⚠️ · |
 | Tab color coding (data presence) | ✅ `setTabsColors` | ❌ | ❌ · |
-| Mod navigation (prev/next) | ✅ `onPreviousMod`, `onNextMod` | ✅ `prev_btn_`, `next_btn_`, separator-aware nav `mod_info_dialog.cpp:99`, `mod_info_dialog.cpp:159` | ✅ · |
+| Mod navigation (prev/next) | ✅ `onPreviousMod`, `onNextMod` | ✅ separator-aware nav - `mod_info_dialog.cpp:99` | ✅ · |
 | Mod info tab order persistence | ✅ `GeometrySettings::modInfoTabOrder()` | ❌ | ❌ · |
 
 ## 11. Version & Update Management
 
 | Feature | MO2 | GMM | Status |
 |---------|-----|-----|--------|
-| Version checking (installed vs newest) | ✅ `ModInfo::updateAvailable` | ✅ `ModUpdateDbClient::has_update()` `mod_update_db_client.h:150` + `newestVersion` in meta | ✅ · |
-| Newest version tracking | ✅ `ModInfo::newestVersion()` | ✅ `ModInfoResult::newest_version` `provider.h:16` + `nexusnewestversion` in meta `nexus_source_panel.cpp:255` | ✅ · |
+| Version checking (installed vs newest) | ✅ `ModInfo::updateAvailable` | ✅ `has_update()` + `newestVersion` in meta - `mod_update_db_client.h:150` | ✅ · |
+| Newest version tracking | ✅ `ModInfo::newestVersion()` | ✅ `ModInfoResult::newest_version` + meta key - `provider.h:16` | ✅ · |
 | Ignored version | ✅ `ModInfo::ignoredVersion()` | ❌ | ❌ · |
 | Downgrade detection | ✅ `ModInfo::downgradeAvailable()` | ❌ | ❌ · |
 | Batch update check | ✅ `checkAllForUpdate` | ❌ | ❌ · |
 | Check update after install | ✅ `Settings::checkUpdateAfterInstallation` | ❌ | ❌ · |
-| ModUpdateDbClient (per-game DB poll, ETag/304, offline cache) | ❌ | 🚀 `ModUpdateDbClient` (ISO 8601 compare, `by_game` index) `mod_update_db_client.h:124`, `mod_update_db_client.h:56`, `mod_update_db_client.h:17` | 🚀 · |
-| Per-game index pipeline (by_game directory, manifest) | ❌ | 🚀 `ModUpdateDbClient` per-game index + shard lookup `mod_update_db_client.h:164` | 🚀 · |
+| ModUpdateDbClient (per-game DB poll, ETag/304, offline cache) | ❌ | 🚀 ISO 8601 compare, `by_game` index - `mod_update_db_client.h:124` | 🚀 · |
+| Per-game index pipeline (by_game directory, manifest) | ❌ | 🚀 per-game index + shard lookup - `mod_update_db_client.h:164` | 🚀 · |
 | GitHub releases API (not Nexus) | ✅ `SelfUpdater` queries GitHub API | ❌ | ❌ · |
-| Prerelease filtering | ✅ `selfupdater.cpp` filters by draft/prerelease flags | ✅ `self_updater.cpp` filters by prerelease `self_updater.cpp:107` | ✅ · |
+| Prerelease filtering | ✅ `selfupdater.cpp` filters by draft/prerelease flags | ✅ filters by prerelease - `self_updater.cpp:107` | ✅ · |
 | Update dialog with Markdown changelogs | ✅ `UpdateDialog` (version diff + release notes) | ❌ | ❌ · |
 | MOTD (Message of the Day) | ✅ `motdAvailable` signal | ❌ | ❌ · |
 | U064 Update check dialogs (no-recent-updates + rate-limit notices) | ✅ `mainwindow.cpp:3151-3170` | ❌ | ❌ · |
-| U207 meta.ini nexus timestamps (nexusLastModified/nexusLastQuery/lastNexus*) | ✅ `modinforegular.cpp` | ⚠️ mod_meta [Nexusmods] section exists `mod_meta.h:32`; the 4 timestamp keys unproven | ⚠️ · |
+| U207 meta.ini nexus timestamps (nexusLastModified/nexusLastQuery/lastNexus*) | ✅ `modinforegular.cpp` | ⚠️ `[Nexusmods]` section exists, 4 keys unproven - `mod_meta.h:32` | ⚠️ · |
 | U209 versioningScheme (changeVersioningScheme) | ✅ `modlistviewactions changeVersioningScheme` | ❌ | ❌ · |
 | U210 ignoreUpdate flag (setIgnoreUpdate) | ✅ `modlistviewactions setIgnoreUpdate` | ❌ | ❌ · |
 | U254 finishUpdateInfo batch flow (per-mod newest versions, update-all) | ✅ `mainwindow.cpp:3151-3310` | ❌ | ❌ · |
@@ -846,352 +490,352 @@ Note: Track B item U200 is skipped - it is an alias of U116 (integrated once in 
 
 | Feature | MO2 | GMM | Status |
 |---------|-----|-----|--------|
-| Plugin list | ✅ `plugins.txt` | ✅ `plugin_database` `plugin_database.h:18` | ✅ · |
-| Load order sorting (LOOT) | ✅ `LOOT` | ✅ `gmm_lootcli` `mod_list_controller.cpp:2909` | ✅ · |
+| Plugin list | ✅ `plugins.txt` | ✅ `plugin_database` - `plugin_database.h:18` | ✅ · |
+| Load order sorting (LOOT) | ✅ `LOOT` | ✅ `gmm_lootcli` - `mod_list_controller.cpp:2909` | ✅ · |
 | Plugin enable/disable | ✅ | ✅ `plugin_database.cpp:719` | ✅ · |
-| ESP header parsing | ✅ `ESPInfo` | ✅ `esp_header` `esp_header.cpp:1` | ✅ · |
-| Plugin diagnostics | ✅ | ✅ `diagnose_registry` `diagnostics_registry.cpp:10` | ✅ · |
-| Plugin file mapper | ✅ `IPluginFileMapper` | ✅ `file_mapper_registry` `file_mapper_registry.cpp:1` | ✅ · |
-| Plugin save parser | ✅ | ✅ `save_parser_registry` `save_parser_registry.cpp:8` | ✅ · |
-| Plugin requirements check | ✅ | ✅ `requirements_registry` `requirements_registry.h:42`, registered at `plugin_loader.cpp:962` | ✅ · |
-| Plugin order encoding | ✅ | ✅ `order_encoding_registry` `order_encoding_registry.h:25` | ✅ · |
-| Master/Light/Medium/Blueprint flags | ✅ `isMasterFlagged`, `isLightFlagged`, etc. | ⚠️ master, light, medium implemented `plugin_info.h:52-54`; no Blueprint flag (explicitly unsupported `plugin_view.cpp:228-231`) | ⚠️ · |
-| Missing masters detection | ✅ `testMasters` + `missingMasters` | ✅ `set_missing_masters()` `mod_list_controller.cpp:2865` + tooltip + emblem `plugin_view.cpp:183` | ✅ · |
-| Plugin lock (pin at position) | ✅ `isESPLocked`, `lockESPIndex` | ✅ `set_locked()` `mod_list_controller.cpp:3069` + `apply_locked_order()` `plugin_database.cpp:871` + lockedorder.txt `profile.h:63` | ✅ · |
+| ESP header parsing | ✅ `ESPInfo` | ✅ `esp_header` - `esp_header.cpp:1` | ✅ · |
+| Plugin diagnostics | ✅ | ✅ `diagnose_registry` - `diagnostics_registry.cpp:10` | ✅ · |
+| Plugin file mapper | ✅ `IPluginFileMapper` | ✅ `file_mapper_registry` - `file_mapper_registry.cpp:1` | ✅ · |
+| Plugin save parser | ✅ | ✅ `save_parser_registry` - `save_parser_registry.cpp:8` | ✅ · |
+| Plugin requirements check | ✅ | ✅ `requirements_registry` - `requirements_registry.h:42` | ✅ · |
+| Plugin order encoding | ✅ | ✅ `order_encoding_registry` - `order_encoding_registry.h:25` | ✅ · |
+| Master/Light/Medium/Blueprint flags | ✅ `isMasterFlagged`, `isLightFlagged` | ⚠️ 3 of 4, Blueprint unsupported - `plugin_info.h:52` | ⚠️ · |
+| Missing masters detection | ✅ `testMasters` + `missingMasters` | ✅ `set_missing_masters()` + emblem - `plugin_view.cpp:183` | ✅ · |
+| Plugin lock (pin at position) | ✅ `isESPLocked`, `lockESPIndex` | ✅ `set_locked()` + lockedorder.txt - `profile.h:63` | ✅ · |
 | Plugin relationship fix | ✅ `fixPluginRelationships` | ❌ | ❌ · |
 | Plugin priority shift | ✅ `shiftPluginsPriority` | ❌ | ❌ · |
-| Plugin send to priority | ✅ `sendToPriority` | ⚠️ `send_to_highest/lowest_priority()` exists `mod_actions.cpp:234`, `mod_actions.cpp:249`, no arbitrary position | ⚠️ · |
-| Enable/disable all plugins | ✅ `setEnabledAll` | ✅ `set_all_enabled()` `mod_list_controller.cpp:2864` | ✅ · |
-| Plugin index generation (FE/FD) | ✅ `generatePluginIndexes` | ✅ `generate_mod_indexes()` `mod_list_controller.cpp:2869` | ✅ · |
-| LOOT messages per plugin | ✅ `Plugin::messages` | ✅ `LootReport::messages` `plugin_info.h:23` rendered in tooltip `plugin_view.cpp:187` | ✅ · |
-| LOOT dirty info (ITM, deleted refs) | ✅ `Dirty` struct | ✅ `LootReport::DirtyEntry` (ITM/deleted refs/navmesh) `plugin_info.h:24-31` rendered `plugin_view.cpp:195` | ✅ · |
-| LOOT incompatibilities | ✅ `Plugin::incompatibilities` | ✅ `LootReport::incompatibilities` `plugin_info.h:17` rendered `plugin_view.cpp:178` | ✅ · |
+| Plugin send to priority | ✅ `sendToPriority` | ⚠️ highest/lowest only, no arbitrary position - `mod_actions.cpp:234` | ⚠️ · |
+| Enable/disable all plugins | ✅ `setEnabledAll` | ✅ `set_all_enabled()` - `mod_list_controller.cpp:2864` | ✅ · |
+| Plugin index generation (FE/FD) | ✅ `generatePluginIndexes` | ✅ `generate_mod_indexes()` - `mod_list_controller.cpp:2869` | ✅ · |
+| LOOT messages per plugin | ✅ `Plugin::messages` | ✅ rendered in tooltip - `plugin_info.h:23` | ✅ · |
+| LOOT dirty info (ITM, deleted refs) | ✅ `Dirty` struct | ✅ `DirtyEntry` (ITM/refs/navmesh) - `plugin_info.h:24` | ✅ · |
+| LOOT incompatibilities | ✅ `Plugin::incompatibilities` | ✅ rendered - `plugin_info.h:17` | ✅ · |
 | LOOT stats (time, version) | ✅ `Stats` | ❌ | ❌ · |
-| Plugin author/description display | ✅ `pluginlist.h` | ✅ `GamePlugin::author`/`description` in tooltip HTML `plugin_info.h:78-79` | ✅ · |
-| Plugin FormVersion/HeaderVersion | ✅ `formVersion`, `headerVersion` | ✅ `esp_header` rendered `plugin_view.cpp:292`, `plugin_view.cpp:297` | ✅ · |
-| Plugin archive loading detection | ✅ `loadsArchive` | ⚠️ `GamePlugin::archives` `plugin_info.h:83` + `archives_html()` `plugin_view.cpp:248`, implicit detection | ⚠️ · |
-| Drag-and-drop plugin reorder | ✅ `dropMimeData` | ✅ `PluginTable` `plugin_view.cpp:389` with `InternalMove` `plugin_view.cpp:486` + `on_reorder` `plugin_view.cpp:490` | ✅ · |
-| Plugin foreground coloring (LOOT-based) | ✅ `foregroundData()` | ✅ state-based `setForeground()` for locked/missing/master `plugin_view.cpp:576`, `plugin_view.cpp:580` | ✅ · |
-| Plugin tooltip data (LOOT messages) | ✅ `tooltipData()` | ✅ `plugin_tooltip_html()` with full sub-blocks `plugin_view.cpp:271`, `plugin_view.cpp:610` | ✅ · |
-| Plugin highlight from mod selection | ✅ `highlightPlugins()` | ✅ `set_contained_plugins()` / `set_master_plugins()` `plugin_view.cpp:795`, `plugin_view.cpp:800` | ✅ · |
-| Transitive master enable/disable | ❌ | 🚀 `set_enabled()` enables/disables masters (transitive closure) `plugin_database.cpp:719`, `plugin_database.cpp:732` | 🚀 · |
-| Band reassertion (native+CC invariant) | ❌ | 🚀 `reassert_band()` `plugin_database.cpp:460` | 🚀 · |
-| Locked order application | ❌ | 🚀 `apply_locked_order()` `plugin_database.cpp:871` | 🚀 · |
-| Plugin type classification | ✅ | ✅ Regular/Master/Light/Medium enum `plugin_view.h:85` | ✅ · |
-| Plugin counter (by type) | ✅ `ModCounters` | ✅ `plugins_tab` active/total breakdown `plugins_tab.cpp:67` | ✅ · |
-| Zero-record plugin dummy icon | ✅ | ✅ `plugin-dummy` icon for HEDR record count == 0 `plugin_view.cpp:356` | ✅ · |
+| Plugin author/description display | ✅ `pluginlist.h` | ✅ in tooltip HTML - `plugin_info.h:78` | ✅ · |
+| Plugin FormVersion/HeaderVersion | ✅ `formVersion`, `headerVersion` | ✅ `esp_header` rendered - `plugin_view.cpp:292` | ✅ · |
+| Plugin archive loading detection | ✅ `loadsArchive` | ⚠️ implicit detection only - `plugin_view.cpp:248` | ⚠️ · |
+| Drag-and-drop plugin reorder | ✅ `dropMimeData` | ✅ `InternalMove` + `on_reorder` - `plugin_view.cpp:486` | ✅ · |
+| Plugin foreground coloring (LOOT-based) | ✅ `foregroundData()` | ✅ state-based (locked/missing/master) - `plugin_view.cpp:576` | ✅ · |
+| Plugin tooltip data (LOOT messages) | ✅ `tooltipData()` | ✅ `plugin_tooltip_html()` - `plugin_view.cpp:271` | ✅ · |
+| Plugin highlight from mod selection | ✅ `highlightPlugins()` | ✅ `set_contained_plugins()` / `set_master_plugins()` - `plugin_view.cpp:795` | ✅ · |
+| Transitive master enable/disable | ❌ | 🚀 `set_enabled()` closes over masters - `plugin_database.cpp:732` | 🚀 · |
+| Band reassertion (native+CC invariant) | ❌ | 🚀 `reassert_band()` - `plugin_database.cpp:460` | 🚀 · |
+| Locked order application | ❌ | 🚀 `apply_locked_order()` - `plugin_database.cpp:871` | 🚀 · |
+| Plugin type classification | ✅ | ✅ Regular/Master/Light/Medium enum - `plugin_view.h:85` | ✅ · |
+| Plugin counter (by type) | ✅ `ModCounters` | ✅ active/total breakdown - `plugins_tab.cpp:67` | ✅ · |
+| Zero-record plugin dummy icon | ✅ | ✅ `plugin-dummy` for HEDR count == 0 - `plugin_view.cpp:356` | ✅ · |
 | Plugin list sort proxy | ✅ `pluginlistsortproxy.h` (column filtering, custom sorting) | ❌ | ❌ · |
 | Plugin list highlight masters | ✅ `PluginList::highlightMasters()` | ❌ | ❌ · |
 | Plugin list ChangeBracket (RAII layout notifications) | ✅ `PluginList::ChangeBracket` | ❌ | ❌ · |
-| Plugin list view (filter, counter, keyboard nav) | ✅ `pluginlistview.h/cpp` (Space toggles, Ctrl+Up/Down move priority, Ctrl+Enter opens the origin folder, Ctrl+F / Esc filter) | ⚠️ the view, the table, the double-click and the active/total counter all exist (`plugin_view.cpp:519-535`, `:447-465`, `:765`, `plugins_tab.cpp:71-74`). **There is no plugin-side text filter and no keyboard handler**: the two Ctrl+F / Escape `QShortcut`s on MainWindow only touch `mod_filter_bar` and `right_filter_bar`, neither of which is on the plugin tab. | ⚠️ ✔ |
-| Plugin list context menu | ✅ `pluginlistcontextmenu.cpp:24-112` (Enable selected, Disable selected, Enable all, Disable all, Send to… → Top / Bottom / Priority…, Lock load order, Unlock load order, Open Origin in Explorer, Open Origin Info…) | ⚠️ **2 of 9 groups**: Lock load order / Unlock load order (`plugin_context_menu.cpp:24-28`). Enable/disable, the Send to submenu, and the two Open Origin entries have no counterpart. | ⚠️ ✔ |
-| Plugin list model (metadata, type flags) | ✅ `pluginlist.h` (form/header version, author, description) | ✅ the data is all parsed and rendered: `GamePlugin::author` / `description` / `form_version` / `header_version` (`plugin_info.h:78-79`, `plugin_view.cpp:271-300`) and the Regular/Master/Light/Medium classification (`plugin_view.h:85`). It is carried in the tooltip, not in columns - see U107. | ✅ ✔ |
+| Plugin list view (filter, counter, keyboard nav) | ✅ `pluginlistview.h/cpp` (Space, Ctrl+Up/Down, Ctrl+Enter, Ctrl+F/Esc) | ⚠️ no plugin-side filter or keyboard handler - `plugin_view.cpp:519` | ⚠️ ✔ |
+| Plugin list context menu | ✅ `pluginlistcontextmenu.cpp:24-112` (9 groups incl. Send to, Open Origin) | ⚠️ 2 of 9: Lock / Unlock load order - `plugin_context_menu.cpp:24` | ⚠️ ✔ |
+| Plugin list model (metadata, type flags) | ✅ `pluginlist.h` (form/header version, author, description) | ✅ all parsed and rendered, in the tooltip not columns - `plugin_info.h:78` | ✅ ✔ |
 | U043 BSA enabled-in-INI warning | ✅ `mainwindow.cpp:2071` | ❌ | ❌ · |
 | U059 Filter shortcut wiring also on espList + downloadView | ✅ `mainwindow.cpp:495-497` | ❌ | ❌ · |
-| U090 Plugin tooltip full block (every field incl. Loads Archives/INI, ESL/ESH, blueprint, dummy, force-disabled) | ✅ `pluginlist.cpp:1492-1662` | ⚠️ plugin_tooltip_html exists `plugin_view.cpp:271`; MO2's full field list unproven | ⚠️ · |
-| U107 Plugin list 8 columns (Name..Description) | ✅ `pluginlist.h:92-101`, `pluginlist.cpp:88-106` = Name, Priority, Mod Index, Flags, Form Version, Header Version, Author, Description | ⚠️ 5 shipped: **Plugin Name, Flags, Priority, Mod Index, Locked**. Locked is GMM-only - MO2 shows a lock as a flag emblem, not a column. **Form Version, Header Version, Author and Description are missing as columns** even though all four are parsed and already shown in the cell tooltip, so the data is there and the columns are simply not built. `plugin_view.cpp:521-523`, `right_panel.cpp:225-227` | ⚠️ ✔ |
-| U114 Plugin header tooltips (8 exact strings) | ✅ `pluginlist.cpp:114-133` | ⚠️ 5 shipped. 4 are MO2's verbatim (Name, Flags, Priority, Mod Index); Locked is ours ("Whether this plugin's load order position is pinned"). `right_panel.cpp:222-234` | ⚠️ ✔ |
-| Plugin list double-click opens the owning mod | ✅ `pluginlistview.cpp:310-330` | ✅ `plugin_view.cpp:447-465`; Ctrl+double-click reveals the owning mod's folder. | ✅ ✔ |
+| U090 Plugin tooltip full block (Loads Archives/INI, ESL/ESH, blueprint, dummy, force-disabled) | ✅ `pluginlist.cpp:1492-1662` | ⚠️ full field list unproven - `plugin_view.cpp:271` | ⚠️ · |
+| U107 Plugin list 8 columns (Name..Description) | ✅ `pluginlist.cpp:88-106` = Name, Priority, Mod Index, Flags, Form/Header Version, Author, Description | ⚠️ 5 shipped; 4 columns missing, data already parsed - `plugin_view.cpp:521` | ⚠️ ✔ |
+| U114 Plugin header tooltips (8 exact strings) | ✅ `pluginlist.cpp:114-133` | ⚠️ 5 shipped, 4 verbatim, Locked is ours - `right_panel.cpp:222` | ⚠️ ✔ |
+| Plugin list double-click opens the owning mod | ✅ `pluginlistview.cpp:310-330` | ✅ Ctrl+double-click reveals the mod folder - `plugin_view.cpp:447` | ✅ ✔ |
 | U197 Plugin invalid-names warning + Workarounds plugin settings dialogs | ✅ `gamebryogameplugins.cpp:131` | ❌ | ❌ · |
-| U198 PluginList reportError strings (5 exact) | ✅ `pluginlist.cpp:296`, `:513`, `:843`, `:857`, `:2041` | ❌ | ❌ · |
+| U198 PluginList reportError strings (5 exact) | ✅ `pluginlist.cpp:296`, `:513`, `:843` | ❌ | ❌ · |
 | U220 Check-BSA single-shot debounce timer | ✅ `mainwindow.cpp:~497` | ❌ | ❌ · |
-| U251 BSA list + extract flow (SortableTreeWidget, progress, errors) | ✅ `mainwindow.cpp:1922-2090`, `:3668-3730` | ❌ | ❌ · |
+| U251 BSA list + extract flow (SortableTreeWidget, progress, errors) | ✅ `mainwindow.cpp:1922-2090` | ❌ | ❌ · |
 | U293 OBJ Group / LCD counters / managedArchiveLabel hover QToolTip | ✅ `mainwindow.cpp:3942-3945` | ❌ | ❌ · |
 
 ## 13. LOOT Integration
 
 | Feature | MO2 | GMM | Status |
 |---------|-----|-----|--------|
-| LOOT sort execution | ✅ `Loot::sort()` | ✅ `Sorter::Loot` `mod_list_controller.cpp:2909` | ✅ · |
-| LOOT report generation | ✅ `Loot::createReport()` | ⚠️ `loot_report.json` (JSON only, no HTML/markdown) `sorter.cpp:26` | ⚠️ · |
+| LOOT sort execution | ✅ `Loot::sort()` | ✅ `Sorter::Loot` - `mod_list_controller.cpp:2909` | ✅ · |
+| LOOT report generation | ✅ `Loot::createReport()` | ⚠️ JSON only, no HTML/markdown - `sorter.cpp:26` | ⚠️ · |
 | LOOT report viewer (markdown + web) | ✅ `LootDialog` + `MarkdownDocument` | ❌ | ❌ · |
-| LOOT progress display | ✅ `LootDialog::setProgress()` | ✅ `on_loot_progress(int stage, QString)` signal `mod_list_controller.cpp:2973` | ✅ · |
-| LOOT dirty info details | ✅ `Dirty` (CRC, ITM, deleted refs, navmesh, utility) | ⚠️ `LootReport::DirtyEntry` has ITM/deleted refs/navmesh/utility but NO CRC field `plugin_info.h:24-31` | ⚠️ · |
-| LOOT incompatibilities details | ✅ `File` (name + displayName) | ✅ `LootReport::incompatibilities` (name + displayName) `plugin_info.h:17` rendered `plugin_view.cpp:178` | ✅ · |
-| LOOT missing masters | ✅ `Plugin::missingMasters` | ✅ `missing_masters_html()` in plugin tooltip `plugin_view.cpp:183` | ✅ · |
-| Masterlist manager (GitHub walk-down) | ✅ | 🚀 `MasterlistManager` (branch walk, 24h TTL, offline fallback) `masterlists.h:21`, `masterlists.cpp:65` | 🚀 · |
-| LOOT sorted plugin list application | ✅ `lootdialog.cpp` applySortedLoadOrder() | ✅ `apply_load_order(result.sorted_names)` after sort `mod_list_controller.cpp:3001` | ✅ · |
+| LOOT progress display | ✅ `LootDialog::setProgress()` | ✅ `on_loot_progress(int, QString)` - `mod_list_controller.cpp:2973` | ✅ · |
+| LOOT dirty info details | ✅ `Dirty` (CRC, ITM, deleted refs, navmesh, utility) | ⚠️ no CRC field - `plugin_info.h:24` | ⚠️ · |
+| LOOT incompatibilities details | ✅ `File` (name + displayName) | ✅ name + displayName - `plugin_info.h:17` | ✅ · |
+| LOOT missing masters | ✅ `Plugin::missingMasters` | ✅ `missing_masters_html()` - `plugin_view.cpp:183` | ✅ · |
+| Masterlist manager (GitHub walk-down) | ✅ | 🚀 branch walk, 24h TTL, offline fallback - `masterlists.h:21` | 🚀 · |
+| LOOT sorted plugin list application | ✅ `lootdialog.cpp` applySortedLoadOrder() | ✅ `apply_load_order(result.sorted_names)` - `mod_list_controller.cpp:3001` | ✅ · |
 | LOOT sorted plugin list Markdown rendering | ✅ `loot.h` getSortedPluginListMarkdown() | ❌ | ❌ · |
-| LOOT clean info display | ✅ `Plugin::clean` vector ("Verified clean by X") | ✅ `LootReport::clean` `plugin_info.h:32-35` rendered `plugin_view.cpp:209` | ✅ · |
-| LOOT plugin flags (loadsArchive, isMaster, isLightMaster) | ✅ `Plugin` struct per-plugin metadata | ✅ `is_master_flagged`/`is_light_flagged`/`is_medium_flagged` `plugin_info.h:52-54` + `archives` `plugin_info.h:83` | ✅ · |
+| LOOT clean info display | ✅ `Plugin::clean` vector ("Verified clean by X") | ✅ `LootReport::clean` - `plugin_info.h:32` | ✅ · |
+| LOOT plugin flags (loadsArchive, isMaster, isLightMaster) | ✅ `Plugin` struct per-plugin metadata | ✅ master/light/medium + archives - `plugin_info.h:52` | ✅ · |
 | LOOT cancel/terminate | ✅ `Loot::cancel()` terminates lootcli process | ❌ | ❌ · |
 | LOOT statistics (timing, versions) | ✅ `Stats` struct (execution time, lootcli version) | ❌ | ❌ · |
-| LOOT general messages | ✅ `Report::messages` (non-plugin-specific) | ✅ rendered `plugin_view.cpp:162` (messages_ul_html), loop `plugin_view.cpp:187` (not yet written to DB) | ✅ · |
-| LOOT PluginList integration (addLootReport) | ✅ `PluginList::addLootReport()` integrates LOOT data | ✅ `set_loot_reports()` side-map `mod_list_controller.cpp:3011-3012`, `plugin_database.h:192` | ✅ · |
+| LOOT general messages | ✅ `Report::messages` (non-plugin-specific) | ✅ rendered - `plugin_view.cpp:162` | ✅ · |
+| LOOT PluginList integration (addLootReport) | ✅ `PluginList::addLootReport()` | ✅ `set_loot_reports()` side-map - `plugin_database.h:192` | ✅ · |
 | LOOT log level setting | ✅ `DiagnosticsSettings::lootLogLevel()` | ❌ | ❌ · |
 | LOOT async pipe communication | ✅ `AsyncPipe` (Windows Named Pipe IPC) | ❌ | ❌ · |
 | U054 sortButton LOOT tooltip variants | ✅ `mainwindow.cpp:3064-3075` | ❌ | ❌ · |
-| U091 makeLootTooltip strings ("Incompatible with %1", missing-dep li, Warning/Error prefixes) | ✅ `pluginlist.cpp:1665-1700` | ✅ `plugin_view.cpp:181` (LOOT tooltip strings) | ✅ · |
+| U091 makeLootTooltip strings ("Incompatible with %1", Warning/Error prefixes) | ✅ `pluginlist.cpp:1665-1700` | ✅ `plugin_view.cpp:181` | ✅ · |
 
 ## 14. Profile Management
 
 | Feature | MO2 | GMM | Status |
 |---------|-----|-----|--------|
-| Profile creation | ✅ `Profile` | ✅ `profile_creation` `profile_creation.h:48` `create_fresh_profile` | ✅ · |
-| Profile switching | ✅ | ✅ `profile_switching` `profile_switching.cpp:109` `switch_profile()` | ✅ · |
-| Local saves per profile | ✅ `localSavesEnabled` | ✅ `local_saves` `local_saves.h:51` `resolve_local_saves()` + UI `profile_settings_widget.cpp:15` | ✅ · |
-| Mod order persistence | ✅ | ✅ `do_write_modlist()` `profile.cpp:512` + priority map `profile.cpp:485` | ✅ · |
-| Plugin order persistence | ✅ | ✅ `save_profile()` `plugin_database.cpp:1076` / `load_profile()` `plugin_database.cpp:936` | ✅ · |
-| Delayed file writer | ✅ `DelayedFileWriter` | ✅ `delayed_file_writer` `delayed_file_writer.cpp:1` | ✅ · |
-| Safe write file | ✅ | ✅ `safe_write_file` `safe_write_file.cpp:50` | ✅ · |
-| Local INI settings | ✅ `Profile::localSettingsEnabled` | ✅ `ProfileManager::local_settings()` `profile.cpp:357` + UI checkbox `profile_settings_widget.cpp:16` | ✅ · |
-| Profile INI tweaks | ✅ `Profile::getProfileTweaks` | ✅ `write_tweaked_ini()` `profile_switching.cpp:34` + `initweaks.ini` `profile_switching.cpp:36` | ✅ · |
-| Archive invalidation toggle | ✅ `Profile::invalidationActive` | ✅ `automatic_archive_invalidation()` `profile.cpp:360` + UI `profile_settings_widget.cpp:47` + BSA feature | ✅ · |
-| Profile locking (plugin order) | ✅ `Profile::getLockedOrderFileName` | ✅ `read_locked_order()` `profile.cpp:543` / `write_locked_order()` `profile.cpp:560` + `apply_locked_order()` `plugin_database.cpp:871` | ✅ · |
+| Profile creation | ✅ `Profile` | ✅ `create_fresh_profile` - `profile_creation.h:48` | ✅ · |
+| Profile switching | ✅ | ✅ `switch_profile()` - `profile_switching.cpp:109` | ✅ · |
+| Local saves per profile | ✅ `localSavesEnabled` | ✅ `resolve_local_saves()` + UI - `local_saves.h:51` | ✅ · |
+| Mod order persistence | ✅ | ✅ `do_write_modlist()` + priority map - `profile.cpp:512` | ✅ · |
+| Plugin order persistence | ✅ | ✅ `save_profile()` / `load_profile()` - `plugin_database.cpp:1076` | ✅ · |
+| Delayed file writer | ✅ `DelayedFileWriter` | ✅ `delayed_file_writer` - `delayed_file_writer.cpp:1` | ✅ · |
+| Safe write file | ✅ | ✅ `safe_write_file` - `safe_write_file.cpp:50` | ✅ · |
+| Local INI settings | ✅ `Profile::localSettingsEnabled` | ✅ `local_settings()` + UI checkbox - `profile.cpp:357` | ✅ · |
+| Profile INI tweaks | ✅ `Profile::getProfileTweaks` | ✅ `write_tweaked_ini()` + `initweaks.ini` - `profile_switching.cpp:34` | ✅ · |
+| Archive invalidation toggle | ✅ `Profile::invalidationActive` | ✅ `automatic_archive_invalidation()` + UI - `profile.cpp:360` | ✅ · |
+| Profile locking (plugin order) | ✅ `Profile::getLockedOrderFileName` | ✅ `read/write_locked_order()` - `profile.cpp:543` | ✅ · |
 | Profile transfer saves | ✅ `TransferSavesDialog` | ❌ | ❌ · |
-| Profile rename | ✅ `Profile::rename` | ✅ `engine::profile::rename_profile()` `profile_creation.cpp:213` | ✅ · |
-| Profile copy | ✅ `Profile::createPtrFrom` | ✅ `engine::profile::copy_profile()` `profile_creation.cpp:154` | ✅ · |
-| Profile forced libraries | ✅ `Profile::determineForcedLibraries` | ⚠️ preserved in profile copy only `profile_creation.cpp:199`, no runtime loading | ⚠️ · |
-| Profile switch result + callbacks | ❌ | 🚀 `ProfileSwitchResult` `profile_switching.h:22` + `ProfileSwitchCallbacks` `profile_switching.h:52` | 🚀 · |
-| Profile switch EventBus emission | ❌ | 🚀 `kProfileChanged` event `event_bus.h:41`, dispatched `profile_switching.cpp:204` | 🚀 · |
-| Profile bar (combo + folder shortcuts) | ❌ | 🚀 `ProfileBar` `profile_bar.h:28` (FolderKind enum `profile_bar.h:14`, export/import `profile_bar.cpp:107-109`) | 🚀 · |
-| Profile deletion | ✅ `profilesdialog.cpp` on_removeProfileButton_clicked() | ✅ `on_delete_profile()` with confirmation + active guard `profile_manager_dialog.cpp:229` | ✅ · |
-| Active profile protection (cannot rename/delete active) | ✅ `profilesdialog.cpp` | ✅ `profile_manager_dialog.cpp` active-profile guard `profile_manager_dialog.cpp:204`, `profile_manager_dialog.cpp:234` | ✅ · |
-| Profile creation with default vs copy choice | ✅ `ProfileInputDialog` (getPreferDefaultSettings) | ✅ `ProfileCreateDialog` copy-source combo ("(fresh)" + existing profiles) `profile_create_dialog.h:10-25` | ✅ · |
-| Mod priority management per profile | ✅ `Profile::setModPriority()`, `getModPriority()`, `setModsEnabled()` | ✅ `set_mod_priority()` `profile.h:185` + `priority_of()` `profile.h:177` + enable/disable `mod_scanner.cpp:786` | ✅ · |
-| Mod status signal | ✅ `Profile::modStatusChanged` signal | ✅ EventBus `kModStateChanged` `event_bus.h:36`, dispatched `mod_list_controller.cpp:994` | ✅ · |
-| Tweaked INI creation | ✅ `Profile::createTweakedIniFile()` | ✅ `write_tweaked_ini()` `profile_switching.cpp:34` | ✅ · |
-| Profile settings as arbitrary key/value | ✅ `Profile::setting()`, `storeSetting()`, `settingsByGroup()` | ✅ `get_setting()` / `set_setting()` arbitrary key/value over settings.ini `profile.h:225-226` | ✅ · |
+| Profile rename | ✅ `Profile::rename` | ✅ `rename_profile()` - `profile_creation.cpp:213` | ✅ · |
+| Profile copy | ✅ `Profile::createPtrFrom` | ✅ `copy_profile()` - `profile_creation.cpp:154` | ✅ · |
+| Profile forced libraries | ✅ `Profile::determineForcedLibraries` | ⚠️ profile copy only, no runtime load - `profile_creation.cpp:199` | ⚠️ · |
+| Profile switch result + callbacks | ❌ | 🚀 `ProfileSwitchResult` + `Callbacks` - `profile_switching.h:22` | 🚀 · |
+| Profile switch EventBus emission | ❌ | 🚀 `kProfileChanged` - `event_bus.h:41` | 🚀 · |
+| Profile bar (combo + folder shortcuts) | ❌ | 🚀 `ProfileBar` (12 FolderKind, export/import) - `profile_bar.h:28` | 🚀 · |
+| Profile deletion | ✅ `on_removeProfileButton_clicked()` | ✅ `on_delete_profile()` + active guard - `profile_manager_dialog.cpp:229` | ✅ · |
+| Active profile protection (cannot rename/delete active) | ✅ `profilesdialog.cpp` | ✅ active-profile guard - `profile_manager_dialog.cpp:204` | ✅ · |
+| Profile creation with default vs copy choice | ✅ `ProfileInputDialog` (getPreferDefaultSettings) | ✅ copy-source combo ("(fresh)" + profiles) - `profile_create_dialog.h:10` | ✅ · |
+| Mod priority management per profile | ✅ `Profile::setModPriority()`, `setModsEnabled()` | ✅ `set_mod_priority()` + `priority_of()` - `profile.h:185` | ✅ · |
+| Mod status signal | ✅ `Profile::modStatusChanged` signal | ✅ EventBus `kModStateChanged` - `event_bus.h:36` | ✅ · |
+| Tweaked INI creation | ✅ `Profile::createTweakedIniFile()` | ✅ `write_tweaked_ini()` - `profile_switching.cpp:34` | ✅ · |
+| Profile settings as arbitrary key/value | ✅ `Profile::setting()`, `storeSetting()` | ✅ `get_setting()` / `set_setting()` - `profile.h:225` | ✅ · |
 | Rename mod across all profiles | ✅ `Profile::renameModInAllProfiles()` | ❌ | ❌ · |
 | Active mods retrieval | ✅ `Profile::getActiveMods()` | ❌ | ❌ · |
-| Profile existence check | ✅ `Profile::exists()` | ✅ `Profile::exists()` `profile.h:101` | ✅ · |
-| Profile find settings (auto-detect) | ✅ `Profile::findProfileSettings()` | ✅ `detect_local_settings()` in profile_creation `profile_creation.cpp:38` | ✅ · |
-| Modlist write cancellation | ✅ `Profile::cancelModlistWrite()` | ✅ `cancel_modlist_write()` `profile.cpp:510` (DelayedFileWriter cancel `profile.cpp:244`) | ✅ · |
-| Profile debug dump | ✅ `Profile::debugDump()` | ✅ `debug_window.cpp` profile display `debug_window.cpp:852-853` | ✅ · |
-| Profile INI files (full set - 7 file paths) | ✅ `Profile` (plugins.txt, loadorder.txt, lockedorder.txt, modlist.txt, archives.txt, ini, tweaks) | ✅ path accessors `profile.h:212-217` (settings/modlist/plugins/loadorder/lockedorder/archives) + `initweaks.ini` `profile_switching.cpp:36` | ✅ · |
+| Profile existence check | ✅ `Profile::exists()` | ✅ `Profile::exists()` - `profile.h:101` | ✅ · |
+| Profile find settings (auto-detect) | ✅ `Profile::findProfileSettings()` | ✅ `detect_local_settings()` - `profile_creation.cpp:38` | ✅ · |
+| Modlist write cancellation | ✅ `Profile::cancelModlistWrite()` | ✅ `cancel_modlist_write()` - `profile.cpp:510` | ✅ · |
+| Profile debug dump | ✅ `Profile::debugDump()` | ✅ profile display - `debug_window.cpp:852` | ✅ · |
+| Profile INI files (full set - 7 file paths) | ✅ `Profile` (plugins, loadorder, lockedorder, modlist, archives, ini, tweaks) | ✅ path accessors + `initweaks.ini` - `profile.h:212` | ✅ · |
 | U003 Ctrl+P = Profiles... | ✅ `mainwindow.ui:1676-1696` | ❌ | ❌ · |
-| U050 profileBox "<Manage...>" sentinel entry opening profiles dialog | ✅ `mainwindow.cpp:1822-1864`, `:2936` | ✅ `profile_bar.cpp:19` kManageProfilesText = "<Manage...>" (sentinel at index 0, `:156`) | ✅ · |
-| U132 General > Profile Defaults group (Local INIs / Local Saves / Archive Invalidation) | ✅ `settingsdialog.ui:234-261` | ⚠️ per-profile settings editor maps MO2's checkboxes `profile_settings_widget.h:11`; archive-invalidation parity unproven | ⚠️ · |
-| U166 Profiles dialog full control set (3 checkables + 7 buttons w/ tooltips) | ✅ `profilesdialog.ui` | ⚠️ profile manager dialog port `profile_manager_dialog.h:13` (create/copy/rename/delete + per-profile settings `:45`); Transfer/Select + tooltips unproven | ⚠️ · |
-| U167 Profiles dialog messages (invalid name, active-profile guards, broken profile) | ✅ `profilesdialog.cpp:78-300` | ❌ | ❌ · |
-| U173 ProfileInputDialog (name prompt + Default Game INI Settings checkbox) | ✅ `profileinputdialog.ui` | ⚠️ profile create dialog exists `profile_create_dialog.h:10`; the checkbox parity unproven | ⚠️ · |
-| U214 Profile 7-file set + settingsByGroup arbitrary keys + meta timer | ✅ `profile.cpp` | ⚠️ 7 path accessors proven `profile.h:212-217`; periodic meta-save timer absent (see U055) | ⚠️ · |
-| U215 Profile initweaks / invalidation archive-list interactions | ✅ `mainwindow.cpp:2585-2603` | ⚠️ initweaks + archives.txt writers `profile_switching.cpp:36`, `:76`; invalidationActive toggling unproven | ⚠️ · |
+| U050 profileBox "<Manage...>" sentinel entry opening profiles dialog | ✅ `mainwindow.cpp:1822-1864` | ✅ kManageProfilesText, sentinel at index 0 - `profile_bar.cpp:19` | ✅ · |
+| U132 General > Profile Defaults group (Local INIs / Saves / Archive Invalidation) | ✅ `settingsdialog.ui:234-261` | ⚠️ checkboxes mapped, invalidation parity unproven - `profile_settings_widget.h:11` | ⚠️ · |
+| U166 Profiles dialog full control set (3 checkables + 7 buttons w/ tooltips) | ✅ `profilesdialog.ui` | ⚠️ create/copy/rename/delete only - `profile_manager_dialog.h:13` | ⚠️ · |
+| U167 Profiles dialog messages (invalid name, active guards, broken profile) | ✅ `profilesdialog.cpp:78-300` | ❌ | ❌ · |
+| U173 ProfileInputDialog (name prompt + Default Game INI Settings checkbox) | ✅ `profileinputdialog.ui` | ⚠️ dialog exists, checkbox parity unproven - `profile_create_dialog.h:10` | ⚠️ · |
+| U214 Profile 7-file set + settingsByGroup arbitrary keys + meta timer | ✅ `profile.cpp` | ⚠️ 7 accessors proven, meta-save timer absent (U055) - `profile.h:212` | ⚠️ · |
+| U215 Profile initweaks / invalidation archive-list interactions | ✅ `mainwindow.cpp:2585-2603` | ⚠️ writers exist, invalidationActive toggling unproven - `profile_switching.cpp:76` | ⚠️ · |
 | U221 Archive list saved via DelayedFileWriter on modPrioritiesChanged | ✅ `mainwindow.cpp:564-566` | ❌ | ❌ · |
 
 ## 15. Download Management
 
 | Feature | MO2 | GMM | Status |
 |---------|-----|-----|--------|
-| Download state machine | ✅ `DownloadState` (14 states) | ⚠️ 6 states vs MO2's 14: `DownloadState` `downloads_tab.h:35-43` is Downloading / Paused / Complete / Installed / Failed / Removed, and `Removed` is an explicitly reserved, never-assigned value. Labels in `downloads_tab.cpp:49-65`. | ⚠️ ✔ |
-| Pause/resume downloads | ✅ `pauseDownload`, `resumeDownload` | ✅ pause is context-menu-only, resume is context-menu + row double-click. Emit side `downloads_tab.cpp:1056-1066`, `:931-933`; drive side `downloads_controller.cpp:402-470`; pause reaches the transfer through `PipelineWorker::pause_download`'s cooperative cancel flag, `pipeline_worker.cpp:415-433` | ✅ ✔ |
-| Cancel downloads | ✅ `cancelDownload` | ✅ no Cancel action and no separate cancel state: the only abort path is Pause, which is also a cancel - the partial file is kept, not deleted. `curl_download.cpp:230-241`, `network_manager.cpp:1231-1241` | ⚠️ ✔ |
-| Download speed tracking | ✅ `downloadSpeed` rolling average | ⚠️ live instantaneous speed only, no rolling average and no history. Read straight off the per-tick callback in `update_progress`, `downloads_tab.cpp:461-482` | ⚠️ ✔ |
-| MD5 lookup | ✅ `queryInfoMd5` | ❌ nothing computes or matches an MD5. The only "md5" in `src/` is a collection-parser field name, `collection/nexus/parser.cpp:136` | ❌ ✔ |
-| Download meta files (sidecar) | ✅ `createMetaFile` | ⚠️ a sidecar is written for an INSTALLED mod's folder, never next to a download. MO2 writes it at download time so a hand-placed archive in the downloads dir is already a known download; GMM's `import_dropped_file` and `add_downloads_dir_file` add a bare "Manual" row with no metadata, `downloads_tab.cpp:775-841`, `:726-773` | ⚠️ ✔ |
-| Hidden downloads | ✅ `isHidden`, `restoreDownload` | ❌ absent, as originally claimed. `isHidden` has no GMM download implementation (the two `isHidden` hits in `src/` are `QWidget::isHidden` on the Saves tab's empty-state label), and there is no restore/un-hide path | ❌ ✔ |
-| Automatic retry (3x) | ✅ `AUTOMATIC_RETRIES` | ✅ `NetworkOptions::max_retries` + `retry_backoff_ms` + Retry-After honouring, pushed from `Settings` via `network_options_bridge.cpp:25-32` | ✅ ✔ |
-| Pending download queue | ✅ `PendingDownload` | ✅ `PipelineWorker::pending_` is the deferred queue, `pipeline_worker.cpp:317-350`, drained FIFO in `on_fetch_finished` `:395-409`. GMO adds a per-source rule MO2 lacks: `nexus_queue_downloads` runs Nexus transfers one at a time | ✅ ✔ |
-| Multi-URL fallback | ✅ `m_Urls`, `m_CurrentUrl` | 🚫 **not copied on purpose.** MO2 cycles a list of mirrors for one file and picks the next on failure. GMM holds exactly one URL per download (`Mod::download_url`, `NxmLink::key`) and a fresh link mints a fresh signed URL - the re-request is the retry, and `max_retries` already owns that. There is no multi-mirror data source to build a list from, so the feature would be a loop over a list of one | 🚫 ✔ |
-| Hide after install | ✅ `InterfaceSettings::hideDownloadsAfterInstallation()` | 🚫 **not copied, and the earlier ❌ here was itself a fabrication.** GMM has a `Hide installed` filter checkbox on the tab, `downloads_tab.cpp:208`, backed by `downloads/hide_installed` (`settings.h:26-27`) and re-applied through `apply_installed_filter` `:884-912`. That is a *view filter the user toggles*, not MO2's *post-install auto-hide*: ours does not fire on install and does not hide anything the user cannot get back with one click. The previous version of this row cited `settings.h:25` and `downloads_tab.cpp:145`; those lines are `set_show_download_notifications` and `column_name()` | 🚫 ✔ |
-| Download notifications | ✅ `showDownloadNotifications` (tray, `downloadmanager.cpp:1825` complete / `:2405` failed) | ✅ **shipped now, and the row was a dead control until this pass.** The `interface/show_download_notifications` setting had a getter, a setter and a Settings checkbox (`settings_content_widget.cpp:117-118`, `:164-166`) and **no reader anywhere in `src/`**. It now gates a status-bar message on complete/failed - the same sink every other transient message uses (`MainWindow::on_notification`), since there is no tray on this platform. The four `kDownloadComplete` / `kDownloadPaused` / `kDownloadFailed` / `kDownloadRemoved` EventBus names were also declared and never dispatched; all four now are, `downloads_controller.cpp:88-127`, `:230-236`, `:508-512` | ✅ ✔ |
-| Compact downloads view | ✅ `compactDownloads` | ✅ `DownloadsTab::apply_compact_style` / `row_height`, `downloads_tab.cpp:302-319`, from `Settings::compact_downloads` (`downloads/hide_installed`'s neighbour, read at `:303` and `:316`) | ✅ ✔ |
-| Drag-and-drop import | ❌ | 🚀 **holds up.** A dropped archive is moved or copied into the downloads dir per the proposed action and surfaces as a "Manual" row: `dragEnterEvent`/`dragMoveEvent`/`dropEvent` `downloads_tab.cpp:844-882`, `import_dropped_file` `:775-841`, wired by `setAcceptDrops(true)` `:264`. A single LoversLab link dropped from a browser is routed to the same "Add from URL…" flow as the header button (`:110-128`, `:859-864`) - MO2 has no drop target on the downloads tab at all | 🚀 ✔ |
-| Directory watcher (auto-detect) | ❌ | 🚀 **holds up.** `QFileSystemWatcher` on the instance downloads dir with a 200 ms single-shot debounce, `downloads_tab.cpp:289-299`, `:321-334`; re-armed on an instance switch `:633-660`. `showEvent` deliberately does **not** rescan (`:662-665`) - the watcher is the single source of truth, and a second trigger would double the work | 🚀 ✔ |
-| Manifest serialization (JSON) | ❌ | 🚀 **holds up.** `serialize` / `deserialize`, `downloads_tab.cpp:1186-1208` / `:1210-1378`, persisted by `DownloadsController::save_download_manifest` `downloads_controller.cpp:332-347`, loaded before the dir scan so tracked ids are not duplicated as "Manual" rows (`:367-377`). Includes four legacy-label repairs for rows written by older builds (`:1231-1269`) | 🚀 ✔ |
-| Content-Disposition filename parsing | ❌ | 🚀 **holds up, and it is reachable.** RFC 6266/5987 including `filename*=UTF-8''…`, plus directory-component stripping and a `.`/`..` reject: `parse_content_disposition_filename` `curl_download.cpp:136-214`, `percent_decode` `:92-116`. Wired into every transfer by the consolidated header callback in `Network::Manager::prepare_download` (`network_manager.cpp:756-766`), not the older double-`CURLOPT_HEADERFUNCTION` path that silently dropped one of the two captures | 🚀 ✔ |
-| HTTP Range resume | ❌ | ⚠️ **holds up, and it now has a guard it did not have.** `CURLOPT_RESUME_FROM_LARGE` from the on-disk partial's size: `NetworkOptions` → `curl_download.cpp:33-52` → `network_manager.cpp:786-812`; the offset is chosen in `FetchStage::execute` `fetch_stage.cpp:73-84`. The hazard this row never mentioned: `Manager::download` **deletes the destination** on any non-abort failure (`network_manager.cpp:1236-1241`), so resuming a file that is already complete turned a 416 into the loss of the user's archive. A repeat link for a finished download is now refused before it reaches the transfer (`DownloadsTab::blocks_refetch`, `downloads_controller.cpp:826-836`) | ⚠️ ✔ |
-| NXM protocol download handler | ✅ `addNXMDownload()` (nxm:// link processing) | ✅ `NxmIpcServer` → `NxmRouter::parse` → `handle_nxm_download`, `downloads_controller.cpp:255-298` and `:628-801`, `nxm_ipc.h`. The router is Qt-free and also normalises the `nxm://nexus/<domain>/…` form the site actually emits (`nxm_router.cpp:57-64`). The `modl://` transport shares the same handler (`:803-910`) | ✅ ✔ |
-| Plugin download API (startDownloadURLs, etc.) | ✅ `IDownloadManager` plugin API | ❌ **not built, on purpose - it is ABI-shaped and needs a human decision.** `grep -i download` over `projects/ABI/include/` returns only `GMM_MOD_DOWNLOADED`, `GMM_INSTANCE_DOWNLOADS` and the `downloads` capability string - there is no download-manager surface in v1 or v2, so this is a new `gmm_abi_v3.h` entry point, a version-policy question, and a C++ proxy, not a Core change. See the ticket note | ❌ ✔ |
-| Nexus collection link rejection | ✅ `downloadmanager.cpp:740-745` `nxmInfo.isCollection()` → "Collections Not Supported" | ✅ **shipped now; the ❌ was real.** `NxmLink::valid()` only requires a non-empty domain (`router.h:19`), so a collection link parsed as valid with mod_id and file_id both 0 and queued a bogus "Mod #0 - file 0" row that could only fail. `handle_nxm_download` now rejects a file-less link up front, `downloads_controller.cpp:691-701` | ✅ ✔ |
-| Duplicate download detection (file name + auto-rename) | ✅ `downloadmanager.cpp` `getDownloadFileName(baseName, renameToUnique)` | ✅ Overwrite / Rename new file / Ignore file on a drop, with MO2's 1-based `N_<name>` numbering: `import_dropped_file` `downloads_tab.cpp:800-822`, default dialog `:266-287`, injectable resolver for tests `:185-188` | ✅ ✔ |
-| Duplicate NXM prevention (mod+file ID dedup) | ✅ `downloadmanager.cpp:788-810` checks pending+active for (modID, fileID) and shows "Already Queued" | ✅ **half-shipped before, now complete.** The ROW was already deduped - `add_download` silently no-ops on a duplicate key - but the row is not the transfer: the controller dispatched a second one anyway. Two failure modes followed. An in-flight duplicate opened the same destination file for writing while the first was appending to it. A duplicate of a *finished* download resumed from a complete file, got 416, and `Manager::download` removed the archive. `add_download` now reports whether it made the row, `DownloadsTab::blocks_refetch` refuses Downloading / Complete / Installed, and all three link entry points (NXM, modl, LoversLab) check it before dispatching. Failed and Paused stay open on purpose - a row has no Retry action, so re-queueing its link is how both are recovered | ✅ ✔ |
-| .unfinished extension for in-progress files | ✅ `downloadmanager.cpp:57` `UNFINISHED[]`, renamed away on completion `:2475` | ❌ absent, as claimed - no `.unfinished` in `src/`. GMM writes straight to the final name, which is why `scan_downloads_dir` has to guard on `has_active_download()` to stop the in-progress partial surfacing as a bogus "Complete" row (`downloads_tab.cpp:682-687`). A real parity gap, deliberately not taken this pass: it touches the resume offset and the scan guard together | ❌ ✔ |
-| HTTP/2 download support | ✅ `QHttp2Configuration` (16 MiB windows, Windows QNAM) | 🚀 **the ❌ was stale.** `curl` here is built with nghttp2 **and** ngtcp2/nghttp3, and `NetworkOptions::use_http3` defaults true (`network_manager.h:185`) and is applied as `CURLOPT_HTTP_VERSION_3` on every HTTPS request, `network_manager.cpp:800-802` (and `:695-697` for probes). So transfers negotiate HTTP/3 with automatic fallback to HTTP/2 via ALPN, and the Debug panel's Network tab reports which one actually landed (`http/3` / `http/2` / `http/1.1`, `:1163-1180`) - the claim is checkable at runtime, not just in source | 🚀 ✔ |
-| Login-gated resume | ✅ `downloadstab.cpp:112` `m_core.loggedInAction(...)` wraps the resume action | ❌ absent, as claimed. GMM does not check a session before resuming; an expired Nexus key simply fails the request. Arguably better than MO2's gate, but it is a difference and not a parity win | ❌ ✔ |
-| Empty URL resume prevention | ✅ `downloadmanager.cpp:1072-1076` "No known download urls. Sorry, this download can't be resumed." | ✅ **already shipped in substance, and now visible.** The controller refuses to resume an entry with no in-memory link (`downloads_controller.cpp:421-430`) because the link maps are session-only, and the warn said so - but nothing reached the user, leaving a row that offers Resume and silently does nothing. It now also posts to the status bar (`:426-433`) | ✅ ✔ |
-| Orphan meta file cleanup | ✅ `downloadmanager.cpp` `refreshList()` | 🚫 **nothing to clean.** MO2 reaps sidecars whose download row is gone. GMM writes no download sidecar (see the `createMetaFile` row), so there is no orphan class here | 🚫 ✔ |
-| Server preference sorting (mirror priority) | ✅ `ServerByPreference`, `evaluateFileInfoMap()` | 🚫 **not copied - no data behind it.** Ranking mirrors needs a server table and per-server preference state; GMM's Nexus provider is handed one signed CDN URL per request and has no mirror list to order | 🚫 ✔ |
-| Per-server speed history (persistent stats) | ✅ `ServerInfo` rolling speed list | 🚫 same reason as the row above: nothing identifies which server served a byte | 🚫 ✔ |
-| Download speed signal for stats persistence | ✅ `downloadSpeed(serverName, bytesPerSecond)` signal | 🚫 follows from the two rows above - the signal exists to feed the per-server history, and there is no server name to put on it | 🚫 ✔ |
-| Open meta file (sidecar viewer) | ✅ `downloadmanager.cpp:1299` `openMetaFile()` | ❌ absent, as claimed. Nothing to open: GMM has no download sidecar | ❌ ✔ |
-| Manual metadata re-query (info + MD5) | ✅ `queryInfo()`, `queryInfoMd5()` | ❌ absent, as claimed - no per-row Query Info action, and no MD5 half to keep | ❌ ✔ |
-| Batch metadata query for all incomplete | ✅ `queryDownloadListInfo()` | ❌ absent, as claimed. The nearest thing is the folder watcher re-reading the dir (`downloads_tab.cpp:677-724`), which is disk state, not Nexus metadata | ❌ ✔ |
-| MD5 multi-game namespace search | ✅ `queryInfoMd5()` queries alternate game short names | ❌ absent, as claimed - a consequence of there being no MD5 lookup at all | ❌ ✔ |
-| MD5 result disambiguation | ✅ `downloadmanager.cpp` filename + active file matching | ❌ absent, as claimed - same consequence | ❌ ✔ |
-| File type classification display | ✅ `getFileTypeString()` (Main/Update/Optional/etc.) | ❌ absent, as claimed. Half the input is on hand (a download row keeps `parent_mod_id` + `file_id`), but Main-vs-Update is never recorded and a row has no Filetype column, so the honest answer is a file id, not a classification | ❌ ✔ |
-| Mark installed / mark uninstalled | ✅ `markInstalled()` (`:1540`) / `markUninstalled()` (`:1579`) | ✅ **both shipped; the earlier claim that only mark-installed exists was a fabrication.** `mark_installed` `downloads_tab.cpp:551-570`, driven by `install_complete` `downloads_controller.cpp:168`; `mark_uninstalled` `downloads_tab.cpp:577-604`, driven by `mod_replaced` `:131-138` after a Replace deletes the mod folder. It re-lands the row on Complete rather than MO2's separate "Uninstalled" state - a deliberate choice, recorded in the code: the archive is still on disk and still re-installable, so Complete is the honest label | ✅ ✔ |
-| Install from download (double-click / context menu) | ✅ `downloadlistview.cpp` install action | ✅ row double-click `downloads_tab.cpp:922-949`, context-menu Install / Reinstall `:1039-1054`. Both carry the origin provenance (`source_type`, `source_id`, `file_id`, `page_url`) through `source_info_for` `:951-1001`, and a row whose Source label does not match its stored origin is treated as a local archive rather than trusted (`:967-999`) | ✅ ✔ |
-| Download status color coding | ✅ `downloadlist.cpp:205-211` (darkGreen / darkYellow / darkRed) | ⚠️ state label colours exist, and the 6-state-to-3-colour mapping is not one-to-one: `:522-525` (Complete green / Failed red-on-red), `:593` (Paused orange), `:1337-1345` on restore. GMM hardcodes hex rather than taking them from the palette | ⚠️ ✔ |
-| Remaining time estimation | ✅ `downloadmanager.cpp` ETA calculation | ❌ absent, as claimed, and confirmed at the source: `update_progress` renders `"%p% - <speed>"` with no time component at all (`downloads_tab.cpp:476-489`). `downloaded`, `total` and `speed` are all in hand on that line, so this is cheap - but it is a display nicety, not a defect, and it did not earn a place in a pass that had data-loss bugs to fix. **Top recommended follow-up** | ❌ ✔ |
-| Batch delete operations (all/installed/uninstalled) | ✅ `downloadlistview.cpp:300-306` (Delete Installed, Delete Uninstalled, Delete All) | ❌ none of the three, and none of MO2's confirm dialogs (`downloadlistview.cpp:453-465`). Removal is per-row only, and it goes to the system trash with a restore note rather than being permanent (`downloads_tab.cpp:1136-1170`) | ❌ ✔ |
-| Batch hide operations + un-hide all | ✅ `downloadlistview.cpp:312-322` (Hide Installed, Hide Uninstalled, Hide All, Un-Hide All) | ❌ none. The tab's `Hide installed` checkbox (`downloads_tab.cpp:208`) is a single-state filter over the whole view, not MO2's four destructive batch actions. | ❌ ✔ |
-| Filter widget for downloads | ✅ `FilterWidget` (fuzzy match) | ⚠️ the shared right-panel filter bar, not a dedicated fuzzy widget. `DownloadsTab::set_filter_text` / `reapply_installed_filter` `downloads_tab.cpp:914-920`, pushed by `RightPanel::apply_filter` `right_panel.cpp:175-179`; `apply_installed_filter` composes the two so the text filter is never clobbered `:884-912` | ⚠️ ✔ |
-| Meta/display name toggle setting | ✅ `downloadlist.cpp` `metaDownloads` | ❌ absent, as claimed - there is no display/meta name toggle. GMM shows one name per row, and the source-page entry opens the page the name came from | ❌ ✔ |
-| Keyboard shortcuts (Enter=install, Delete=remove, Space=pause) | ✅ `downloadlistview.cpp` | ❌ absent, as claimed - no `keyPressEvent` and no `eventFilter` on `DownloadsTab`, and no `QShortcut` bound to a download action. Up/Down navigate natively; everything else needs a mouse | ❌ ✔ |
-| Visit on Nexus (from download) | ✅ `downloadmanager.cpp:1234` `visitOnNexus()` | ✅ **shipped; the ❌ was a fabrication.** "Open on Nexus" is in the row context menu, built from the row's stored domain + parent mod id, `downloads_tab.cpp:1095-1100`. The same slot covers the other sources: LoversLab and ModPub rows open their persisted `page_url` (`:1086-1094`), and a local "Manual" row correctly gets no page action at all | ✅ ✔ |
-| Visit uploader profile | ✅ `downloadmanager.cpp` visitUploaderProfile() | ❌ absent, as claimed, and correctly so: `uploader` appears nowhere in `src/`. The field comes from MO2's `queryInfo` JSON, which GMM has no equivalent of | ❌ ✔ |
-| Plugin download callbacks (onDownloadComplete/Paused/Failed/Removed) | ✅ `IDownloadManager` boost::signals2 | ❌ absent, and **ABI-shaped - needs a human decision, do not start.** Note what *is* done: the internal EventBus already names all four (`event_bus.h:45-48`) and now dispatches all four. They are not the plugin surface - `projects/ABI/include/` has no download API at all, so exposing these is a v3 ABI decision, the same one as the plugin download API row | ❌ ✔ |
-| TaskProgress integration (Windows taskbar progress) | ✅ `downloadmanager.cpp` TaskProgressManager | 🚫 **not applicable.** Windows taskbar progress has no Linux counterpart, and the per-row progress bar already carries the information in-tab | 🚫 ✔ |
-| S3 signed URL filename extraction | ✅ `downloadmanager.cpp` response-content-disposition= | ✅ covered by the same parser as the Content-Disposition row - one code path, `curl_download.cpp:136-214` | ✅ ✔ |
-| File time fallback chain (birthTime -> metadataChangeTime -> lastModified) | ✅ `downloadmanager.cpp` getFileTime() | ✅ **shipped; the ❌ was a fabrication.** `DownloadsTab::update_filetime` walks exactly that chain, `downloads_tab.cpp:418-427`, and the comment cites MO2's line range. | ✅ ✔ |
-| U037 Drop-onto-downloads duplicate dialog (Overwrite / Rename / Ignore) | ✅ `mainwindow.cpp:4002-4017` | ✅ `downloads_tab.cpp:800-822` with the dialog at `:266-287` | ✅ ✔ |
-| U038 dragEnterEvent accepts Copy/Move + supported archives over downloads | ✅ `mainwindow.cpp:3947-3991` | ✅ **the "unproven" parts are proven.** `accepts_url_drop` `downloads_tab.cpp:89-103`: every URL must be a local file AND carry one of the 8 supported archive extensions, and a single foreign URL rejects the whole drag. `dragEnterEvent` `:844-848` and `dragMoveEvent` `:850-854` both gate on it, plus the single-LoversLab-link case | ✅ ✔ |
-| U039 dropEvent (TargetMoveAction coercion, shellCopy/Move, URL -> startDownloadURLs) | ✅ `mainwindow.cpp:4034-4050` | ✅ `dropEvent` `downloads_tab.cpp:856-882`: MoveAction is coerced to `Qt::TargetMoveAction` at `:874` so the file manager does not also move the file, CopyAction copies via `copy_file`, and the URL path is `import_dropped_file(url.toLocalFile(), move)`. There is no `startDownloadURLs` because there is no plugin download API (see that row) - the URL route here is `loverslab_url_entered` | ✅ ✔ |
-| U045 "Can't change download directory while downloads are in progress" toast | ✅ `mainwindow.cpp:2803` | ❌ absent, and no counterpart to guard: the downloads dir is derived from the instance and there is no setting to change mid-session | ❌ ✔ |
-| U062 showHiddenBox toggles downloadManager setShowHidden | ✅ `mainwindow.cpp:3818-3821` | ❌ absent - it cannot be, because there is no hidden-download state to toggle (see the `isHidden` row) | ❌ ✔ |
-| U096 Download row tooltip (filename, info-missing hint, modName version desc, Pending) | ✅ `downloadlist.cpp:213-232` | ❌ no `Qt::ToolTipRole` handler in `downloads_tab.cpp` at all. MO2's format is `"%1 (ID %2) %3<br><span>%4</span>"` (mod name, mod id, version, description truncated to 4096) with a "Pending download" string and an "Information missing, please select Query Info" hint. All of it needs mod-name / version / description data GMM does not hold for a download row. **MO2's download list has no header tooltips either** - its only tooltip is this cell role. The 6 header tooltips GMM ships are therefore our own wording, not parity. | ❌ ✔ |
-| U097 Download status colors (READY/UNINSTALLED/PAUSED foregrounds) | ✅ `downloadlist.cpp:205-211` (darkGreen / darkYellow / darkRed) | ⚠️ state color mapping exists `downloads_tab.cpp:1105`; MO2's exact 3-colour set re-checked but the GMM state set is 6, not MO2's 9, so the mapping is not one-to-one | ⚠️ ✔ |
-| U108 Download list 8 columns (4 hidden by default, ini override) | ✅ `downloadlist.h:38-51` = `COL_NAME, COL_STATUS, COL_SIZE, COL_FILETIME, COL_MODNAME, COL_VERSION, COL_ID, COL_SOURCEGAME`; hidden by default `COL_MODNAME, COL_VERSION, COL_ID, COL_SOURCEGAME` (`downloadlistview.cpp:147-151`) | ⚠️ 6 shipped: Name, Source, Status, Size, Filetime, Nexus ID. MO2's **Mod name, Version and Source Game are absent**; Source is a GMM-only column naming the site a file came from. Default-hidden is **not** MO2's set: MO2 shows Filetime, this build ships Name, Status and Size alone, so `default_hidden_column_names()` is Source, Filetime, Nexus ID (`downloads_tab.cpp:177-186`). All three are one click away in the header's toggle menu, which labels every column from `column_names()`. **MO2 has no `Filetype` column and no `File ID` column**; `COL_ID` is the mod id and its header reads "Nexus ID" (`downloadlist.cpp:82-83`). An earlier draft of this document listed both, and both were wrong. `downloads_tab.h:92-114`, `downloads_tab.cpp:127-145` | ⚠️ ✔ |
-| U109 Downloads header right-click per-column checkbox menu (QWidgetAction) | ✅ `downloadlistview.cpp:178-210` | ✅ the downloads header has one (`ColumnToggleHeaderView`, installed by `right_panel.cpp` `setup_toggle_header` at `:277`); the menu labels come from `DownloadsTab::column_names()`, so it cannot fall back to "Column N". The tab-wide row context menu is separate. | ✔ ✔ |
-| U124 Warning_16 icon on download Name cell when metadata incomplete | ✅ `downloadlist.cpp:233-240` | ❌ absent, as claimed: no `DecorationRole` branch anywhere in `downloads_tab.cpp`, and there is also no "information incomplete" state to detect. (This row appeared twice in earlier drafts; MO2's `downloadlist.cpp:233-240` is a single site and so is this.) | ❌ ✔ |
-| U162 Downloads bar buttons (Refresh / Query download info / show-hidden tips) | ✅ `mainwindow.ui:1319-1430` | ⚠️ no downloads-specific button bar, but two of the three jobs are covered elsewhere: a Refresh action exists on the app menu (F5, `menu_bar.cpp:192-194`) and re-loads the mod list, and the `QFileSystemWatcher` re-scans the downloads dir on any external change, which is the downloads-side equivalent of a Refresh button. GMM's own bar carries one action, "Add from URL…" (`downloads_tab.cpp:211-213`). Query-info and show-hidden have nothing behind them | ⚠️ ✔ |
-| U216 Double-click download row (READY->install, PAUSED->resume) | ✅ `downloadlistview.cpp:164-177` | ✅ `on_cell_double_clicked()` `downloads_tab.cpp:922-949`, wired at `:237`. A row at or past Complete installs; a PAUSED row resumes. MO2's anti-echo guard is absent but has no GMM counterpart (there is no bulk plugin re-check on load). | ✅ ✔ |
-| Download list header tooltips | ❌ (MO2 has none) | 🚀 6, one per shipped column, each describing what the cell actually shows and when it is legitimately blank. `downloads_tab.cpp:158-175`, applied positionally at `:221-225` | 🚀 ✔ |
-| Download context menu | ✅ `downloadlistview.cpp:231-322` (Install, Query Info, Visit on Nexus, Visit uploader, Open File, Open Meta File, Reveal in Explorer, Delete…, Un-Hide, Hide, Cancel, Pause, Resume + 7 batch Delete/Hide entries) | ⚠️ Install/Reinstall, Pause or Resume (state-gated), Show in Folder, Open on <Source>, Remove. MO2's Query Info, Visit uploader, Open File, Open Meta File, Cancel, Un-Hide/Hide and all 7 batch operations are absent. `downloads_tab.cpp:1024-1124` | ⚠️ ✔ |
-| U217 Downloads keyboard Enter/Delete state gating | ✅ `downloadlistview.cpp:326+` | ❌ no `keyPressEvent` in `downloads_tab.cpp` or the shared table, so Up/Down navigate natively and nothing else is bound | ❌ ✔ |
-| U225 Downloads drag accepted only over downloadTab rect | ✅ `mainwindow.cpp:3947` | 🚫 **not copied, deliberately a superset.** MO2 tests the drop against the download tab's own rect so a drop elsewhere in the window is refused; GMM accepts over the whole Downloads tab widget, which is the same surface with no rect test to get wrong. The tab does not accept drops, so events do not reach it from the rest of the window (`downloads_tab.cpp:261-264`) | 🚫 ✔ |
-| U226 MoveAction -> TargetMoveAction coercion on drop | ✅ `mainwindow.cpp:4034-4044` | 🚫 **already shipped; the ❌ was wrong.** `dropEvent` coerces a proposed MoveAction to `Qt::TargetMoveAction` at `downloads_tab.cpp:870-875` so the source file manager does not also move the file | 🚫 ✔ |
-| U243 IDownloadManager API + downloadmanagerproxy requestDownload slot | ✅ `mainwindow.cpp:1576` | ❌ absent, and **ABI-shaped - needs a human decision**, same as the two plugin-API rows above. No proxy type exists in `src/` | ❌ ✔ |
-| U279 ServerInfo per-server speed history + preferred-servers drag lists (NEXUS-LENS: genericize/provider-scope) | ✅ `serverinfo.cpp`, `settingsdialognexus.cpp:366` | 🚫 not copied - same reason as the three server rows above: no mirror list, so there is nothing to rank or time | 🚫 ✔ |
+| Download state machine | ✅ `DownloadState` (14 states) | ⚠️ 6 states, `Removed` reserved and never assigned - `downloads_tab.h:35` | ⚠️ ✔ |
+| Pause/resume downloads | ✅ `pauseDownload`, `resumeDownload` | ✅ pause = menu only; resume also row double-click - `downloads_controller.cpp:402` | ✅ ✔ |
+| Cancel downloads | ✅ `cancelDownload` | ⚠️ no Cancel action or state; Pause is the only abort - `network_manager.cpp:1231` | ⚠️ ✔ |
+| Download speed tracking | ✅ `downloadSpeed` rolling average | ⚠️ instantaneous only, no rolling average or history - `downloads_tab.cpp:461` | ⚠️ ✔ |
+| MD5 lookup | ✅ `queryInfoMd5` | ❌ nothing computes an MD5 - `collection/nexus/parser.cpp:136` | ❌ ✔ |
+| Download meta files (sidecar) | ✅ `createMetaFile` | ⚠️ written for installed mods, never next to a download - `downloads_tab.cpp:775` | ⚠️ ✔ |
+| Hidden downloads | ✅ `isHidden`, `restoreDownload` | ❌ no download `isHidden`, no restore path | ❌ ✔ |
+| Automatic retry (3x) | ✅ `AUTOMATIC_RETRIES` | ✅ retries, backoff, Retry-After - `network_options_bridge.cpp:25` | ✅ ✔ |
+| Pending download queue | ✅ `PendingDownload` | ✅ `pending_` drained FIFO; `nexus_queue_downloads` is GMM-only - `pipeline_worker.cpp:317` | ✅ ✔ |
+| Multi-URL fallback | ✅ `m_Urls`, `m_CurrentUrl` | 🚫 one signed URL per download; re-request is the retry - `Mod::download_url` | 🚫 ✔ |
+| Hide after install | ✅ `InterfaceSettings::hideDownloadsAfterInstallation()` | 🚫 a toggled view filter, not post-install auto-hide - `downloads_tab.cpp:208` | 🚫 ✔ |
+| Download notifications | ✅ `showDownloadNotifications` (tray `downloadmanager.cpp:1825`) | ✅ gates a status-bar message; all four EventBus names dispatched - `downloads_controller.cpp:88` | ✅ ✔ |
+| Compact downloads view | ✅ `compactDownloads` | ✅ `apply_compact_style` / `row_height` - `downloads_tab.cpp:302` | ✅ ✔ |
+| Drag-and-drop import | ❌ | 🚀 drop moves/copies + "Manual" row; single link -> Add-from-URL - `downloads_tab.cpp:844` | 🚀 ✔ |
+| Directory watcher (auto-detect) | ❌ | 🚀 `QFileSystemWatcher`, 200 ms debounce, re-armed on switch - `downloads_tab.cpp:289` | 🚀 ✔ |
+| Manifest serialization (JSON) | ❌ | 🚀 `serialize`/`deserialize` + legacy-label repairs - `downloads_tab.cpp:1186` | 🚀 ✔ |
+| Content-Disposition filename parsing | ❌ | 🚀 RFC 6266/5987 incl. `filename*`, `..` reject - `curl_download.cpp:136` | 🚀 ✔ |
+| HTTP Range resume | ❌ | ⚠️ `CURLOPT_RESUME_FROM_LARGE`; repeat link refused first - `downloads_controller.cpp:826` | ⚠️ ✔ |
+| NXM protocol download handler | ✅ `addNXMDownload()` (nxm:// link processing) | ✅ `NxmIpcServer` -> `NxmRouter::parse` -> `handle_nxm_download`; `modl://` shares it - `nxm_router.cpp:57` | ✅ ✔ |
+| Plugin download API (startDownloadURLs, etc.) | ✅ `IDownloadManager` plugin API | ❌ ABI-shaped: no download surface in v1/v2, needs a v3 decision - `projects/ABI/include/` | ❌ ✔ |
+| Nexus collection link rejection | ✅ `nxmInfo.isCollection()` "Collections Not Supported" `downloadmanager.cpp:740` | ⚠️ rejects malformed collection links; collection import is a planned epic - `downloads_controller.cpp:691` - Workspace-kdfn | ⚠️ ✔ |
+| Duplicate download detection (file name + auto-rename) | ✅ `getDownloadFileName(baseName, renameToUnique)` | ✅ Overwrite/Rename/Ignore, MO2's 1-based `N_` naming - `downloads_tab.cpp:800` | ✅ ✔ |
+| Duplicate NXM prevention (mod+file ID dedup) | ✅ checks pending+active for (modID, fileID) `downloadmanager.cpp:788` | ✅ `blocks_refetch` refuses Downloading/Complete/Installed at all 3 link entry points - `downloads_controller.cpp:826` | ✅ ✔ |
+| .unfinished extension for in-progress files | ✅ `UNFINISHED[]` `downloadmanager.cpp:57` | ❌ writes the final name; scan guards on `has_active_download()` - `downloads_tab.cpp:682` | ❌ ✔ |
+| HTTP/2 download support | ✅ `QHttp2Configuration` (16 MiB windows, Windows QNAM) | 🚀 HTTP/3 via `use_http3` with ALPN fallback to HTTP/2 - `network_manager.cpp:800` | 🚀 ✔ |
+| Login-gated resume | ✅ `m_core.loggedInAction(...)` `downloadstab.cpp:112` | ❌ no session check before resume | ❌ ✔ |
+| Empty URL resume prevention | ✅ "No known download urls." `downloadmanager.cpp:1072` | ✅ refuses to resume, now posts to the status bar - `downloads_controller.cpp:421` | ✅ ✔ |
+| Orphan meta file cleanup | ✅ `refreshList()` `downloadmanager.cpp` | 🚫 no download sidecar is written, so no orphan class | 🚫 ✔ |
+| Server preference sorting (mirror priority) | ✅ `ServerByPreference`, `evaluateFileInfoMap()` | 🚫 one signed CDN URL per request, no mirror list to order | 🚫 ✔ |
+| Per-server speed history (persistent stats) | ✅ `ServerInfo` rolling speed list | 🚫 nothing identifies which server served a byte | 🚫 ✔ |
+| Download speed signal for stats persistence | ✅ `downloadSpeed(serverName, bytesPerSecond)` | 🚫 feeds the per-server history; no server name to put on it | 🚫 ✔ |
+| Open meta file (sidecar viewer) | ✅ `openMetaFile()` `downloadmanager.cpp:1299` | ❌ no download sidecar to open | ❌ ✔ |
+| Manual metadata re-query (info + MD5) | ✅ `queryInfo()`, `queryInfoMd5()` | ❌ no per-row Query Info action | ❌ ✔ |
+| Batch metadata query for all incomplete | ✅ `queryDownloadListInfo()` | ❌ folder watcher re-reads disk, not Nexus metadata - `downloads_tab.cpp:677` | ❌ ✔ |
+| MD5 multi-game namespace search | ✅ `queryInfoMd5()` alternate game short names | ❌ follows from there being no MD5 lookup | ❌ ✔ |
+| MD5 result disambiguation | ✅ filename + active file matching `downloadmanager.cpp` | ❌ same consequence | ❌ ✔ |
+| File type classification display | ✅ `getFileTypeString()` (Main/Update/Optional) | ❌ Main-vs-Update never recorded; no Filetype column - `downloads_tab.cpp:127` | ❌ ✔ |
+| Mark installed / mark uninstalled | ✅ `markInstalled()` `downloadmanager.cpp:1540` | ✅ both; uninstalled re-lands on Complete, archive still on disk - `downloads_tab.cpp:577` | ✅ ✔ |
+| Install from download (double-click / context menu) | ✅ `downloadlistview.cpp` install action | ✅ row double-click + menu; origin provenance via `source_info_for` - `downloads_tab.cpp:922` | ✅ ✔ |
+| Download status color coding | ✅ `downloadlist.cpp:205-211` (darkGreen/Yellow/Red) | ⚠️ 6 states to 3 colours, hex not palette - `downloads_tab.cpp:522` | ⚠️ ✔ |
+| Remaining time estimation | ✅ `downloadmanager.cpp` ETA calculation | ❌ renders `"%p% - <speed>"`, no time component - `downloads_tab.cpp:476` | ❌ ✔ |
+| Batch delete operations (all/installed/uninstalled) | ✅ `downloadlistview.cpp:300-306` | ❌ per-row only, to trash with a restore note - `downloads_tab.cpp:1136` | ❌ ✔ |
+| Batch hide operations + un-hide all | ✅ `downloadlistview.cpp:312-322` (4 batch actions) | ❌ one toggled `Hide installed` filter instead - `downloads_tab.cpp:208` | ❌ ✔ |
+| Filter widget for downloads | ✅ `FilterWidget` (fuzzy match) | ⚠️ shared right-panel bar, composed with the installed filter - `right_panel.cpp:175` | ⚠️ ✔ |
+| Meta/display name toggle setting | ✅ `metaDownloads` `downloadlist.cpp` | ❌ one name per row, no toggle | ❌ ✔ |
+| Keyboard shortcuts (Enter=install, Delete=remove, Space=pause) | ✅ `downloadlistview.cpp` | ❌ no `keyPressEvent`/`eventFilter`/`QShortcut` on the tab | ❌ ✔ |
+| Visit on Nexus (from download) | ✅ `visitOnNexus()` `downloadmanager.cpp:1234` | ✅ "Open on <Source>" from stored domain + mod id - `downloads_tab.cpp:1095` | ✅ ✔ |
+| Visit uploader profile | ✅ `visitUploaderProfile()` `downloadmanager.cpp` | ❌ `uploader` absent from `src/`; no `queryInfo` equivalent | ❌ ✔ |
+| Plugin download callbacks (onDownloadComplete/Paused/Failed/Removed) | ✅ `IDownloadManager` boost::signals2 | ❌ ABI-shaped: internal EventBus has all four, the ABI has none - `event_bus.h:45` | ❌ ✔ |
+| TaskProgress integration (Windows taskbar progress) | ✅ `TaskProgressManager` `downloadmanager.cpp` | 🚫 no Linux counterpart; the per-row bar carries it | 🚫 ✔ |
+| S3 signed URL filename extraction | ✅ `response-content-disposition=` `downloadmanager.cpp` | ✅ same parser as Content-Disposition - `curl_download.cpp:136` | ✅ ✔ |
+| File time fallback chain (birthTime -> metadataChangeTime -> lastModified) | ✅ `getFileTime()` `downloadmanager.cpp` | ✅ `update_filetime` walks the same chain - `downloads_tab.cpp:418` | ✅ ✔ |
+| U037 Drop-onto-downloads duplicate dialog (Overwrite / Rename / Ignore) | ✅ `mainwindow.cpp:4002-4017` | ✅ `downloads_tab.cpp:800` with dialog at `:266` | ✅ ✔ |
+| U038 dragEnterEvent accepts Copy/Move + supported archives | ✅ `mainwindow.cpp:3947-3991` | ✅ `accepts_url_drop` gates local file + 8 extensions - `downloads_tab.cpp:89` | ✅ ✔ |
+| U039 dropEvent (TargetMoveAction coercion, shellCopy/Move, URL) | ✅ `mainwindow.cpp:4034-4050` | ✅ coerces MoveAction, copies, routes URL via `import_dropped_file` - `downloads_tab.cpp:856` | ✅ ✔ |
+| U045 "Can't change download directory while downloads are in progress" toast | ✅ `mainwindow.cpp:2803` | ❌ dir is derived from the instance, no mid-session setting | ❌ ✔ |
+| U062 showHiddenBox toggles downloadManager setShowHidden | ✅ `mainwindow.cpp:3818-3821` | ❌ no hidden-download state to toggle | ❌ ✔ |
+| U096 Download row tooltip (filename, info-missing hint, modName version desc, Pending) | ✅ `downloadlist.cpp:213-232` | ❌ no `Qt::ToolTipRole` handler at all - `downloads_tab.cpp` | ❌ ✔ |
+| U097 Download status colors (READY/UNINSTALLED/PAUSED foregrounds) | ✅ `downloadlist.cpp:205-211` | ⚠️ mapping not one-to-one: 6 GMM states vs 9 - `downloads_tab.cpp:1105` | ⚠️ ✔ |
+| U108 Download list 8 columns (4 hidden by default, ini override) | ✅ `downloadlist.h:38-51` = NAME, STATUS, SIZE, FILETIME, MODNAME, VERSION, ID ("Nexus ID"), SOURCEGAME | ⚠️ 6 shipped; Mod name, Version, Source Game absent, Source is ours - `downloads_tab.cpp:127` | ⚠️ ✔ |
+| U109 Downloads header right-click per-column checkbox menu (QWidgetAction) | ✅ `downloadlistview.cpp:178-210` | ✅ `ColumnToggleHeaderView` labels from `column_names()` - `right_panel.cpp:277` | ✅ ✔ |
+| U124 Warning_16 icon on download Name cell when metadata incomplete | ✅ `downloadlist.cpp:233-240` | ❌ no `DecorationRole` branch, no incomplete state | ❌ ✔ |
+| U162 Downloads bar buttons (Refresh / Query download info / show-hidden tips) | ✅ `mainwindow.ui:1319-1430` | ⚠️ no bar; F5 refresh + watcher cover 2 of 3 jobs - `menu_bar.cpp:192` | ⚠️ ✔ |
+| U216 Double-click download row (READY->install, PAUSED->resume) | ✅ `downloadlistview.cpp:164-177` | ✅ `on_cell_double_clicked()` past Complete installs - `downloads_tab.cpp:922` | ✅ ✔ |
+| Download list header tooltips | ❌ (MO2 has none) | 🚀 6, one per shipped column - `downloads_tab.cpp:158` | 🚀 ✔ |
+| Download context menu | ✅ `downloadlistview.cpp:231-322` (incl. 7 batch Delete/Hide entries) | ⚠️ 5 entries; Query Info, Cancel, Un-Hide and all batch ops absent - `downloads_tab.cpp:1024` | ⚠️ ✔ |
+| U217 Downloads keyboard Enter/Delete state gating | ✅ `downloadlistview.cpp:326+` | ❌ no `keyPressEvent`; Up/Down navigate natively | ❌ ✔ |
+| U225 Downloads drag accepted only over downloadTab rect | ✅ `mainwindow.cpp:3947` | 🚫 accepts over the whole tab widget, a deliberate superset - `downloads_tab.cpp:261` | 🚫 ✔ |
+| U226 MoveAction -> TargetMoveAction coercion on drop | ✅ `mainwindow.cpp:4034-4044` | 🚫 already shipped - `downloads_tab.cpp:870` | 🚫 ✔ |
+| U243 IDownloadManager API + downloadmanagerproxy requestDownload slot | ✅ `mainwindow.cpp:1576` | ❌ ABI-shaped, same v3 decision as the plugin-API rows | ❌ ✔ |
+| U279 ServerInfo per-server speed history + preferred-servers drag lists (NEXUS-LENS: genericize/provider-scope) | ✅ `serverinfo.cpp`, `settingsdialognexus.cpp:366` | 🚫 no mirror list, so nothing to rank or time | 🚫 ✔ |
 
 ## 16. Nexus Integration
 
 | Feature | MO2 | GMM | Status |
 |---------|-----|-----|--------|
-| NXM handler registration | ✅ `registerAsNXMHandler` | ✅ `nxm_router` + `nxm_ipc`, `nxm_router.h:14`, `nxm_ipc.h:27`, `linux_platform.cpp:780` | ✅ · |
-| Nexus account / auth | ✅ | ✅ `nexus_account` + `nexus_auth`, `nexus/auth.h:39` | ✅ · |
-| Nexus HTTP API | ✅ | ✅ `nexus_http` + `nexus_servers`, `nexus/http.h:15`, `nexus/servers.h:28` | ✅ · |
-| Endorsement system | ✅ `ModInfo::endorse()` | ⚠️ UI button + setting exist, no API call (opens browser), `nexus_source_panel.cpp:41` | ⚠️ · |
-| Tracking system | ✅ `ModInfo::track()` | ⚠️ UI button + setting exist, no API call (opens browser), `nexus_source_panel.cpp:46` | ⚠️ · |
+| NXM handler registration | ✅ `registerAsNXMHandler` | ✅ `nxm_router` + `nxm_ipc` - `nxm_router.h:14` | ✅ · |
+| Nexus account / auth | ✅ | ✅ `nexus_account` + `nexus_auth` - `nexus/auth.h:39` | ✅ · |
+| Nexus HTTP API | ✅ | ✅ `nexus_http` + `nexus_servers` - `nexus/http.h:15` | ✅ · |
+| Endorsement system | ✅ `ModInfo::endorse()` | ⚠️ UI + setting only, opens browser - `nexus_source_panel.cpp:41` | ⚠️ · |
+| Tracking system | ✅ `ModInfo::track()` | ⚠️ UI + setting only, opens browser - `nexus_source_panel.cpp:46` | ⚠️ · |
 | "Never endorse" option | ✅ `ModInfo::setNeverEndorse` | ❌ | ❌ · |
-| Nexus description (HTML) | ✅ `ModInfo::getNexusDescription` | ✅ `nexusdescription` in meta + BBCode rendering, `mod_meta.cpp:118` | ✅ · |
-| Nexus category ID tracking | ✅ `ModInfo::getNexusCategory` | ✅ `nexuscategory` in meta + read/write, `mod_meta.cpp:117` | ✅ · |
-| Nexus update timestamps | ✅ `getLastNexusUpdate/Query` | ⚠️ `nexuslastmodified` key recognized in meta, not actively used, `mod_meta.cpp:115-116` | ⚠️ · |
+| Nexus description (HTML) | ✅ `ModInfo::getNexusDescription` | ✅ meta key + BBCode rendering - `mod_meta.cpp:118` | ✅ · |
+| Nexus category ID tracking | ✅ `ModInfo::getNexusCategory` | ✅ meta key, read/write - `mod_meta.cpp:117` | ✅ · |
+| Nexus update timestamps | ✅ `getLastNexusUpdate/Query` | ⚠️ key recognized in meta, not actively used - `mod_meta.cpp:115` | ⚠️ · |
 | OAuth login flow | ✅ `NexusOAuthLogin` | ❌ | ❌ · |
-| Nexus user account info | ✅ `ApiUserAccount` | ✅ `NexusUserInfo`, `nexus/auth.h:29` | ✅ · |
-| Rate limit tracking | ✅ | ✅ `RateLimitInfo` (hourly + daily), `nexus/auth.h:15`, `:52` | ✅ · |
-| Download mirror registry | ❌ | 🚀 `NexusServers` (speed samples, preferred ordering), `nexus/servers.h:28` | 🚀 · |
-| Nexus API key manual entry | ✅ | ✅ `NexusManualKeyDialog` (Open Browser/Paste/Clear), `source_pages.h:37` | ✅ · |
-| Tier-derived queue defaults | ❌ | 🚀 `nexus_queue_default_for()` (Regular=queue, Premium=parallel), `source_pages.h:24` | 🚀 · |
-| Nexus connection UI (reusable component) | ✅ `NexusConnectionUI` (shared between Settings and CreateInstance) | ❌ | ❌ · |
+| Nexus user account info | ✅ `ApiUserAccount` | ✅ `NexusUserInfo` - `nexus/auth.h:29` | ✅ · |
+| Rate limit tracking | ✅ | ✅ `RateLimitInfo` (hourly + daily) - `nexus/auth.h:15` | ✅ · |
+| Download mirror registry | ❌ | 🚀 `NexusServers` (speed samples, preferred ordering) - `nexus/servers.h:28` | 🚀 · |
+| Nexus API key manual entry | ✅ | ✅ `NexusManualKeyDialog` - `source_pages.h:37` | ✅ · |
+| Tier-derived queue defaults | ❌ | 🚀 `nexus_queue_default_for()` (Regular/Premium) - `source_pages.h:24` | 🚀 · |
+| Nexus connection UI (reusable component) | ✅ `NexusConnectionUI` (shared Settings/CreateInstance) | ❌ | ❌ · |
 | Endorsement state tracking | ✅ `EndorsementState` enum (Accepted/Refused/NoDecision) | ❌ | ❌ · |
 | Nexus FileStatus (REMOVED, ARCHIVED) | ✅ `NexusInterface::FileStatus` | ❌ | ❌ · |
-| U007 Visit Nexus action (Ctrl+N; genericized to "visit modding sites" per U001 ruling - site list knowledge/plugin-driven) (NEXUS-LENS: genericize/provider-scope) | ✅ `mainwindow.ui:1757-1777` | ❌ | ❌ · |
+| U007 Visit Nexus action (Ctrl+N; genericized to "visit modding sites" per U001 ruling) (NEXUS-LENS: genericize/provider-scope) | ✅ `mainwindow.ui:1757-1777` | ❌ | ❌ · |
 | U013 Endorse ModOrganizer submenu (Endorse / Won't Endorse) (NEXUS-LENS: genericize/provider-scope) | ✅ `mainwindow.cpp:1061-1078` | ❌ | ❌ · |
 | U014 Browse Mod Page menu (IPluginModPage entries + "Visit <game> on Nexus") (NEXUS-LENS: genericize/provider-scope) | ✅ `mainwindow.cpp:1568-1686` | ❌ | ❌ · |
-| U058 Endorse-MO dialogs + toasts (NEXUS-LENS: genericize/provider-scope) | ✅ `mainwindow.cpp:2995-3020`, `:3468` | ❌ | ❌ · |
+| U058 Endorse-MO dialogs + toasts (NEXUS-LENS: genericize/provider-scope) | ✅ `mainwindow.cpp:2995-3020` | ❌ | ❌ · |
 | U063 Nexus failure dialogs (blocked action, mod ID gone, request failed) (NEXUS-LENS: genericize/provider-scope) | ✅ `mainwindow.cpp:3577-3612` | ❌ | ❌ · |
 | U066 "Browse Mod Page" action exists but hidden by default | ✅ `mainwindow.ui:1778-1798` | ❌ | ❌ · |
 | U098 API counter tooltip (pools + exhaustion warning paragraph) (NEXUS-LENS: genericize/provider-scope) | ✅ `statusbar.cpp:44-50` | ❌ | ❌ · |
-| U099 API counter text/colors (Queued/Daily/Hourly + 500/200 thresholds) (NEXUS-LENS: genericize/provider-scope) | ✅ `statusbar.cpp:96-135`, `:145-147` | ⚠️ "Queued:" counter exists `status_bar.cpp:101`; threshold colors + hide flag unproven | ⚠️ · |
+| U099 API counter text/colors (Queued/Daily/Hourly + 500/200 thresholds) (NEXUS-LENS: genericize/provider-scope) | ✅ `statusbar.cpp:96-135` | ⚠️ "Queued:" counter only; colors + hide flag unproven - `status_bar.cpp:101` | ⚠️ · |
 | U141 Nexus connection state machine strings + Connect->Cancel flip (NEXUS-LENS: genericize/provider-scope) | ✅ `settingsdialognexus.cpp:117-334` | ❌ | ❌ · |
-| U206 meta.ini endorsed / tracked states (NEXUS-LENS: genericize/provider-scope) | ✅ `modinforegular.cpp:689-711` | ⚠️ endorsement/tracked integration gating exists `nexus_source_panel.cpp:41`, `:46`; Endorsed/Abstained enum parity unproven | ⚠️ · |
+| U206 meta.ini endorsed / tracked states (NEXUS-LENS: genericize/provider-scope) | ✅ `modinforegular.cpp:689-711` | ⚠️ integration gating only, enum unproven - `nexus_source_panel.cpp:41` | ⚠️ · |
 | U236 IPluginModPage plugin API (pageURL, useIntegratedBrowser, icon) (NEXUS-LENS: genericize/provider-scope) | ✅ `mainwindow.cpp:1568` (uibase) | ❌ | ❌ · |
-| U242 IPluginGame fields (getSupportURL, primarySources/validShortNames, blueprintPrefix, steamAPPId...) | ✅ `mainwindow.cpp:1060-1660`, `pluginlist.cpp` | ⚠️ game feature registry layer exists `game_feature_registry.h:110`; support-URL + primarySources symbols absent | ⚠️ · |
-| U252 NexusInterface full API surface (every request type signalled + userData routing) (NEXUS-LENS: genericize/provider-scope) | ✅ `nexusinterface.cpp` | ⚠️ Nexus auth/queue/settings bridge exists `source_pages.cpp:472` + `network_manager.h:154`; full signal surface unproven | ⚠️ · |
+| U242 IPluginGame fields (getSupportURL, primarySources/validShortNames, blueprintPrefix, steamAPPId...) | ✅ `mainwindow.cpp:1060-1660` | ⚠️ registry layer exists; support-URL + primarySources absent - `game_feature_registry.h:110` | ⚠️ · |
+| U252 NexusInterface full API surface (every request type signalled + userData routing) (NEXUS-LENS: genericize/provider-scope) | ✅ `nexusinterface.cpp` | ⚠️ auth/queue/settings bridge only - `source_pages.cpp:472` | ⚠️ · |
 | U253 nxm*Available signal handlers w/ per-error UI (NEXUS-LENS: genericize/provider-scope) | ✅ `mainwindow.cpp:3077-3612` | ❌ | ❌ · |
-| U255 NXMAccessManager (OAuth flow, credentialsReceived title update, cookie jar) (NEXUS-LENS: genericize/provider-scope) | ✅ `nxmaccessmanager.cpp`, `mainwindow.cpp:465-468` | ❌ no OAuth flow found (API-key auth only `source_pages.cpp:472`) | ❌ · |
+| U255 NXMAccessManager (OAuth flow, credentialsReceived title update, cookie jar) (NEXUS-LENS: genericize/provider-scope) | ✅ `nxmaccessmanager.cpp`, `mainwindow.cpp:465` | ❌ API-key auth only, no OAuth flow - `source_pages.cpp:472` | ❌ · |
 | U256 API account shown in window title (NEXUS-LENS: genericize/provider-scope) | ✅ `mainwindow.cpp:653-668` | ❌ | ❌ · |
-| U257 API stats -> StatusBar::setAPI via requestsChanged (NEXUS-LENS: genericize/provider-scope) | ✅ `mainwindow.cpp:467-469` | ⚠️ API counter text exists `status_bar.cpp:101`; requestsChanged wiring unproven | ⚠️ · |
+| U257 API stats -> StatusBar::setAPI via requestsChanged (NEXUS-LENS: genericize/provider-scope) | ✅ `mainwindow.cpp:467-469` | ⚠️ counter text exists, wiring unproven - `status_bar.cpp:101` | ⚠️ · |
 | U258 Per-mod endorsement state from API (EndorsedState incl. unknown-disabled) (NEXUS-LENS: genericize/provider-scope) | ✅ `modlistcontextmenu.cpp:553-575` | ❌ | ❌ · |
 | U259 Nexus FileStatus incl. ARCHIVED_HIDDEN (NEXUS-LENS: genericize/provider-scope) | ✅ `modlist.cpp:434-436` | ❌ | ❌ · |
-| U260 Nexus manual API-key dialog + disconnect clears stored auth (NEXUS-LENS: genericize/provider-scope) | ✅ `settingsdialog.ui:1241` | ⚠️ NexusManualKeyDialog exists `source_pages.cpp:98` (apply `:463`); disconnect-clears-auth flow unproven | ⚠️ · |
-| U276 NxmUrl parsing helpers (uibase nxmurl.cpp) (NEXUS-LENS: genericize/provider-scope) | ✅ `nxmurl.cpp` (uibase) | ⚠️ NxmIpcServer receives parsed URLs `downloads_controller.cpp:223`; encode helpers unproven | ⚠️ · |
+| U260 Nexus manual API-key dialog + disconnect clears stored auth (NEXUS-LENS: genericize/provider-scope) | ✅ `settingsdialog.ui:1241` | ⚠️ dialog exists, disconnect-clears unproven - `source_pages.cpp:98` | ⚠️ · |
+| U276 NxmUrl parsing helpers (uibase nxmurl.cpp) (NEXUS-LENS: genericize/provider-scope) | ✅ `nxmurl.cpp` (uibase) | ⚠️ URLs arrive parsed; encode helpers unproven - `downloads_controller.cpp:223` | ⚠️ · |
 | U278 PersistentCookieJar (Nexus login cookie persistence) (NEXUS-LENS: genericize/provider-scope) | ✅ `persistentcookiejar.cpp` | ❌ | ❌ · |
 
 ## 17. Source Providers
 
 | Feature | MO2 | GMM | Status |
 |---------|-----|-----|--------|
-| Nexus Mods integration | ✅ | ✅ `NexusProvider`, `nexus_provider.h` | ✅ · |
-| Steam Workshop | ✅ | ✅ `SteamWorkshopProvider`, `steam_workshop_provider.h` | ✅ · |
-| LOVERS LAB | ❌ | 🚀 `LoversLabProvider`, `loverslab/provider.h:35` | 🚀 · |
-| Download manager | ✅ `DownloadManager` | ✅ `curl_download`, `download/curl_download.cpp` | ✅ · |
-| Remote cache | ✅ | ✅ `RemoteCache` (6-layer fetch chain), `workshop/remote_cache.h:19` | ✅ · |
-| Steam Workshop client (Web API) | ❌ | 🚀 `WorkshopClient` (SQLite cache, dead ID tracking), `workshop/workshop_client.h:29` | 🚀 · |
-| LoversLab session-cookie auth | ❌ | 🚀 `LoversLabAuth` (Cloudflare stripping), `loverslab/auth.h:41` | 🚀 · |
-| Managed games tracking | ❌ | 🚀 `ManagedGames` (source_id, website_url, nexus_domain), `nxm/managed_games.h:23` | 🚀 · |
-| modl:// protocol handler (mod.pub / MO2 modlhandler) | ❌ | 🚀 `modl://` (Win registry + XDG desktop, route through nxm_ipc), `router.h:47`, `nxm_router.cpp:239`, `cli/command_line.cpp:38` | 🚀 · |
-| ModPub metadata provider (mod.pub API) | ❌ | 🚀 `ModPubProvider` (page scrape, mod_id, Refresh), `modpub/provider.h:64` | 🚀 · |
-| modl:// transport-protocol distinction (origin attribution) | ❌ | 🚀 modl:// is transport, not source; real origin attributed, `install_stage.cpp:331`, `modl/provider.h:17` | 🚀 · |
+| Nexus Mods integration | ✅ | ✅ `NexusProvider` - `nexus_provider.h` | ✅ · |
+| Steam Workshop | ✅ | ✅ `SteamWorkshopProvider` - `steam_workshop_provider.h` | ✅ · |
+| LOVERS LAB | ❌ | 🚀 `LoversLabProvider` - `loverslab/provider.h:35` | 🚀 · |
+| Download manager | ✅ `DownloadManager` | ✅ `curl_download` - `download/curl_download.cpp` | ✅ · |
+| Remote cache | ✅ | ✅ `RemoteCache` (6-layer fetch chain) - `workshop/remote_cache.h:19` | ✅ · |
+| Steam Workshop client (Web API) | ❌ | 🚀 `WorkshopClient` (SQLite cache, dead IDs) - `workshop/workshop_client.h:29` | 🚀 · |
+| LoversLab session-cookie auth | ❌ | 🚀 `LoversLabAuth` (Cloudflare stripping) - `loverslab/auth.h:41` | 🚀 · |
+| Managed games tracking | ❌ | 🚀 `ManagedGames` (source_id, website_url, nexus_domain) - `nxm/managed_games.h:23` | 🚀 · |
+| modl:// protocol handler (mod.pub / MO2 modlhandler) | ❌ | 🚀 `modl://` (Win registry + XDG desktop) - `nxm_router.cpp:239` | 🚀 · |
+| ModPub metadata provider (mod.pub API) | ❌ | 🚀 `ModPubProvider` (page scrape, mod_id, Refresh) - `modpub/provider.h:64` | 🚀 · |
+| modl:// transport-protocol distinction (origin attribution) | ❌ | 🚀 transport not source; real origin attributed - `install_stage.cpp:331` | 🚀 · |
 | U275 ModRepositoryFileInfo + imodrepositorybridge repository abstraction | ✅ `imodrepositorybridge.cpp` (uibase) | ❌ | ❌ · |
 
 ## 18. Mod List Features
 
 | Feature | MO2 | GMM | Status |
 |---------|-----|-----|--------|
-| Multi-criteria sorting | ✅ `ModListSortProxy` | ⚠️ game sort provider only, no user criteria/sort proxy (cited "sort proxy" absent), `mod_list_controller.cpp:1097` | ⚠️ · |
-| Category/content/special filtering | ✅ `FilterList` (special + content + category criteria, 3-state cycling, And/Or radios, separator-mode combo) | ⚠️ checkable category tree + a 6-item quick-filter combo only; MO2's special criteria (Active, Enabled, Attack, Uninstalled, Update available, No description, Missing color, Backup, Invalid), content criteria (ESPs, ESMs, BSAs, Textures, Meshes, Complex), 3-state cycling and And/Or radios have no counterpart. `category_filter_panel.h:21`, `mod_filter_bar.cpp:42-49` | ⚠️ ✔ |
-| Grouping (by separator, category, Nexus ID) | ✅ `QtGroupingProxy` | ✅ visual nesting (parent_id, indent, fold), `mod_list_model.h:57`, `:63`, `:139` | ✅ · |
-| Drag-and-drop reorder | ✅ `ModList::dropMimeData` | ✅ `mod_table_view` drop support, `mod_table_view.h:185-187` | ✅ · |
-| Scroll markers | ✅ `ViewMarkingScrollBar` | ✅ `ModMarkingScrollBar` (separator marks), `mod_table_view.h:116` | ✅ · |
-| CSV export | ✅ `exportModListCSV` | ❌ (removed; replaced by combined import/export) | ❌ · |
-| Bulk enable/disable | ✅ `setActive(indices)` | ✅ `toggle_selected_mods()`, `mod_list_controller.h:140` | ✅ · |
-| Priority shift (bulk) | ✅ `shiftModsPriority` | ✅ `priority_move_selected()`, `mod_list_controller.h:139` | ✅ · |
-| Send to top/bottom/priority | ✅ `sendModsToTop/Bottom/Priority` | ✅ `send_to_highest/lowest_priority()`, `mod_list_controller.h:135-139` | ✅ · |
-| Send to separator | ✅ `sendModsToSeparator` | ✅ `move_to_separator()`, `mod_list_controller.h:133` | ✅ · |
+| Multi-criteria sorting | ✅ `ModListSortProxy` | ⚠️ game sort provider only, no user criteria - `mod_list_controller.cpp:1097` | ⚠️ · |
+| Category/content/special filtering | ✅ `FilterList` (special + content + category, 3-state, And/Or) | ⚠️ category tree + 6-item combo; no special/content criteria - `category_filter_panel.h:21` | ⚠️ ✔ |
+| Grouping (by separator, category, Nexus ID) | ✅ `QtGroupingProxy` | ✅ visual nesting (parent_id, indent, fold) - `mod_list_model.h:57` | ✅ · |
+| Drag-and-drop reorder | ✅ `ModList::dropMimeData` | ✅ drop support - `mod_table_view.h:185` | ✅ · |
+| Scroll markers | ✅ `ViewMarkingScrollBar` | ✅ `ModMarkingScrollBar` (separator marks) - `mod_table_view.h:116` | ✅ · |
+| CSV export | ✅ `exportModListCSV` | ❌ (removed; combined import/export instead) | ❌ · |
+| Bulk enable/disable | ✅ `setActive(indices)` | ✅ `toggle_selected_mods()` - `mod_list_controller.h:140` | ✅ · |
+| Priority shift (bulk) | ✅ `shiftModsPriority` | ✅ `priority_move_selected()` - `mod_list_controller.h:139` | ✅ · |
+| Send to top/bottom/priority | ✅ `sendModsToTop/Bottom/Priority` | ✅ `send_to_highest/lowest_priority()` - `mod_list_controller.h:135` | ✅ · |
+| Send to separator | ✅ `sendModsToSeparator` | ✅ `move_to_separator()` - `mod_list_controller.h:133` | ✅ · |
 | Send to First/Last Conflict | ✅ `sendModsToFirstConflict/LastConflict` | ❌ | ❌ · |
-| Collapseable separators | ✅ `collapsibleSeparators` | ✅ 10+ collapsible separator settings, `settings.h:35-40` | ✅ · |
-| Auto-collapse on hover | ✅ `autoCollapseOnHover` | ✅ `Settings::auto_collapse_on_hover()`, `settings.h:33` | ✅ · |
-| Filter persistence | ✅ `saveFilters` | ✅ `Settings::save_filters()`, `settings.h:31` | ✅ · |
+| Collapseable separators | ✅ `collapsibleSeparators` | ✅ 10+ settings - `settings.h:35` | ✅ · |
+| Auto-collapse on hover | ✅ `autoCollapseOnHover` | ✅ `auto_collapse_on_hover()` - `settings.h:33` | ✅ · |
+| Filter persistence | ✅ `saveFilters` | ✅ `save_filters()` - `settings.h:31` | ✅ · |
 | Filter AND/OR mode | ✅ `FilterAnd`/`FilterOr` | ❌ | ❌ · |
-| Column visibility toggle | ✅ `setColumnVisible()` | ✅ `ColumnToggleHeaderView`, `column_toggle_header.h:7` | ✅ · |
-| Mod counter display | ✅ `ModCounters` (LCD) | ✅ `status_bar` (counts), `mod_list_controller.cpp:648` QLCDNumber | ✅ · |
-| Create separator | ✅ | ✅ `create_separator()` / `create_separator_named()`, `mod_actions.h:63-64` | ✅ · |
-| Create empty mod | ✅ `createEmptyMod` | ✅ `create_empty_mod()`, `mod_actions.h:65` | ✅ · |
-| Import archives | ✅ | ✅ `import_archives()`, `mod_list_controller.cpp:3348` | ✅ · |
-| Export/import modlist | ✅ | ✅ `export_modlist()` / `import_modlist()`, `mod_list_controller.h:59-60` | ✅ · |
-| Overwrite file drop-to-mod | ❌ | 🚀 `overwrite_files_dropped` signal, `mod_table_view.h:178` | 🚀 · |
-| IndentDelegate (nesting) | ❌ | 🚀 `IndentDelegate` for Name column, `mod_table_view.h:138` | 🚀 · |
-| FlagsDelegate with tooltips | ❌ | 🚀 per-emblem hover text, `mod_table_view.h:89` | 🚀 · |
+| Column visibility toggle | ✅ `setColumnVisible()` | ✅ `ColumnToggleHeaderView` - `column_toggle_header.h:7` | ✅ · |
+| Mod counter display | ✅ `ModCounters` (LCD) | ✅ QLCDNumber - `mod_list_controller.cpp:648` | ✅ · |
+| Create separator | ✅ | ✅ `create_separator()` / `create_separator_named()` - `mod_actions.h:63` | ✅ · |
+| Create empty mod | ✅ `createEmptyMod` | ✅ `create_empty_mod()` - `mod_actions.h:65` | ✅ · |
+| Import archives | ✅ | ✅ `import_archives()` - `mod_list_controller.cpp:3348` | ✅ · |
+| Export/import modlist | ✅ | ✅ `export_modlist()` / `import_modlist()` - `mod_list_controller.h:59` | ✅ · |
+| Overwrite file drop-to-mod | ❌ | 🚀 `overwrite_files_dropped` signal - `mod_table_view.h:178` | 🚀 · |
+| IndentDelegate (nesting) | ❌ | 🚀 `IndentDelegate` for Name column - `mod_table_view.h:138` | 🚀 · |
+| FlagsDelegate with tooltips | ❌ | 🚀 per-emblem hover text - `mod_table_view.h:89` | 🚀 · |
 | ModListSortProxy criteria system | ✅ `ModListSortProxy::Criteria` | ❌ | ❌ · |
 | ModListSortProxy separator mode | ✅ `ModListSortProxy::SeparatorMode` | ❌ | ❌ · |
 | ModList column roles (IndexRole, PriorityRole) | ✅ `ModList::IndexRole`, `PriorityRole` | ❌ | ❌ · |
 | ModList signals (showMessage, modRenamed, modUninstalled, fileMoved, modPrioritiesChanged) | ✅ `ModList` signals | ❌ | ❌ · |
 | ModListProxy / ModListByPriorityProxy | ✅ proxy models | ❌ | ❌ · |
-| U010 Ctrl+F focuses+selects filter (modList, espList, downloadView) | ✅ `mainwindow.cpp:217`, `:495-497` | ✅ one window-scoped `QShortcut` on MainWindow focuses whichever bar is already in use, else the mod-list bar. `main_window.cpp:348-355`, `:356-364`. Same 3 surfaces MO2 binds. | ✅ ✔ |
-| U011 Escape clears filter and returns focus to list | ✅ `mainwindow.cpp:224` | ⚠️ Escape clears the active filter (`main_window.cpp:352`, `clear_active_filter`), but it is a `QShortcut` on MainWindow with `autoRepeat(false)`, not MO2's `WidgetWithChildren` event filter on each list. It fires wherever the focus is, including outside the list. | ⚠️ ✔ |
-| Double-click maps the clicked column to a Mod Info tab | ✅ `modlistview.cpp` (Name→Source, Priority→Conflicts, Flags→Information, Category→Categories, ...) | ⚠️ Conflicts/Flags→Conflicts, Category→Categories, Source/SourceId/Version→Source (GMM's name for MO2's Nexus tab), everything else→last-used tab. `mod_list_controller.cpp:469-497`, `mod_info_tab_for_column()`. MO2's Notes/Game/Mod-ID mappings have no target because those columns do not exist. | ⚠️ ✔ |
-| Double-click a separator toggles its fold | ✅ `modlistview.cpp` | ✅ `mod_list_controller.cpp` (same action as the Fold-column arrow), plus an anti-bounce guard: a double-click landing within `QApplication::doubleClickInterval()` of a Name-checkbox toggle is swallowed. `mod_table_view.cpp:383-401` | ✅ ✔ |
+| U010 Ctrl+F focuses+selects filter (modList, espList, downloadView) | ✅ `mainwindow.cpp:217`, `:495-497` | ✅ one window-scoped `QShortcut`, same 3 surfaces - `main_window.cpp:348` | ✅ ✔ |
+| U011 Escape clears filter and returns focus to list | ✅ `mainwindow.cpp:224` | ⚠️ window-scoped `QShortcut`, fires outside the list - `main_window.cpp:352` | ⚠️ ✔ |
+| Double-click maps the clicked column to a Mod Info tab | ✅ `modlistview.cpp` (Name→Source, Priority→Conflicts, Category→Categories) | ⚠️ Conflicts/Flags, Category, Source mapped; rest → last-used tab - `mod_list_controller.cpp:469` | ⚠️ ✔ |
+| Double-click a separator toggles its fold | ✅ `modlistview.cpp` | ✅ plus an anti-bounce guard - `mod_table_view.cpp:383` | ✅ ✔ |
 | U053 Wheel-scroll blocked on groupCombo/profileBox | ✅ `mainwindow.cpp:378-385` | ❌ | ❌ · |
-| U074 Row-with-children menu (Collapse all / Collapse others / Expand all) | ✅ `modlistcontextmenu.cpp:236-243` | ❌ | ❌ · |
-| U077 "Send to..." conditionality (priority-sort gating + First/Last conflict flags) | ✅ `modlistcontextmenu.cpp:273-332` | ⚠️ send-to tree w/ conditional entries `mod_context_menu.cpp:280` (separator-aware `:307`); conflict-flag conditionals unproven | ⚠️ · |
-| U092 Mod-list cell tooltips per column (flags/conflicts/name/version cooldown/category/notes) | ✅ `modlist.cpp:384-480` (COL_FLAGS, COL_CONFLICTFLAGS, COL_NAME, COL_VERSION, COL_CATEGORY, COL_NOTES) | ⚠️ 5 of the 6 MO2 cells are emitted. Name = `getDescription()` semantics (the invalid-data sentence, else the category list, "This is a Separator" for a separator), Category = the "Categories: " list, Flags = the flag texts the state can support, Conflicts = the loose-file conflict states. **Version and Notes are correctly absent**: MO2's version tooltip carries a newest version, a downgrade warning, a Nexus file status and a check-cooldown, none of which this model tracks, and there is no notes state. **Conflicts wording deliberately differs**: MO2 says "Overwrites loose files" / "Overwritten loose files"; we say "Overwrites 3" / "2 overwritten", adding the count the conflict engine computes and MO2 drops. `mod_list_model.cpp:194-434` | ⚠️ ✔ |
-| U095 Mod list header tooltips (13 exact strings) | ✅ `modlist.cpp:1345-1387` | ⚠️ 11 tooltips shipped, one per column. 7 are MO2's wording verbatim (Name, Conflicts, Flags, Category, Version, Installation, Priority). Source ID deliberately does **not** take MO2's "Id of the mod as used on Nexus": it is the id on whichever site the mod came from, so that wording would be wrong for every non-Nexus mod. Fold, Source and Changed have no MO2 counterpart and carry our own text. `mod_list_model.cpp:553-574` | ⚠️ ✔ |
-| U106 Mod list 13 columns | ✅ `modlist.h:83-96` (`COL_NAME`…`COL_NOTES` = 0…12) | ⚠️ 11 shipped. Against MO2's 13: **Content, Author, Uploader, Source Game and Notes are absent** (no per-mod content ids are built at scan time; Author and Uploader are never written to meta.ini by any GMM path; a GMM instance is single-game so there is no origin; no notes are stored or edited anywhere). **Fold, Source and Changed are GMM-only** additions. The column order is a deliberate divergence, not MO2's. Visibility is persisted by column name, never by index. `mod_list_model.h:115-161`, `:163-201` | ⚠️ ✔ |
-| Mod list default-hidden column set | ✅ `modlistview.cpp:817-824` hides Content, Nexus ID, Uploader, Source Game, Installation, Notes | ⚠️ GMM hides the intersection: Source ID and Installation (both in MO2's hidden set), plus its own Source and Changed. Category is deliberately **not** hidden - MO2 shows it and the data is there. `mod_list_model.cpp:576-584` | ⚠️ ✔ |
+| U074 Row-with-children menu (Collapse all / others / Expand all) | ✅ `modlistcontextmenu.cpp:236-243` | ❌ | ❌ · |
+| U077 "Send to..." conditionality (priority-sort gating + First/Last conflict flags) | ✅ `modlistcontextmenu.cpp:273-332` | ⚠️ conditional send-to tree; conflict flags unproven - `mod_context_menu.cpp:280` | ⚠️ · |
+| U092 Mod-list cell tooltips per column (flags/conflicts/name/version/category/notes) | ✅ `modlist.cpp:384-480` | ⚠️ 5 of 6; Version and Notes need untracked data - `mod_list_model.cpp:194` | ⚠️ ✔ |
+| U095 Mod list header tooltips (13 exact strings) | ✅ `modlist.cpp:1345-1387` | ⚠️ 11 shipped, 7 verbatim; Source ID wording is ours - `mod_list_model.cpp:553` | ⚠️ ✔ |
+| U106 Mod list 13 columns | ✅ `modlist.h:83-96` (COL_NAME…COL_NOTES) | ⚠️ 11 shipped; Content, Author, Uploader, Source Game, Notes absent - `mod_list_model.h:115` | ⚠️ ✔ |
+| Mod list default-hidden column set | ✅ `modlistview.cpp:817-824` | ⚠️ hides Source ID, Installation + own Source, Changed - `mod_list_model.cpp:576` | ⚠️ ✔ |
 | U110 Editable-cell rules (priority/version/ModID; foreign guards; auto-priority) | ✅ `modlist.cpp:620-650` | ❌ | ❌ · |
 | U111 Version column "?" when empty + canBeUpdated | ✅ `modlist.cpp:198-206` | ❌ | ❌ · |
 | U113 Priority cell hidden for automatic-priority mods | ✅ `modlist.cpp:207-213` | ❌ | ❌ · |
 | U127 HIGHLIGHT_CENTER centers Name cell alignment | ✅ `modlist.cpp:640-647` | ❌ | ❌ · |
-| U136 Mod List settings (separator scrollbar colors, out-of-MO mods, remember filters, update-on-install, drag collapse) | ✅ `settingsdialog.ui:557-635` | ⚠️ Mod List settings tab exists `settings_content_widget.cpp:450`; the 5 MO2 checkboxes unproven | ⚠️ · |
-| U137 Collapsible Separators settings group (sort-direction, highlights, icon toggles, per-profile) | ✅ `settingsdialog.ui:653-830` | ⚠️ 12 collapsible-separator settings keys `settings.h:35` + settings UI `settings_content_widget.cpp:498`; plugin-highlight nuance unproven | ⚠️ · |
+| U136 Mod List settings (separator colors, out-of-MO mods, remember filters, update-on-install, drag collapse) | ✅ `settingsdialog.ui:557-635` | ⚠️ tab exists, 5 checkboxes unproven - `settings_content_widget.cpp:450` | ⚠️ · |
+| U137 Collapsible Separators settings group (sort-direction, highlights, icon toggles, per-profile) | ✅ `settingsdialog.ui:653-830` | ⚠️ 12 keys shipped, plugin-highlight nuance unproven - `settings.h:35` | ⚠️ · |
 | U163 Filter panel controls (Clear/Edit, And/Or radios, filters tree) | ✅ `mainwindow.ui:137-200`, `:505` | ❌ | ❌ · |
-| U164 openFolderMenu / listOptionsBtn / displayCategoriesBtn tooltips+roles | ✅ `mainwindow.ui:283-460` | ⚠️ ProfileBar folders menu exists `profile_bar.h:14` (kinds `profile_bar.cpp:51-65`); listOptions/displayCategories buttons unproven | ⚠️ · |
-| U165 LCD counters ("Active:" activeMods/activePlugins QLCDNumber) | ✅ `mainwindow.ui:354`, `:880` | ⚠️ mod-count QLCDNumber `mod_list_controller.cpp:648` + plugin counter `plugin_view.cpp:514`; "Active:" labels unproven | ⚠️ · |
-| U232 Escape/Filter shortcut scope = WidgetWithChildren, autoRepeat off | ✅ `mainwindow.cpp:217-231` | ⚠️ `autoRepeat(false)` matches, scope does not: MO2 installs the filter on each list with `Qt::WidgetWithChildren` so the key only acts inside that widget, we install a window-scoped `QShortcut` on MainWindow. Both `main_window.cpp:348-354` | ⚠️ ✔ |
+| U164 openFolderMenu / listOptionsBtn / displayCategoriesBtn tooltips+roles | ✅ `mainwindow.ui:283-460` | ⚠️ folders menu only - `profile_bar.h:14` | ⚠️ · |
+| U165 LCD counters ("Active:" activeMods/activePlugins QLCDNumber) | ✅ `mainwindow.ui:354`, `:880` | ⚠️ counters exist, "Active:" labels unproven - `mod_list_controller.cpp:648` | ⚠️ · |
+| U232 Escape/Filter shortcut scope = WidgetWithChildren, autoRepeat off | ✅ `mainwindow.cpp:217-231` | ⚠️ `autoRepeat(false)` matches, scope is window-wide - `main_window.cpp:348` | ⚠️ ✔ |
 | U280 csvbuilder for exportModListCSV | ✅ `csvbuilder.cpp` | ❌ | ❌ · |
 
 ## 19. Mod Context Menu
 
 | Feature | MO2 | GMM | Status |
 |---------|-----|-----|--------|
-| Visit on Nexus | ✅ `visitOnNexus` | ✅ `source_visit_info` (Nexus/LoversLab), `mod_context_menu.cpp:398-408`, `mod_list_controller.cpp:309` | ✅ · |
-| Visit web page | ✅ `visitWebPage` | ✅ source-aware context menu, `mod_context_menu.cpp:402` | ✅ · |
+| Visit on Nexus | ✅ `visitOnNexus` | ✅ `source_visit_info` (Nexus/LoversLab) - `mod_context_menu.cpp:398` | ✅ · |
+| Visit web page | ✅ `visitWebPage` | ✅ source-aware context menu - `mod_context_menu.cpp:402` | ✅ · |
 | Reinstall mod | ✅ `reinstallMod` | ❌ | ❌ · |
-| Create backup | ✅ `createBackup` | ⚠️ deploy-level `backup_original()`, no standalone user action, `deploy_utils.cpp:165` | ⚠️ · |
-| Restore backup | ✅ `restoreBackup` | ⚠️ deploy-level `remove_and_restore()`, no standalone user action, `deploy_utils.cpp:195` | ⚠️ · |
+| Create backup | ✅ `createBackup` | ⚠️ deploy-level only, no user action - `deploy_utils.cpp:165` | ⚠️ · |
+| Restore backup | ✅ `restoreBackup` | ⚠️ deploy-level only, no user action - `deploy_utils.cpp:195` | ⚠️ · |
 | Restore hidden files | ✅ `restoreHiddenFiles` | ❌ | ❌ · |
 | Mark as converted | ✅ `markConverted` | ❌ | ❌ · |
-| Ignore missing data | ✅ `ignoreMissingData` | ✅ `mark_validated()`, `mod_context_menu.cpp:339` | ✅ · |
+| Ignore missing data | ✅ `ignoreMissingData` | ✅ `mark_validated()` - `mod_context_menu.cpp:339` | ✅ · |
 | Ignore update | ✅ `setIgnoreUpdate` | ❌ | ❌ · |
-| Set color | ✅ `setColor`, `resetColor` | ✅ `NotesTab` Set/Reset color, `notes_tab.h:27-28` | ✅ · |
-| Open in Explorer | ✅ `openExplorer` | ✅ Ctrl+double-click, `mod_table_view.cpp:362-380` → `mod_list_controller.cpp:509-545` (Overwrite opens the overwrite dir; separators, MERGED and game-native rows correctly do nothing) | ✅ ✔ |
-| Create empty mod | ✅ `createEmptyMod` | ✅ `create_empty_mod()`, `mod_actions.h:65` | ✅ · |
-| Create separator | ✅ `createSeparator` | ✅ `create_separator()`, `mod_actions.h:64` | ✅ · |
-| Overwrite: create mod from overwrite | ✅ `createModFromOverwrite` | ✅ `create_mod_from_overwrite()`, `overwrite_controller.h:21` | ✅ · |
-| Overwrite: move to existing mod | ✅ `moveOverwriteContentToExistingMod` | ✅ `move_overwrite_content_to_mod()`, `overwrite_controller.h:22` | ✅ · |
-| Overwrite: clear | ✅ `clearOverwrite` | ✅ `clear_overwrite()`, `overwrite_controller.h:20` | ✅ · |
-| Set categories (batch) | ✅ `setCategories`, `setPrimaryCategory` | ✅ `add_category_menus()` (checkable + radio), `mod_context_menu.h:39` | ✅ · |
-| Rename mod | ✅ `renameMod` | ✅ `rename_mod_inline()`, `mod_list_controller.h:63` | ✅ · |
-| Remove mod | ✅ | ✅ `remove_selected_mods()` (moves folder to trash), `mod_list_controller.h:132`, `mod_actions.cpp:158` | ✅ · |
-| Root override toggle | ✅ | ✅ `toggle_root_override()`, `mod_list_controller.h:142` | ✅ · |
+| Set color | ✅ `setColor`, `resetColor` | ✅ Set/Reset color - `notes_tab.h:27` | ✅ · |
+| Open in Explorer | ✅ `openExplorer` | ✅ Ctrl+double-click; pseudo-rows correctly do nothing - `mod_list_controller.cpp:509` | ✅ ✔ |
+| Create empty mod | ✅ `createEmptyMod` | ✅ `create_empty_mod()` - `mod_actions.h:65` | ✅ · |
+| Create separator | ✅ `createSeparator` | ✅ `create_separator()` - `mod_actions.h:64` | ✅ · |
+| Overwrite: create mod from overwrite | ✅ `createModFromOverwrite` | ✅ `create_mod_from_overwrite()` - `overwrite_controller.h:21` | ✅ · |
+| Overwrite: move to existing mod | ✅ `moveOverwriteContentToExistingMod` | ✅ `move_overwrite_content_to_mod()` - `overwrite_controller.h:22` | ✅ · |
+| Overwrite: clear | ✅ `clearOverwrite` | ✅ `clear_overwrite()` - `overwrite_controller.h:20` | ✅ · |
+| Set categories (batch) | ✅ `setCategories`, `setPrimaryCategory` | ✅ `add_category_menus()` (checkable + radio) - `mod_context_menu.h:39` | ✅ · |
+| Rename mod | ✅ `renameMod` | ✅ `rename_mod_inline()` - `mod_list_controller.h:63` | ✅ · |
+| Remove mod | ✅ | ✅ `remove_selected_mods()` (folder to trash) - `mod_actions.cpp:158` | ✅ · |
+| Root override toggle | ✅ | ✅ `toggle_root_override()` - `mod_list_controller.h:142` | ✅ · |
 | U052 listOptionsBtn hosts ModListGlobalContextMenu | ✅ `mainwindow.cpp:374-376` | ❌ | ❌ · |
-| U071 ModListGlobalContextMenu full tree (install/create above-below-inside, collapse, enable-matching, update, auto-categories, refresh, csv) | ✅ `modlistcontextmenu.cpp:33-102` | ⚠️ global menu subset exists `mod_context_menu.cpp:75` (audit G12); filter-aware labels + position-aware entries unproven | ⚠️ · |
-| U072 Type-dispatched context menus (Overwrite/Backup/Separator/Foreign/Regular trees) | ✅ `modlistcontextmenu.cpp:225-245` | ❌ no per-row-type menu variants found | ❌ · |
-| U073 "All Mods" submenu (global menu nested in row menu) | ✅ `modlistcontextmenu.cpp:230-234` | ❌ no All-Mods submenu found | ❌ · |
-| U075 "Information..." default (bold) action, omitted for foreign | ✅ `modlistcontextmenu.cpp:247-255` | ⚠️ Information action exists `mod_context_menu.cpp:114`; setDefaultAction bolding unproven | ⚠️ · |
+| U071 ModListGlobalContextMenu full tree (install/create above-below-inside, collapse, enable-matching, update, auto-categories, refresh, csv) | ✅ `modlistcontextmenu.cpp:33-102` | ⚠️ subset only; filter-aware labels + position entries unproven - `mod_context_menu.cpp:75` | ⚠️ · |
+| U072 Type-dispatched context menus (Overwrite/Backup/Separator/Foreign/Regular trees) | ✅ `modlistcontextmenu.cpp:225-245` | ❌ no per-row-type menu variants | ❌ · |
+| U073 "All Mods" submenu (global menu nested in row menu) | ✅ `modlistcontextmenu.cpp:230-234` | ❌ | ❌ · |
+| U075 "Information..." default (bold) action, omitted for foreign | ✅ `modlistcontextmenu.cpp:247-255` | ⚠️ action exists, bolding unproven - `mod_context_menu.cpp:114` | ⚠️ · |
 | U081 Separator row menu (rename/remove, color select/reset, send-to) | ✅ `modlistcontextmenu.cpp:422-447` | ❌ | ❌ · |
 | U082 Foreign row menu (Send to... only - no Information) | ✅ `modlistcontextmenu.cpp:449-454` | ❌ | ❌ · |
 | U083 Backup row menu (Restore/Remove Backup, Ignore missing, Mark converted, Visit blocks, Explorer) (NEXUS-LENS: genericize/provider-scope) | ✅ `modlistcontextmenu.cpp:456-497` | ❌ | ❌ · |
@@ -1204,15 +848,14 @@ Note: Track B item U200 is skipped - it is an alias of U116 (integrated once in 
 
 | Feature | MO2 | GMM | Status |
 |---------|-----|-----|--------|
-| Send plugins to priority | ✅ `PluginListContextMenu` | ❌ | ❌ · |
-| Set ESP lock (from context) | ✅ `setESPLock` | ✅ `lock_requested` signal, `plugin_context_menu.h:35`, `plugin_context_menu.cpp:25` | ✅ · |
+| Set ESP lock (from context) | ✅ `setESPLock` | ✅ `lock_requested` signal - `plugin_context_menu.h:35` | ✅ · |
 | Open origin explorer | ✅ `openOriginExplorer` | ❌ | ❌ · |
 | Open origin information | ✅ `openOriginInformation` | ❌ | ❌ · |
 | Enable/disable plugin | ✅ `PluginListContextMenu` | ❌ | ❌ · |
 | Send-to priority | ✅ `sendToPriority` | ❌ | ❌ · |
-| Lock/unlock plugin | ✅ `setESPLock` | ✅ Lock/Unlock load order actions, `plugin_context_menu.cpp:24-28` | ✅ · |
-| U085 Plugin "Enable all"/"Disable all" + confirm dialog | ✅ `pluginlistcontextmenu.cpp:36-48` | ⚠️ plugin context menu + lock/enable handling `plugin_context_menu.cpp:24`; bulk enable + confirm unproven | ⚠️ · |
-| U086 Lock/Unlock load-order labels conditional on lock state | ✅ `pluginlistcontextmenu.cpp:56-77` | ⚠️ lock/unlock actions exist `plugin_context_menu.cpp:24`; state-conditional labels unproven | ⚠️ · |
+| Lock/unlock plugin | ✅ `setESPLock` | ✅ Lock/Unlock load order - `plugin_context_menu.cpp:24` | ✅ · |
+| U085 Plugin "Enable all"/"Disable all" + confirm dialog | ✅ `pluginlistcontextmenu.cpp:36-48` | ⚠️ bulk enable + confirm unproven - `plugin_context_menu.cpp:24` | ⚠️ · |
+| U086 Lock/Unlock load-order labels conditional on lock state | ✅ `pluginlistcontextmenu.cpp:56-77` | ⚠️ labels not state-conditional - `plugin_context_menu.cpp:24` | ⚠️ · |
 | U087 Plugin Send to... (Top/Bottom/Priority QInputDialog) | ✅ `pluginlistcontextmenu.cpp:111-133` | ❌ | ❌ · |
 | U088 "Open Origin in Explorer" gated on origin resolving | ✅ `pluginlistcontextmenu.cpp:80-95` | ❌ | ❌ · |
 | U089 "Open Origin Info..." default action (single non-foreign) | ✅ `pluginlistcontextmenu.cpp:96-107` | ❌ | ❌ · |
@@ -1222,183 +865,183 @@ Note: Track B item U200 is skipped - it is an alias of U116 (integrated once in 
 
 | Feature | MO2 | GMM | Status |
 |---------|-----|-----|--------|
-| FOMOD installer | ✅ `IPluginInstaller` | ✅ `FomodInstaller` plugin + engine, `fomod_view_model.h:51` | ✅ ✔ |
-| FOMOD XML parsing | ✅ | ✅ `module_config` (GroupType, Dependency, PluginType), `module_config.h` | ✅ ✔ |
-| FOMOD condition tester | ✅ | ✅ `FomodConditionTester` (file/flag/game/composite), `condition_tester.h:36` | ✅ ✔ |
-| FOMOD C# script detection | ✅ | ✅ `hasCSharpScript()`, `module_config.h:327` (was cited as `:314`) | ✅ ✔ |
-| FOMOD view model (step nav) | ✅ | ✅ `FomodViewModel` (step forward/back, flag map), `fomod_view_model.h:51` | ✅ ✔ |
-| FOMOD file installer | ✅ | ✅ `FomodFileInstaller::apply()`, `file_installer.h:32` | ✅ ✔ |
-| Archive password support | ✅ `queryPassword` `installationmanager.cpp:126` | ✅ in-process, both readers. `PassphraseFn` `archive_extractor.h:25`, shared `PassphraseSession` + re-ask budget `archive_extractor.cpp:20,37-52,368-373`, 7-Zip `CryptoGetTextPassword` `sevenzip_backend.cpp:301,475`, `passphrase_query_cb` `pipeline.h:106-115` -> `extract_stage.cpp:87` -> `ask_password` `settings_controller.cpp:386`. Password never reaches argv/env/temp. Tested `sevenzip_archive_test.cpp:218,266,386`, `install_progress_test.cpp:337-543` | ✅ ✔ |
-| Installation merge/replace | ✅ `merged`, `replaced` `installationmanager.h:40-81` | ✅ `OverwriteAction{Merge,Replace,Rename,Cancel}` `pipeline.h:23-28`, all four branches `install_stage.cpp:166-207`, dialog is a faithful port of `queryoverwritedialog.ui` incl. body text and Rename-as-default `query_overwrite_dialog.cpp:46-68`. Tested `pipeline_test.cpp:592,611,649,704` | ✅ ✔ |
-| Backup on install | ✅ `keepBackupOnInstall` `settings.cpp:412-420`, read+written back at `installationmanager.cpp:387,393` | ✅ the backup is taken (`install_stage.cpp:172-181`) **and** the checkbox now opens on the remembered choice and stores the answer (`ask_overwrite_impl` `query_overwrite_dialog.cpp:99-113`, key `extraction/backup_install` `settings.cpp:264-270`, default off = MO2's). Cancel stores nothing. Tested `pipeline_test.cpp:625-638`, `overwrite_dialogs_test.cpp` "the Keep Backup choice is remembered between installs" | ✅ ✔ |
-| Installation result tracking | ✅ `InstallationResult` `installationmanager.h:40-81` | ✅ **the one flag with a distinct consequence shipped**: `replaced_archive` `pipeline.h:128-135` -> `mod_replaced` `pipeline_worker.h:171` -> `downloads_controller.cpp:131` marks the old download row not-installed, mirroring MO2's `modReplaced` (`installationmanager.cpp:418-424`). The remaining fields were read one by one against their MO2 callers and none earns a GMM field. `m_merged` has three callers and all three are behavioural, not reported: file placement (`installationmanager.cpp:495`), metadata wipe on a non-merge (`organizercore.cpp:718`), skip the requested priority (`organizercore.cpp:831`). GMM already does all three structurally in `install_stage.cpp` - Merge keeps the folder and its meta.ini, Replace deletes the folder first, and `existing_priority` is re-stamped at `:281,307` - so a flag would be set and never read. `m_iniTweaks` (`installationmanager.cpp:858-861`) tests for a non-empty `INI Tweaks/` directory in the archive's file tree, which the single-mod pipeline has no concept of; GMM's `IniTweak` is a modpack type in a different subsystem. `m_backup` has **no caller anywhere in MO2** - `installationmanager.h:53` is its only occurrence - and the backup itself is the row above. The status enums already exist: `PipelineResult` `pipeline.h:52-56`, `ModVerdict` `batch_installer.h:41-48`. Tested `pipeline_test.cpp:737,770` | ✅ ✔ |
-| Staging layout normalization | ❌ | 🚀 `analyze_staging_layout()` + `normalize_staging_root()`, `staging_layout.h:51`, `:59` | 🚀 ✔ |
-| BSA/BA2 archive listing | ❌ | 🚀 `DataArchive` (libarchive-backed), `data_archive.h:25` | 🚀 ✔ |
-| Install name dialog (smart candidates) | ❌ | 🚀 `InstallNameDialog` (editable combobox), `install_name_dialog.h:18` | 🚀 ✔ |
-| Install progress dialog (modeless) | ❌ | 🚀 `InstallProgressDialog` (300ms show delay), `install_progress_dialog.h:19` | 🚀 ✔ |
-| IPluginInstaller::EInstallResult | ✅ `iplugininstaller.h:41-50` (7 values) | ❌ **deliberately not ported.** GMM's installer plugins are ordered stage *claims*, not a competing chain - `plugin_claim_stage.cpp:12-14` collapses the plugin's return to a bool before it leaves the host - so `RESULT_NOTATTEMPTED`/`MANUALREQUESTED`/`CATEGORYREQUESTED` have no counterpart concept. The real gap underneath is an install start/failure hook, which belongs on the EventBus. See Workspace-l5xa (needs a human call) | ❌ ✔ |
-| Archive file tree representation | ✅ `ArchiveFileTree`, `ArchiveFileEntry` | ✅ `ArchiveFileTree` (libarchive-backed), `engine/mod/filetree/archive_file_tree.h:19` | ✅ ✔ |
-| U194 Installer error/progress strings (extraction failed, invalid name, no installer plugins, password prompt...) | ✅ `installationmanager.cpp:73-880` | ⚠️ most shipped: "Installation failed" + the real reason `downloads_controller.cpp:170-176` via `report_error` `error_popup.cpp:28`, batch form `instance_options_widget.cpp:433`, password prompt `ask_password`. The one MO2 string with no counterpart is "None of the available installer plugins were able to handle that archive" (`:875`), and it is **unreachable here**: a non-FOMOD archive always installs as a plain directory (`install_stage.cpp:108-131`), there is no competing-installer chain to come up empty | ⚠️ ✔ |
-| U195 7z error code strings (9 exact) | ✅ `installationmanager.cpp:886-913` - 3 of the 9 name `7z.dll` (`:890,893`) or a loaded COM library (`:905`) | ❌ **not copied, on purpose.** The Windows-bound three are excluded by the no-Windows-code rule. The other six are a taxonomy keyed on MO2's `Archive::Error` enum, which belongs to the in-process 7z COM archiver; GMM links `lib7zip.so` and gets its reasons from the reader that ran - `sevenzip_backend.cpp:604-635` already distinguishes encoding method, bad headers, rejected password and unreadable archive, and libarchive's own text is more specific than "archive invalid". See Workspace-9ff5 and Workspace-U195 | ❌ ✔ |
-| U282 VirtualFileTree/qdirfiletree/archivefiletree abstractions | ✅ `virtualfiletree.cpp`, `qdirfiletree.cpp`, `archivefiletree.cpp` | ✅ for the two trees that carry data: `DirFileTree` + `ArchiveFileTree` (`engine/mod/filetree/`), with the shared-shape exit criterion pinned in `filetree_test.cpp:3-18` (a synthetic archive and a mod folder with identical content produce the same tree). MO2's third, the memoized *virtual* tree over the mods directory (`organizercore.cpp:102-103`), has no counterpart; the mod scan registry is GMM's equivalent and is a different design, not a missing abstraction | ⚠️ ✔ |
+| FOMOD installer | ✅ `IPluginInstaller` | ✅ `FomodInstaller` plugin + engine - `fomod_view_model.h:51` | ✅ ✔ |
+| FOMOD XML parsing | ✅ | ✅ `module_config` (GroupType, Dependency, PluginType) - `module_config.h` | ✅ ✔ |
+| FOMOD condition tester | ✅ | ✅ `FomodConditionTester` - `condition_tester.h:36` | ✅ ✔ |
+| FOMOD C# script detection | ✅ | ✅ `hasCSharpScript()` - `module_config.h:327` | ✅ ✔ |
+| FOMOD view model (step nav) | ✅ | ✅ `FomodViewModel` (step fwd/back, flag map) - `fomod_view_model.h:51` | ✅ ✔ |
+| FOMOD file installer | ✅ | ✅ `FomodFileInstaller::apply()` - `file_installer.h:32` | ✅ ✔ |
+| Archive password support | ✅ `queryPassword` `installationmanager.cpp:126` | ✅ in-process for both readers; never on argv/env - `archive_extractor.h:25` | ✅ ✔ |
+| Installation merge/replace | ✅ `merged`, `replaced` `installationmanager.h:40` | ✅ `OverwriteAction` 4 branches; port of `queryoverwritedialog.ui` - `install_stage.cpp:166` | ✅ ✔ |
+| Backup on install | ✅ `keepBackupOnInstall` `settings.cpp:412` | ✅ taken, and the checkbox remembers the answer - `query_overwrite_dialog.cpp:99` | ✅ ✔ |
+| Installation result tracking | ✅ `InstallationResult` `installationmanager.h:40` | ⚠️ only `replaced_archive` shipped; the rest are behaviour, not flags - `pipeline.h:128` | ⚠️ ✔ |
+| Staging layout normalization | ❌ | 🚀 `analyze_staging_layout()` + `normalize_staging_root()` - `staging_layout.h:51` | 🚀 ✔ |
+| BSA/BA2 archive listing | ❌ | 🚀 `DataArchive` (libarchive-backed) - `data_archive.h:25` | 🚀 ✔ |
+| Install name dialog (smart candidates) | ❌ | 🚀 `InstallNameDialog` (editable combobox) - `install_name_dialog.h:18` | 🚀 ✔ |
+| Install progress dialog (modeless) | ❌ | 🚀 `InstallProgressDialog` (300 ms show delay) - `install_progress_dialog.h:19` | 🚀 ✔ |
+| IPluginInstaller::EInstallResult | ✅ `iplugininstaller.h:41-50` (7 values) | ❌ a competing-installer chain has no meaning over stage claims - Workspace-l5xa | ❌ ✔ |
+| Archive file tree representation | ✅ `ArchiveFileTree`, `ArchiveFileEntry` | ✅ `ArchiveFileTree` - `engine/mod/filetree/archive_file_tree.h:19` | ✅ ✔ |
+| U194 Installer error/progress strings (extraction failed, invalid name, no installer plugins, password prompt...) | ✅ `installationmanager.cpp:73-880` | ⚠️ most shipped; "no installer plugins" is unreachable - `downloads_controller.cpp:170` | ⚠️ ✔ |
+| U195 7z error code strings (9 exact) | ✅ `installationmanager.cpp:886-913` (3 name `7z.dll`/COM) | ❌ keyed on MO2's in-process COM archiver; we use lib7zip reasons - `sevenzip_backend.cpp:604` - Workspace-U195 | ❌ ✔ |
+| U282 VirtualFileTree/qdirfiletree/archivefiletree abstractions | ✅ `virtualfiletree.cpp`, `qdirfiletree.cpp`, `archivefiletree.cpp` | ⚠️ 2 of 3: `DirFileTree` + `ArchiveFileTree`, no memoized virtual tree - `filetree_test.cpp:3` | ⚠️ ✔ |
 
 ## 22. Deploy System
 
 | Feature | MO2 | GMM | Status |
 |---------|-----|-----|--------|
-| Symlink strategy | ❌ | 🚀 `SymlinkStrategy` (CI target resolution), `strategy.h:10` | 🚀 · |
-| Direct deploy strategy | ❌ | 🚀 `DirectDeployStrategy` (ledger + backup), `strategy_direct.h:7` | 🚀 · |
-| Hardlink strategy | ❌ | 🚀 `HardlinkStrategy`, `strategy_hardlink.h:7` | 🚀 · |
-| Junction strategy (Windows) | ❌ | 🚀 `JunctionStrategy`, `strategy_junction.h:7` | 🚀 · |
-| OverlayFS deploy strategy | ❌ | 🚀 `OverlayFsDeploy` (O(1) reorder; cited name OverlayFsDeployStrategy is alias), `overlay_fs_deploy.h:14` | 🚀 · |
-| FUSE VFS strategy | ❌ | 🚀 `VfsStrategy` (FUSE + file_map), `strategy_vfs.h:7`, `vfs.h:11` | 🚀 · |
-| Deploy ledger (incremental tracking) | ❌ | 🚀 `DeployLedger` (diff for priority changes), `deploy_ledger.h:8` | 🚀 · |
-| Parallel deploy (thread pool) | ❌ | 🚀 `deploy_all_enabled_mods_parallel()`, `deploy_utils.h:128` | 🚀 · |
-| Root override ([General] rootOverride) | ❌ | 🚀 `RootOverride` + `classify_registry_path()`, `root_override.h:34` | 🚀 · |
-| Case-insensitive deploy aliases | ❌ | 🚀 `add_case_insensitive_aliases()`, `deploy_utils.h:219` | 🚀 · |
-| Deploy backup + restore | ❌ | 🚀 `remove_deployed_files()` restores originals, `deploy_utils.h:194` | 🚀 · |
-| Binary detection (PE/ELF/SH) | ❌ | 🚀 `is_executable_binary()`, `deploy_utils.h:86` | 🚀 · |
+| Symlink strategy | ❌ | 🚀 `SymlinkStrategy` (CI target resolution) - `strategy.h:10` | 🚀 · |
+| Direct deploy strategy | ❌ | 🚀 `DirectDeployStrategy` (ledger + backup) - `strategy_direct.h:7` | 🚀 · |
+| Hardlink strategy | ❌ | 🚀 `HardlinkStrategy` - `strategy_hardlink.h:7` | 🚀 · |
+| Junction strategy (Windows) | ❌ | 🚀 `JunctionStrategy` - `strategy_junction.h:7` | 🚀 · |
+| OverlayFS deploy strategy | ❌ | 🚀 `OverlayFsDeploy` (O(1) reorder) - `overlay_fs_deploy.h:14` | 🚀 · |
+| FUSE VFS strategy | ❌ | 🚀 `VfsStrategy` (FUSE + file_map) - `strategy_vfs.h:7` | 🚀 · |
+| Deploy ledger (incremental tracking) | ❌ | 🚀 `DeployLedger` (diff for priority changes) - `deploy_ledger.h:8` | 🚀 · |
+| Parallel deploy (thread pool) | ❌ | 🚀 `deploy_all_enabled_mods_parallel()` - `deploy_utils.h:128` | 🚀 · |
+| Root override ([General] rootOverride) | ❌ | 🚀 `RootOverride` + `classify_registry_path()` - `root_override.h:34` | 🚀 · |
+| Case-insensitive deploy aliases | ❌ | 🚀 `add_case_insensitive_aliases()` - `deploy_utils.h:219` | 🚀 · |
+| Deploy backup + restore | ❌ | 🚀 `remove_deployed_files()` restores originals - `deploy_utils.h:194` | 🚀 · |
+| Binary detection (PE/ELF/SH) | ❌ | 🚀 `is_executable_binary()` - `deploy_utils.h:86` | 🚀 · |
 
 ## 23. Overwrite System
 
 | Feature | MO2 | GMM | Status |
 |---------|-----|-----|--------|
-| Move overwrite to mod | ✅ | ✅ `move_overwrite_to_mod()`, `overwrite_utils.cpp:391` | ✅ · |
-| Sync overwrite file | ✅ | ✅ `sync_overwrite_file()`, `overwrite_utils.h:73` | ✅ · |
-| Clear overwrite (trash) | ✅ | ✅ `clear_overwrite()`, `overwrite_controller.h:20` | ✅ · |
-| CI directory merge (overlay captures) | ❌ | 🚀 `normalize_overwrite_casing()`, `launch_controller.cpp:1194` | 🚀 · |
-| Overwrite sync plan (apply/preview) | ❌ | 🚀 `apply_sync_plan()`, `overwrite_utils.h:124` | 🚀 · |
-| Overwrite info dialog (file browser) | ✅ `OverwriteInfoDialog` | ✅ `OverwriteInfoDialog` (QFileSystemModel, context menu), `overwrite_info_dialog.h:20` | ✅ · |
-| Query overwrite dialog (merge/replace) | ✅ `QueryOverwriteDialog` | ✅ `QueryOverwriteDialog` (thread-safe `ask_overwrite()`), `query_overwrite_dialog.h:20`, `:40` | ✅ · |
-| Sync overwrite dialog (selective) | ✅ `SyncOverwriteDialog` | ✅ `SyncOverwriteDialog` (per-file combo, game-origin), `sync_overwrite_dialog.h:23` | ✅ · |
-| Move to mod dialog | ❌ | 🚀 `MoveToModDialog` (destination picker), `move_to_mod_dialog.h:16` | 🚀 · |
-| U080 Overwrite row menu (Sync to Mods w/ count guard, Create/Move/Clear, Open in Explorer) | ✅ `modlistcontextmenu.cpp:402-420` | ⚠️ move-content-to-Mod picker exists `move_to_mod_dialog.h:16`; Sync-to-Mods guard unproven | ⚠️ · |
-| U175 QueryOverwriteDialog (Keep Backup / Merge / Replace / Rename / Cancel) | ✅ `queryoverwritedialog.ui` | ✅ all five controls exist `query_overwrite_dialog.cpp:57-68` (Keep Backup checkbox, Merge/Replace/Rename/Cancel, Rename default, body text `:46-51` vs `.ui:73-76`). This row contradicted the one above it, which already credited the same dialog. | ✅ ✔ |
-| U176 SyncOverwriteDialog columns (Name / Sync To per-file combo) | ✅ `syncoverwritedialog.ui` | ✅ `sync_overwrite_dialog.cpp:27` (Name + Sync-To combo columns) | ✅ · |
-| U177 OverwriteInfoDialog (Open in Explorer + drag&drop hint) | ✅ `overwriteinfodialog.ui` | ⚠️ OverwriteInfoDialog port exists `overwrite/overwrite_info_dialog.h:14` (context menu `:106`); Explorer button + hint text unproven | ⚠️ · |
+| Move overwrite to mod | ✅ | ✅ `move_overwrite_to_mod()` - `overwrite_utils.cpp:391` | ✅ · |
+| Sync overwrite file | ✅ | ✅ `sync_overwrite_file()` - `overwrite_utils.h:73` | ✅ · |
+| Clear overwrite (trash) | ✅ | ✅ `clear_overwrite()` - `overwrite_controller.h:20` | ✅ · |
+| CI directory merge (overlay captures) | ❌ | 🚀 `normalize_overwrite_casing()` - `launch_controller.cpp:1194` | 🚀 · |
+| Overwrite sync plan (apply/preview) | ❌ | 🚀 `apply_sync_plan()` - `overwrite_utils.h:124` | 🚀 · |
+| Overwrite info dialog (file browser) | ✅ `OverwriteInfoDialog` | ✅ `OverwriteInfoDialog` (QFileSystemModel, context menu) - `overwrite_info_dialog.h:20` | ✅ · |
+| Query overwrite dialog (merge/replace) | ✅ `QueryOverwriteDialog` | ✅ thread-safe `ask_overwrite()` - `query_overwrite_dialog.h:20` | ✅ · |
+| Sync overwrite dialog (selective) | ✅ `SyncOverwriteDialog` | ✅ per-file combo, game-origin - `sync_overwrite_dialog.h:23` | ✅ · |
+| Move to mod dialog | ❌ | 🚀 `MoveToModDialog` (destination picker) - `move_to_mod_dialog.h:16` | 🚀 · |
+| U080 Overwrite row menu (Sync to Mods w/ count guard, Create/Move/Clear, Open in Explorer) | ✅ `modlistcontextmenu.cpp:402-420` | ⚠️ move-to-Mod picker only, Sync guard unproven - `move_to_mod_dialog.h:16` | ⚠️ · |
+| U175 QueryOverwriteDialog (Keep Backup / Merge / Replace / Rename / Cancel) | ✅ `queryoverwritedialog.ui` | ✅ all five controls, Rename default - `query_overwrite_dialog.cpp:57` | ✅ ✔ |
+| U176 SyncOverwriteDialog columns (Name / Sync To per-file combo) | ✅ `syncoverwritedialog.ui` | ✅ Name + Sync-To combo columns - `sync_overwrite_dialog.cpp:27` | ✅ · |
+| U177 OverwriteInfoDialog (Open in Explorer + drag&drop hint) | ✅ `overwriteinfodialog.ui` | ⚠️ port exists, Explorer button + hint unproven - `overwrite_info_dialog.h:14` | ⚠️ · |
 
 ## 24. Save Game System
 
 | Feature | MO2 | GMM | Status |
 |---------|-----|-----|--------|
-| Save game model | ✅ | ✅ `SaveGame` `save_game.h:49` | ✅ · |
-| Skyrim SE/LE save parsing | ✅ | ✅ parsers registered `SkyrimSpecialEdition.cpp:112`, SE `SkyrimSESaveParser.cpp:150`, LE `SkyrimSaveGame.h:2` (was mis-cited: `parse_skyrim_save()`/`parse_skyrimse_save()` symbols absent) | ✅ · |
-| Save scanning | ✅ | ✅ `scan_saves()` `save_scanner.h:38` + save_extensions hook `game_knowledge.cpp:249`, userdata resolves `game_knowledge.cpp:213`, used `downloads_controller.cpp:444`, `:485` | ✅ · |
-| Save missing assets resolver | ✅ | ✅ `find_save_missing_assets()` `save_missing_assets.h:26` | ✅ · |
-| Local saves | ✅ | ✅ `local_saves` `local_saves.h:51` | ✅ · |
-| Pluggable save parser (per-game) | ❌ | 🚀 `SaveParserRegistry` `save_parser_registry.h:45` | 🚀 · |
-| Script extender file detection | ❌ | 🚀 `has_script_extender_file()` `save_game.h:100` | 🚀 · |
-| Save screenshot extraction (RGBA) | ❌ | 🚀 `SaveGame::screenshot` `save_game.h:69` | 🚀 · |
-| Save game list (QTreeWidget) | ✅ `SavesTab` | ✅ `saves_tab` QTableWidget (not tree) `saves_tab.h:143` | ✅ · |
-| Save game hover info popup | ✅ `GamebryoSaveGameInfoWidget` | ✅ `saves_tab` hover info popup `saves_tab.h:159` | ✅ · |
-| Save game background scan | ✅ | ✅ `SavesScanWorker` `saves_scan_worker.h:52` | ✅ · |
-| Save game delete | ✅ `SavesTab::deleteSavegame()` | ✅ `on_delete_key()` `saves_tab.h:131` | ✅ · |
-| Save game context menu | ✅ `SavesTab::onContextMenu()` | ✅ `saves_tab` context menu `saves_tab.h:133` | ✅ · |
-| Save game open in explorer | ✅ | ⚠️ open_explorer exists for mod files `mod_list_controller.cpp:2589`, not wired to saves | ⚠️ · |
-| Save game fix missing assets | ✅ `SavesTab::fixMods()` | ⚠️ detection + display `save_missing_assets.h:26` exists, no fix action | ⚠️ · |
+| Save game model | ✅ | ✅ `SaveGame` - `save_game.h:49` | ✅ · |
+| Skyrim SE/LE save parsing | ✅ | ✅ parsers registered - `SkyrimSESaveParser.cpp:150` | ✅ · |
+| Save scanning | ✅ | ✅ `scan_saves()` + save_extensions hook - `save_scanner.h:38` | ✅ · |
+| Save missing assets resolver | ✅ | ✅ `find_save_missing_assets()` - `save_missing_assets.h:26` | ✅ · |
+| Local saves | ✅ | ✅ `local_saves` - `local_saves.h:51` | ✅ · |
+| Pluggable save parser (per-game) | ❌ | 🚀 `SaveParserRegistry` - `save_parser_registry.h:45` | 🚀 · |
+| Script extender file detection | ❌ | 🚀 `has_script_extender_file()` - `save_game.h:100` | 🚀 · |
+| Save screenshot extraction (RGBA) | ❌ | 🚀 `SaveGame::screenshot` - `save_game.h:69` | 🚀 · |
+| Save game list (QTreeWidget) | ✅ `SavesTab` | ✅ QTableWidget, not a tree - `saves_tab.h:143` | ✅ · |
+| Save game hover info popup | ✅ `GamebryoSaveGameInfoWidget` | ✅ hover info popup - `saves_tab.h:159` | ✅ · |
+| Save game background scan | ✅ | ✅ `SavesScanWorker` - `saves_scan_worker.h:52` | ✅ · |
+| Save game delete | ✅ `SavesTab::deleteSavegame()` | ✅ `on_delete_key()` - `saves_tab.h:131` | ✅ · |
+| Save game context menu | ✅ `SavesTab::onContextMenu()` | ✅ context menu - `saves_tab.h:133` | ✅ · |
+| Save game open in explorer | ✅ | ⚠️ `open_explorer` is for mod files only - `mod_list_controller.cpp:2589` | ⚠️ · |
+| Save game fix missing assets | ✅ `SavesTab::fixMods()` | ⚠️ detection + display, no fix action - `save_missing_assets.h:26` | ⚠️ · |
 | Transfer saves dialog | ✅ `TransferSavesDialog` | ❌ | ❌ · |
-| Save game streaming (per-save entryReady, binary-insert sorted list) | ❌ | 🚀 `SavesScanWorker::entryReady` `saves_scan_worker.h:70` + `SavesTab::on_entry_ready` `saves_tab.h:123` | 🚀 · |
-| Save Information dialog (2-column details, thumbnail, plugin list) | ✅ `GamebryoSaveGameInfoWidget` | ✅ `SaveInfoDialog` `save_info_dialog.h:30` (2-column, thumbnail, plugin load-order status) | ✅ · |
-| Parallel save scan (parallel parse + provider indexing) | ❌ | 🚀 `parallel::for_each` + `SavesScanWorker` double-fire fix `saves_scan_worker.h:52` | 🚀 · |
-| Disabled-but-present plugins excluded from missing assets | ✅ | ✅ `find_save_missing_assets` `save_missing_assets.h:26` (enabled OR force_loaded check) | ✅ · |
-| U105 Save hover widget fields (SE data, missing ESP/ESH/ESL lists + N more) | ✅ `gamebryosavegameinfowidget.cpp:78-161` | ⚠️ hover info exists `saves_tab.h:27` (background scan + hover); exact field list unproven | ⚠️ · |
-| U115 Saves list columns (display name "%1, #%2, Level %3, %4" + relative path) | ✅ `gamebryosavegame.cpp:48`, `savestab.cpp:180-196` | ⚠️ saves tab scan/list exists `saves_tab.h:27`; display-name format + path column unproven | ⚠️ · |
-| U159 Saves context menu (Fix enabled mods gating, Delete %n save(s), Open in Explorer) | ✅ `savestab.cpp:244-280` | ⚠️ save missing-assets fix exists `save_missing_assets.h:26`; menu gating/plural-delete unproven | ⚠️ · |
+| Save game streaming (per-save entryReady, binary-insert sorted list) | ❌ | 🚀 `entryReady` + `on_entry_ready` - `saves_scan_worker.h:70` | 🚀 · |
+| Save Information dialog (2-column details, thumbnail, plugin list) | ✅ `GamebryoSaveGameInfoWidget` | ✅ `SaveInfoDialog` (thumbnail, load-order status) - `save_info_dialog.h:30` | ✅ · |
+| Parallel save scan (parallel parse + provider indexing) | ❌ | 🚀 `parallel::for_each` + double-fire fix - `saves_scan_worker.h:52` | 🚀 · |
+| Disabled-but-present plugins excluded from missing assets | ✅ | ✅ enabled OR force_loaded check - `save_missing_assets.h:26` | ✅ · |
+| U105 Save hover widget fields (SE data, missing ESP/ESH/ESL lists + N more) | ✅ `gamebryosavegameinfowidget.cpp:78-161` | ⚠️ hover info exists, exact field list unproven - `saves_tab.h:27` | ⚠️ · |
+| U115 Saves list columns (display name "%1, #%2, Level %3, %4" + relative path) | ✅ `savestab.cpp:180-196` | ⚠️ scan/list exists, format + path column unproven - `saves_tab.h:27` | ⚠️ · |
+| U159 Saves context menu (Fix enabled mods gating, Delete %n save(s), Open in Explorer) | ✅ `savestab.cpp:244-280` | ⚠️ fix path exists, gating/plural-delete unproven - `save_missing_assets.h:26` | ⚠️ · |
 | U160 Save delete confirm (first 10 names + recycle-bin note) | ✅ `savestab.cpp:205-235` | ❌ | ❌ · |
 | U199 Save parsing error strings (open failed, wrong format) | ✅ `gamebryosavegame.cpp:102-112` | ❌ | ❌ · |
 | U227 Save list sorted by creation desc + streaming adds + relative path column | ✅ `savestab.cpp:180` | ❌ | ❌ · |
-| U239 SaveGameInfo feature (getMissingAssets used by saves Fix) | ✅ `savestab.cpp:244` | ✅ `saves_tab.cpp:329` SaveParserRegistry::parse_save (missing-assets fix path `save_missing_assets.h:26`) | ✅ · |
+| U239 SaveGameInfo feature (getMissingAssets used by saves Fix) | ✅ `savestab.cpp:244` | ✅ `SaveParserRegistry::parse_save` - `saves_tab.cpp:329` | ✅ · |
 
 ## 25. Game Detection & Knowledge
 
 | Feature | MO2 | GMM | Status |
 |---------|-----|-----|--------|
-| Game detection (Steam library) | ✅ | ✅ `detect_steam_games()` `game_detector.h:24` | ✅ · |
-| Per-game knowledge (key-value) | ✅ | ✅ `GameKnowledge` `game_knowledge.h:20` | ✅ · |
-| Game capabilities (tab display) | ❌ | 🚀 `GameCapabilities` `game_capabilities.h:31` (CapabilityInfo, visible_tabs_for `:60`) | 🚀 · |
-| Game feature registry (MO2 IGameFeatures port) | ❌ | 🚀 `GameFeatureRegistry` `game_feature_registry.h:110` (priority + replace, typed resolve_feature) | 🚀 · |
-| ModDataChecker feature | ❌ | 🚀 `ModDataContentFeature` `game_feature.h:112` (standard Bethesda catalog) | 🚀 · |
-| ScriptExtender feature | ❌ | 🚀 `ScriptExtenderFeature` `game_feature.h:205` (binary_name, loader_name) | 🚀 · |
-| DataArchives feature | ❌ | 🚀 `DataArchivesFeature` `game_feature.h:186` (vanilla archive list) | 🚀 · |
-| AnimationParser feature | ❌ | 🚀 `AnimationParserFeature` `game_feature.h:337` (frames, layers, RGBA pixels) | 🚀 · |
-| UnmanagedMods feature (DLC/CC) | ❌ | 🚀 `UnmanagedModsFeature` `game_feature.h:271` | 🚀 · |
-| BSAInvalidation feature | ❌ | 🚀 `BSAInvalidationFeature` `game_feature.h:288` | 🚀 · |
-| Game icons (download-on-demand) | ❌ | 🚀 `GameIconCache` `game_icon_cache.h:38` (async, placeholder avatars) | 🚀 · |
-| Multi-game detection | ❌ | 🚀 `detect_steam_games_multi()` `game_detector.h:29` | 🚀 · |
-| VDF/ACF parsing | ❌ | 🚀 `parse_library_folders()` `game_detector.h:34` + `parse_acf_value()` `game_detector.h:38` | 🚀 · |
-| U060 espTab/bsaTab removed when game lacks the feature | ✅ `mainwindow.cpp:340-348` | ⚠️ game feature registry exists `game_feature_registry.h:110`; per-tab removal wiring unproven | ⚠️ · |
-| U240 IGameFeatures gating tab visibility (GamePlugins/DataArchives/SaveGameInfo/ModDataContent) | ✅ `mainwindow.cpp:340-348` | ⚠️ GameFeatureRegistry exists `game_feature_registry.h:110`; tab-gating by registry unproven | ⚠️ · |
+| Game detection (Steam library) | ✅ | ✅ `detect_steam_games()` - `game_detector.h:24` | ✅ · |
+| Per-game knowledge (key-value) | ✅ | ✅ `GameKnowledge` - `game_knowledge.h:20` | ✅ · |
+| Game capabilities (tab display) | ❌ | 🚀 `GameCapabilities` + `visible_tabs_for` - `game_capabilities.h:31` | 🚀 · |
+| Game feature registry (MO2 IGameFeatures port) | ❌ | 🚀 `GameFeatureRegistry` (priority + replace) - `game_feature_registry.h:110` | 🚀 · |
+| ModDataChecker feature | ❌ | 🚀 `ModDataContentFeature` - `game_feature.h:112` | 🚀 · |
+| ScriptExtender feature | ❌ | 🚀 `ScriptExtenderFeature` - `game_feature.h:205` | 🚀 · |
+| DataArchives feature | ❌ | 🚀 `DataArchivesFeature` - `game_feature.h:186` | 🚀 · |
+| AnimationParser feature | ❌ | 🚀 `AnimationParserFeature` (frames, layers, RGBA) - `game_feature.h:337` | 🚀 · |
+| UnmanagedMods feature (DLC/CC) | ❌ | 🚀 `UnmanagedModsFeature` - `game_feature.h:271` | 🚀 · |
+| BSAInvalidation feature | ❌ | 🚀 `BSAInvalidationFeature` - `game_feature.h:288` | 🚀 · |
+| Game icons (download-on-demand) | ❌ | 🚀 `GameIconCache` (async, placeholders) - `game_icon_cache.h:38` | 🚀 · |
+| Multi-game detection | ❌ | 🚀 `detect_steam_games_multi()` - `game_detector.h:29` | 🚀 · |
+| VDF/ACF parsing | ❌ | 🚀 `parse_library_folders()` + `parse_acf_value()` - `game_detector.h:34` | 🚀 · |
+| U060 espTab/bsaTab removed when game lacks the feature | ✅ `mainwindow.cpp:340-348` | ⚠️ registry exists, per-tab removal unproven - `game_feature_registry.h:110` | ⚠️ · |
+| U240 IGameFeatures gating tab visibility (GamePlugins/DataArchives/SaveGameInfo/ModDataContent) | ✅ `mainwindow.cpp:340-348` | ⚠️ registry exists, tab-gating unproven - `game_feature_registry.h:110` | ⚠️ · |
 
 ## 26. Pipeline System
 
 | Feature | MO2 | GMM | Status |
 |---------|-----|-----|--------|
-| Pipeline with ordered stages | ❌ | 🚀 `Pipeline` `pipeline.h:178` + `PipelineContext` `pipeline.h:58` | 🚀 · |
-| Fetch stage (download) | ❌ | 🚀 `FetchStage` `fetch_stage.h:9` | 🚀 · |
-| Extract stage (archive) | ❌ | 🚀 `ExtractStage` `extract_stage.h:10` (low_priority) | 🚀 · |
-| FOMOD stage (wizard) | ❌ | 🚀 `FomodStage` `fomod_stage.h:15` | 🚀 · |
-| Install stage (deploy) | ❌ | 🚀 `InstallStage` `install_stage.h:26` | 🚀 · |
-| Deploy stage (symlink/overlay) | ❌ | 🚀 `DeployStage` `deploy_stage.h:9` | 🚀 · |
-| Resolve stage (path resolution) | ❌ | 🚀 `ResolveStage` `resolve_stage.h:7` | 🚀 · |
-| Sync stage (overwrite) | ❌ | 🚀 `SyncStage` `sync_stage.h:13` | 🚀 · |
-| Launch stage (game execution) | ❌ | 🚀 `LaunchStage` `launch_stage.h:7` | 🚀 · |
-| Plugin claim stage | ❌ | 🚀 `PluginClaimStage` `plugin_claim_stage.h:12` | 🚀 · |
-| Stage registry + hook registry | ❌ | 🚀 `StageRegistry` `stage_registry.h:24` + `HookRegistry` `hook_registry.h:22` | 🚀 · |
-| Overwrite decision (Merge/Replace/Rename/Cancel) | ❌ | 🚀 `OverwriteAction` enum `pipeline.h:23` | 🚀 · |
-| FOMOD decision (accept/manual/choices_json) | ❌ | 🚀 `FomodDecision` `pipeline.h:40` | 🚀 · |
-| Trace recorder (pipeline workflow) | ❌ | 🚀 `TraceRecorder` `trace_recorder.h:37` (flow_id, stages, durations) | 🚀 · |
-| Pipeline visualization (2D canvas) | ❌ | 🚀 `PipelineContentWidget` `pipeline_content_widget.h:31` (stage cards, arrows, status) | 🚀 · |
-| Pipeline worker (background) | ❌ | 🚀 `PipelineWorker` `pipeline_worker.h:76` | 🚀 · |
+| Pipeline with ordered stages | ❌ | 🚀 `Pipeline` + `PipelineContext` - `pipeline.h:178` | 🚀 · |
+| Fetch stage (download) | ❌ | 🚀 `FetchStage` - `fetch_stage.h:9` | 🚀 · |
+| Extract stage (archive) | ❌ | 🚀 `ExtractStage` (low_priority) - `extract_stage.h:10` | 🚀 · |
+| FOMOD stage (wizard) | ❌ | 🚀 `FomodStage` - `fomod_stage.h:15` | 🚀 · |
+| Install stage (deploy) | ❌ | 🚀 `InstallStage` - `install_stage.h:26` | 🚀 · |
+| Deploy stage (symlink/overlay) | ❌ | 🚀 `DeployStage` - `deploy_stage.h:9` | 🚀 · |
+| Resolve stage (path resolution) | ❌ | 🚀 `ResolveStage` - `resolve_stage.h:7` | 🚀 · |
+| Sync stage (overwrite) | ❌ | 🚀 `SyncStage` - `sync_stage.h:13` | 🚀 · |
+| Launch stage (game execution) | ❌ | 🚀 `LaunchStage` - `launch_stage.h:7` | 🚀 · |
+| Plugin claim stage | ❌ | 🚀 `PluginClaimStage` - `plugin_claim_stage.h:12` | 🚀 · |
+| Stage registry + hook registry | ❌ | 🚀 `StageRegistry` + `HookRegistry` - `stage_registry.h:24` | 🚀 · |
+| Overwrite decision (Merge/Replace/Rename/Cancel) | ❌ | 🚀 `OverwriteAction` enum - `pipeline.h:23` | 🚀 · |
+| FOMOD decision (accept/manual/choices_json) | ❌ | 🚀 `FomodDecision` - `pipeline.h:40` | 🚀 · |
+| Trace recorder (pipeline workflow) | ❌ | 🚀 `TraceRecorder` (flow_id, stages, durations) - `trace_recorder.h:37` | 🚀 · |
+| Pipeline visualization (2D canvas) | ❌ | 🚀 `PipelineContentWidget` (stage cards, arrows) - `pipeline_content_widget.h:31` | 🚀 · |
+| Pipeline worker (background) | ❌ | 🚀 `PipelineWorker` - `pipeline_worker.h:76` | 🚀 · |
 
 ## 27. Plugin Host System
 
 | Feature | MO2 | GMM | Status |
 |---------|-----|-----|--------|
-| C ABI plugin loading (dlopen) | ❌ | 🚀 `PluginLoader` `plugin_loader.h:206` (load_plugin, load_directory `:214-215`) | 🚀 · |
-| v2 ABI registration | ❌ | 🚀 `gmm_register_v2()` `plugin_loader.cpp:1952` | 🚀 · |
-| Python plugin loader | ❌ | 🚀 `PythonLoader` `python_loader.h:15` | 🚀 · |
-| Tool registry (IPluginTool) | ❌ | 🚀 `ToolRegistry` `tool_registry.h:38` (tool_id, kind, fn) | 🚀 · |
-| Diagnostics registry | ❌ | 🚀 `DiagnosticsRegistry` `diagnostics_registry.h:21` + `DiagnoseRegistry` `diagnose_registry.h:26` | 🚀 · |
-| Deploy strategy registry | ❌ | 🚀 `DeployStrategyRegistry` `deploy_strategy_registry.h:24` (deploy/remove) | 🚀 · |
-| Hook registry (behavior injection) | ❌ | 🚀 `HookRegistry` `plugin_host/hook_registry.h:24` (tag-based, priority-ordered) | 🚀 · |
-| Save parser registry | ❌ | 🚀 `SaveParserRegistry` `save_parser_registry.h:45` | 🚀 · |
-| File mapper registry | ❌ | 🚀 `FileMapperRegistry` `file_mapper_registry.h:25` | 🚀 · |
-| Order encoding registry | ❌ | 🚀 `OrderEncodingRegistry` `order_encoding_registry.h:25` | 🚀 · |
-| Requirements registry | ❌ | 🚀 `RequirementsRegistry` `requirements_registry.h:42` | 🚀 · |
-| Plugin settings registry | ❌ | 🚀 `PluginSettingsRegistry` `plugin_settings_registry.h:43` | 🚀 · |
+| C ABI plugin loading (dlopen) | ❌ | 🚀 `PluginLoader` (load_plugin, load_directory) - `plugin_loader.h:206` | 🚀 · |
+| v2 ABI registration | ❌ | 🚀 `gmm_register_v2()` - `plugin_loader.cpp:1952` | 🚀 · |
+| Python plugin loader | ❌ | 🚀 `PythonLoader` - `python_loader.h:15` | 🚀 · |
+| Tool registry (IPluginTool) | ❌ | 🚀 `ToolRegistry` (tool_id, kind, fn) - `tool_registry.h:38` | 🚀 · |
+| Diagnostics registry | ❌ | 🚀 `DiagnosticsRegistry` + `DiagnoseRegistry` - `diagnostics_registry.h:21` | 🚀 · |
+| Deploy strategy registry | ❌ | 🚀 `DeployStrategyRegistry` (deploy/remove) - `deploy_strategy_registry.h:24` | 🚀 · |
+| Hook registry (behavior injection) | ❌ | 🚀 `HookRegistry` (tag-based, priority-ordered) - `hook_registry.h:24` | 🚀 · |
+| Save parser registry | ❌ | 🚀 `SaveParserRegistry` - `save_parser_registry.h:45` | 🚀 · |
+| File mapper registry | ❌ | 🚀 `FileMapperRegistry` - `file_mapper_registry.h:25` | 🚀 · |
+| Order encoding registry | ❌ | 🚀 `OrderEncodingRegistry` - `order_encoding_registry.h:25` | 🚀 · |
+| Requirements registry | ❌ | 🚀 `RequirementsRegistry` - `requirements_registry.h:42` | 🚀 · |
+| Plugin settings registry | ❌ | 🚀 `PluginSettingsRegistry` - `plugin_settings_registry.h:43` | 🚀 · |
 | U144 Plugin disable warnings (game-required + dependent plugins) | ✅ `settingsdialogplugins.cpp:232-270` | ❌ | ❌ · |
 | U244 OrganizerProxy/plugin dependency-resolution dialog | ✅ `plugincontainer.cpp`, `settingsdialogplugins.cpp` | ❌ | ❌ · |
-| U274 PluginRequirements (uibase pluginrequirements.cpp) | ✅ `pluginrequirements.cpp` (uibase) | ⚠️ requirements registry wired into loader `plugin_loader.cpp:23`; uibase-shared API parity unproven | ⚠️ · |
+| U274 PluginRequirements (uibase pluginrequirements.cpp) | ✅ `pluginrequirements.cpp` (uibase) | ⚠️ registry wired in, uibase API parity unproven - `plugin_loader.cpp:23` | ⚠️ · |
 | U283 PluginListProxy / OrganizerProxy plugin proxies | ✅ `pluginlistproxy.cpp`, `organizerproxy.cpp` | ❌ | ❌ · |
 
 ## 28. Sort System
 
 | Feature | MO2 | GMM | Status |
 |---------|-----|-----|--------|
-| Sort provider / registry | ❌ | 🚀 `Sorter::Interface` `interface.h:28` + `Sorter::Registry` `registry.h:12` | 🚀 · |
-| C ABI sort provider | ❌ | 🚀 `Sorter::Abi` `abi.h:18` | 🚀 · |
-| LOOT sorter | ❌ | 🚀 `Sorter::Loot` `loot/sorter.h:66` (run_sort with progress) | 🚀 · |
-| Masterlist manager | ❌ | 🚀 `MasterlistManager` `masterlists.h:21` (GitHub branch walk-down, 24h TTL) | 🚀 · |
-| Game-native sort round-trip (Isaac and other workshop games) | ❌ (MO2 has no game-native mod band) | 🚀 the sort writes into the **game's own mods directory**, not the instance, and persists the provider's order. Phantom rows (Overwrite, MERGED, game-native pseudo-rows) are skipped rather than written as if they had folders. `mod_list_controller.cpp:1102-1110`, `:1181-1242`, `:3933` | 🚀 ✔ |
+| Sort provider / registry | ❌ | 🚀 `Sorter::Interface` + `Sorter::Registry` - `interface.h:28` | 🚀 · |
+| C ABI sort provider | ❌ | 🚀 `Sorter::Abi` - `abi.h:18` | 🚀 · |
+| LOOT sorter | ❌ | 🚀 `Sorter::Loot` (run_sort with progress) - `loot/sorter.h:66` | 🚀 · |
+| Masterlist manager | ❌ | 🚀 `MasterlistManager` (24h TTL) - `masterlists.h:21` | 🚀 · |
+| Game-native sort round-trip (Isaac and other workshop games) | ❌ (MO2 has no game-native mod band) | 🚀 writes the game's own mods dir; phantom rows skipped - `mod_list_controller.cpp:1102` | 🚀 ✔ |
 
 ## 29. Instance Management
 
 | Feature | MO2 | GMM | Status |
 |---------|-----|-----|--------|
-| Instance manager | ✅ `InstanceManager` | ✅ `Instance` `instance.h:25` (TOML, per-folder overrides `:53`) | ✅ · |
-| Create instance dialog | ✅ `CreateInstanceDialog` | ✅ `GameSelectionWidget` `game_selection_widget.h:22` (game cards + filter) | ✅ · |
-| Instance switcher | ✅ | ✅ `InstanceSwitcherDialog` `instance_switcher_dialog.h:19` + `InstanceSwitcherContentWidget` | ✅ · |
-| Instance TOML persistence | ❌ | 🚀 `parse_instance_toml()` `toml_utils.h:18` + JSON-to-TOML repair | 🚀 · |
-| Instance scan + last-used | ❌ | 🚀 `scan_instances()` + `read/write_last_instance()` `instance_utils.h:28-35` | 🚀 · |
-| Game icons (download-on-demand) | ❌ | 🚀 `GameIcons` `game_icons.h:30` (ensure_icon_cached) | 🚀 · |
-| Masterlist fetch (GitHub cache) | ❌ | 🚀 `MasterlistFetch` `masterlist_fetch.h:25` (branch walk-down) | 🚀 · |
-| Instance statistics dialog | ❌ | 🚀 `StatsContentWidget` `stats_content_widget.h:17` (sizes + open in explorer) | 🚀 · |
-| Instance options panel | ❌ | 🚀 `instance_options_panel` `instance_options_panel.h:28` | 🚀 · |
+| Instance manager | ✅ `InstanceManager` | ✅ `Instance` (TOML, per-folder overrides) - `instance.h:25` | ✅ · |
+| Create instance dialog | ✅ `CreateInstanceDialog` | ✅ `GameSelectionWidget` (cards + filter) - `game_selection_widget.h:22` | ✅ · |
+| Instance switcher | ✅ | ✅ `InstanceSwitcherDialog` - `instance_switcher_dialog.h:19` | ✅ · |
+| Instance TOML persistence | ❌ | 🚀 `parse_instance_toml()` + JSON-to-TOML repair - `toml_utils.h:18` | 🚀 · |
+| Instance scan + last-used | ❌ | 🚀 `scan_instances()` + `read/write_last_instance()` - `instance_utils.h:28` | 🚀 · |
+| Game icons (download-on-demand) | ❌ | 🚀 `GameIcons` (ensure_icon_cached) - `game_icons.h:30` | 🚀 · |
+| Masterlist fetch (GitHub cache) | ❌ | 🚀 `MasterlistFetch` - `masterlist_fetch.h:25` | 🚀 · |
+| Instance statistics dialog | ❌ | 🚀 `StatsContentWidget` (sizes + explorer) - `stats_content_widget.h:17` | 🚀 · |
+| Instance options panel | ❌ | 🚀 `instance_options_panel` - `instance_options_panel.h:28` | 🚀 · |
 | Create instance wizard (7-page) | ✅ `CreateInstanceDialog` (Intro, Type, Game, Variants, Name, Paths, Profiles, Nexus, Confirmation) | ❌ | ❌ · |
 | Game variant selection | ✅ `CreateInstanceDialog` (game variants) | ❌ | ❌ · |
 | Microsoft Store game handling | ✅ `InstanceManager` | ❌ | ❌ · |
 | U025 Manage Instances action hidden when change not allowed | ✅ `mainwindow.cpp:741-743` | ❌ | ❌ · |
-| U168 Instance manager dialog controls (create/explore/rename/delete/switch, filter, wiki link) | ✅ `instancemanagerdialog.ui` | ⚠️ instance switcher dialog exists `instance_switcher_dialog.h:19`; full control set unproven | ⚠️ · |
+| U168 Instance manager dialog controls (create/explore/rename/delete/switch, filter, wiki link) | ✅ `instancemanagerdialog.ui` | ⚠️ switcher dialog only, full set unproven - `instance_switcher_dialog.h:19` | ⚠️ · |
 | U169 Instance manager flows (validation errors, switching TaskDialog, delete guards) | ✅ `instancemanagerdialog.cpp:112-563` | ❌ | ❌ · |
 | U179 CreateInstanceDialog page copy (intro/type/game/edition/name/profile/paths) | ✅ `createinstancedialog.ui` | ❌ | ❌ · |
 | U286 createinstancedialogpages per-page validation logic | ✅ `createinstancedialogpages.cpp` | ❌ | ❌ · |
@@ -1407,75 +1050,70 @@ Note: Track B item U200 is skipped - it is an alias of U116 (integrated once in 
 
 | Feature | MO2 | GMM | Status |
 |---------|-----|-----|--------|
-| Mod list view | ✅ | ✅ `mod_table_view` `mod_table_view.h:157` | ✅ · |
-| Plugin list view | ✅ | ✅ `plugins_tab` `plugins_tab.h:23` | ✅ · |
-| Mod info dialog | ✅ `ModInfoDialog` | ✅ `mod_info_dialog` `mod_info_dialog.h:25` (15 tabs) | ✅ · |
-| Settings dialog | ✅ `SettingsDialog` | ✅ `settings_content_widget` `settings_content_widget.h:29` | ✅ · |
-| Toolbar | ✅ | ✅ `main_toolbar` `main_toolbar.h:12` | ✅ · |
-| Game lock overlay | ✅ `UILocker` | 🚀 `game_lock_overlay` `launch_controller.h:123` (create/show/hide) | 🚀 · |
-| Process Tree View | ❌ | 🚀 `process_tree_checkbox` `launch_controller.cpp:1598` | 🚀 · |
-| FOMOD wizard UI | ✅ | ✅ `fomod_wizard_dialog` `fomod_wizard_dialog.h:37` | ✅ · |
-| FOMOD image viewer | ✅ | ✅ `fomod_image_viewer` `fomod_image_viewer.h:14` | ✅ · |
-| Profile bar (combo + folders) | ❌ | 🚀 `ProfileBar` `profile_bar.h:28` (12 FolderKind, export/import) | 🚀 · |
-| Profile manager dialog | ✅ | ✅ `profile_manager_dialog` `profile_manager_dialog.h:22` | ✅ · |
-| Profile settings widget | ❌ | 🚀 `profile_settings_widget` `profile_settings_widget.h:18` | 🚀 · |
-| Console panel | ❌ | 🚀 `console_panel` `console_panel.h:11` | 🚀 · |
-| Debug window (Konami code) | ❌ | 🚀 `debug_window` `debug_window.h:42` (easter egg `settings_controller.cpp:1442`) | 🚀 · |
-| Preview system (images/text/video) | ✅ | ✅ `preview_registry` `preview_registry.h:43` + `preview_widget` `preview_widget.h:43` | ✅ · |
-| File viewer (image, video, 3D scene) | ❌ | 🚀 `ImageViewer` `image_viewer.h:23`, `VideoViewer` `video_viewer.h:18`, `SceneViewer` `scene_viewer.h:13` | 🚀 · |
-| Plugin-provided preview | ✅ | ✅ `preview_window` `preview_window.h:61` (v2 IPluginPreview) | 🚀 · |
-| ANM2 animation playback | ❌ | 🚀 `preview_window` `preview_window.h:61` (frame-based timer) | 🚀 · |
-| Variant browsing (prev/next) | ❌ | 🚀 `preview_window` `preview_window.h:61` multi-provider | 🚀 · |
-| Zoom/fit controls | ❌ | 🚀 `preview_window` zoom_by/set_fit `preview_window.h:106-107` | 🚀 · |
-| Smooth scroll | ❌ | 🚀 `smooth_scroll` `smooth_scroll.h:19` (SmoothScroller) | 🚀 · |
-| Zoom controls | ❌ | 🚀 `zoom_controls` `zoom_controls.h:18` (ZoomableView) | 🚀 · |
-| Column toggle header | ❌ | 🚀 `column_toggle_header` `column_toggle_header.h:7` | 🚀 · |
-| Game path banner | ❌ | 🚀 `game_path_banner` `game_path_banner.h:12` | 🚀 · |
-| Status bar (custom) | ✅ `StatusBar` | 🚀 `status_bar` `status_bar.h:23` - left context label ("game - instance - profile"), transient status with restore, a clickable pipeline-progress button, and per-source metered-budget labels | 🚀 ✔ |
-| Notification backend | ❌ | 🚀 `notification_backend` `notification_backend.h:8` | 🚀 · |
-| Single instance guard | ❌ | 🚀 `MultiProcess` QLockFile `multi_process.h:11`, wired `core.cpp:331` (was mis-cited: `single_instance`/QtSingleApplication absent) | 🚀 · |
-| BBCode parser (Nexus descriptions) | ✅ | ✅ `bbcode` `bbcode.h:22` (bbcode_to_html) | ✅ · |
-| Menu bar (File/Edit/View/Tools/Help) | ✅ | ✅ `AppMenuBar` `menu_bar.h:24` (dynamic per-game tools) | ✅ · |
-| MO2's eight keyboard binds (Ctrl+M, Ctrl+P, Ctrl+E, Ctrl+I, Ctrl+S, Ctrl+N, Ctrl+H, F5) | ✅ `mainwindow.ui` | ✅ all eight bound. `menu_bar.cpp:47` (Ctrl+M), `:224` (Ctrl+P), `:228` (Ctrl+E), `:216` (Ctrl+I), `:75-76` (Ctrl+S), `:68` (Ctrl+N), `:335` (Ctrl+H), `:193` (F5) | ✅ ✔ |
-| What's This / context help on the main-window surfaces | ✅ 26 `whatsThis` properties in `mainwindow.ui` (MO2 never calls `setWhatsThis()` in C++; it is a designer property) | ⚠️ 19 `setWhatsThis()` call sites across 17 files, which is the hand-built equivalent. Every call site is a container widget (menu bar, mod list, filter bars, profile bar, right panel, toolbar, and the Archives / Conflicts / Data / Downloads / Plugins / Saves tab containers), so the help text reaches their children too. Coverage is the visible chrome, not 19 arbitrary widgets - there is no per-column or per-row help. | ⚠️ ✔ |
-| Data tab (virtual data browser) | ✅ `DataTab` | ✅ `data_tab` `data_tab.h:25` (dual view, background build worker, context menu) | ✅ · |
-| File-tree modifier swap (Alt swaps preview/open, Ctrl reveals) | ✅ `filetree.cpp:249`, `:751`; `modinfodialogfiletree.cpp:179`, `:508`; `modinfodialogconflicts.cpp:203`, `:287` | ✅ `resolve_double_click(setting, alt, ctrl)` is a pure decision function so the truth table is testable, applied on all three file trees. `data_tab.h:77`, `data_tab.cpp:716-724`, `filetree_tab.cpp:111`, `:163`, `conflicts_tab.cpp:206`, `:263` | ✅ ✔ |
-| Downloads tab | ✅ `DownloadsTab` | ✅ `downloads_tab` `downloads_tab.h:46` (drag-drop, watcher, compact) | ✅ · |
-| Saves tab | ✅ `SavesTab` | ✅ `saves_tab` `saves_tab.h:27` (background scan, hover info) | ✅ · |
-| Conflicts tab | ✅ | ✅ `conflicts_tab` `conflicts_tab.h:22` (image diff) | ✅ · |
-| Archives tab | ✅ | ✅ `archives_tab` `archives_tab.h:9` | ✅ · |
-| Right panel tab system | ✅ | ✅ `right_panel` `right_panel.h:25` + `tab_panels` | ✅ · |
-| Main tab container (Full UI mode) | ❌ | 🚀 `MainTabContainer` `main_tab_container.h:18` (permanent Main + dynamic tabs) | 🚀 · |
-| Desktop shortcut management | ✅ `env::Shortcut` (IShellLink COM) | ❌ | ❌ · [win] |
-| Shell context menu integration | ✅ `env::ShellMenu` / `env::ShellMenuCollection` (IContextMenu COM) | ❌ | ❌ · [win] |
-| CopyEventFilter (Ctrl+C in views) | ✅ `CopyEventFilter` | ❌ | ❌ · |
-| Message dialog (fire-and-forget toast) | ✅ `MessageDialog` (borderless, auto-timeout) | ❌ | ❌ · |
-| About dialog | ✅ `AboutDialog` | ✅ `QMessageBox::about` (version string) `settings_controller.cpp:754` | ✅ · |
-| U001 Menu bar structure (MO2: File/View/Tools/Run/Help, no Edit menu); GMM ruling = generic "visit modding sites" action (site list knowledge/plugin-driven, NOT Nexus-tied) (NEXUS-LENS: genericize/provider-scope) | ✅ `mainwindow.ui:1580-1596` | ⚠️ File, Edit, View, Tools, Help exist (`menu_bar.cpp:29`, `:89`, `:124`, `:200`, `:331`). **Run and Endorse are absent** - neither has any GMM implementation today; the Endorse menu is a whole open audit item. GMM's Edit menu is a deliberate addition, not an MO2 omission. The generic "visit modding sites" action is still unimplemented. | ⚠️ ✔ |
-| U002 Ctrl+M = Install Mod... | ✅ `mainwindow.ui:1655-1675` | ✅ `menu_bar.cpp:46-47` (Ctrl+Shift+I **and** Ctrl+M) | ✅ ✔ |
-| U008 Help system (Ctrl+H dropdown); ruling = expansive thorough Help system - menu tree + docs content project | ✅ `mainwindow.ui:1838-1858` | ⚠️ the Ctrl+H binding and the menu tree exist; the "docs content project" half is not started. `menu_bar.cpp:331-335` | ⚠️ ✔ |
-| U009 F5 = Refresh | ✅ `mainwindow.ui:1989` | ✅ `menu_bar.cpp:193` (QKeySequence::Refresh) | ✅ ✔ |
-| U012 Help menu tree (Help on UI, Documentation, Wiki, Discord, Report Issue, Tutorials submenu, About) - see U008 ruling | ✅ `mainwindow.cpp:1096-1162` (flat, in that order; `menu->clear()` then rebuild) | ⚠️ 6 of 7 flat entries plus a conditional one. Present: **Help on UI, Documentation, Game Support Wiki, Report Issue, About, About Qt**. Absent: **Chat on Discord**. Two deliberate divergences: (a) Documentation / Report Issue / About / About Qt fold one level into a **More** submenu - MO2 keeps all four at the top level, and GMM's own addresses (docs, issues) do not belong beside MO2's; (b) **Tutorials is built but hidden** until `set_tutorials()` has entries, because this build ships no tutorial content and a submenu that opens onto nothing advertises something it cannot deliver - the same gating Game Support Wiki gets. Plus two GMM-only entries below a separator: Instance Statistics and Debug Panel. `menu_bar.cpp:331-391` | ⚠️ ✔ |
-| U017 Toolbar right-align spacer before last separator | ✅ `mainwindow.cpp:713-744` | ❌ no right-align spacer found in main toolbar | ❌ · |
+| Mod list view | ✅ | ✅ `mod_table_view` - `mod_table_view.h:157` | ✅ · |
+| Plugin list view | ✅ | ✅ `plugins_tab` - `plugins_tab.h:23` | ✅ · |
+| Mod info dialog | ✅ `ModInfoDialog` | ✅ `mod_info_dialog` (15 tabs) - `mod_info_dialog.h:25` | ✅ · |
+| Settings dialog | ✅ `SettingsDialog` | ✅ `settings_content_widget` - `settings_content_widget.h:29` | ✅ · |
+| Toolbar | ✅ | ✅ `main_toolbar` - `main_toolbar.h:12` | ✅ · |
+| Game lock overlay | ✅ `UILocker` | 🚀 `game_lock_overlay` - `launch_controller.h:123` | 🚀 · |
+| Process Tree View | ❌ | 🚀 `process_tree_checkbox` - `launch_controller.cpp:1598` | 🚀 · |
+| FOMOD wizard UI | ✅ | ✅ `fomod_wizard_dialog` - `fomod_wizard_dialog.h:37` | ✅ · |
+| FOMOD image viewer | ✅ | ✅ `fomod_image_viewer` - `fomod_image_viewer.h:14` | ✅ · |
+| Profile bar (combo + folders) | ❌ | 🚀 `ProfileBar` (12 FolderKind, export/import) - `profile_bar.h:28` | 🚀 · |
+| Profile manager dialog | ✅ | ✅ `profile_manager_dialog` - `profile_manager_dialog.h:22` | ✅ · |
+| Profile settings widget | ❌ | 🚀 `profile_settings_widget` - `profile_settings_widget.h:18` | 🚀 · |
+| Console panel | ❌ | 🚀 `console_panel` - `console_panel.h:11` | 🚀 · |
+| Debug window (Konami code) | ❌ | 🚀 `debug_window` - `debug_window.h:42` | 🚀 · |
+| Preview system (images/text/video) | ✅ | ✅ `preview_registry` + `preview_widget` - `preview_registry.h:43` | ✅ · |
+| File viewer (image, video, 3D scene) | ❌ | 🚀 `ImageViewer` / `VideoViewer` / `SceneViewer` - `image_viewer.h:23` | 🚀 · |
+| Plugin-provided preview | ✅ | ✅ `preview_window` (v2 IPluginPreview) - `preview_window.h:61` | ✅ · |
+| ANM2 animation playback | ❌ | 🚀 `preview_window` (frame-based timer) - `preview_window.h:61` | 🚀 · |
+| Variant browsing (prev/next) | ❌ | 🚀 `preview_window` multi-provider - `preview_window.h:61` | 🚀 · |
+| Zoom/fit controls | ❌ | 🚀 `zoom_by` / `set_fit` - `preview_window.h:106` | 🚀 · |
+| Smooth scroll | ❌ | 🚀 `SmoothScroller` - `smooth_scroll.h:19` | 🚀 · |
+| Zoom controls | ❌ | 🚀 `ZoomableView` - `zoom_controls.h:18` | 🚀 · |
+| Column toggle header | ❌ | 🚀 `column_toggle_header` - `column_toggle_header.h:7` | 🚀 · |
+| Game path banner | ❌ | 🚀 `game_path_banner` - `game_path_banner.h:12` | 🚀 · |
+| Status bar (custom) | ✅ `StatusBar` | 🚀 context label, transient status, pipeline button, per-source meters - `status_bar.h:23` | 🚀 ✔ |
+| Notification backend | ❌ | 🚀 `notification_backend` - `notification_backend.h:8` | 🚀 · |
+| BBCode parser (Nexus descriptions) | ✅ | ✅ `bbcode_to_html` - `bbcode.h:22` | ✅ · |
+| Menu bar (File/Edit/View/Tools/Help) | ✅ | ✅ `AppMenuBar` (dynamic per-game tools) - `menu_bar.h:24` | ✅ · |
+| MO2's eight keyboard binds (Ctrl+M, Ctrl+P, Ctrl+E, Ctrl+I, Ctrl+S, Ctrl+N, Ctrl+H, F5) | ✅ `mainwindow.ui` | ✅ all eight bound - `menu_bar.cpp:47`, `:193` | ✅ ✔ |
+| What's This / context help on the main-window surfaces | ✅ 26 `whatsThis` properties in `mainwindow.ui` (MO2 never calls `setWhatsThis()` in C++) | ⚠️ 19 call sites, 17 files, all on containers so children inherit - `main_window.cpp` | ⚠️ ✔ |
+| Data tab (virtual data browser) | ✅ `DataTab` | ✅ `data_tab` (dual view, build worker, menu) - `data_tab.h:25` | ✅ · |
+| File-tree modifier swap (Alt swaps preview/open, Ctrl reveals) | ✅ `filetree.cpp:249`, `modinfodialogconflicts.cpp:203` | ✅ pure `resolve_double_click(setting, alt, ctrl)` on all 3 trees - `data_tab.h:77` | ✅ ✔ |
+| Downloads tab | ✅ `DownloadsTab` | ✅ `downloads_tab` (drag-drop, watcher, compact) - `downloads_tab.h:46` | ✅ · |
+| Saves tab | ✅ `SavesTab` | ✅ `saves_tab` (background scan, hover info) - `saves_tab.h:27` | ✅ · |
+| Conflicts tab | ✅ | ✅ `conflicts_tab` (image diff) - `conflicts_tab.h:22` | ✅ · |
+| Archives tab | ✅ | ✅ `archives_tab` - `archives_tab.h:9` | ✅ · |
+| Right panel tab system | ✅ | ✅ `right_panel` + `tab_panels` - `right_panel.h:25` | ✅ · |
+| Main tab container (Full UI mode) | ❌ | 🚀 `MainTabContainer` - `main_tab_container.h:18` | 🚀 · |
+| Desktop shortcut management | ✅ `env::Shortcut` (IShellLink COM) | 🚫 COM shell link, no Linux subject | 🚫 · [win] |
+| Shell context menu integration | ✅ `env::ShellMenu` (IContextMenu COM) | 🚫 COM context menu, no Linux subject | 🚫 · [win] |
+| U001 Menu bar structure (MO2: File/View/Tools/Run/Help, no Edit menu); GMM ruling = generic "visit modding sites" action (site list knowledge/plugin-driven, NOT Nexus-tied) (NEXUS-LENS: genericize/provider-scope) | ✅ `mainwindow.ui:1580-1596` | ⚠️ Run, Endorse and the generic visit action absent; Edit is ours - `menu_bar.cpp:29` | ⚠️ ✔ |
+| U002 Ctrl+M = Install Mod... | ✅ `mainwindow.ui:1655-1675` | ✅ Ctrl+Shift+I and Ctrl+M - `menu_bar.cpp:46` | ✅ ✔ |
+| U008 Help system (Ctrl+H dropdown); ruling = expansive thorough Help system - menu tree + docs content project | ✅ `mainwindow.ui:1838-1858` | ⚠️ binding + tree exist, docs content not started - `menu_bar.cpp:331` | ⚠️ ✔ |
+| U009 F5 = Refresh | ✅ `mainwindow.ui:1989` | ✅ QKeySequence::Refresh - `menu_bar.cpp:193` | ✅ ✔ |
+| U012 Help menu tree (Help on UI, Documentation, Wiki, Discord, Report Issue, Tutorials submenu, About) - see U008 ruling | ✅ `mainwindow.cpp:1096-1162` (flat) | ⚠️ 6 of 7; Discord absent, 4 fold into More, Tutorials gated - `menu_bar.cpp:331` | ⚠️ ✔ |
+| U017 Toolbar right-align spacer before last separator | ✅ `mainwindow.cpp:713-744` | ❌ no right-align spacer | ❌ · |
 | U018 Toolbar menu-buttons use QToolButton::InstantPopup | ✅ `mainwindow.cpp:746-753` | ❌ | ❌ · |
-| U019 View > Toolbars submenu (9 checkables: menu/toolbar/statusbar, 3 icon sizes, 3 style modes) | ✅ `mainwindow.ui:1558-1578`, `mainwindow.cpp:797-890` | ❌ | ❌ · |
-| U021 Popup menu on toolbar/central-widget edges (Toolbars + View Log) | ✅ `mainwindow.cpp:821-840`, `:906-924` | ❌ | ❌ · |
-| U023 Open Folder menu (12 entries: game/MyGames/INIs, instance/mods/profile/downloads, install/plugins/stylesheets/logs) | ✅ `mainwindow.cpp:2663-2693` | ⚠️ FolderKind handling for 11 folders `mod_list_controller.cpp:3544`; full 12-item menu layout unproven | ⚠️ · |
+| U019 View > Toolbars submenu (9 checkables: menu/toolbar/statusbar, 3 icon sizes, 3 style modes) | ✅ `mainwindow.ui:1558-1578` | ❌ | ❌ · |
+| U021 Popup menu on toolbar/central-widget edges (Toolbars + View Log) | ✅ `mainwindow.cpp:821-840` | ❌ | ❌ · |
+| U023 Open Folder menu (12 entries: game/MyGames/INIs, instance/mods/profile/downloads, install/plugins/stylesheets/logs) | ✅ `mainwindow.cpp:2663-2693` | ⚠️ 11 FolderKinds handled, menu layout unproven - `mod_list_controller.cpp:3544` | ⚠️ · |
 | U031 Game Support Wiki first-run info dialog | ✅ `mainwindow.cpp:1268-1278` | ❌ | ❌ · |
 | U041 Right-click central widget edges shows popup menu | ✅ `mainwindow.cpp:906-924` | ❌ | ❌ · |
 | U048 Qt effects disabled at startup (menu/combo/tooltip animations) | ✅ `mainwindow.cpp:240-252` | ❌ | ❌ · |
-| U070 StatusBar carries Nexus API stats + user account (requestsChanged/credentialsReceived) (NEXUS-LENS: genericize/provider-scope) | ✅ `mainwindow.cpp:270-276`, `:467-469`; a single `m_api` label with the "queued requests / daily / hourly" tooltip (`statusbar.cpp:29-56`) | ⚠️ GMM generalises MO2's single Nexus counter into **per-source metered budgets**: `set_sources()` gives a label only to a source that actually meters a request budget, and each label is re-read on a timer (`status_bar.h:30-45`, `status_bar.cpp:119-142`). That is a real improvement over MO2, but MO2's account/`credentialsReceived` half has no counterpart. | ⚠️ ✔ |
-| U100 Status bar "%1 - %2 - %3" game/instance/profile message | ✅ `statusbar.cpp:144-162` | ✅ `context_label_text(game, instance, profile)` `status_bar.h:19-21`, with a per-component fallback when a value is genuinely absent. `status_bar.cpp:63-64`, wired `main_window.cpp`. Transient status text takes the left slot and restores the context text when it expires. | ✅ ✔ |
-| U101 Status bar progress ("Loading...", 0-100, max width 300, spacers) | ✅ `statusbar.cpp:22-38`, `:63-80` | ❌ **MO2's bar is only ever driven by `setProgress(int)` for the "Loading..." string** - there is no mod-operation or download progress bar in MO2's status bar, contrary to what earlier drafts of this document and the `lbe1.3` audit claimed (their G48). GMM ships no `QProgressBar` in `status_bar.h` at all. | ❌ ✔ |
+| U070 StatusBar carries Nexus API stats + user account (requestsChanged/credentialsReceived) (NEXUS-LENS: genericize/provider-scope) | ✅ `mainwindow.cpp:270-276`; one `m_api` label + tooltip | ⚠️ per-source metered budgets, no account half - `status_bar.h:30` | ⚠️ ✔ |
+| U100 Status bar "%1 - %2 - %3" game/instance/profile message | ✅ `statusbar.cpp:144-162` | ✅ `context_label_text()`, transient text restores it - `status_bar.h:19` | ✅ ✔ |
+| U101 Status bar progress ("Loading...", 0-100, max width 300, spacers) | ✅ `statusbar.cpp:22-38`, `:63-80` | ❌ MO2 only drives it with `setProgress(int)`; we ship no QProgressBar | ❌ ✔ |
 | U102 Status bar visibility compensates central-widget bottom margin | ✅ `statusbar.cpp:175-192` | ❌ | ❌ · |
 | U103 StatusBarAction icon+label wrapper | ✅ `statusbar.cpp:195+` | ❌ | ❌ · |
-| U187 PreviewDialog (Preview / Close buttons) | ✅ `previewdialog.ui` | ⚠️ preview window exists `preview_window.h:61`; modal Preview/Close dialog parity unproven | ⚠️ · |
+| U187 PreviewDialog (Preview / Close buttons) | ✅ `previewdialog.ui` | ⚠️ window exists, modal dialog parity unproven - `preview_window.h:61` | ⚠️ · |
 | U219 Menu aboutToShow refresh pattern (lazy rebuild) + wheel-block combo | ✅ `mainwindow.cpp:455-474` | ❌ | ❌ · |
-| U224 languageChange rebuilds help menu + resetActionIcons | ✅ `mainwindow.cpp:564-600`, `:2912-2948` | ❌ | ❌ · |
-| U241 IPreviewPlugin gating Preview menu | ✅ `filetree.cpp:741` | ⚠️ v2 IPluginPreview registry exists `preview/preview_registry.h:14` (lookup `preview_window.cpp:784`); Preview-menu gating unproven | ⚠️ · |
+| U224 languageChange rebuilds help menu + resetActionIcons | ✅ `mainwindow.cpp:564-600` | ❌ | ❌ · |
+| U241 IPreviewPlugin gating Preview menu | ✅ `filetree.cpp:741` | ⚠️ registry exists, Preview-menu gating unproven - `preview_registry.h:14` | ⚠️ · |
 | U264 SortableTreeWidget + setCustomizableColumns | ✅ `sortabletreewidget.cpp` (uibase) | ❌ | ❌ · |
 | U265 ExpanderWidget / LinkLabel / LineEditClear UI primitives | ✅ `uibase src` | ❌ | ❌ · |
-| U266 TaskProgressManager/TaskProgress (Windows taskbar progress) | ✅ `taskprogressmanager` (uibase) | ❌ | ❌ · [win] |
 | U269 EventFilter generic event filter (uibase) | ✅ `eventfilter.cpp` (uibase) | ❌ | ❌ · |
 | U295 statusbar visibilityChanged margin compensation (see U102) | ✅ `statusbar.cpp` | ❌ | ❌ · |
 
@@ -1483,162 +1121,149 @@ Note: Track B item U200 is skipped - it is an alias of U116 (integrated once in 
 
 | Feature | MO2 | GMM | Status |
 |---------|-----|-----|--------|
-| Log model (QAbstractItemModel) | ✅ `LogModel` | ✅ `Logger` `logger.h:20` (callback-based, replay buffer `:61`) | ✅ · |
-| Log list view | ✅ `LogList` | ✅ `console_panel` `console_panel.h:11` | ✅ · |
-| Log copy to clipboard | ✅ `LogList::copyToClipboard()` | ✅ `console_panel.cpp:37` (QShortcut Copy on output_) | ✅ · |
+| Log model (QAbstractItemModel) | ✅ `LogModel` | ✅ `Logger` (callback-based, replay buffer) - `logger.h:20` | ✅ · |
+| Log copy to clipboard | ✅ `LogList::copyToClipboard()` | ✅ QShortcut Copy on output_ - `console_panel.cpp:37` | ✅ · |
 | Log open logs folder | ✅ `LogList::openLogsFolder()` | ❌ | ❌ · |
-| Log clear | ✅ `LogList::clear()` | ✅ `ConsolePanel::clear()` `console_panel.h:18` | ✅ · |
+| Log clear | ✅ `LogList::clear()` | ✅ `ConsolePanel::clear()` - `console_panel.h:18` | ✅ · |
 | Log highlighter | ✅ `LogHighlighter` | ❌ | ❌ · |
-| Log level filtering | ✅ | ✅ `Logger::set_level()` `logger.h:27` | ✅ · |
-| Group logging (begin/end) | ❌ | 🚀 `Logger::begin_group()/end_group()` `logger.h:31-32` | 🚀 · |
-| Replay buffer (256 entries) | ❌ | 🚀 `Logger` late subscriber replay `logger.cpp:50-56` | 🚀 · |
-| Fork-safe append | ❌ | 🚀 `Logger::raw_append()` `logger.h:47` | 🚀 · |
-| Log initialization (spdlog, UTC timestamps, pattern) | ✅ `initLogging()` | ⚠️ timestamps exist `logger.cpp:151` but localtime not UTC, no spdlog/pattern | ⚠️ · |
-| Log blacklisting (privacy - username masking) | ✅ `log::getDefault().addToBlacklist()` | ❌ | ❌ · |
-| Log to stdout (via Console attach) | ✅ `logToStdout()` | ✅ `logger.cpp:122` (fprintf stdout) | ✅ · |
-| U020 View > Log checkable action toggles log dock | ✅ `mainwindow.ui:1981`, `mainwindow.cpp:816-819` | ✅ `menu_bar.cpp:122` (Show Console toggle) | ✅ · |
+| Log level filtering | ✅ | ✅ `Logger::set_level()` - `logger.h:27` | ✅ · |
+| Group logging (begin/end) | ❌ | 🚀 `begin_group()` / `end_group()` - `logger.h:31` | 🚀 · |
+| Replay buffer (256 entries) | ❌ | 🚀 late subscriber replay - `logger.cpp:50` | 🚀 · |
+| Fork-safe append | ❌ | 🚀 `Logger::raw_append()` - `logger.h:47` | 🚀 · |
+| Log initialization (spdlog, UTC timestamps, pattern) | ✅ `initLogging()` | ⚠️ localtime not UTC, no spdlog/pattern - `logger.cpp:151` | ⚠️ · |
+| Log to stdout (via Console attach) | ✅ `logToStdout()` | ✅ fprintf stdout - `logger.cpp:122` | ✅ · |
+| U020 View > Log checkable action toggles log dock | ✅ `mainwindow.cpp:816-819` | ✅ Show Console toggle - `menu_bar.cpp:122` | ✅ · |
 | U057 errorReported() scans newest log first 50000 lines for ERROR | ✅ `mainwindow.cpp:993-1022` | ❌ | ❌ · |
-| U157 Log list context menu (Copy/Copy all/Clear all/Open folder/Level submenu) | ✅ `loglist.cpp:250-290` | ⚠️ copy shortcut `console_panel.cpp:37` + level filtering `logger.h:27`; context menu + Level submenu unproven | ⚠️ · |
+| U157 Log list context menu (Copy/Copy all/Clear all/Open folder/Level submenu) | ✅ `loglist.cpp:250-290` | ⚠️ copy + level filter only, no menu - `console_panel.cpp:37` | ⚠️ · |
 | U158 Log file creation failure critical dialog | ✅ `loglist.cpp:384-385` | ❌ | ❌ · |
-| U294 logDock QDockWidget (area 8 bottom, View>Log toggle) | ✅ `mainwindow.ui:1510` | ⚠️ log dock toggle exists `menu_bar.cpp:122`; QDockWidget bottom-area parity unproven | ⚠️ · |
+| U294 logDock QDockWidget (area 8 bottom, View>Log toggle) | ✅ `mainwindow.ui:1510` | ⚠️ toggle exists, QDockWidget bottom area unproven - `menu_bar.cpp:122` | ⚠️ · |
 
 ## 32. System Tray
 
 | Feature | MO2 | GMM | Status |
 |---------|-----|-----|--------|
-| System tray icon | ✅ `SystemTrayManager` | ⚠️ `SystemTrayManager` `system_tray_manager.h:16` exists, context menu works `system_tray_manager.cpp:18`, not wired for minimize | ⚠️ · |
-| Minimize to system tray | ✅ `minimizeToSystemTray()` | ⚠️ `closeEvent()` `main_window.cpp:454` does not check minimize-to-tray setting | ⚠️ · |
-| Restore from system tray | ✅ `restoreFromSystemTray()` | ⚠️ tray icon Show action exists `system_tray_manager.cpp:18`, no restore-from-minimized logic | ⚠️ · |
-| Tray notification | ✅ `showNotification()` | ⚠️ `SystemTrayManager::show_notification()` `system_tray_manager.h:24` (exists, not wired up) | ⚠️ · |
-| U222 Finished-run while hidden -> restoreFromSystemTray | ✅ `mainwindow.cpp:~508` | ⚠️ tray restore path exists `system_tray_manager.cpp:18`; auto-restore-after-run unproven | ⚠️ · |
+| System tray icon | ✅ `SystemTrayManager` | ⚠️ exists, context menu works, not wired for minimize - `system_tray_manager.h:16` | ⚠️ · |
+| Minimize to system tray | ✅ `minimizeToSystemTray()` | ⚠️ `closeEvent()` ignores the setting - `main_window.cpp:454` | ⚠️ · |
+| Restore from system tray | ✅ `restoreFromSystemTray()` | ⚠️ Show action exists, no restore logic - `system_tray_manager.cpp:18` | ⚠️ · |
+| Tray notification | ✅ `showNotification()` | ⚠️ `show_notification()` exists, not wired - `system_tray_manager.h:24` | ⚠️ · |
+| U222 Finished-run while hidden -> restoreFromSystemTray | ✅ `mainwindow.cpp:~508` | ⚠️ restore path exists, auto-restore unproven - `system_tray_manager.cpp:18` | ⚠️ · |
 
 ## 33. Self Updater
 
 | Feature | MO2 | GMM | Status |
 |---------|-----|-----|--------|
-| Self-update system (GitHub releases) | ✅ `SelfUpdater` | ✅ `SelfUpdater` `self_updater.h:30` with platform-specific updaters (Windows/macOS/Linux/Flatpak/AUR/AppImage) | ✅ · |
+| Self-update system (GitHub releases) | ✅ `SelfUpdater` | ✅ per-platform updaters (Win/macOS/Linux/Flatpak/AUR/AppImage) - `self_updater.h:30` | ✅ · |
 | Update candidates (version-sorted) | ✅ `CandidatesMap` | ❌ | ❌ · |
-| Update backup + restart | ✅ `installUpdate()` + `restart()` | ⚠️ restart exists `self_updater.h:43`, no backup step found | ⚠️ · |
-| Check for updates setting | ✅ | ✅ `check_for_updates()` `settings.h:94` | ✅ · |
-| Update download with progress dialog | ✅ `selfupdater.cpp` showProgress(), QProgressDialog | ⚠️ progress_cb exists `self_updater.h:40` (per-updater e.g. `windows_self_updater.cpp:48`), no QProgressDialog | ⚠️ · |
-| Offline mode check before update | ✅ `selfupdater.cpp` testForUpdate() respects offline mode | ❌ (offline_mode exists in NetworkOptions, not consulted by SelfUpdater) | ❌ · |
-| U027 Update action disabled-by-default + tooltip flip | ✅ `mainwindow.ui:1799-1819`, `mainwindow.cpp:2964-2969` | ❌ | ❌ · |
-| U131 General > Updates group (Check for updates + Update to beta versions) | ✅ `settingsdialog.ui:199-232` | ⚠️ check-for-updates checkbox exists `settings_content_widget.cpp:111` (key `settings.cpp:230`); beta-updates toggle unproven | ⚠️ · |
-| U185 UpdateDialog (Changelog web view, Install/Cancel, version label) | ✅ `updatedialog.cpp:69`, `updatedialog.ui` | ❌ | ❌ · |
+| Update backup + restart | ✅ `installUpdate()` + `restart()` | ⚠️ restart exists, no backup step - `self_updater.h:43` | ⚠️ · |
+| Check for updates setting | ✅ | ✅ `check_for_updates()` - `settings.h:94` | ✅ · |
+| Update download with progress dialog | ✅ `showProgress()`, QProgressDialog | ⚠️ `progress_cb` exists, no QProgressDialog - `self_updater.h:40` | ⚠️ · |
+| Offline mode check before update | ✅ `testForUpdate()` respects offline mode | ❌ offline_mode not consulted by SelfUpdater | ❌ · |
+| U027 Update action disabled-by-default + tooltip flip | ✅ `mainwindow.ui:1799-1819` | ❌ | ❌ · |
+| U131 General > Updates group (Check for updates + Update to beta versions) | ✅ `settingsdialog.ui:199-232` | ⚠️ check-for-updates only, beta toggle unproven - `settings_content_widget.cpp:111` | ⚠️ · |
+| U185 UpdateDialog (Changelog web view, Install/Cancel, version label) | ✅ `updatedialog.ui` | ❌ | ❌ · |
 
 ## 34. Multi-Process / IPC
 
 | Feature | MO2 | GMM | Status |
 |---------|-----|-----|--------|
-| Multi-process guard (shared memory) | ✅ `MOMultiProcess` (QSharedMemory + QLocalServer) | ✅ `MultiProcess` QLockFile + QLocalServer `multi_process.h:9-11`, wired `core.cpp:331` (was mis-cited: `single_instance`/QtSingleApplication absent) | ✅ · |
+| Multi-process guard (shared memory) | ✅ `MOMultiProcess` (QSharedMemory + QLocalServer) | ✅ QLockFile + QLocalServer - `multi_process.h:9` | ✅ · |
 | Ephemeral process (forward download) | ✅ `MOMultiProcess::ephemeral()` | ❌ | ❌ · |
 | Secondary instance (allow multiple) | ✅ `MOMultiProcess::secondary()` | ❌ | ❌ · |
-| Message passing between instances | ✅ `sendMessage()` / `messageSent()` | ✅ `nxm_ipc` (nxm:// forwarding) `nxm_ipc.h:9`, generic URL forwarder `nxm_ipc.h:44` | ✅ · |
+| Message passing between instances | ✅ `sendMessage()` / `messageSent()` | ✅ `nxm_ipc` + generic URL forwarder - `nxm_ipc.h:44` | ✅ · |
 | Command-line global options (--pick, --multiple, --logs, -i, -p) | ✅ `CommandLine` global options | ❌ | ❌ · |
-| Forward to primary instance | ✅ `CommandLine::forwardToPrimary()` | ⚠️ URL forwarding to running instance works `core.cpp:473`, `:536`; no general CLI-arg forward | ⚠️ · |
-| NXM/moshortcut:// link protocol parsing | ✅ `CommandLine` handles moshortcut:// and nxm:// | ⚠️ nxm:// parsed `command_line.cpp:30`, modl:// `command_line.cpp:38`; moshortcut:// absent | ⚠️ · |
+| Forward to primary instance | ✅ `CommandLine::forwardToPrimary()` | ⚠️ URLs only, no general CLI-arg forward - `core.cpp:473` | ⚠️ · |
+| NXM/moshortcut:// link protocol parsing | ✅ `CommandLine` handles moshortcut:// and nxm:// | ⚠️ nxm:// + modl://, moshortcut:// absent - `command_line.cpp:30` | ⚠️ · |
 
 ## 35. Text Editor
 
 | Feature | MO2 | GMM | Status |
 |---------|-----|-----|--------|
-| Text editor (line numbers, syntax, word wrap) | ✅ `TextEditor` | ✅ line numbers `generic_files_tab.cpp:49` (LineNumberPlainTextEdit) + syntax `generic_files_tab.cpp:59` (KSyntaxHighlighting), edit+save `generic_files_tab.cpp:211` | ✅ · |
-| HTML editor | ✅ `HTMLEditor` | ❌ (QWebEngineView renderer is a read-only viewer, `webview_description_renderer.h:5`) | ❌ · |
-| U190 TextViewer (multi-tab, per-file writable, Find, Save-per-page, save prompt) | ✅ `textviewer.cpp:60-276` | ⚠️ multi-file editor tab exists `generic_files_tab.cpp:49` (save_editor + write warning `:211`); Find actions unproven | ⚠️ · |
+| Text editor (line numbers, syntax, word wrap) | ✅ `TextEditor` | ✅ line numbers, KSyntaxHighlighting, edit+save - `generic_files_tab.cpp:49` | ✅ · |
+| HTML editor | ✅ `HTMLEditor` | ❌ QWebEngineView is a read-only viewer - `webview_description_renderer.h:5` | ❌ · |
+| U190 TextViewer (multi-tab, per-file writable, Find, Save-per-page, save prompt) | ✅ `textviewer.cpp:60-276` | ⚠️ multi-file tab + write warning, Find unproven - `generic_files_tab.cpp:49` | ⚠️ · |
 | U191 TextViewer read-only INI write TaskDialog (Clear flag / Allow once / Skip) | ✅ `textviewer.cpp:173-192` | ❌ | ❌ · |
 | U192 FindDialog (find-only, Find Next, Close) | ✅ `finddialog.ui` | ❌ | ❌ · |
-| U248 TextEditor toolbar per-file (Save, Word wrap toggle, Open in Explorer) + dirty flag | ✅ `texteditor.cpp:468-491` | ⚠️ save button in editor bar `generic_files_tab.cpp:63` (editor `:49`); Word wrap/Open in Explorer actions unproven | ⚠️ · |
-| U249 Line-number gutter + current-line highlight + TextEditorHighlighter | ✅ `texteditor.cpp:13-14`, `:286-330` | ⚠️ syntax highlighter exists `generic_files_tab.cpp:59` (gutter via LineNumberPlainTextEdit `:49`); current-line highlight unproven | ⚠️ · |
+| U248 TextEditor toolbar per-file (Save, Word wrap toggle, Open in Explorer) + dirty flag | ✅ `texteditor.cpp:468-491` | ⚠️ save only, wrap/Explorer unproven - `generic_files_tab.cpp:63` | ⚠️ · |
+| U249 Line-number gutter + current-line highlight + TextEditorHighlighter | ✅ `texteditor.cpp:13-14` | ⚠️ highlighter + gutter, current-line unproven - `generic_files_tab.cpp:59` | ⚠️ · |
 | U250 TextViewer multi-file tabs w/ per-tab Save + Find | ✅ `textviewer.cpp` | ❌ | ❌ · |
 
 ## 36. Browser
 
 | Feature | MO2 | GMM | Status |
 |---------|-----|-----|--------|
-| Integrated browser (QWebEngineView) | ✅ `BrowserDialog` | ⚠️ QWebEngineView present but description-renderer only `webview_description_renderer.cpp:110`; no browser UI - external browser launch via `custom_browser_command` `settings.h:157` | ⚠️ · |
+| Integrated browser (QWebEngineView) | ✅ `BrowserDialog` | ⚠️ description-renderer only, external browser otherwise - `webview_description_renderer.cpp:110` | ⚠️ · |
 | Browser tabs | ✅ `BrowserDialog::m_Tabs` | ❌ | ❌ · |
 | Browser download interception | ✅ `unsupportedContent()` | ❌ | ❌ · |
 | U049 QWebEngineProfile config (no persistent cookies, 50MB cache, custom paths) | ✅ `mainwindow.cpp:254-260` | ❌ | ❌ · |
 | U245 BrowserDialog controls (closeable tabs, hidden urlEdit, nav buttons, new-tab titles) | ✅ `browserdialog.cpp:58-284` | ❌ | ❌ · |
 | U246 Browser URL bar toggle + returnPressed navigation | ✅ `browserdialog.cpp:270-284` | ❌ | ❌ · |
-| U247 guessFileName + requestDownload signal flow | ✅ `browserdialog.cpp:169-212`, `:204` | ❌ | ❌ · |
+| U247 guessFileName + requestDownload signal flow | ✅ `browserdialog.cpp:169-212` | ❌ | ❌ · |
 
 ## 37. Dialogs
 
 | Feature | MO2 | GMM | Status |
 |---------|-----|-----|--------|
-| About dialog | ✅ `AboutDialog` | ✅ `QMessageBox::about` (version string) `settings_controller.cpp:754` | ✅ · |
-| Update dialog (changelog) | ✅ `UpdateDialog` | ❌ | ❌ · |
-| MOTD dialog | ✅ `MotDDialog` | ❌ | ❌ · |
-| Problems dialog (guided fixes) | ✅ `ProblemsDialog` | ❌ | ❌ · |
-| Selection dialog (generic picker) | ✅ `SelectionDialog` | ✅ `ListDialog` `list_dialog.h:20` (filter, auto-select, geometry) | ✅ · |
-| Overwrite info dialog | ✅ | ✅ `OverwriteInfoDialog` `overwrite_info_dialog.h:20` (QFileSystemModel) | ✅ · |
-| Query overwrite dialog | ✅ | ✅ `QueryOverwriteDialog` `query_overwrite_dialog.h:20` (thread-safe) | ✅ · |
-| Sync overwrite dialog | ✅ | ✅ `SyncOverwriteDialog` `sync_overwrite_dialog.h:23` (per-file combo) | ✅ · |
+| About dialog | ✅ `AboutDialog` | ✅ `QMessageBox::about` (version string) - `settings_controller.cpp:754` | ✅ · |
+| Selection dialog (generic picker) | ✅ `SelectionDialog` | ✅ `ListDialog` (filter, auto-select, geometry) - `list_dialog.h:20` | ✅ · |
 | Credentials dialog | ✅ `CredentialsDialog` | ❌ | ❌ · |
-| List dialog | ✅ `ListDialog` | ✅ `ListDialog` `list_dialog.h:20` | ✅ · |
+| List dialog | ✅ `ListDialog` | ✅ `ListDialog` - `list_dialog.h:20` | ✅ · |
 | Save text as dialog | ✅ `SaveTextAsDialog` | ❌ | ❌ · |
-| Message dialog (fire-and-forget toast) | ✅ `MessageDialog` | ❌ | ❌ · |
-| Category import dialog | ✅ `CategoryImportDialog` | ❌ | ❌ · |
-| Activate mods dialog (save-game asset resolution) | ✅ `ActivateModsDialog` | ❌ | ❌ · |
 | Disable proxy plugin dialog | ✅ `DisableProxyPluginDialog` | ❌ | ❌ · |
 | U174 DisableProxyPluginDialog detail (plugin table, restart note, Yes/No) | ✅ `disableproxyplugindialog.ui` | ❌ | ❌ · |
-| U178 ActivateModsDialog text + Missing ESP/Mod columns | ✅ `activatemodsdialog.ui`, `savestab.cpp:277-300` | ❌ | ❌ · |
-| U180 About dialog fields (Revision, usvfs, GitHub link, Used Software, Thanks, contributors) | ✅ `aboutdialog.ui`, `aboutdialog.cpp:117` | ❌ GMM uses QMessageBox::about only (`settings_controller.cpp:754`) | ❌ · [win] |
-| U182 SelectionDialog (Select/Cancel + choice descriptions) | ✅ `selectiondialog.ui` | ⚠️ shared ListDialog choice picker exists `mod_actions.cpp:193`; per-choice description rows unproven | ⚠️ · |
+| U178 ActivateModsDialog text + Missing ESP/Mod columns | ✅ `activatemodsdialog.ui` | ❌ | ❌ · |
+| U180 About dialog fields (Revision, usvfs, GitHub link, Used Software, Thanks, contributors) | ✅ `aboutdialog.ui` | ❌ `QMessageBox::about` has no fields - `settings_controller.cpp:754` | ❌ · [win] |
+| U182 SelectionDialog (Select/Cancel + choice descriptions) | ✅ `selectiondialog.ui` | ⚠️ picker exists, per-choice descriptions unproven - `mod_actions.cpp:193` | ⚠️ · |
 | U183 SaveTextAsDialog (Copy To Clipboard / Save As / Close) | ✅ `savetextasdialog.ui` | ❌ | ❌ · |
 | U184 CredentialsDialog (Nexus login, Remember/Never ask again) (NEXUS-LENS: genericize/provider-scope) | ✅ `credentialsdialog.ui` | ❌ | ❌ · |
-| U186 MotDDialog (Message of the Day + OK) | ✅ `motddialog.ui` | ❌ | ❌ · |
 
 ## 38. Platform Abstraction
 
 | Feature | MO2 | GMM | Status |
 |---------|-----|-----|--------|
-| Windows (native) | ✅ | ✅ `platform.h:141/:144` (home_dir/temp_dir) + windows_platform impl | ✅ · |
+| Windows (native) | ✅ | ✅ `home_dir`/`temp_dir` + windows_platform impl - `platform.h:141` | ✅ · |
 | Windows (MSVC compile) | ✅ | ✅ `build-windows.ps1` (MSVC toolchain checks) | ✅ · |
-| Linux (native) | ❌ | 🚀 full Linux support `linux_platform.h:23-47` | 🚀 · |
-| Linux (OverlayFS) | ❌ | 🚀 `OverlayFsLauncher` `overlay_launcher.h:14` | 🚀 · |
-| Linux (cgroup v2) | ❌ | 🚀 `cgroup_is_empty` `launcher.h:142` | 🚀 · |
-| Linux (subreaper) | ❌ | 🚀 `PR_SET_CHILD_SUBREAPER` `launcher.cpp:193` | 🚀 · |
-| Linux (Proton/Wine) | ❌ | 🚀 `ProtonRuntime` `runtime.h:45` | 🚀 · |
-| macOS | ❌ | ⚠️ platform_interface stubs `macos_platform.h:30` (is_elevated/symlinks present) | ⚠️ · |
-| PlatformInterface (XDG, Steam, Proton) | ❌ | 🚀 `platform_interface.h` (home_dir `platform.h:141`, temp_dir `:144`, etc.) | 🚀 · |
-| PathResolver (canonical paths) | ❌ | 🚀 `PathResolver` `path_resolver.h:34` + `PathResolverRegistry` | 🚀 · |
-| Keyring (OS-backed + file fallback) | ❌ | 🚀 `Keyring` `keyring.h:11` + `FileKeyring` `keyring.h:26` (XOR+base64) | 🚀 · |
-| Thread priority (low) | ❌ | 🚀 `set_low_priority()` `thread_priority.h:16` | 🚀 · |
-| Headless launcher (CLI) | ❌ | 🚀 `cli::HeadlessLauncher` `headless_launcher.h:14` (`HeadlessLauncher::Config` `:16`) | 🚀 · |
-| Proton version discovery | ❌ | 🚀 `find_proton()`, `enumerate_proton_versions()` `proton_tools.h:37` | 🚀 · |
-| Wine binary discovery | ❌ | 🚀 `find_wine()` `platform.h:124`, linux impl `linux_platform.cpp:490` | 🚀 · |
-| Admin elevation check | ❌ | 🚀 `is_elevated()` `platform.h:132`, windows impl `windows_platform.cpp:187` | 🚀 · |
-| Symlink/junction capability check | ❌ | 🚀 `symlinks_available()` `platform.h:135` / `junctions_available()` `platform.h:138` | 🚀 · |
+| Linux (native) | ❌ | 🚀 full Linux support - `linux_platform.h:23` | 🚀 · |
+| Linux (OverlayFS) | ❌ | 🚀 `OverlayFsLauncher` - `overlay_launcher.h:14` | 🚀 · |
+| Linux (cgroup v2) | ❌ | 🚀 `cgroup_is_empty` - `launcher.h:142` | 🚀 · |
+| Linux (subreaper) | ❌ | 🚀 `PR_SET_CHILD_SUBREAPER` - `launcher.cpp:193` | 🚀 · |
+| Linux (Proton/Wine) | ❌ | 🚀 `ProtonRuntime` - `runtime.h:45` | 🚀 · |
+| macOS | ❌ | ⚠️ platform_interface stubs - `macos_platform.h:30` | ⚠️ · |
+| PlatformInterface (XDG, Steam, Proton) | ❌ | 🚀 `platform_interface.h` (home_dir, temp_dir) - `platform.h:141` | 🚀 · |
+| PathResolver (canonical paths) | ❌ | 🚀 `PathResolver` + `PathResolverRegistry` - `path_resolver.h:34` | 🚀 · |
+| Keyring (OS-backed + file fallback) | ❌ | 🚀 `Keyring` + `FileKeyring` (XOR+base64) - `keyring.h:11` | 🚀 · |
+| Thread priority (low) | ❌ | 🚀 `set_low_priority()` - `thread_priority.h:16` | 🚀 · |
+| Headless launcher (CLI) | ❌ | 🚀 `cli::HeadlessLauncher` + `Config` - `headless_launcher.h:14` | 🚀 · |
+| Proton version discovery | ❌ | 🚀 `find_proton()` / `enumerate_proton_versions()` - `proton_tools.h:37` | 🚀 · |
+| Wine binary discovery | ❌ | 🚀 `find_wine()` - `linux_platform.cpp:490` | 🚀 · |
+| Admin elevation check | ❌ | 🚀 `is_elevated()` on all 3 platforms - `platform.h:132` | 🚀 · |
+| Symlink/junction capability check | ❌ | 🚀 `symlinks_available()` / `junctions_available()` - `platform.h:135` | 🚀 · |
 | Environment variable management (get/set/path) | ✅ `env::get()`, `env::set()`, `env::path()` | ❌ | ❌ · |
-| PATH manipulation helpers (append/prepend/set) | ✅ `env::appendToPath()`, `prependToPath()` | ❌ | ❌ · [win] |
 
 ## 39. Theme System
 
 | Feature | MO2 | GMM | Status |
 |---------|-----|-----|--------|
-| Theme manager (QSS token substitution) | ❌ | 🚀 `ThemeManager` `theme_manager.h:19` (scan, load, apply, live-reload) | 🚀 · |
-| Icon manager | ❌ | 🚀 `IconManager` `icon_manager.h:40` | 🚀 · |
-| Style manager | ❌ | 🚀 `StyleManager` `style_manager.h:21` | 🚀 · |
-| U135 Theme tab (styleBox combo + Explore... + ColorTable + Reset Colors) | ✅ `settingsdialog.ui:415-531` | ⚠️ style manager exists `style_manager.h:21` + theme tab `settings_content_widget.cpp:222`; ColorTable/Reset Colors unproven | ⚠️ · |
+| Theme manager (QSS token substitution) | ❌ | 🚀 `ThemeManager` (scan, load, apply, live-reload) - `theme_manager.h:19` | 🚀 · |
+| Icon manager | ❌ | 🚀 `IconManager` - `icon_manager.h:40` | 🚀 · |
+| Style manager | ❌ | 🚀 `StyleManager` - `style_manager.h:21` | 🚀 · |
+| U135 Theme tab (styleBox combo + Explore... + ColorTable + Reset Colors) | ✅ `settingsdialog.ui:415-531` | ⚠️ tab + style manager; ColorTable/Reset unproven - `settings_content_widget.cpp:222` | ⚠️ · |
 
 ## 40. Event System
 
 | Feature | MO2 | GMM | Status |
 |---------|-----|-----|--------|
-| Event bus (subscribe/dispatch) | ❌ | 🚀 `EventBus` `event_bus.h:62` (17 canonical events) | 🚀 · |
-| Event history ring buffer | ❌ | 🚀 500-entry `EventRecord` history `event_bus.h:85` | 🚀 · |
-| Plugin-scoped unsubscription | ❌ | 🚀 `clear_source()` on plugin unload `event_bus.h:95` | 🚀 · |
-| JSON payload helpers | ❌ | 🚀 `json_obj()` `event_bus.h:120` | 🚀 · |
+| Event bus (subscribe/dispatch) | ❌ | 🚀 `EventBus` (17 canonical events) - `event_bus.h:62` | 🚀 · |
+| Event history ring buffer | ❌ | 🚀 500-entry `EventRecord` - `event_bus.h:85` | 🚀 · |
+| Plugin-scoped unsubscription | ❌ | 🚀 `clear_source()` on plugin unload - `event_bus.h:95` | 🚀 · |
+| JSON payload helpers | ❌ | 🚀 `json_obj()` - `event_bus.h:120` | 🚀 · |
 
 ## 41. External Tool System
 
 | Feature | MO2 | GMM | Status |
 |---------|-----|-----|--------|
-| External tool registry | ❌ | 🚀 `ToolRegistry` `tool_registry.h:38` (Advisory/Workshop kinds) | 🚀 · |
-| Dynamic tools in menu bar | ❌ | 🚀 `AppMenuBar::update_tools_for_game()` `menu_bar.h:24` | 🚀 · |
-| Proton prefix tools | ❌ | 🚀 `run_proton_tool()` `proton_tools.h:37` (winetricks/protontricks) | 🚀 · |
+| External tool registry | ❌ | 🚀 `ToolRegistry` (Advisory/Workshop kinds) - `tool_registry.h:38` | 🚀 · |
+| Dynamic tools in menu bar | ❌ | 🚀 `AppMenuBar::update_tools_for_game()` - `menu_bar.h:24` | 🚀 · |
+| Proton prefix tools | ❌ | 🚀 `run_proton_tool()` - `proton_tools.h:37` | 🚀 · |
 | U005 Ctrl+I = Tool Plugins (iconText "&Tools") | ✅ `mainwindow.ui:1718-1735` | ❌ | ❌ · |
 | U015 Tool Plugins menu (displayName "/" grouping, tooltips, error routing) | ✅ `mainwindow.cpp:1495-1566` | ❌ | ❌ · |
 | U067 Plugin tool exception routing (reportError queued) | ✅ `mainwindow.cpp:1495-1522` | ❌ | ❌ · |
@@ -1648,32 +1273,32 @@ Note: Track B item U200 is skipped - it is an alias of U116 (integrated once in 
 
 | Feature | MO2 | GMM | Status |
 |---------|-----|-----|--------|
-| NSIS installer | ✅ | ⚠️ cmake target exists `CMakeLists.txt:331-339` (runs makensis when found) | ⚠️ · |
-| Standalone zip | ✅ | ❌ UNPROVEN (was: ✅ `package-windows-standalone` - target is a TODO echo stub, `Packaging/windows/standalone/CMakeLists.txt:11-12`) | ❌ · |
-| USVFS binaries in package | ✅ | ❌ UNPROVEN (was: ✅ `cmake/usvfs.cmake` - file absent, `projects/Core/cmake/` has only libloot scripts; USVFS = ticket Workspace-3br4) | ❌ · [win] |
-| AppImage (Linux) | ❌ | ❌ UNPROVEN (was: 🚀 `linux/appimage` - target is a TODO echo stub, `Packaging/linux/appimage/CMakeLists.txt:11-12`) | ❌ · |
-| Flatpak (Linux) | ❌ | ❌ UNPROVEN (was: 🚀 `linux/flatpak` - target is a TODO echo stub, `Packaging/linux/flatpak/CMakeLists.txt:11-12`) | ❌ · |
-| DMG (macOS) | ❌ | ❌ UNPROVEN (was: 🚀 `macos/dmg` - target is a TODO echo stub, `Packaging/macos/dmg/CMakeLists.txt:11-12`) | ❌ · |
+| NSIS installer | ✅ | ⚠️ cmake target, runs makensis when found - `CMakeLists.txt:331` | ⚠️ · |
+| Standalone zip | ✅ | ❌ target is a TODO echo stub - `Packaging/windows/standalone/CMakeLists.txt:11` | ❌ · |
+| USVFS binaries in package | ✅ | ⏳ planned port, not started - Workspace-l0pz | ⏳ · [win] |
+| AppImage (Linux) | ❌ | ❌ target is a TODO echo stub - `Packaging/linux/appimage/CMakeLists.txt:11` | ❌ · |
+| Flatpak (Linux) | ❌ | ❌ target is a TODO echo stub - `Packaging/linux/flatpak/CMakeLists.txt:11` | ❌ · |
+| DMG (macOS) | ❌ | ❌ target is a TODO echo stub - `Packaging/macos/dmg/CMakeLists.txt:11` | ❌ · |
 | U289 About "Used Software" third-party licenses tab | ✅ `aboutdialog.ui` | ❌ | ❌ · |
 | U290 AppManifest (DPI awareness, UAC) + dlls.manifest.qt6 | ✅ `app.manifest`, `dlls.manifest.qt6` | ❌ | ❌ · |
-| U291 modorganizer.natvis debugger visualizers | ✅ `modorganizer.natvis` | ❌ no .natvis file found in repo | ❌ · |
-| U292 Build tooling dependency set (CMakePresets, vcpkg.json) | ✅ `vcpkg.json` | ⚠️ deps + presets proven `vcpkg.json:1` + `CMakePresets.json:1`; exact MO2 dep parity unproven | ⚠️ · |
+| U291 modorganizer.natvis debugger visualizers | ✅ `modorganizer.natvis` | ❌ no .natvis in repo | ❌ · |
+| U292 Build tooling dependency set (CMakePresets, vcpkg.json) | ✅ `vcpkg.json` | ⚠️ deps + presets present, dep parity unproven - `vcpkg.json:1` | ⚠️ · |
 
 ## 43. CLI Command System
 
 | Feature | MO2 | GMM | Status |
 |---------|-----|-----|--------|
 | CLI crashdump command | ✅ `cl::CrashDumpCommand` (dump running MO process) | ❌ | ❌ · |
-| CLI launch command (spawn-wait) | ✅ `cl::LaunchCommand` (CreateProcessW + WaitForSingleObject) | ⚠️ `--launch` headless exists `command_line.cpp:22`, `headless_launcher.h:14`; no spawn-wait parity proven | ⚠️ · |
-| CLI run command (executable with USVFS) | ✅ `cl::RunCommand` (-e name, -a args, -c cwd) | ⚠️ `--exe` path option exists `command_line.cpp:26`; no USVFS (stub `launcher.cpp:841`) | ⚠️ · |
+| CLI launch command (spawn-wait) | ✅ `cl::LaunchCommand` (CreateProcessW + WaitForSingleObject) | ⚠️ `--launch` headless only, no spawn-wait - `command_line.cpp:22` | ⚠️ · |
+| CLI run command (executable with USVFS) | ✅ `cl::RunCommand` (-e name, -a args, -c cwd) | ⚠️ `--exe` only, no USVFS - `command_line.cpp:26` | ⚠️ · |
 | CLI reload-plugin command | ✅ `cl::ReloadPluginCommand` (hot-reload by name) | ❌ | ❌ · |
 | CLI download-file command | ✅ `cl::DownloadFileCommand` (URL + metadata, HTTPS validation) | ❌ | ❌ · |
 | CLI refresh command (F5 equivalent) | ✅ `cl::RefreshCommand` | ❌ | ❌ · |
-| CLI --help | ✅ `CommandLine::showHelp()` | ✅ `show_help` flag + rendered help `command_line.cpp:46`, `:67-108` | ✅ · |
+| CLI --help | ✅ `CommandLine::showHelp()` | ✅ `show_help` flag + rendered help - `command_line.cpp:46` | ✅ · |
 | CLI --multiple (allow multiple instances) | ✅ `CommandLine` --multiple flag | ❌ | ❌ · |
 | CLI --pick (show instance selector) | ✅ `CommandLine` --pick flag | ❌ | ❌ · |
-| CLI --logs (duplicate logs to stdout) | ✅ `CommandLine` --logs flag | ❌ (stdout logging always-on `logger.cpp:122`, but no --logs flag) | ❌ · |
-| CLI -i (instance selection) | ✅ `CommandLine` -i flag | ⚠️ `--instance` long option exists `command_line.cpp:18`; no `-i` short flag | ⚠️ · |
+| CLI --logs (duplicate logs to stdout) | ✅ `CommandLine` --logs flag | ❌ stdout always on, no flag - `logger.cpp:122` | ❌ · |
+| CLI -i (instance selection) | ✅ `CommandLine` -i flag | ⚠️ `--instance` long option, no `-i` - `command_line.cpp:18` | ⚠️ · |
 | CLI -p (profile selection) | ✅ `CommandLine` -p flag | ❌ | ❌ · |
 
 ## 44. Tutorial System
@@ -1711,28 +1336,28 @@ Note: Track B item U200 is skipped - it is an alias of U116 (integrated once in 
 
 | Feature | MO2 | GMM | Status |
 |---------|-----|-----|--------|
-| U152 File tree context menu protocol (Add as Executable, Reveal, Hide/Un-Hide, Open block, Preview bolding, Save/Refresh/Expand/Collapse) | ✅ `filetree.cpp:640-810` | ⚠️ Hide/Un-Hide + Refresh w/ status-tips exist `data_tab.cpp:811`, `:830` (tips `:815`, `:833`); Add-as-Executable/Preview/Open blocks unproven | ⚠️ · |
-| U153 MenuItem status-tip protocol (hint + "Disabled because:" + disabledHint) | ✅ `filetree.cpp:60-115`, `:647` | ⚠️ status-tip hints exist `data_tab.cpp:727` (menu tips `:815`/`:833`); the "Disabled because:" protocol unproven | ⚠️ · |
+| U152 File tree context menu protocol (Add as Executable, Reveal, Hide/Un-Hide, Open block, Preview bolding, Save/Refresh/Expand/Collapse) | ✅ `filetree.cpp:640-810` | ⚠️ Hide/Un-Hide + Refresh w/ tips; other blocks unproven - `data_tab.cpp:811` | ⚠️ · |
+| U153 MenuItem status-tip protocol (hint + "Disabled because:" + disabledHint) | ✅ `filetree.cpp:60-115` | ⚠️ tips exist, "Disabled because:" unproven - `data_tab.cpp:815` | ⚠️ · |
 | U154 File tree multi-select detail captions ("only has %1 file(s)") | ✅ `filetree.cpp:618-626` | ❌ | ❌ · |
 
 ## 49. CLI Help Grammar
 
 | Feature | MO2 | GMM | Status |
 |---------|-----|-----|--------|
-| U233 Full CommandLine grammar (visible options, -i list mode, positional subargs, help layout, error paths) | ✅ `commandline.cpp:311-465` | ❌ help TEXT, error paths, -i list mode, multi-process note all absent | ❌ · |
+| U233 Full CommandLine grammar (visible options, -i list mode, positional subargs, help layout, error paths) | ✅ `commandline.cpp:311-465` | ❌ help text, error paths, -i list mode all absent | ❌ · |
 | U234 cl:: commands grammar (crashdump/launch/run/reload-plugin/download/refresh + options/errors/forwarding) | ✅ `commandline.cpp:591-940` | ❌ options/errors/forwarding help unproven | ❌ · |
 
 ## 50. My Games Resolution
 
 | Feature | MO2 | GMM | Status |
 |---------|-----|-----|--------|
-| My Games resolution (per-game Documents/My Games dir) | ✅ (per-game My Games path resolution) | ✅ `game_knowledge.cpp:181` resolve_mygames_dir() + `main_window.h:396` game_mygames_dir() (test `mygames_test.cpp:57`) | ✅ · |
+| My Games resolution (per-game Documents/My Games dir) | ✅ (per-game My Games path resolution) | ✅ `resolve_mygames_dir()` + `game_mygames_dir()` - `game_knowledge.cpp:181` | ✅ · |
 
 ## 51. Conflict Scan Refresh
 
 | Feature | MO2 | GMM | Status |
 |---------|-----|-----|--------|
-| Conflict scan refresh (rescan finishes via controller slot) | ✅ (conflict scan completion -> model refresh) | ✅ `mod_list_controller.cpp:2214` on_conflict_scan_finished() + settings wiring `settings_controller.cpp:208` | ✅ · |
+| Conflict scan refresh (rescan finishes via controller slot) | ✅ (conflict scan completion -> model refresh) | ✅ `on_conflict_scan_finished()` - `mod_list_controller.cpp:2214` | ✅ · |
 
 ---
 
@@ -1740,149 +1365,84 @@ Note: Track B item U200 is skipped - it is an alias of U116 (integrated once in 
 
 [↑ Back to the top ↑](#feature-map---mo2-vs-gmm)
 
-Recomputed 2026-09-29 by counting the rows actually present in this file, not by
-adjusting the previous totals. Each line is the number of data rows in that
-section carrying each **disposition** - the first token in the Status column.
-The six disposition columns (✅ ⚠️ 🚀 ❌ 🚫 ⏳) partition the file.
+Counted from the rows actually present. `[win]` is a tag, not a seventh
+disposition, so a row appears in `[win]` **and** in exactly one disposition
+column.
 
-**`[win]` is a tag, not a seventh disposition, and does not add to the row
-count.** It is an orthogonal second token saying "blocked by the standing
-Windows decision", and it is currently carried only by 🚫 and ⏳ rows. A row
-therefore appears in `[win]` *and* in exactly one disposition column. An earlier
-version of this table listed `[win]` beside a disposition as though they were
-disjoint and came to 91 rows for a 56-row section; section 3 is now counted
-once each and totals 56.
-
-Sections 1, 2 and 3 were recounted on 2026-09-30, when USVFS was separated from
-the not-applicable rows. Sections 1 and 2 were also stale in two cells that
-predate this pass - both had `Surpasses 🚀` recorded as 0 against an actual 5,
-and section 2 had `Missing ❌` recorded as 5 against an actual 16 - so those are
-corrected here rather than left next to a cell being edited. **Sections 1, 2
-and 3 are the only sections carrying `🚫` or `⏳`**; every other section is a
-real zero in those columns. `[win]` does not move between dispositions, so the
-35 `[win]` rows in section 3 (24 not-applicable + 11 deferred-planned) and the
-5 and 17 in sections 1 and 2 are unchanged by this correction.
-
-| Section | Matched ✅ | Partial ⚠️ | Surpasses 🚀 | Missing ❌ | Not applicable 🚫 | Planned ⏳ | `[win]` tag |
-|---------|-----------|-----------|--------------|-----------|-------------------|------------|-------------|
+| Section | ✅ | ⚠️ | 🚀 | ❌ | 🚫 | ⏳ | `[win]` |
+|---------|---|---|---|---|---|---|---|
 | 1. Virtual Filesystem | 5 | 2 | 5 | 0 | 0 | 5 | 5 |
-| 2. Launch Pipeline | 5 | 5 | 5 | 14 | 0 | 2 | 17 |
+| 2. Launch Pipeline | 6 | 5 | 5 | 14 | 0 | 2 | 17 |
 | 3. Error Handling & Diagnostics | 8 | 9 | 0 | 0 | 28 | 11 | 35 |
-| 4. Settings & Configuration | 24 | 14 | 52 | 3 | 0 | 0 | 6 |
-| 5. Executable Management | 8 | 6 | 9 | 4 | 0 | 0 | 0 |
-| 6. Mod Management | 22 | 5 | 11 | 7 | 0 | 0 | 1 |
-| 7. Mod Categories | 6 | 4 | 11 | 0 | 0 | 0 | 0 |
-| 8. Mod Conflict Detection | 4 | 2 | 7 | 3 | 0 | 0 | 0 |
-| 9. Mod Content Analysis | 6 | 7 | 13 | 0 | 0 | 0 | 0 |
-| 10. Mod Info Dialog | 10 | 1 | 2 | 1 | 0 | 0 | 0 |
-| 11. Version & Update Management | 3 | 1 | 12 | 2 | 0 | 0 | 0 |
-| 12. Plugin Management | 27 | 8 | 13 | 3 | 0 | 0 | 0 |
-| 13. LOOT Integration | 10 | 2 | 7 | 1 | 0 | 0 | 0 |
-| 14. Profile Management | 26 | 6 | 6 | 3 | 0 | 0 | 0 |
-| 15. Download Management | 12 | 10 | 44 | 6 | 0 | 0 | 1 |
-| 16. Nexus Integration | 8 | 10 | 20 | 2 | 0 | 0 | 0 |
-| 17. Source Providers | 4 | 0 | 1 | 7 | 0 | 0 | 0 |
-| 18. Mod List Features | 18 | 14 | 16 | 3 | 0 | 0 | 0 |
-| 19. Mod Context Menu | 14 | 4 | 14 | 0 | 0 | 0 | 0 |
-| 20. Plugin Context Menu | 2 | 2 | 9 | 0 | 0 | 0 | 0 |
-| 21. Archive & Installation | 7 | 1 | 8 | 4 | 0 | 0 | 0 |
-| 22. Deploy System | 0 | 0 | 0 | 12 | 0 | 0 | 0 |
-| 23. Overwrite System | 7 | 2 | 1 | 3 | 0 | 0 | 0 |
-| 24. Save Game System | 13 | 5 | 4 | 5 | 0 | 0 | 0 |
-| 25. Game Detection & Knowledge | 2 | 2 | 0 | 11 | 0 | 0 | 0 |
-| 26. Pipeline System | 0 | 0 | 0 | 16 | 0 | 0 | 0 |
-| 27. Plugin Host System | 0 | 1 | 3 | 12 | 0 | 0 | 0 |
-| 28. Sort System | 0 | 0 | 0 | 5 | 0 | 0 | 0 |
-| 29. Instance Management | 3 | 1 | 7 | 6 | 0 | 0 | 0 |
-| 30. UI Layer | 23 | 8 | 18 | 19 | 0 | 0 | 3 |
-| 31. Log System | 7 | 3 | 5 | 3 | 0 | 0 | 0 |
+| 4. Settings & Configuration | 22 | 15 | 3 | 57 | 0 | 0 | 6 |
+| 5. Executable Management | 8 | 6 | 4 | 9 | 0 | 0 | 0 |
+| 6. Mod Management | 22 | 5 | 8 | 11 | 0 | 0 | 1 |
+| 7. Mod Categories | 6 | 4 | 0 | 10 | 0 | 0 | 0 |
+| 8. Mod Conflict Detection | 4 | 2 | 3 | 7 | 0 | 0 | 0 |
+| 9. Mod Content Analysis | 6 | 7 | 0 | 13 | 0 | 0 | 0 |
+| 10. Mod Info Dialog | 10 | 1 | 1 | 2 | 0 | 0 | 0 |
+| 11. Version & Update Management | 3 | 1 | 2 | 12 | 0 | 0 | 0 |
+| 12. Plugin Management | 27 | 8 | 3 | 13 | 0 | 0 | 0 |
+| 13. LOOT Integration | 10 | 2 | 1 | 7 | 0 | 0 | 0 |
+| 14. Profile Management | 26 | 6 | 3 | 6 | 0 | 0 | 0 |
+| 15. Download Management | 18 | 12 | 6 | 24 | 10 | 0 | 0 |
+| 16. Nexus Integration | 8 | 10 | 2 | 20 | 0 | 0 | 0 |
+| 17. Source Providers | 4 | 0 | 7 | 1 | 0 | 0 | 0 |
+| 18. Mod List Features | 18 | 14 | 3 | 16 | 0 | 0 | 0 |
+| 19. Mod Context Menu | 14 | 4 | 0 | 14 | 0 | 0 | 0 |
+| 20. Plugin Context Menu | 2 | 2 | 0 | 8 | 0 | 0 | 0 |
+| 21. Archive & Installation | 10 | 3 | 4 | 2 | 0 | 0 | 0 |
+| 22. Deploy System | 0 | 0 | 12 | 0 | 0 | 0 | 0 |
+| 23. Overwrite System | 8 | 2 | 3 | 0 | 0 | 0 | 0 |
+| 24. Save Game System | 13 | 5 | 5 | 4 | 0 | 0 | 0 |
+| 25. Game Detection & Knowledge | 2 | 2 | 11 | 0 | 0 | 0 | 0 |
+| 26. Pipeline System | 0 | 0 | 16 | 0 | 0 | 0 | 0 |
+| 27. Plugin Host System | 0 | 1 | 12 | 3 | 0 | 0 | 0 |
+| 28. Sort System | 0 | 0 | 5 | 0 | 0 | 0 | 0 |
+| 29. Instance Management | 3 | 1 | 6 | 7 | 0 | 0 | 0 |
+| 30. UI Layer | 23 | 8 | 17 | 16 | 2 | 0 | 2 |
+| 31. Log System | 6 | 3 | 3 | 4 | 0 | 0 | 0 |
 | 32. System Tray | 0 | 5 | 0 | 0 | 0 | 0 | 0 |
-| 33. Self Updater | 2 | 3 | 4 | 0 | 0 | 0 | 0 |
-| 34. Multi-Process / IPC | 2 | 2 | 3 | 0 | 0 | 0 | 0 |
-| 35. Text Editor | 1 | 3 | 4 | 0 | 0 | 0 | 0 |
-| 36. Browser | 0 | 1 | 6 | 0 | 0 | 0 | 0 |
-| 37. Dialogs | 6 | 1 | 14 | 0 | 0 | 0 | 1 |
-| 38. Platform Abstraction | 2 | 1 | 1 | 14 | 0 | 0 | 1 |
-| 39. Theme System | 0 | 1 | 0 | 3 | 0 | 0 | 0 |
-| 40. Event System | 0 | 0 | 0 | 4 | 0 | 0 | 0 |
-| 41. External Tool System | 0 | 0 | 4 | 3 | 0 | 0 | 0 |
-| 42. Packaging & Distribution | 0 | 2 | 7 | 0 | 0 | 0 | 1 |
-| 43. CLI Command System | 1 | 3 | 8 | 0 | 0 | 0 | 0 |
-| 44. Tutorial System | 0 | 0 | 4 | 0 | 0 | 0 | 0 |
-| 45. TaskDialog Component | 0 | 0 | 1 | 0 | 0 | 0 | 0 |
-| 46. Notifications / Problems System | 0 | 0 | 3 | 0 | 0 | 0 | 0 |
-| 47. Backup / Restore (Load Order + Mod List) | 0 | 0 | 3 | 0 | 0 | 0 | 0 |
-| 48. File Tree Menu Protocol | 0 | 2 | 1 | 0 | 0 | 0 | 0 |
-| 49. CLI Help Grammar | 0 | 0 | 2 | 0 | 0 | 0 | 0 |
+| 33. Self Updater | 2 | 3 | 0 | 4 | 0 | 0 | 0 |
+| 34. Multi-Process / IPC | 2 | 2 | 0 | 3 | 0 | 0 | 0 |
+| 35. Text Editor | 1 | 3 | 0 | 4 | 0 | 0 | 0 |
+| 36. Browser | 0 | 1 | 0 | 6 | 0 | 0 | 0 |
+| 37. Dialogs | 3 | 1 | 0 | 8 | 0 | 0 | 1 |
+| 38. Platform Abstraction | 2 | 1 | 14 | 1 | 0 | 0 | 0 |
+| 39. Theme System | 0 | 1 | 3 | 0 | 0 | 0 | 0 |
+| 40. Event System | 0 | 0 | 4 | 0 | 0 | 0 | 0 |
+| 41. External Tool System | 0 | 0 | 3 | 4 | 0 | 0 | 0 |
+| 42. Packaging & Distribution | 0 | 2 | 0 | 7 | 0 | 1 | 1 |
+| 43. CLI Command System | 1 | 3 | 0 | 8 | 0 | 0 | 0 |
+| 44. Tutorial System | 0 | 0 | 0 | 4 | 0 | 0 | 0 |
+| 45. TaskDialog Component | 0 | 0 | 0 | 1 | 0 | 0 | 0 |
+| 46. Notifications / Problems System | 0 | 0 | 0 | 3 | 0 | 0 | 0 |
+| 47. Backup / Restore (Load Order + Mod List) | 0 | 0 | 0 | 3 | 0 | 0 | 0 |
+| 48. File Tree Menu Protocol | 0 | 2 | 0 | 1 | 0 | 0 | 0 |
+| 49. CLI Help Grammar | 0 | 0 | 0 | 2 | 0 | 0 | 0 |
 | 50. My Games Resolution | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
 | 51. Conflict Scan Refresh | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
-| **TOTAL** | **296** | **152** | **175** | **400**† | **28** | **18** | **44** |
-
-† The four leftmost columns are the **2026-09-29** counts and were **not**
-recomputed in this pass; they are reproduced as previously published. The `🚫`
-and `⏳` columns are counted 2026-09-30 and are exact: 28 not-applicable, all in
-section 3, and 18 deferred-planned (5 in section 1, 2 in section 2, 11 in
-section 3). Seven rows moved from `❌` to `⏳` inside that pass and are still
-inside the 400, because they are `[win]` rows that the 2026-09-29 count had
-already been including; correcting that is a full recount of all 51 sections
-and is not done here. Treat the `⏳` column, not `❌`, as the count of USVFS
-work when sizing the port.
+| **TOTAL** | **306** | **164** | **174** | **339** | **40** | **19** | **68** |
 
 ### The arithmetic
 
 ```
-rows in file                           1067   = ok + part + miss + surp + win
-less Windows-blocked [win]               44   standing decision: no Windows code until parity
-                                      -----
-scored rows (the denominator)           848   = ok + part + miss
+rows in file                          1093
+scored rows (ok + part + miss)         809
 
-MO2 parity        ok   / scored         296 /   848  = 34.9%
-partial           part / scored         152 /   848  = 17.9%
-missing           miss / scored         400 /   848  = 47.2%
-GMM-exclusive     surp / all rows       175 /  1067  = 16.4%   (not scored)
+MO2 parity        ok   / scored        306 /  809  = 37.8%
+partial           part / scored        164 /  809  = 20.3%
+missing           miss / scored        339 /  809  = 41.9%
+GMM-exclusive     surp / all rows      174 / 1093  = 15.9%   (not scored)
 ```
 
-**Parity is 296 / 848 = 34.9%.**
-
-### What moved since the 2026-09-24 figures
-
-| | 2026-09-24 | 2026-09-29 | Why |
-|---|---|---|---|
-| Rows | 1055 | 1067 | 10 new rows for work that shipped 0.5.2-0.5.12 and had no row at all: column-dependent double-click, separator fold on double-click, the mod-list default-hidden set, downloads header tooltips, the downloads context menu, plugin double-click, the eight MO2 shortcut keys, What's This, the file-tree modifier swap |
-| Matched ✅ | 287 | 296 | net of 0.5.8-0.5.12 shipping (Ctrl+M, Ctrl+F, Escape, the status-bar context label, the mod-list default-hidden set, `doubleClicksOpenPreviews`, reset dialog choices) and of 6 rows moving down once the code was read (hide-after-install, plugin view / context menu / model, show-download-notifications, the Mod Info source tab) |
-| Partial ⚠️ | 136 | 152 | 10 rows promoted to partial-with-evidence; 2 downgraded from ✅ |
-| Missing ❌ | 458 | 400 | 5 re-scored ❌ after the code was read |
-| Surpasses 🚀 | 174 | 175 | +1 (the downloads header tooltips, which MO2 has no counterpart for) |
-| [win] | not separated | 44 | 44 Windows-only rows pulled out of the ordinary-gap pool |
-| **Parity** | 287/1055 = 27% | **296/848 = 34.9%** | the denominator definition changed: 🚀 and [win] are now excluded |
-
-**Do not read the rise from 27% to 34.9% as progress.** Almost all of it
-is the denominator change. On the old definition - every row counted, 🚀 included,
-nothing excluded - today's file scores **296 / 1023 = 28.9%**, and that is the
-number to compare against the 27% it replaces.
-
-The honest reading of the current state: **400 rows (47.2%) are outright missing** and a
-further 152 (17.9%) are partial. The largest untouched surfaces are **21. Archive &
-Installation**, **44. Tutorial System**, **45. TaskDialog**, **46. Notifications / Problems** and
-**47. Backup / Restore** - all of them zero matched rows - followed by **49. CLI Help
-Grammar** and **40/22/28. Event, Deploy and Sort**, which are pure GMM-side systems with
-no MO2 counterpart to match.
-
-A `✅` row is a row where the behaviour matches, not a row where the feature is
-finished. Many of the 296 matched rows are "the mechanism exists" rather than "the
-behaviour is identical", which is why ⚠️ carries most of the real remaining surface.
+**Parity is 306 / 809 = 37.8%.** 339 rows are outright missing and 164 partial.
+The largest untouched surfaces are **44. Tutorial**, **45. TaskDialog**,
+**46. Notifications / Problems** and **47. Backup / Restore** (zero matched
+rows), then **4. Settings**, **16. Nexus** and **15. Downloads**, which carry
+the most missing rows in absolute terms.
 
 ### Confidence
 
-Of the 1023 rows that are scored or GMM-exclusive, **50 carry `✔`** (re-verified
-2026-09-29 against the vendored MO2 source *and* today's `src/` tree) and **973
-carry `·`** (carried over untouched from the 2026-09-24 pass). Read the `·` rows
-as leads, not findings: a `· ❌` may hide work that actually shipped, and a `· ✅`
-may hide work that does not exist. Neither error is visible from this file, and
-that is the honest limit of a partial re-audit.
-
-The verified 50 sit in sections 1, 2, 4, 12, 15, 18, 19, 28 and 30 - the
-Windows-blocked VFS and launch rows, the settings rows the recent commits
-touched, the plugin view, the downloads tab, the mod list, the mod context menu,
-the game-native sort and the main-window surfaces. Sections 3, 5-11, 13-14, 16-17,
-20-27 and 29-51 are carried over unre-verified.
+187 of 1093 rows carry `✔` (both sides re-read); the rest carry `·` and are
+leads, not findings. The `✔` rows concentrate in sections 3, 15, 21, 18 and 30.
