@@ -198,6 +198,14 @@ namespace Source {
       if (decision.action == OverwriteAction::Replace) {
         Logger::instance().warn("InstallStage: replacing existing mod folder " +
                                 dest_dir.string());
+        // Read the archive the old install came from before the delete takes
+        // meta.ini with it, so the UI can stop claiming that archive is still
+        // installed. MO2 reads the same field off ModInfo just before it
+        // removes the directory (installationmanager.cpp:418-424).
+        const auto old_meta = ModMeta::load_file(dest_dir / "meta.ini");
+        const std::string old_archive = old_meta.get("General", "installationfile");
+        if (!old_archive.empty())
+          ctx.replaced_archive = old_archive;
         std::error_code ec;
         std::filesystem::remove_all(dest_dir, ec);
       }

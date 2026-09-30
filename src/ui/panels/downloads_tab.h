@@ -143,6 +143,10 @@ public:
                        double speed);
   void mark_complete(const std::string &id, bool success);
   void mark_installed(const std::string &id);
+  // A Replace deleted the mod this download installed, so the row must stop
+  // claiming it is installed. `archive_filename` is the bare name recorded in
+  // that mod's meta.ini. No-op when no installed row matches.
+  void mark_uninstalled(const std::string &archive_filename);
   void mark_paused(const std::string &id);
   void mark_downloading(const std::string &id);
 

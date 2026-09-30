@@ -122,6 +122,21 @@ void DownloadsController::setup_pipeline() {
               dt->rename_download(id, name);
           });
 
+  // A Replace deleted the mod folder an earlier download had installed, so
+  // that download is not installed any more. MO2 emits the same signal and
+  // marks the download back as not-installed
+  // (references/modorganizer/src/installationmanager.cpp:418-424 ->
+  // mainwindow.cpp:507-510 -> downloadmanager.cpp:1594). Merge, Rename and
+  // Cancel never reach here, so they leave the row alone.
+  connect(w_->pipeline_thread_->worker(), &PipelineWorker::mod_replaced, this,
+          [this](const std::string &archive_filename) {
+            auto *dt = w_->right_panel_->downloads_tab();
+            if (!dt)
+              return;
+            dt->mark_uninstalled(archive_filename);
+            save_download_manifest();
+          });
+
   // Install finished (user-triggered via the Downloads context menu or
   // double-click): add just the newly installed row to the mod list instead
   // of reloading the whole mods dir, and mark the entry Installed. The UI
