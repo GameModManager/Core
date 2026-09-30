@@ -311,6 +311,43 @@ static LaunchResult do_launch(const LaunchParams &params) {
 
   int64_t pid = -1;
 
+  // Extra privilege. Rewrites exec_path + params.args into the wrapped argv
+  // once, here, so each launch path below stays unaware of elevation: the
+  // wrapper becomes argv[0] (an absolute path, so the exists()/execvp() checks
+  // in the launch sites still resolve) and the real executable becomes argv[1].
+  //
+  // Only planning happens here - no helper is executed, so no password prompt
+  // can be raised from this forked child. Its stdio is /dev/null and it has no
+  // session bus, which is exactly why the desktop environment's authorisation
+  // dialog has to be driven from the UI thread instead.
+  std::vector<std::string> launch_args = params.args;
+  if (params.elevation != Elevation::None) {
+    if (params.is_windows_exe) {
+      // A Wine/Proton prefix is owned by the invoking user, so a root-owned
+      // prefix breaks on the next update, and a Windows binary has no Unix file
+      // ownership for fakeroot to fake either. Refuse rather than launching
+      // unelevated while the user believes the setting took effect.
+      Logger::instance().error(
+          "Elevation is not supported when launching a Windows executable "
+          "through Wine or Proton - run the native Linux build, or turn off "
+          "\"Run as\" for this entry.");
+      return {};
+    }
+    const auto plan = plan_elevation(params.elevation, exec_path, launch_args);
+    if (!plan.supported || plan.argv.size() < 2) {
+      Logger::instance().error(
+          "Elevation unavailable: " +
+          (plan.supported ? std::string("no command was produced")
+                          : plan.reason));
+      return {};
+    }
+    const std::string wrapper = plan.argv.front();
+    launch_args.assign(plan.argv.begin() + 1, plan.argv.end());
+    exec_path = wrapper;
+    Logger::instance().debug("Elevated launch via " + wrapper + ": " +
+                             launch_args.front());
+  }
+
   // "Output to mod" sessions capture into a per-launch scratch dir instead
   // of the instance Overwrite folder. The xattr capability probe stays on
   // overwrite_dir (same filesystem as the scratch dir - both live under the
@@ -390,6 +427,19 @@ static LaunchResult do_launch(const LaunchParams &params) {
   // overwrite_dir) is neither needed nor wanted - game writes must land in
   // game_dir itself.
   if (params.use_overlay && OverlayFsLauncher::is_supported(params.overwrite_dir)) {
+    if (params.elevation != Elevation::None) {
+      // The overlay child is cloned with CLONE_NEWUSER, so it already runs in
+      // an unprivileged user namespace mapped to uid 0 inside that namespace.
+      // fakeroot has nothing left to fake and pkexec short-circuits for the
+      // namespace's uid 0, so wrapping would either do nothing or fail with
+      // no usable prompt. Refusing keeps the setting honest instead of
+      // launching a game the user believes is elevated and is not.
+      Logger::instance().error(
+          "\"Run as\" is not available for the OverlayFS launch path: the game "
+          "already runs inside an unprivileged user namespace. Set the instance "
+          "to the symlink deploy strategy, or turn off \"Run as\" for this entry.");
+      return {};
+    }
     Logger::instance().debug("OverlayFS launcher: supported, trying overlay launch");
 
     if (params.is_windows_exe) {
@@ -454,7 +504,7 @@ static LaunchResult do_launch(const LaunchParams &params) {
     if (PreloadInterceptor::is_supported()) {
       Logger::instance().debug("PreloadInterceptor: trying LD_PRELOAD launch");
       pid = PreloadInterceptor::launch(exec_path, params.game_dir, capture_dir,
-                                       params.args, work_dir);
+                                       launch_args, work_dir);
       if (pid > 0) {
         Logger::instance().debug(
             "Launched with LD_PRELOAD intercept. Writes redirected to " +
@@ -501,7 +551,7 @@ static LaunchResult do_launch(const LaunchParams &params) {
                              " (runtime: " + runtime->name() +
                              ", appid: " + std::to_string(params.steam_appid) + ")");
 
-    if (!runtime->launch(exec_path, params.game_dir, params.steam_appid, params.args,
+    if (!runtime->launch(exec_path, params.game_dir, params.steam_appid, launch_args,
                          work_dir)) {
       Logger::instance().error("Failed to launch game");
       return {};
