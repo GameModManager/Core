@@ -22,6 +22,20 @@ enum class InstanceKind {
   Masterlists,
 };
 
+// Resolve a configured instance path against the instance root `base`.
+//
+// Substitutes $BASE_DIRECTORY and MO2's %BASE_DIR% with `base`, expands a
+// leading ~ to the home directory and any $NAME / %NAME% environment
+// variable, then anchors a relative result at `base` and normalises the
+// result. Substitution is a single pass - a substituted value is never
+// re-scanned. A variable that is not set is left literal rather than
+// replaced with nothing, so a typo stays visible instead of silently
+// pointing at the root. No containment check is applied: the resolved
+// directory may lie outside the instance.
+[[nodiscard]] std::filesystem::path
+expand_instance_path(const std::filesystem::path &path,
+                     const std::filesystem::path &base);
+
 class Instance {
 public:
   // Canonical info struct for an instance's persisted metadata (game id,
