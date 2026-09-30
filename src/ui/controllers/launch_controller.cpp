@@ -677,22 +677,29 @@ void LaunchController::flush_deferred_disable_queue() {
   // after this returns, so it reads the reconciled on-disk sentinels.
   for (const auto &op : w_->deferred_disable_queue_) {
     auto mod_folder = w_->resolve_mod_folder(op.mod_id, mods_subpath, op.content_dir);
-    if (op.enabled) {
-      // False means the sentinel was already absent - the queued state, not a
-      // failure, so it is not worth a warning.
-      if (!engine::ModScanner::enable_mod(*w_->knowledge_, w_->current_game_id_,
-                                          mod_folder)) {
+    std::string reason;
+    const bool ok =
+        op.enabled
+            ? engine::ModScanner::enable_mod(*w_->knowledge_, w_->current_game_id_,
+                                             mod_folder, &reason)
+            : engine::ModScanner::disable_mod(*w_->knowledge_, w_->current_game_id_,
+                                              mod_folder, &reason);
+    if (ok || reason.empty()) {
+      // ok, or the sentinel was already in the requested state - a false
+      // return with no reason, so it is not worth a warning.
+      w_->mod_model_->set_toggle_error(QString::fromStdString(op.mod_id), QString());
+      if (!ok)
         engine::Logger::instance().debug(
             "Deferred toggle: '" + op.mod_id + "' had no sentinel to remove in " +
             mod_folder.string());
-      }
-    } else if (!engine::ModScanner::disable_mod(*w_->knowledge_,
-                                                w_->current_game_id_, mod_folder)) {
+    } else {
       // A sentinel that fails to write here ships to the deploy worker as a
       // mod that is still active, which is the state the queue asked to undo.
-      engine::Logger::instance().warn(
-          "Deferred toggle: could not write the sentinel for '" + op.mod_id +
-          "' in " + mod_folder.string() + " - the mod is still active on disk");
+      engine::Logger::instance().warn("Deferred toggle: " + reason + " for '" +
+                                      op.mod_id +
+                                      "' - the mod is still active on disk");
+      w_->mod_model_->set_toggle_error(QString::fromStdString(op.mod_id),
+                                       QString::fromStdString(reason));
     }
   }
 

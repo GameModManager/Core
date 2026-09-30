@@ -118,6 +118,10 @@ gmm_catch2_test(game_icons_test engine/game_icons_test.cpp)
 gmm_catch2_test(nxm_router_test engine/nxm_router_test.cpp)
 gmm_catch2_test(pack_source_detector_test engine/pack_source_detector_test.cpp)
 gmm_catch2_test(scanner_test engine/scanner_test.cpp)
+# The enable/disable sentinel reason: a refused write has to report what the
+# OS said, and a successful one has to report nothing. Runs against a game
+# with no plugin so the engine default sentinel is the code under test.
+gmm_catch2_test(mod_toggle_reason_test engine/mod_toggle_reason_test.cpp)
 gmm_catch2_test(theme_test engine/theme_test.cpp)
 gmm_catch2_test(keyring_test engine/keyring_test.cpp)
 gmm_catch2_test(conflict_test engine/conflict_test.cpp)

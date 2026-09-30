@@ -564,14 +564,6 @@ void Settings::set_max_core_dumps(int n) {
   settings_.setValue("diagnostics/max_core_dumps", n);
 }
 
-QString Settings::core_dump_type() const {
-  return settings_.value("diagnostics/core_dump_type", "text").toString();
-}
-
-void Settings::set_core_dump_type(const QString &type) {
-  settings_.setValue("diagnostics/core_dump_type", type);
-}
-
 // colors ----------------------------------------------------------------------
 
 bool Settings::color_separator_scrollbar() const {

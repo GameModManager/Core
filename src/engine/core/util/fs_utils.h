@@ -166,6 +166,16 @@ merged_view_executable_reachable(const std::filesystem::path &game_dir,
                                  const std::filesystem::path &staging_dir,
                                  const std::filesystem::path &exec_path);
 
+// Create `path` as an empty file, creating it or truncating an existing one.
+//
+// std::filesystem has no create-file operation, and a bare std::ofstream
+// cannot say why it failed - which is exactly the case a caller has to
+// explain to the user (a disable sentinel that will not write). So the file
+// is opened through the platform C API and the OS code is carried in `ec`
+// like every other filesystem call here, ready for ec.message().
+// Returns true on success; on failure returns false with `ec` set.
+bool create_empty_file(const std::filesystem::path &path, std::error_code &ec);
+
 // Hide a file by renaming it to <name>.gmmhidden. No-op if already hidden.
 // Returns true on success, false on failure (file kept intact).
 bool hide_file(const std::filesystem::path &path);

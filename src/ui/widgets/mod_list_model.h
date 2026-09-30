@@ -87,6 +87,13 @@ struct ModEntry {
   bool is_mirrored           = false;
   bool mirror_source_missing = false;
   QString mirror_source_path;
+  // Why the last enable/disable of this mod did not reach disk, verbatim from
+  // the engine. Empty when the on-disk state matches the row, which is the
+  // overwhelmingly common case. Non-empty means the row is describing a state
+  // the game will not see, so the Flags column carries a warning badge whose
+  // tooltip is this string. Cleared as soon as a toggle succeeds, so the badge
+  // tracks the current failure rather than every failure the mod ever had.
+  QString toggle_error;
   QVector<int> category_ids;
   // Installation (folder birth time) and Changed (folder last-write time).
   // 0 = unavailable (separators, Overwrite/MERGED pseudo-rows).
@@ -280,6 +287,12 @@ public:
   // set_mod_enabled.
   void set_mirror_info(const QString &id, bool mirrored, bool source_missing,
                        const QString &source_path);
+  // Record (or clear, with an empty string) why this mod's on-disk enable
+  // state could not be brought in line with the row. Drives the warning badge
+  // and its tooltip; the mod's enabled state is NOT changed here - the profile
+  // stays the source of truth for what the user asked for, and the badge is
+  // what tells them disk did not comply.
+  void set_toggle_error(const QString &id, const QString &reason);
   void set_tags(const QString &id, const QVector<ModTag> &tags);
   void set_source_info(const QString &id, const QString &source_type,
                        const QString &source_id, const QString &page_url = {});
@@ -454,6 +467,9 @@ private:
   // and plugin-warning (mirrored, source missing).
   QIcon mirror_icon_;
   QIcon mirror_missing_icon_;
+  // plugin-warning, shown when this row's enable state could not be written
+  // to disk. The tooltip carries the reason verbatim.
+  QIcon toggle_error_icon_;
   // source icon-key ("nexusmods", "loverslab", "steam", "moddb") -> badge.
   QHash<QString, QIcon> vendor_icons_;
   QAbstractItemView *mod_view_  = nullptr;
