@@ -29,14 +29,24 @@ namespace Executables {
     QString output_mod;       // mod ID for output routing (empty = none)
     QString icon_path;        // custom icon path (empty = auto-detect from binary)
     QStringList environment;  // "KEY=VALUE" per entry, set for the launched process
-    // Extra privilege for the launch: "" (none), "fakeroot" or "root". Root
-    // raises the desktop environment's own prompt; fakeroot needs no prompt and
-    // is usually the right answer on Linux and macOS.
+    // Extra privilege for the launch: "" (none), "fakeroot" or "root". "root"
+    // means the platform's own privilege prompt, whatever that is on this
+    // machine; fakeroot needs no prompt and is usually the right answer on
+    // Linux, but it is a Linux tool and is not offered elsewhere.
     QString elevation;
 
     QJsonObject toJson() const;
     static Entry fromJson(const QJsonObject &obj);
     static Entry fromLegacyPath(const QString &relPath);
+  };
+
+  // One choice in the form's elevation combo.
+  struct ElevationOption {
+    QString label;    // what the row reads
+    QString value;    // the persisted Entry::elevation value
+    bool enabled;     // false = greyed out, with the control's tooltip saying why
+
+    friend bool operator==(const ElevationOption &, const ElevationOption &) = default;
   };
 
   // Display name for a list row / combo item: explicit title, else the binary
@@ -92,6 +102,11 @@ namespace Executables {
                            QWidget *parent                             = nullptr);
 
     [[nodiscard]] QVector<Entry> entries() const;
+
+    // The elevation options the form offers, in combo order. Exposed so the
+    // option set - labels, persisted values and the greyed-out state included -
+    // can be checked without reaching into the form's private widgets.
+    [[nodiscard]] QVector<ElevationOption> elevation_options() const;
 
   signals:
     // Emitted after the user clicks Save and validation passes. The host
