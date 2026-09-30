@@ -5,8 +5,15 @@ Living document tracking MO2 feature parity and GMM-exclusive features.
 **Legend (feature status):**
 - ✅ = Implemented in GMM
 - ⚠️ = Partially implemented (gaps remain)
-- ❌ = Missing in GMM (MO2 has it)
+- ❌ = Missing in GMM (MO2 has it) **and worth building**
 - 🚀 = GMM-exclusive (surpasses MO2)
+- 🚫 = **Deliberately not copied.** MO2 has it; GMM is not missing it and should
+  not add it. The row states the reason - almost always a Windows-only or
+  USVFS-shaped mechanism with no Linux counterpart, or a control that would have
+  nothing behind it. Distinguish `🚫` from `❌`: `❌` is a backlog item, `🚫` is
+  a closed one. Added 2026-09-30 when section 3 turned out to be 35 `🚫` and
+  only 4 real `❌`; folding those together reported 39 missing features and
+  implied work that does not exist.
 
 **Legend (verification), second token in the Status column:**
 - `✔` = re-verified on **2026-09-29** against the vendored MO2 source AND today's
@@ -300,70 +307,129 @@ only means the behaviour matches, not that the feature is finished. See
 
 ## 3. Error Handling & Diagnostics
 
+Re-verified 2026-09-30 against the vendored MO2 source and today's `src/` tree
+at `004fbfd`. Every row below carries a `✔`. The previous state of this section
+carried five fabrications, five false `❌` and two false `✅`; see
+[Section 3 verification notes](#section-3-verification-notes) for what was wrong.
+
+Reading the symbols named in the MO2 column: `spawn::dialogs` is
+`references/modorganizer/src/spawn.cpp:45`; the `sanity::` checks are
+`sanitychecks.cpp:9`; `env::` is `env.h`. MO2's `SpawnParameters` carries
+`HANDLE stdOut`/`stdErr` and every `spawn::dialogs` entry point takes a `DWORD`
+error code, so the whole module is Win32-shaped by construction, not by
+convention.
+
 | Feature | MO2 | GMM | Status |
 |---------|-----|-----|--------|
-| ERROR_INVALID_PARAMETER (AV quarantine) | ✅ `makeContent` | ❌ UNPROVEN (was: `describe_usvfs_error` - symbol absent repo-wide) | ❌ · [win] |
-| ERROR_ACCESS_DENIED (AV blocking) | ✅ `makeContent` | ❌ UNPROVEN (was: `describe_usvfs_error` - symbol absent repo-wide) | ❌ · [win] |
-| ERROR_FILE_NOT_FOUND (exe missing) | ✅ `makeContent` | ❌ UNPROVEN (was: `describe_usvfs_error` - symbol absent repo-wide) | ❌ · [win] |
-| ERROR_DIRECTORY (bad cwd) | ✅ `makeContent` | ❌ UNPROVEN (was: `describe_usvfs_error` - symbol absent repo-wide) | ❌ · [win] |
-| ERROR_ELEVATION_REQUIRED (admin restart) | ✅ `confirmRestartAsAdmin` + `helper.exe` | ❌ UNPROVEN (was: "error mapped, no restart flow" - no elevation-required mapping found) | ❌ · |
-| makeDetails (owner, ACL, DLL presence) | ✅ | ❌ | ❌ · |
-| Blacklist warning dialog | ✅ `confirmBlacklisted` | ❌ | ❌ · |
-| Crash dump type selection | ✅ `CrashDumpsType` | ✅ `settings.cpp:520` `core_dump_type()` + UI `settings_content_widget.cpp:1347` | ✅ · |
-| USVFS child crash capture | ✅ `usvfsCreateMiniDump` | ⚠️ UNPROVEN (was: "SEH + usvfs integration"); self MiniDumpWriteDump only `crash_handler.cpp:126`, no child/USVFS capture | ⚠️ · |
-| Crash dump pruning | ✅ `cycleDiagnostics` | ✅ `core.cpp:116` `prune_old_dumps(max_core_dumps())` | ✅ · |
-| USVFS log worker thread | ✅ `LogWorker` (QThread) | ❌ UNPROVEN (was: `std::thread` - Logger is synchronous, no worker thread `logger.h`) | ❌ · [win] |
-| USVFS log file output | ✅ `logs/usvfs-<ts>.log` | ❌ UNPROVEN (was: `logs/usvfs-<ts>.log` - actual log is `gamemodmanager.log` `core.cpp:64`) | ❌ · [win] |
-| USVFS log viewer | ✅ MO2 log panel | ❌ | ❌ · [win] |
-| EventLog service check | ✅ | ❌ | ❌ · |
-| Sanity checks on startup | ✅ `sanityChecks()` | ❌ | ❌ · |
-| Sanity check: blocked files (Zone.Identifier ADS) | ✅ `sanity::checkBlocked()` | ❌ | ❌ · |
-| Sanity check: missing files (AV deleted) | ✅ `sanity::checkMissingFiles()` | ❌ | ❌ · |
-| Sanity check: incompatible OSD/DLL modules | ✅ `sanity::checkBadOSDs()` | ❌ | ❌ · |
-| Sanity check: USVFS-incompatible DLLs | ✅ `sanity::checkUsvfsIncompatibilites()` | ❌ | ❌ · [win] |
-| Sanity check: protected/system directory paths | ✅ `sanity::checkProtected()` | ❌ | ❌ · |
-| Sanity check: Microsoft Store game detection | ✅ `sanity::checkMicrosoftStore()` | ❌ | ❌ · |
-| Spawn error: makeContent (contextual) | ✅ `spawn::dialogs::makeContent()` | ❌ | ❌ · |
-| Spawn error: spawnFailed dialog | ✅ `spawn::dialogs::spawnFailed()` | ❌ | ❌ · |
-| Spawn error: helperFailed dialog | ✅ `spawn::dialogs::helperFailed()` | ❌ | ❌ · |
-| Spawn error: confirmRestartAsAdmin | ✅ `spawn::dialogs::confirmRestartAsAdmin()` | ❌ | ❌ · |
-| Spawn error: makeRightsDetails | ✅ `spawn::dialogs::makeRightsDetails()` | ❌ | ❌ · |
-| Windows error formatting | ✅ `MOShared::windows_error` exception | ❌ | ❌ · |
-| Windows compatibility mode detection | ✅ `WindowsInfo::compatibilityMode()` | ❌ | ❌ · |
-| Windows version info collection | ✅ `WindowsInfo` (reported, real, BuildLab, UBR) | ❌ | ❌ · |
-| Process elevation detection | ✅ `WindowsInfo::isElevated()` | ✅ `windows_platform.cpp:187` `is_elevated()` | ✅ · |
-| Module detection and version info | ✅ `env::Module` (path, version, timestamp, MD5) | ❌ | ❌ · |
-| Process enumeration and tree | ✅ `env::Process` + `getRunningProcesses()` | ❌ | ❌ · |
-| DLL load notification (ntdll LdrRegisterDllNotification) | ✅ `Environment::onModuleLoaded()` | ❌ | ❌ · |
-| Security product enumeration (WMI) | ✅ `env::SecurityProduct` + `getSecurityProducts()` | ❌ | ❌ · |
-| File security/permissions check | ✅ `env::getFileSecurity()` + `FileRights` | ❌ | ❌ · |
-| Display metrics collection | ✅ `env::Metrics` + `env::Display` (DPI, refresh rate) | ❌ | ❌ · |
-| NT API filesystem walker | ✅ `env::DirectoryWalker` (NtQueryDirectoryFile) | ❌ | ❌ · |
-| Windows service status query | ✅ `env::Service` + `getService()` | ❌ | ❌ · |
-| Registry cleanup | ✅ `env::deleteRegistryKeyIfEmpty()` | ❌ | ❌ · |
-| Full environment dump | ✅ `Environment::dump()` (version, timezone, security, modules, disks) | ❌ | ❌ · |
-| Environment timezone collection | ✅ `Environment::timezone()` | ❌ | ❌ · |
-| Core dump creation (self + other process) | ✅ `env::coredump()` / `env::coredumpOther()` | ❌ | ❌ · |
-| Log list (in-app viewer, 1000 entries) | ✅ `LogModel` + `LogList` | ❌ | ❌ · |
-| Log initialization and configuration | ✅ `initLogging()` (spdlog, UTC timestamps) | ❌ | ❌ · |
-| Log blacklisting (privacy - username masking) | ✅ `log::getDefault().addToBlacklist()` | ❌ | ❌ · |
-| Console attach/alloc (CLI) | ✅ `env::Console` (RAII attach/alloc/free) | ❌ | ❌ · |
-| CopyEventFilter (Ctrl+C in views) | ✅ `CopyEventFilter` | ❌ | ❌ · |
-| Problems dialog (plugin diagnostics) | ✅ `ProblemsDialog` (tree, HTML description, Fix button) | ❌ | ❌ · |
-| Message dialog (fire-and-forget toast) | ✅ `MessageDialog` (borderless, auto-timeout) | ❌ | ❌ · |
-| Diagnostics settings tab | ✅ `DiagnosticsSettingsTab` (log level, dump type, max dumps) | ✅ `settings_content_widget.cpp:1324` `build_diagnostics_tab()` | ✅ · |
-| U033 Crash-on-exit dialog ("MO crashed while exiting. Some settings may not be saved.") | ✅ `mainwindow.cpp:645-650` | ❌ | ❌ · |
-| U193 UILocker exit flow (canExit download/VFS sequence) | ✅ `uilocker.cpp`, `mainwindow.cpp:1450` | ❌ | ❌ · |
-| U238 IPluginDiagnose (activeProblems -> ProblemsDialog count + Fix) | ✅ `mainwindow.cpp:1031-1054` | ⚠️ diagnose registry exists `plugin_loader.cpp:16` (diagnose_registry); Problems dialog itself absent (see section 46) | ⚠️ · |
-| U268 Report/reportError global error popup | ✅ `report.cpp` (uibase) | ❌ | ❌ · |
-| U272 ErrorCodes shared error code mapping | ✅ `errorcodes.cpp` (uibase) | ❌ | ❌ · |
-| U273 DiagnosisReport diagnose report formatting | ✅ `diagnosisreport.cpp` (uibase) | ❌ | ❌ · |
+| ERROR_INVALID_PARAMETER (AV quarantine) | ✅ `spawn::dialogs::makeContent()` `spawn.cpp:138` (Win32 `DWORD`) | 🚫 the cited `describe_usvfs_error` never existed - not in `src/`, not in `tests/`; it is a fabrication | ❌ ✔ [win] |
+| ERROR_ACCESS_DENIED (AV blocking) | ✅ `spawn.cpp:145` (Win32 `DWORD`) | 🚫 same fabricated `describe_usvfs_error` | ❌ ✔ [win] |
+| ERROR_FILE_NOT_FOUND (exe missing) | ✅ `spawn.cpp:150` (Win32 `DWORD`) | 🚫 same fabricated `describe_usvfs_error`; the portable half (path in a message) is shipped, see below | ❌ ✔ [win] |
+| ERROR_DIRECTORY (bad cwd) | ✅ `spawn.cpp:153` (Win32 `DWORD`) | 🚫 same fabricated `describe_usvfs_error` | ❌ ✔ [win] |
+| ERROR_ELEVATION_REQUIRED (admin restart) | ✅ `confirmRestartAsAdmin` `spawn.cpp:250` + `helper.exe` | 🚫 N/A - Linux has no elevation prompt to restart from | 🚫 ✔ [win] |
+| makeDetails (owner, ACL, DLL presence) | ✅ `spawn.cpp:66-134`; `owner`/`rights` from `env::getFileSecurity` (Win32 ACL), the last line probes the four `usvfs_*.dll`/`*_proxy_*.exe` files | ⚠️ the portable half ships: the exec path goes in the details pane (`launch_controller.cpp:120`, `:798`). `owner`/`rights` are Win32 ACL; the USVFS probe line has no meaning without USVFS. Previously marked `❌` as if nothing existed | ⚠️ ✔ |
+| Blacklist warning dialog | ✅ `confirmBlacklisted` `spawn.cpp:361`, gated on `Settings::isExecutableBlacklisted` `settings.cpp:305`; the list exists only to feed `usvfsBlacklistExecutable` `usvfsconnector.cpp:158` | 🚫 blocked - the blacklist is a VFS directive, and there is no VFS. See [row 4 of section 4](#4-settings--configuration): the `executables_blacklist` setting itself has no consumer and should not be advertised | 🚫 ✔ [win] |
+| Crash dump type selection | ✅ `CrashDumpsType` `usvfsconnector.cpp:106` (None/Data/Full/Mini - all Win32 minidump flavours) | ⚠️ **the previous `✅` was false.** `settings_content_widget.cpp:1365-1369` offers "Text backtrace" / "Full core dump" and `Settings::core_dump_type()` `settings.cpp:567` round-trips it, but there is no reader: the Linux handler is a POSIX signal handler writing one fixed backtrace, and the `MiniDumpWriteDump` path `crash_handler.cpp:129` is inside `#ifdef _WIN32`. The control advertises a dump type GMM cannot produce | ⚠️ ✔ |
+| USVFS child crash capture | 🚫 the cited `usvfsCreateMiniDump` is **not a symbol in MO2**. Real names: `env::createMiniDump` `env.cpp:1200` and, in the usvfs repo, `usvfs::createMiniDumpImpl` `references/usvfs/src/usvfs_dll/usvfs.cpp:248` | 🚫 blocked. The previously cited GMM evidence `crash_handler.cpp:126` is itself inside `#ifdef _WIN32`, so it is dead code on the shipping platform | 🚫 ✔ [win] |
+| Crash dump pruning | ✅ `cycleDiagnostics` (`mainwindow.cpp`, `organizercore.cpp`) | ✅ real: `core.cpp:116` `prune_old_dumps(max_core_dumps())`; the setting has a live reader | ✅ ✔ |
+| USVFS log worker thread | ✅ `LogWorker` `usvfsconnector.h` (a QThread that offloads USVFS's own log writes) | 🚫 correct as written and **should not be copied**: `Logger::log()` `logger.cpp:80` is synchronous under `mutex_` with no worker thread. There is no USVFS log to offload, and a thread would add latency and a teardown ordering problem for no gain | 🚫 ✔ [win] |
+| USVFS log file output | ✅ USVFS writes its own `logs/usvfs-<ts>.log` | 🚫 correct as written: GMM writes one log, `gamemodmanager.log`, at `core.cpp:64` | 🚫 ✔ [win] |
+| USVFS log viewer | ✅ MO2's `logDock` shows the shared `MOBase::log`, which USVFS also writes into | 🚫 the USVFS-specific half has no subject on Linux. The portable half - an in-app view of our own log - already ships; see the "Log list" row below rather than counting it twice | 🚫 ✔ [win] |
+| EventLog service check | ✅ `eventLogNotRunning` `spawn.cpp:335`; the message is literally "The **Windows** Event Log service is not running ... this can prevent **USVFS** from running" | 🚫 Windows service + exists for USVFS. Twice out of scope. Was untagged | 🚫 ✔ [win] |
+| Sanity checks on startup | ✅ `sanity::checkEnvironment(env)` `sanitychecks.cpp:402`, called from `moapplication.cpp:240`. Note it takes an `env::Environment` (Win32) and only `log::warn`s - there is no dialog | 🚫 the six checks are Windows-shaped as a block (5 of 6 need loaded modules, ACLs, FOLDERID GUIDs or ADS). Not copied. See the individual rows | 🚫 ✔ [win] |
+| Sanity check: blocked files (Zone.Identifier ADS) | ✅ `sanity::checkBlocked()` `sanitychecks.cpp:159` - reads the NTFS `Zone.Identifier` alternate data stream | 🚫 NTFS ADS does not exist on Linux. Was untagged | 🚫 ✔ [win] |
+| Sanity check: missing files (AV deleted) | ✅ `sanity::checkMissingFiles()` `sanitychecks.cpp:178` - 8 hardcoded Windows helper names plus `loot/libloot.dll` and `loot/lootcli.exe` | 🚫 6 of the 8 are Windows helpers GMM has no use for. The 2 loot ones have a GMM equivalent (`tools/gmm_lootcli`), but a packaging install that lost it is obvious without a startup scan. Deliberately not implemented | 🚫 ✔ |
+| Sanity check: incompatible OSD/DLL modules | ✅ `sanity::checkBadOSDs()` `sanitychecks.cpp:205` - regex-matches Nahimic/RivaTuner/Razer overlay DLLs in the loaded-module list | 🚫 iterates `env::Environment::loadedModules()`, a Win32 PEB walk. Was untagged | 🚫 ✔ [win] |
+| Sanity check: USVFS-incompatible DLLs | ✅ `sanity::checkUsvfsIncompatibilites()` `sanitychecks.cpp:259` (Mactype, Citrix) | 🚫 | 🚫 ✔ [win] |
+| Sanity check: protected/system directory paths | ✅ `sanity::checkProtected()` `sanitychecks.cpp:339` via `getOptionalKnownFolder` with `FOLDERID_*` GUIDs | 🚫 Win32 known folders. Was untagged | 🚫 ✔ [win] |
+| Sanity check: Microsoft Store game detection | ✅ `sanity::checkMicrosoftStore()` `sanitychecks.cpp:362` - string match on `/ModifiableWindowsApps/` and `/WindowsApps/` | 🚫 Windows Store. Was untagged | 🚫 ✔ [win] |
+| Spawn error: makeContent (contextual) | ✅ `spawn::dialogs::makeContent()` `spawn.cpp:136` | ✅ **already shipped, previously a false `❌`**: `configure_executable_unreachable_dialog` `launch_controller.cpp:114` supplies the contextual content ("If it belongs to a mod, make sure that mod is enabled"), driven at `:782`. Test: `launch_failure_dialog_test` | ✅ ✔ |
+| Spawn error: spawnFailed dialog | ✅ `spawn::dialogs::spawnFailed()` `spawn.cpp:209` | ✅ **already shipped, previously a false `❌`**: `configure_launch_failed_dialog` `launch_controller.cpp:124`, driven at `:798`; plus `ui::report_error` for the post-launch failure path `:1973` | ✅ ✔ |
+| Spawn error: helperFailed dialog | ✅ `spawn::dialogs::helperFailed()` `spawn.cpp:226` | 🚫 N/A - MO2's `helper.exe` exists to make changes needing administrator rights. Linux has neither the binary nor the problem | 🚫 ✔ |
+| Spawn error: confirmRestartAsAdmin | ✅ `spawn::dialogs::confirmRestartAsAdmin()` `spawn.cpp:250` | 🚫 Win32 elevation restart. Was untagged | 🚫 ✔ [win] |
+| Spawn error: makeRightsDetails | ✅ `spawn::dialogs::makeRightsDetails()` `spawn.cpp:48`, renders a `FileRights` list | 🚫 Win32 ACL. Posix permissions are a different model and nothing currently needs them rendered | 🚫 ✔ [win] |
+| Windows error formatting | ✅ `MOShared::windows_error` exception | 🚫 | 🚫 ✔ [win] |
+| Windows compatibility mode detection | ✅ `WindowsInfo::compatibilityMode()` `envwindows.cpp` | 🚫 | 🚫 ✔ [win] |
+| Windows version info collection | ✅ `WindowsInfo` (reported, real, BuildLab, UBR) | 🚫 | 🚫 ✔ [win] |
+| Process elevation detection | ✅ `WindowsInfo::isElevated()` | ⚠️ **the previous `✅` overstated this.** `is_elevated()` is declared on `Platform` `platform.h:132` and overridden for all three platforms (`linux_platform.cpp:532`, `macos_platform.cpp:117`, `windows_platform.cpp:187`), but nothing outside the platform layer calls it. The doc also cited only the Windows file, which is the platform GMM does not ship | ⚠️ ✔ |
+| Module detection and version info | ✅ `env::Module` (path, version, timestamp, MD5) `envmodule.h` | 🚫 | 🚫 ✔ [win] |
+| Process enumeration and tree | ✅ `env::Process` + `getRunningProcesses()` `envmodule.h` | 🚫 | 🚫 ✔ [win] |
+| DLL load notification (ntdll LdrRegisterDllNotification) | ✅ `Environment::onModuleLoaded()` | 🚫 | 🚫 ✔ [win] |
+| Security product enumeration (WMI) | ✅ `env::SecurityProduct` + `getSecurityProducts()` `envsecurity.h` | 🚫 | 🚫 ✔ [win] |
+| File security/permissions check | ✅ `env::getFileSecurity()` + `FileRights` | 🚫 | 🚫 ✔ [win] |
+| Display metrics collection | ✅ `env::Metrics` + `env::Display` (DPI, refresh rate) `envmetrics.h` | 🚫 | 🚫 ✔ [win] |
+| NT API filesystem walker | ✅ `env::DirectoryWalker` (NtQueryDirectoryFile) | 🚫 | 🚫 ✔ [win] |
+| Windows service status query | ✅ `env::Service` + `getService()` `env.h:223` | 🚫 | 🚫 ✔ [win] |
+| Registry cleanup | ✅ `env::deleteRegistryKeyIfEmpty()` `env.h:285` | 🚫 | 🚫 ✔ [win] |
+| Full environment dump | ✅ `Environment::dump()` `envdump.h` (version, timezone, security, modules, disks) | 🚫 | 🚫 ✔ [win] |
+| Environment timezone collection | ✅ `Environment::timezone()` `env.h:190` | 🚫 not a standalone feature - a field of the Win32 environment dump above | 🚫 ✔ [win] |
+| Core dump creation (self + other process) | ✅ `env::coredump()` `env.cpp:1242` / `env::coredumpOther()` `env.cpp:1269`, both `MiniDumpWriteDump` | ⚠️ self ships: `CrashHandler` installs a POSIX signal handler and writes a backtrace (`crash_handler.cpp:166+`). "other process" is Win32-only | ⚠️ ✔ |
+| Log list (in-app viewer, 1000 entries) | ✅ `LogModel` + `LogList` `loglist.h`, hosted in a `logDock` `mainwindow.ui:1591`; `MaxLines = 1000` `loglist.cpp:28`; level filter and a live level switcher from the same window | ⚠️ **the viewer already exists, previously a false `❌`**: `ConsolePanel` is a live log view in the main window. What was genuinely missing is the bound - the view appended every line for the whole session. Now capped at the same 1000 (`console_panel.h` `kMaxLines`); the log FILE is never truncated | ⚠️ ✔ |
+| Log initialization and configuration | ✅ `initLogging()` (`main.cpp`, `loglist.h`) | ✅ real: `core.cpp:170-176` reads the setting and calls `Logger::set_level`. Timestamps are local time (`logger.cpp:158`), not UTC as MO2 configures - a deliberate difference, since the log is read by the person who ran the app | ✅ ✔ |
+| Log blacklisting (privacy - username masking) | ✅ `log::getDefault().addToBlacklist()` | ✅ **already shipped, previously a false `❌`**: `Logger::sanitize()` `logger.cpp:139-149` rewrites the home directory to `{USER}` in every message before it is stored or dispatched | ✅ ✔ |
+| Console attach/alloc (CLI) | ✅ `env::Console` (RAII `AttachConsole`/`AllocConsole`/`FreeConsole`) | 🚫 Win32 console API. GMM's `ConsolePanel` is a different thing entirely (in-window log + launch output), not a CLI console allocation | 🚫 ✔ [win] |
+| CopyEventFilter (Ctrl+C in views) | ✅ `CopyEventFilter` `copyeventfilter.h` - a `QAbstractItemView` event filter | ✅ effectively covered, not a gap: Qt copies whole-row selections on Ctrl+C on its own, and `ConsolePanel` adds an explicit Copy shortcut `console_panel.cpp:39` for the log view. MO2 needed the class because it builds its views by hand | ✅ ✔ |
+| Problems dialog (plugin diagnostics) | ✅ `ProblemsDialog` `problemsdialog.h` - tree, HTML description, `startFix()` | ⚠️ the data path ships and is consumed: `DiagnoseRegistry` → `PluginLoader::collect_diagnostics` `plugin_loader.cpp:2147` → Plugins-tab tooltip `mod_list_controller.cpp:2959`. The dialog and the Fix button do not exist, and Fix needs a fix-registration mechanism that does not exist either - that is a new ABI surface, not a section-3-sized change | ⚠️ ✔ |
+| Message dialog (fire-and-forget toast) | ✅ `MessageDialog` `messagedialog.h` - borderless, auto-timeout | ⚠️ a stub exists and is a dead end: `InAppBackend` `notification_backend.h` emits `notification_received` but has **zero producers and zero consumers**. A toast would render nothing. Deliberately not built on top of an empty stream | ⚠️ ✔ |
+| Diagnostics settings tab | ✅ `DiagnosticsSettingsTab` `settingsdialogdiagnostics.h` | ✅ real: `build_diagnostics_tab()` `settings_content_widget.cpp:1345`. Caveat on the dump-type row above | ✅ ✔ |
+| U033 Crash-on-exit dialog ("MO crashed while exiting. Some settings may not be saved.") | ✅ `mainwindow.cpp:644-649` - a `try`/`catch (std::exception&)` around `delete ui` in `~MainWindow` | 🚫 not copied, and not a gap: the guard protects a `delete ui` that does not exist in a hand-built widget tree. `~MainWindow` is `= default` `main_window.cpp:341`, so there is no destructor body to protect and wrapping one in `try`/`catch` would be theatre | 🚫 ✔ |
+| U193 UILocker exit flow (canExit download/VFS sequence) | ✅ `uilocker.h` `Reasons::PreventExit`, `waitForAllUSVFSProcesses` `organizercore.h:319` | 🚫 the flow is "do not exit until every USVFS proxy has exited". No proxies, no sequence | 🚫 ✔ [win] |
+| U238 IPluginDiagnose (activeProblems -> ProblemsDialog count + Fix) | ✅ `mainwindow.cpp:1031-1054` | ⚠️ correct as written: the registry and `collect_diagnostics` exist and feed a Plugins-tab tooltip; the Problems dialog and its Fix button do not (see above) | ⚠️ ✔ |
+| U268 Report/reportError global error popup | 🚫 MO2 side unverifiable here - `report.cpp` lives in the `uibase` repo, which is not vendored under `references/` | ✅ **already shipped, previously a false `❌`**: `ui::report_error` / `ui::critical_on_top` `error_popup.h:41-43`, implemented in `error_popup.cpp` on the shared `ui::TaskDialog`, with `ui::report_error` in production use at `launch_controller.cpp:1765` and `:1973`. Test: `error_popup_test` | ✅ ✔ |
+| U272 ErrorCodes shared error code mapping | 🚫 MO2 side unverifiable here (`uibase` repo, not vendored) | 🚫 not a gap: GMM surfaces `std::error_code::message()` at the point of failure, so there is no need for a central Win32 error-code table. Nothing to map | 🚫 ✔ |
+| U273 DiagnosisReport diagnose report formatting | 🚫 MO2 side unverifiable here (`uibase` repo, not vendored) | ⚠️ the Linux-shaped equivalent exists: `PluginLoader::collect_diagnostics` `plugin_loader.cpp:2147` returns `GmmDiagnosticProblem` structs from the v2 ABI. No human-readable report formatting on top | ⚠️ ✔ |
+
+### Section 3 verification notes
+
+`🚫` = deliberately not copied, with the reason in the row. It is a stronger
+statement than `❌` (missing and should be built).
+
+**Fabrications corrected (5 rows).** `describe_usvfs_error` does not exist
+anywhere in `src/` or `tests/` - it appears only in this file. It was cited as
+GMM's side of four rows. `usvfsCreateMiniDump` is not a symbol in MO2 either;
+the real names are `env::createMiniDump` and `usvfs::createMiniDumpImpl`.
+
+**False `❌` corrected (6 rows).** Five were written as missing and are shipped
+and wired: the in-app log view, log blacklisting (`Logger::sanitize`), the
+contextual launch-failure content, the spawn-failure dialog, and the global
+error popup. A sixth, `makeDetails`, was written as entirely absent when the
+portable half - the executable path in the details pane - has been there since
+the launch-failure dialog landed.
+
+**False `✅` corrected to `⚠️` (2 rows).** "Crash dump type selection" and
+"Process elevation detection" both cite code that exists, but neither has a
+consumer. This is the same defect already recorded for
+`show_download_notifications` in section 4: a stored value with no reader is not
+parity.
+
+**Three settings on the shipping platform advertise something GMM does not
+have.** `diagnostics/core_dump_type` (this section),
+`workarounds/executables_blacklist` (section 4), and `interface/double_clicks_open_previews`
+(section 4, which *is* consumed - the other two are not). The first two are
+recorded here and tracked as follow-ups; neither is deleted in this pass
+because both become real the moment USVFS lands, and removing a control is a
+product decision rather than a documentation fix.
+
+**No install-start or install-failure event.** The bus
+(`event_bus.h:34-50`) has `kModInstalled` and `kDownloadFailed` but nothing
+that brackets a mod install, so a plugin that needs to undo partial work has
+no hook to hang on. Engine-only, no ABI change, but it is a plugin-facing
+surface and is left for an explicit decision.
+
+**Windows-tagged rows corrected.** This section previously tagged only 8 rows
+`[win]`. 35 of its 56 rows are Windows-only or USVFS-gated, so **27 rows were
+untagged** and the parity denominator was counting them as ordinary gaps. They
+are tagged now. The 4 `🚫` rows left untagged are the ones that are not
+Windows-specific: `helperFailed` (no helper binary to fail), the crash-on-exit
+`try`/`catch` (guards a `delete ui` that does not exist here), `ErrorCodes`
+(nothing to map), and the missing-files sanity check (partly portable, see the
+row).
+
 
 ## 4. Settings & Configuration
 
 | Feature | MO2 | GMM | Status |
 |---------|-----|-----|--------|
-| Executables blacklist | ✅ `Settings::executablesBlacklist` | ✅ `settings_content_widget.cpp:1292` `executables_blacklist()` UI | ✅ · |
+| Executables blacklist | ✅ `Settings::executablesBlacklist` `settings.cpp:288`, consumed by `Settings::isExecutableBlacklisted` `settings.cpp:305` and by `usvfsBlacklistExecutable` `usvfsconnector.cpp:158` | ⚠️ **not verified on 2026-09-30.** `settings_content_widget.cpp:1298` populates the field and `:1326` writes it back, but nothing in `src/` reads `executables_blacklist()` - the list exists in MO2 only to tell USVFS which executables not to virtualize, and there is no VFS. Same defect as `show_download_notifications` below: a control that round-trips and has no effect. See section 3 | ⚠️ · |
 | Skip file suffixes | ✅ `Settings::skipFileSuffixes` | ⚠️ `settings.h:184` + UI `settings_content_widget.cpp:1275`, no scanner consumer | ⚠️ · |
 | Skip directories | ✅ `Settings::skipDirectories` | ⚠️ `settings.h:186` + UI `settings_content_widget.cpp:1276`, no consumer | ⚠️ · |
 | Force load libraries | ✅ `ExecutableForcedLoadSetting` | ⚠️ preserved in profile copy only (`profile_creation.cpp:199`) | ⚠️ · |
@@ -1569,14 +1635,16 @@ Note: Track B item U200 is skipped - it is an alias of U116 (integrated once in 
 
 Recomputed 2026-09-29 by counting the rows actually present in this file, not by
 adjusting the previous totals. Each line is the number of data rows in that
-section carrying each status symbol. `[win]` is counted separately and excluded
-from the other four, so the five columns partition the file.
+section carrying each status symbol. `[win]` and `Not copied 🚫` are counted
+separately and excluded from the other four, so the six columns partition the
+file. Section 3 was recounted on 2026-09-30 and is the only section that
+carries `🚫`; its trailing cells elsewhere are left empty, which renders as 0.
 
-| Section | Matched ✅ | Partial ⚠️ | Surpasses 🚀 | Missing ❌ | [win] |
-|---------|-----------|-----------|--------------|-----------|-------|
-| 1. Virtual Filesystem | 5 | 2 | 0 | 5 | 5 |
-| 2. Launch Pipeline | 5 | 5 | 0 | 5 | 17 |
-| 3. Error Handling & Diagnostics | 4 | 2 | 42 | 0 | 8 |
+| Section | Matched ✅ | Partial ⚠️ | Surpasses 🚀 | Missing ❌ | [win] | Not copied 🚫 |
+|---------|-----------|-----------|--------------|-----------|-------|---------------|
+| 1. Virtual Filesystem | 5 | 2 | 0 | 5 | 5 | |
+| 2. Launch Pipeline | 5 | 5 | 0 | 5 | 17 | |
+| 3. Error Handling & Diagnostics | 8 | 9 | 0 | 4 | 35 | 35 |
 | 4. Settings & Configuration | 24 | 14 | 52 | 3 | 6 |
 | 5. Executable Management | 8 | 6 | 9 | 4 | 0 |
 | 6. Mod Management | 22 | 5 | 11 | 7 | 1 |
