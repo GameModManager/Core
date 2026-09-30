@@ -10,6 +10,11 @@
 // The second case is the cheap pin on the cause - the plugin must not declare
 // delayed_disable, because that declaration is what routes the toggle away from
 // the write.
+//
+// The rest pin WHERE the sentinel lands, which is the half a "does the file
+// exist" assertion cannot see: a mod that lives in the game's mods dir must be
+// written there even when the instance keeps a stub of the same folder and even
+// when the row's display name is not its folder name.
 
 #include "engine/core/instance/instance.h"
 #include "engine/game/registry/game_knowledge.h"
@@ -21,6 +26,7 @@
 #include "ui/widgets/mod_table_view.h"
 
 #include <QApplication>
+#include <QDir>
 #include <QElapsedTimer>
 #include <QEventLoop>
 #include <QThread>
@@ -108,15 +114,59 @@ void write_file(const fs::path &p, const std::string &content) {
   out << content;
 }
 
-// ModList column 0 is the fold indicator, not the name, so scan every cell of
-// every row rather than assuming a column.
-int find_mod_row(const QAbstractItemModel *m, const QString &id) {
-  for (int r = 0; r < m->rowCount(); ++r)
-    for (int c = 0; c < m->columnCount(); ++c)
-      if (m->index(r, c).data().toString() == id)
-        return r;
+// The view has no proxy (ModView::setModel installs the ModList directly), so
+// a model row is the ModEntry index. Looking the row up by entry id - the
+// folder name - is the only lookup that survives a display name which differs
+// from it, which is exactly the case these toggles have to get right.
+int find_mod_row_by_id(const ui::ModList *m, const QString &id) {
+  const auto &entries = m->mods();
+  for (int r = 0; r < static_cast<int>(entries.size()); ++r)
+    if (entries[static_cast<size_t>(r)].id == id)
+      return r;
   return -1;
 }
+
+// A throwaway Isaac world: the real plugin, a real instance, a real game dir.
+// Declared here but constructed per-case, after the QApplication exists.
+// setup_dirs() runs first so a case can lay the mod folders down before the
+// window scans; open_window() only shows it.
+struct IsaacWorld {
+  explicit IsaacWorld(const char *tmp_name) : case_root(tmp_name) {}
+  CaseRoot case_root;
+  engine::PluginLoader loader;
+  FakePlatform platform{case_root.root / "data"};
+  ui::MainWindow w;
+  fs::path inst_root;
+  fs::path mods_dir;
+  fs::path game_dir;
+
+  void setup_dirs() {
+    auto inst = engine::Instance::installed(kGameId, case_root.root / "instances");
+    inst.info().game_id = kGameId;
+    REQUIRE(inst.create_directories());
+    REQUIRE(inst.write_toml());
+    inst_root = inst.info().root;
+    mods_dir =
+        engine::Instance::from_root(inst_root).path_for(engine::InstanceKind::Mods);
+    game_dir = case_root.root / "game";
+    fs::create_directories(game_dir);
+  }
+  void open_window() {
+    REQUIRE(loader.load_plugin(GMM_ISAAC_PLUGIN_PATH));
+    auto &knowledge = loader.knowledge();
+    w.set_game_knowledge(&knowledge);
+    w.set_platform(&platform);
+    w.show();
+    w.set_game_info(kGameId, "The Binding of Isaac: Rebirth", "Default", game_dir,
+                    inst_root);
+    REQUIRE(pump_until([this] {
+      return !w.is_loading();
+    }));
+  }
+  [[nodiscard]] ui::ModList *model() const {
+    return qobject_cast<ui::ModList *>(w.mod_view()->model());
+  }
+};
 
 }  // namespace
 
@@ -136,10 +186,12 @@ TEST_CASE("Isaac: the game plugin asks for an immediate sentinel write",
 
 // End to end through the real window: tick the checkbox, assert the sentinel is
 // already in the mod folder, tick back, assert it is gone.
+//
+// The mod lives in the INSTANCE mods dir and has no counterpart in the game's
+// own mods dir, i.e. the instance IS the mod. The sentinel belongs there, and
+// nowhere else - the game-dir path must stay untouched.
 TEST_CASE("Isaac: ticking a mod off writes disable.it immediately",
           "[ui][isaac][disable_it]") {
-  CaseRoot case_root("gmm_disable_it_toggle");
-
   qputenv("QT_QPA_PLATFORM", "offscreen");
   int app_argc     = 1;
   char app_argv0[] = "disable_it_toggle_test";
@@ -148,50 +200,23 @@ TEST_CASE("Isaac: ticking a mod off writes disable.it immediately",
   QCoreApplication::setOrganizationName("GameModManager");
   QCoreApplication::setApplicationName("GameModManager");
 
-  // The real plugin, so the knowledge under test is the shipped declaration.
-  engine::PluginLoader loader;
-  REQUIRE(loader.load_plugin(GMM_ISAAC_PLUGIN_PATH));
-  auto &knowledge = loader.knowledge();
+  IsaacWorld world("gmm_disable_it_toggle");
+  world.setup_dirs();
 
-  auto inst            = engine::Instance::installed(kGameId, case_root.root / "instances");
-  inst.info().game_id  = kGameId;
-  REQUIRE(inst.create_directories());
-  REQUIRE(inst.write_toml());
-
-  const fs::path inst_root = inst.info().root;
-  const fs::path mods_dir =
-      engine::Instance::from_root(inst_root).path_for(engine::InstanceKind::Mods);
-  fs::create_directories(mods_dir / "SampleMod");
-  write_file(mods_dir / "SampleMod" / "meta.ini",
+  fs::create_directories(world.mods_dir / "SampleMod");
+  write_file(world.mods_dir / "SampleMod" / "meta.ini",
              "[General]\nname=Sample Mod\nversion=1.0\npriority=0\n");
 
-  // sync_mod_enable_state declines to touch disk without a game dir, so the
-  // case needs a real one - the toggle being proven is not the no-op branch.
-  const fs::path game_dir = case_root.root / "game";
-  fs::create_directories(game_dir);
+  world.open_window();
 
-  FakePlatform platform(case_root.root / "data");
-
-  ui::MainWindow w;
-  w.set_game_knowledge(&knowledge);
-  w.set_platform(&platform);
-  w.show();
-  w.set_game_info(kGameId, "The Binding of Isaac: Rebirth", "Default", game_dir,
-                  inst_root);
-  REQUIRE(pump_until([&w] {
-    return !w.is_loading();
-  }));
-
-  auto *view = w.mod_view();
-  REQUIRE(view != nullptr);
-  auto *model = view->model();
+  auto *model = world.model();
   REQUIRE(model != nullptr);
   REQUIRE(pump_until([&] {
-    return find_mod_row(model, QStringLiteral("SampleMod")) >= 0;
+    return find_mod_row_by_id(model, QStringLiteral("SampleMod")) >= 0;
   }));
 
-  const int row            = find_mod_row(model, QStringLiteral("SampleMod"));
-  const fs::path sentinel  = mods_dir / "SampleMod" / kSentinel;
+  const int row           = find_mod_row_by_id(model, QStringLiteral("SampleMod"));
+  const fs::path sentinel = world.mods_dir / "SampleMod" / kSentinel;
   REQUIRE_FALSE(fs::exists(sentinel));
 
   // Off: the sentinel must exist the instant the tick is applied - no launch,
@@ -199,9 +224,79 @@ TEST_CASE("Isaac: ticking a mod off writes disable.it immediately",
   model->setData(model->index(row, ui::ModList::Name), QVariant(Qt::Unchecked),
                  Qt::CheckStateRole);
   CHECK(fs::exists(sentinel));
+  CHECK_FALSE(fs::exists(world.game_dir / "mods" / "SampleMod" / kSentinel));
 
   // On: and it must be removed again, or the mod is stuck off.
   model->setData(model->index(row, ui::ModList::Name), QVariant(Qt::Checked),
                  Qt::CheckStateRole);
   CHECK_FALSE(fs::exists(sentinel));
+}
+
+// The reported bug: a mod whose display name is not its folder name (an Isaac
+// workshop mod, titled by metadata.xml) got its toggle resolved against the
+// display name, so no candidate folder existed and the sentinel went nowhere.
+// Asserting the exact path is the whole point - a bare "some disable.it exists"
+// would pass against the instance stub and hide the defect again.
+TEST_CASE("Isaac: an external mod's sentinel lands in the game mods dir",
+          "[ui][isaac][disable_it]") {
+  qputenv("QT_QPA_PLATFORM", "offscreen");
+  int app_argc     = 1;
+  char app_argv0[] = "disable_it_toggle_test";
+  char *app_argv[] = {app_argv0, nullptr};
+  QApplication app(app_argc, app_argv);
+  QCoreApplication::setOrganizationName("GameModManager");
+  QCoreApplication::setApplicationName("GameModManager");
+
+  IsaacWorld world("gmm_disable_it_external");
+  world.setup_dirs();
+
+  // Real content in the game's mods dir; the instance keeps a meta.ini-only
+  // stub of the same folder, exactly as the scan worker leaves a workshop mod.
+  const QString folder    = QStringLiteral("fiendfolio-reloaded_3778123093");
+  const QString title     = QStringLiteral("Damn, Fiend Folio: RELOADED");
+  const fs::path game_mod = world.game_dir / "mods" / folder.toStdString();
+  write_file(game_mod / "metadata.xml", "<metadata><name>" + title.toStdString() +
+                                            "</name><version>2.1</version>"
+                                            "</metadata>");
+  write_file(world.mods_dir / folder.toStdString() / "meta.ini",
+             "[General]\nname=" + title.toStdString() + "\nversion=2.1\n");
+
+  world.open_window();
+
+  auto *model = world.model();
+  REQUIRE(model != nullptr);
+  REQUIRE(pump_until([&] {
+    return find_mod_row_by_id(model, folder) >= 0;
+  }));
+
+  const int row = find_mod_row_by_id(model, folder);
+  // The row is found by folder name, so the display name is free to differ -
+  // that difference is what the toggle has to survive.
+  CHECK(model->mods()[static_cast<size_t>(row)].name == title);
+  // The external source is recorded on the row, so resolution never has to
+  // guess between the instance stub and the game dir.
+  CHECK(QDir::toNativeSeparators(model->mods()[static_cast<size_t>(row)].content_dir) ==
+        QDir::toNativeSeparators(QString::fromStdString(game_mod.string())));
+
+  const fs::path game_sentinel     = game_mod / kSentinel;
+  const fs::path instance_sentinel = world.mods_dir / folder.toStdString() / kSentinel;
+  REQUIRE_FALSE(fs::exists(game_sentinel));
+
+  model->setData(model->index(row, ui::ModList::Name), QVariant(Qt::Unchecked),
+                 Qt::CheckStateRole);
+  CHECK(fs::exists(game_sentinel));
+  CHECK_FALSE(fs::exists(instance_sentinel));
+
+  // Source gone: the row's recorded content_dir now points at a folder that is
+  // not there, so resolution must fall through to the instance folder rather
+  // than write into the missing one.
+  std::error_code ec;
+  fs::remove_all(game_mod, ec);
+  model->setData(model->index(row, ui::ModList::Name), QVariant(Qt::Checked),
+                 Qt::CheckStateRole);
+  CHECK_FALSE(fs::exists(game_sentinel));
+  model->setData(model->index(row, ui::ModList::Name), QVariant(Qt::Unchecked),
+                 Qt::CheckStateRole);
+  CHECK(fs::exists(instance_sentinel));
+  CHECK_FALSE(fs::exists(game_sentinel));
 }
