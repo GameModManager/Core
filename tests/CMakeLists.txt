@@ -323,6 +323,18 @@ gmm_catch2_test(settings_content_widget_test ui/settings_content_widget_test.cpp
     UI
     LIBS gmm_ui Qt6::Test)
 
+# Isaac's disable.it sentinel. Drives the real MainWindow with the REAL game
+# plugin's knowledge - a hand-written GameKnowledge would pass even if the
+# plugin still asked for a deferred write - and asserts the sentinel is in the
+# mod folder the moment the checkbox is ticked. The plugin is loaded from the
+# build tree for the same reason game_feature_registry_test loads Skyrim, so a
+# declaration change fails here rather than at the user's desk.
+gmm_catch2_test(disable_it_toggle_test ui/disable_it_toggle_test.cpp
+    UI
+    LIBS gmm_ui Qt6::Test ${CMAKE_DL_LIBS}
+    DEFINES GMM_ISAAC_PLUGIN_PATH="$<TARGET_FILE:TheBindingOfIsaacRebirth>")
+add_dependencies(disable_it_toggle_test TheBindingOfIsaacRebirth)
+
 # Checkerboard transparency grid (PreviewWindow / ImageViewer): reference
 # tile colors, 2x2 menu icons, transparency gating, Settings persistence.
 # Offscreen; throwaway XDG_CONFIG_HOME so the Settings section is hermetic.
