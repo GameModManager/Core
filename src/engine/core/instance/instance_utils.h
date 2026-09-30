@@ -1,5 +1,6 @@
 #pragma once
 
+#include "engine/deploy/launch/elevation.h"
 #include "engine/deploy/deploy_utils.h"
 #include "engine/game/detect/game_detector.h"
 #include "engine/core/instance/instance.h"
@@ -111,6 +112,9 @@ struct LaunchPrepRequest {
   // Per-executable working directory (empty = game_dir), forwarded verbatim
   // to LaunchParams.
   std::filesystem::path cwd;
+  // Per-executable extra privilege, forwarded verbatim to LaunchParams.
+  // Fakeroot is the usual choice on Linux and macOS; Root is discouraged.
+  Elevation elevation = Elevation::None;
 };
 
 // Shell-like argument splitter (Qt-free mirror of the GUI split_arguments in

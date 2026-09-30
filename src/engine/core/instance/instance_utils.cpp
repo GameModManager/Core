@@ -457,6 +457,7 @@ LaunchParams prepare_launch_params(const LaunchPrepRequest &req,
   params.environment    = req.environment;
   params.args           = req.args;
   params.cwd            = req.cwd;
+  params.elevation      = req.elevation;
 
   // Per-instance Proton runner override (empty = automatic). Read from
   // instance.toml so every launch path (GUI + CLI) honors the selection.

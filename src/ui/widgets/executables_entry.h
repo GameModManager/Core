@@ -29,6 +29,10 @@ namespace Executables {
     QString output_mod;       // mod ID for output routing (empty = none)
     QString icon_path;        // custom icon path (empty = auto-detect from binary)
     QStringList environment;  // "KEY=VALUE" per entry, set for the launched process
+    // Extra privilege for the launch: "" (none), "fakeroot" or "root". Root
+    // raises the desktop environment's own prompt; fakeroot needs no prompt and
+    // is usually the right answer on Linux and macOS.
+    QString elevation;
 
     QJsonObject toJson() const;
     static Entry fromJson(const QJsonObject &obj);
@@ -151,6 +155,7 @@ namespace Executables {
     QLineEdit *args_edit_          = nullptr;
     QLineEdit *start_in_edit_      = nullptr;
     QComboBox *output_mod_combo_   = nullptr;
+    QComboBox *elevation_combo_   = nullptr;
     QPlainTextEdit *env_edit_      = nullptr;
     QCheckBox *use_app_icon_check_ = nullptr;
     QPushButton *change_icon_btn_  = nullptr;
