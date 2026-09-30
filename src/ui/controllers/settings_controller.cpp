@@ -324,15 +324,15 @@ void SettingsController::set_game_info(const std::string &game_id,
     // When an install targets an existing mod folder, ask the user how to
     // proceed (Merge/Replace/Rename/Cancel) instead of silently replacing.
     // The pipeline runs on a worker thread; ask_overwrite marshals the
-    // modal dialog onto the main thread. Backup defaults to checked,
-    // matching MO2's QueryOverwriteDialog::BACKUP_YES default.
+    // modal dialog onto the main thread. It also owns the "Keep Backup"
+    // preference - the dialog opens on the remembered choice and stores the
+    // answer - so nothing about backups is configured here.
     ctx.overwrite_query_cb = [this](const std::string &mod_name) {
       // The user dialog supersedes the progress popup (MO2 does the
       // same: the progress dialog is only visible while it can show
       // progress, not while a decision is pending).
       w_->downloads_->hide_install_progress();
-      return ui::ask_overwrite(QString::fromStdString(mod_name),
-                               /*default_backup=*/false, w_);
+      return ui::ask_overwrite(QString::fromStdString(mod_name), w_);
     };
 
     // A FOMOD archive opens the install wizard. It drives the
