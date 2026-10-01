@@ -67,7 +67,7 @@ void make_instance(const fs::path &root) {
 
 fs::path case_root(const char *name) {
   const fs::path root =
-      fs::current_path() / (std::string(name) + "_" + std::to_string(getpid()));
+      fs::temp_directory_path() / (std::string(name) + "_" + std::to_string(getpid()));
   fs::remove_all(root);
   fs::create_directories(root);
   return root;
