@@ -116,6 +116,10 @@ gmm_catch2_test(headless_launch_cli_test cli/headless_launch_test.cpp
     UI
     LIBS gmm_cli Qt6::Core)
 gmm_catch2_test(game_icons_test engine/game_icons_test.cpp)
+# Reading .git/config the way git writes it - tabbed, quoted subsection name -
+# from a mod folder under a game path containing spaces. A pure file read, so
+# this runs whether or not git is installed.
+gmm_catch2_test(git_info_test engine/git_info_test.cpp)
 gmm_catch2_test(nxm_router_test engine/nxm_router_test.cpp)
 gmm_catch2_test(pack_source_detector_test engine/pack_source_detector_test.cpp)
 gmm_catch2_test(scanner_test engine/scanner_test.cpp)

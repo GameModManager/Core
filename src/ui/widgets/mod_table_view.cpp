@@ -34,8 +34,9 @@ FlagsDelegate::FlagsDelegate(int flag_icons_role, int flag_tooltips_role,
 
 void FlagsDelegate::paint(QPainter *painter, const QStyleOptionViewItem &option,
                           const QModelIndex &index) const {
-  // Background / selection / focus via the default path; the model no longer
-  // returns a DecorationRole for the Flags cell, so nothing extra is drawn.
+  // Background / selection / focus via the default path. The model answers no
+  // DecorationRole for a cell this delegate owns (Flags, Conflicts, Source),
+  // so nothing extra is drawn here and the badges below are the only paint.
   QStyledItemDelegate::paint(painter, option, index);
 
   const QList<QIcon> icons = flags_for_index(index, flag_icons_role_);
