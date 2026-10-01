@@ -47,6 +47,7 @@
 #include "ui/settings/settings.h"
 #include "ui/widgets/category_filter_panel.h"
 #include "ui/widgets/console_panel.h"
+#include "ui/widgets/debug_window.h"
 #include "ui/widgets/exec_controls_bar.h"
 #include "ui/widgets/game_path_banner.h"
 #include "ui/widgets/main_toolbar.h"
@@ -1241,6 +1242,107 @@ TEST_CASE("MainWindow: check_update_after_mod_install gates the mod update poll"
   ctl->check_mod_updates_after_install();
   pump_ms(150);
   CHECK(rec->polls.load() == before);
+
+  fs::remove_all(root);
+}
+
+// ---------------------------------------------------------------------------
+// Debug panel + instance switch.
+//
+// The panel caches a non-owning ProfileManager* that it reads from
+// populate_info() (Info tab) and populate_memory(). Switching instance
+// replaces the active ProfileManager and frees the old one. When the panel is
+// not re-bound it keeps pointing at the freed object, and the next populate
+// locks a destroyed std::mutex: pthread_mutex_lock fails EINVAL, and the
+// resulting std::system_error aborts the app.
+//
+// Instance B deliberately carries NO debugging.enabled, so the switch takes
+// the hide-the-panel branch rather than the re-bind branch - the branch the
+// crash dump was taken on.
+// ---------------------------------------------------------------------------
+TEST_CASE("Debug panel: instance switch leaves the panel on the new ProfileManager",
+          "[ui][harness][crash]") {
+  const fs::path root = make_case_root("gmm_dbgprofile");
+
+  const fs::path game_dir = root / "game";
+  fs::create_directories(game_dir / "Data");
+  write_file(game_dir / "Data" / "Skyrim.esm", "fake esm");
+
+  // Instance A owns profile "Default"; the flag makes set_game_info create
+  // and show the debug panel for it.
+  auto inst_a           = engine::Instance::installed("GameA", root / "instances");
+  inst_a.info().game_id = "testgame";
+  REQUIRE(inst_a.create_directories());
+  REQUIRE(inst_a.write_toml());
+  REQUIRE(fs::create_directories(inst_a.info().root / "profiles" / "Default"));
+  write_file(inst_a.info().root / "debugging.enabled", "enabled\n");
+
+  // Instance B owns a differently named profile and no debugging.enabled.
+  auto inst_b           = engine::Instance::installed("GameB", root / "instances");
+  inst_b.info().game_id = "testgame";
+  REQUIRE(inst_b.create_directories());
+  REQUIRE(inst_b.write_toml());
+  REQUIRE(fs::create_directories(inst_b.info().root / "profiles" / "Second"));
+
+  qputenv("QT_QPA_PLATFORM", "offscreen");
+  int app_argc     = 1;
+  char app_argv0[] = "main_window_harness_test";
+  char *app_argv[] = {app_argv0, nullptr};
+  QApplication app(app_argc, app_argv);
+  QCoreApplication::setOrganizationName("GameModManager");
+  QCoreApplication::setApplicationName("GameModManager");
+
+  // The Info tab's "Active profile" value: which ProfileManager the panel
+  // currently reads. Scans every panel table so no private accessor is
+  // needed.
+  auto shown_profile = [](ui::DebugWindow *dw) {
+    for (auto *table : dw->findChildren<QTableWidget *>()) {
+      const int row = find_row(table, QStringLiteral("Active profile"));
+      if (row >= 0 && table->item(row, 1))
+        return table->item(row, 1)->text();
+    }
+    return QString();
+  };
+
+  engine::GameKnowledge knowledge;
+  knowledge.set("testgame", "mods_subpath", "Mods");
+
+  FakePlatform platform(root / "data");
+  ui::MainWindow w;
+  w.set_game_knowledge(&knowledge);
+  w.set_platform(&platform);
+  w.show();
+  w.set_game_info("testgame", "Test Game", "Default", game_dir, inst_a.info().root);
+  REQUIRE(pump_until([&w] {
+    return !w.is_loading();
+  }));
+
+  auto *dw = w.findChild<ui::DebugWindow *>();
+  REQUIRE(dw != nullptr);
+  // Precondition: the panel is bound to instance A's profile, so the
+  // post-switch assertion cannot pass vacuously.
+  REQUIRE(shown_profile(dw) == QStringLiteral("Default"));
+
+  // The switch: load_mods_from_game() replaces - and frees - the active
+  // ProfileManager.
+  w.set_game_info("testgame", "Test Game", "Second", game_dir, inst_b.info().root);
+  REQUIRE(pump_until([&w] {
+    return !w.is_loading();
+  }));
+
+  // The panel must already track instance B's profile. Checked before the
+  // reopen because this reads a plain Qt cell - no freed memory - so the
+  // failure is a plain value mismatch rather than a lock on a destroyed
+  // mutex (which spins forever).
+  REQUIRE(shown_profile(dw) == QStringLiteral("Second"));
+
+  // Re-opening is what ran the freed ProfileManager: showEvent re-runs
+  // populate_info(), which locks that object's mods_mutex_.
+  dw->hide();
+  dw->show();
+  pump_ms(50);
+
+  REQUIRE(shown_profile(dw) == QStringLiteral("Second"));
 
   fs::remove_all(root);
 }

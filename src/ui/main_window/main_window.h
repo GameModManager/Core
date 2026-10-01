@@ -168,6 +168,14 @@ public:
   void set_style_manager(engine::StyleManager *sm) { style_manager_ = sm; }
   void set_platform(engine::Platform *platform) { platform_ = platform; }
 
+  // The only sanctioned way to replace the active ProfileManager.
+  // DebugWindow caches a non-owning ProfileManager* and reads it from its
+  // populators, so replacing active_profile_ behind its back frees the
+  // object it still points at; the next populate then locks a destroyed
+  // std::mutex and aborts. Re-binding here keeps the two in step no matter
+  // which caller replaces the profile (instance switch or profile switch).
+  void set_active_profile(std::unique_ptr<engine::profile::ProfileManager> profile);
+
   // The QApplication's initial (native platform) style name, captured before
   // any user-selected style is applied. Used to restore "Default (system)"
   // after a built-in Qt style was picked in Settings.
