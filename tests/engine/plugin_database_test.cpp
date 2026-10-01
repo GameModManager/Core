@@ -1122,11 +1122,89 @@ void run_hover_parity_fixture() {
   std::fprintf(stderr, "plugin_database_test: hover-parity fixture OK\n");
 }
 
+// Settings > Workarounds > "Force-enable game core files". The key gates
+// whether the base game's own plugins and Creation Club content are LOCKED
+// (cannot be disabled or moved, always enabled, pinned above the user band).
+// It does not change the load order: natives and CC come first either way.
+void run_force_core_files_fixture() {
+  std::error_code ec;
+  const fs::path base = fs::temp_directory_path() / "gmm_force_core_files";
+  fs::remove_all(base, ec);
+  const fs::path game = base / "game";
+  const fs::path mods = base / "mods";
+  fs::create_directories(game / "Data", ec);
+  fs::create_directories(mods / "SkyUI", ec);
+
+  write_esp(game / "Data" / "Skyrim.esm", true, {});
+  write_esp(game / "Data" / "Update.esm", true, {"Skyrim.esm"});
+  write_esp(game / "Data" / "Dawnguard.esm", true, {"Update.esm"});
+  write_esp(game / "Data" / "ccSomeDlc.esl", false, {"Update.esm"});
+  write_esp(mods / "SkyUI" / "SkyUI.esp", false, {"Skyrim.esm"});
+
+  const std::string natives = "Skyrim.esm,Update.esm,Dawnguard.esm";
+
+  // Locked (the default, and what the app has always done).
+  {
+    engine::PluginDatabase db;
+    require(db.refresh(game, mods, "", natives), "refresh with core files locked");
+    require(db.find("Skyrim.esm")->force_loaded, "a native plugin is force-loaded");
+    require(db.find("ccSomeDlc.esl")->force_loaded, "CC content is force-loaded");
+    require(db.find("SkyUI.esp") != nullptr && !db.find("SkyUI.esp")->force_loaded,
+            "a mod plugin is not force-loaded");
+    db.set_all_enabled();
+    // Sorted so row 0 is a native: the discovery order is alphabetical by
+    // filename and would make the row index a moving target.
+    db.sort_load_order();
+    require(order_of(db, "Skyrim.esm") == 0, "Skyrim.esm loads first");
+    std::string error;
+    require(!db.set_enabled("Skyrim.esm", false, &error),
+            "a core plugin refuses to be disabled");
+    require(!error.empty(), "and says why");
+    require(!db.move_plugin(0, 3, &error), "a core plugin refuses to be moved");
+  }
+
+  // Released: the lock is gone, so a total conversion can manage the files.
+  {
+    engine::PluginDatabase db;
+    require(db.refresh(game, mods, "", natives, /*force_core_files=*/false),
+            "refresh with core files released");
+    require(!db.find("Skyrim.esm")->force_loaded,
+            "a native plugin is no longer locked");
+    require(!db.find("ccSomeDlc.esl")->force_loaded, "CC content is no longer locked");
+    require(db.find("Skyrim.esm")->is_game_native,
+            "the row is still recognised as the base game's own");
+    require(db.find("ccSomeDlc.esl")->is_cc, "the row is still recognised as CC");
+    db.set_all_enabled();
+    db.sort_load_order();
+    // A native with no dependent left, so the master check cannot be what
+    // blocks it - only the lock is under test here.
+    std::string error;
+    require(db.set_enabled("Dawnguard.esm", false, &error),
+            "a released core plugin with no dependents can be disabled");
+    require(!db.find("Dawnguard.esm")->enabled, "and it is off");
+    require(db.move_plugin(order_of(db, "Skyrim.esm"), 2, &error),
+            "and it can be reordered");
+  }
+
+  // Load order is unchanged by the lock either way: natives first, then CC.
+  {
+    engine::PluginDatabase db;
+    require(db.refresh(game, mods, "", natives, /*force_core_files=*/false),
+            "refresh with core files released, for ordering");
+    db.sort_load_order();
+    require(order_of(db, "Skyrim.esm") == 0, "Skyrim.esm still loads first");
+    require(order_of(db, "Dawnguard.esm") == 2, "Dawnguard.esm still third");
+  }
+
+  fs::remove_all(base, ec);
+}
+
 }  // namespace
 
 TEST_CASE("plugin database", "[engine]") {
   run_synthetic_fixture();
   run_disabled_mod_fixture();
   run_hover_parity_fixture();
+  run_force_core_files_fixture();
   run_real_skyrim();
 }

@@ -134,6 +134,11 @@ gmm_catch2_test(fs_utils_test engine/fs_utils_test.cpp)
 gmm_catch2_test(local_saves_test engine/local_saves_test.cpp)
 gmm_catch2_test(mygames_test engine/mygames_test.cpp)
 gmm_catch2_test(deploy_hidden_test engine/deploy_hidden_test.cpp)
+gmm_catch2_test(workarounds_test engine/workarounds_test.cpp)
+# Settings > Workarounds: the QSettings read reaching the engine predicates.
+gmm_catch2_test(workarounds_bridge_test ui/workarounds_bridge_test.cpp
+    UI
+    LIBS gmm_ui)
 gmm_catch2_test(deploy_case_insensitive_test engine/deploy_case_insensitive_test.cpp)
 gmm_catch2_test(root_override_test engine/root_override_test.cpp)
 gmm_catch2_test(deploy_binary_test engine/deploy_binary_test.cpp)
@@ -433,6 +438,22 @@ gmm_catch2_test(save_info_dialog_test ui/save_info_dialog_test.cpp
     LIBS gmm_ui Qt6::Test)
 
 gmm_catch2_test(mod_list_model_test ui/mod_list_model_test.cpp
+    UI
+    LIBS gmm_ui)
+
+# Settings > Workarounds > Network: the custom browser actually receives the URL
+# (a real recorder program is started, not just a getter round-trip).
+gmm_catch2_test(web_link_test ui/web_link_test.cpp
+    UI
+    LIBS gmm_ui)
+
+# Settings > Windows > "Center dialogs on screen": where a restored dialog lands.
+gmm_catch2_test(dialog_placement_test ui/dialog_placement_test.cpp
+    UI
+    LIBS gmm_ui)
+
+# Settings > General > "Confirm before switching game instance".
+gmm_catch2_test(instance_switch_plan_test ui/instance_switch_plan_test.cpp
     UI
     LIBS gmm_ui)
 

@@ -1,6 +1,7 @@
 #include "ui/widgets/category_filter_panel.h"
 
 #include "engine/pipeline/plugin_host/category_factory.h"
+#include "ui/settings/settings.h"
 
 #include <QHBoxLayout>
 #include <QPushButton>
@@ -44,14 +45,20 @@ CategoryFilterPanel::CategoryFilterPanel(QWidget *parent) : QWidget(parent) {
           &CategoryFilterPanel::edit_categories_clicked);
 
   rebuild();
+  restore_state();
 }
 
 void CategoryFilterPanel::rebuild() {
-  rebuilding_ = true;
+  // The checked set survives a rebuild: the tree is repopulated from scratch,
+  // so the ticks are re-applied by id afterwards. Without this, reopening the
+  // category editor (which rebuilds) silently dropped a remembered filter.
+  const auto keep = checked_category_ids();
+  rebuilding_     = true;
   tree_->clear();
   add_children(tree_->invisibleRootItem(), 0);
   tree_->expandAll();
   rebuilding_ = false;
+  set_checked_category_ids(keep);
 }
 
 void CategoryFilterPanel::add_children(QTreeWidgetItem *root, int parent_id) {
@@ -85,6 +92,22 @@ QSet<int> CategoryFilterPanel::checked_category_ids() const {
   return out;
 }
 
+void CategoryFilterPanel::set_checked_category_ids(const QSet<int> &ids) {
+  rebuilding_ = true;
+  apply_checked(tree_->invisibleRootItem(), ids);
+  rebuilding_ = false;
+}
+
+void CategoryFilterPanel::apply_checked(QTreeWidgetItem *node, const QSet<int> &ids) {
+  for (int i = 0; i < node->childCount(); ++i) {
+    QTreeWidgetItem *child = node->child(i);
+    child->setCheckState(0, ids.contains(child->data(0, Qt::UserRole).toInt())
+                                ? Qt::Checked
+                                : Qt::Unchecked);
+    apply_checked(child, ids);
+  }
+}
+
 void CategoryFilterPanel::collect_checked(QTreeWidgetItem *node, QSet<int> &out) const {
   for (int i = 0; i < node->childCount(); ++i) {
     QTreeWidgetItem *child = node->child(i);
@@ -98,7 +121,37 @@ void CategoryFilterPanel::clear_filter() {
   rebuilding_ = true;
   set_all_unchecked(tree_->invisibleRootItem());
   rebuilding_ = false;
+  save_state();
   emit category_filter_changed();
+}
+
+// Settings > Mod List > "Remember filter settings". Written on every change
+// while the setting is on, so the ticked set reaches the disk before the app
+// can be closed - which is also what makes it survive a crash.
+void CategoryFilterPanel::save_state() {
+  if (!Settings::instance().save_filters())
+    return;
+  QStringList ids;
+  for (int id : checked_category_ids())
+    ids.append(QString::number(id));
+  ids.sort();
+  Settings::instance().set_modlist_filter_categories(ids);
+}
+
+void CategoryFilterPanel::restore_state() {
+  if (!Settings::instance().save_filters())
+    return;
+  QSet<int> ids;
+  for (const auto &raw : Settings::instance().modlist_filter_categories()) {
+    bool ok      = false;
+    const int id = raw.trimmed().toInt(&ok);
+    if (ok)
+      ids.insert(id);
+  }
+  // An id with no item here (the category was deleted, or its plugin has not
+  // registered it yet) is simply not ticked - a stale remembered filter can
+  // never narrow the mod list to nothing.
+  set_checked_category_ids(ids);
 }
 
 void CategoryFilterPanel::set_all_unchecked(QTreeWidgetItem *node) {
@@ -114,6 +167,7 @@ void CategoryFilterPanel::on_item_changed(QTreeWidgetItem *item, int column) {
   Q_UNUSED(column)
   if (rebuilding_)
     return;
+  save_state();
   emit category_filter_changed();
 }
 
@@ -122,8 +176,10 @@ void CategoryFilterPanel::showEvent(QShowEvent *event) {
   // Plugins register categories at load time (before the UI is built), but
   // rebuild on the first show anyway so late registrations appear. The
   // checked state survives hide/show cycles (rebuild only when empty).
-  if (tree_->topLevelItemCount() == 0)
+  if (tree_->topLevelItemCount() == 0) {
     rebuild();
+    restore_state();
+  }
 }
 
 }  // namespace ui

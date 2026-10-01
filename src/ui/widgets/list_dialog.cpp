@@ -7,6 +7,7 @@
 #include <QVBoxLayout>
 
 #include "ui/settings/settings.h"
+#include "ui/widgets/dialog_placement.h"
 
 namespace ui {
 
@@ -43,6 +44,7 @@ int ListDialog::exec() {
   const auto geo = Settings::instance().listdialog_window_geometry();
   if (!geo.isEmpty())
     restoreGeometry(geo);
+  center_dialog_on_screen(this);
   const int rc = QDialog::exec();
   Settings::instance().set_listdialog_window_geometry(saveGeometry());
   return rc;

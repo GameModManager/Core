@@ -9,6 +9,7 @@
 #include "engine/source/source_provider.h"
 #include "engine/source/steam_workshop_provider.h"
 #include "ui/settings/settings.h"
+#include "ui/widgets/web_link.h"
 
 #ifdef GMM_PLATFORM_LINUX
 #include "platform/linux/linux_platform.h"
@@ -19,7 +20,6 @@
 #include <QCheckBox>
 #include <QClipboard>
 #include <QCoreApplication>
-#include <QDesktopServices>
 #include <QDialogButtonBox>
 #include <QFontDatabase>
 #include <QFormLayout>
@@ -32,7 +32,6 @@
 #include <QPlainTextEdit>
 #include <QPushButton>
 #include <QSpinBox>
-#include <QUrl>
 #include <QVBoxLayout>
 
 #include <cctype>
@@ -144,7 +143,7 @@ void NexusManualKeyDialog::accept() {
 }
 
 void NexusManualKeyDialog::open_browser() {
-  QDesktopServices::openUrl(QUrl("https://www.nexusmods.com/users/myaccount?tab=api"));
+  WebLink::open(QStringLiteral("https://www.nexusmods.com/users/myaccount?tab=api"));
 }
 
 void NexusManualKeyDialog::paste() {

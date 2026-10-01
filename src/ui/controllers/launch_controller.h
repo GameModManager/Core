@@ -69,11 +69,13 @@ std::vector<std::string> extract_executables(const std::string &content);
 // icons and shortcuts reach the bundle with no new plumbing. Basename-dedupe
 // keeps the game_dir hit when both copies exist. Free function so it tests
 // without a full MainWindow; roots are parameters so the merge is testable on
-// any platform.
+// any platform. `blacklist` is the Workarounds "Executable blacklist" (a
+// ';'-separated list); its names never become launch targets, at any root.
 std::vector<std::string>
 seed_executable_candidates(const std::filesystem::path &game_dir,
                            const std::string &declared,
-                           const std::vector<std::filesystem::path> &extra_roots);
+                           const std::vector<std::filesystem::path> &extra_roots,
+                           const std::string &blacklist = {});
 
 // Game launching: executable list persistence, deploy-before-launch
 // (DeployThread), process watch + game-lock overlay, "output to mod" capture,

@@ -104,10 +104,11 @@ namespace {
 bool Database::refresh(const std::filesystem::path &game_dir,
                        const std::filesystem::path &mods_dir,
                        const std::string &disable_mechanism,
-                       const std::string &game_native_plugins) {
+                       const std::string &game_native_plugins, bool force_core_files) {
   plugins_.clear();
   by_name_.clear();
   native_order_.clear();
+  force_core_files_ = force_core_files;
 
   std::set<std::string> native_ci_set;
   for (const auto &tok : split_csv(game_native_plugins)) {
@@ -206,7 +207,7 @@ bool Database::refresh(const std::filesystem::path &game_dir,
   // silently becomes a draggable user plugin.
   for (auto &p : plugins_) {
     p.is_game_native = native_ci_set.count(to_lower(p.name)) != 0;
-    if (p.is_game_native)
+    if (p.is_game_native && force_core_files_)
       p.force_loaded = true;
   }
 
@@ -215,8 +216,9 @@ bool Database::refresh(const std::filesystem::path &game_dir,
   // user plugins. A user plugin named cc*.esp is treated as CC by design.
   for (auto &p : plugins_) {
     if (to_lower(p.name).rfind("cc", 0) == 0) {
-      p.is_cc        = true;
-      p.force_loaded = true;
+      p.is_cc = true;
+      if (force_core_files_)
+        p.force_loaded = true;
     }
   }
 
@@ -318,8 +320,9 @@ void Database::load_creation_club(const std::filesystem::path &game_dir,
                                       return to_lower(c) == lower;
                                           });
     if (in_ccc) {
-      p.is_cc        = true;
-      p.force_loaded = true;
+      p.is_cc = true;
+      if (force_core_files_)
+        p.force_loaded = true;
     }
   }
 }

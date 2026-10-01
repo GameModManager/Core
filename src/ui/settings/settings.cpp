@@ -1,5 +1,6 @@
 #include "ui/settings/settings.h"
 
+#include "engine/core/util/fs_utils.h"
 #include "ui/widgets/mod_list_model.h"
 
 #include <algorithm>
@@ -100,8 +101,11 @@ void Settings::set_collapsible_separators_highlight_from(bool on) {
   settings_.setValue("interface/collapsible_separators_highlight_from", on);
 }
 
+// On by default: the band-derived separator highlight is what the mod list has
+// always drawn, so "off" would take it away from anyone who never opened
+// Settings. Storing false is what turns it off.
 bool Settings::collapsible_separators_highlight_to() const {
-  return settings_.value("interface/collapsible_separators_highlight_to", false)
+  return settings_.value("interface/collapsible_separators_highlight_to", true)
       .toBool();
 }
 
@@ -233,6 +237,14 @@ bool Settings::modlist_nested(const QString &instance_name) const {
 
 void Settings::set_modlist_nested(const QString &instance_name, bool on) {
   settings_.setValue("modlist/nested/" + instance_name, on);
+}
+
+QStringList Settings::modlist_filter_categories() const {
+  return settings_.value("interface/filter_categories").toStringList();
+}
+
+void Settings::set_modlist_filter_categories(const QStringList &ids) {
+  settings_.setValue("interface/filter_categories", ids);
 }
 
 // general -----------------------------------------------------------------
@@ -522,8 +534,13 @@ void Settings::set_skip_directories(const QStringList &values) {
   settings_.setValue("workarounds/skip_directories", values);
 }
 
+// On by default: the plugin database has always locked the base game's own
+// plugins and Creation Club content (they cannot be disabled or moved, always
+// load and stay pinned above the user band), so "off" must be the opt-in.
+// Releasing the lock is only safe for a total conversion that replaces those
+// files - a game that needs Skyrim.esm and does not get it crashes.
 bool Settings::force_enable_core_files() const {
-  return settings_.value("game/force_enable_core_files", false).toBool();
+  return settings_.value("game/force_enable_core_files", true).toBool();
 }
 
 void Settings::set_force_enable_core_files(bool on) {
@@ -536,6 +553,23 @@ bool Settings::experimental_archive_parsing() const {
 
 void Settings::set_experimental_archive_parsing(bool on) {
   settings_.setValue("archive/experimental_parsing", on);
+}
+
+void Settings::apply_workarounds() {
+  engine::Workarounds w;
+  // Trimmed on the way in: the field is free text, so ".esp , .esm" yields a
+  // leading-space entry that would never match a filename.
+  for (const auto &raw : skip_file_suffixes()) {
+    const auto trimmed = raw.trimmed();
+    if (!trimmed.isEmpty())
+      w.hidden_suffixes.push_back(trimmed.toStdString());
+  }
+  for (const auto &raw : skip_directories()) {
+    const auto trimmed = raw.trimmed();
+    if (!trimmed.isEmpty())
+      w.skipped_dirs.push_back(trimmed.toStdString());
+  }
+  engine::set_workarounds(std::move(w));
 }
 
 int Settings::overlay_capture_delay_ms() const {

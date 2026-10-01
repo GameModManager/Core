@@ -261,6 +261,36 @@ TEST_CASE("status bar labels only sources that meter a budget", "[ui]") {
   CHECK(bar.source_text("Steam") == "Steam: 0/60");
 }
 
+// Settings > Sources > "Hide API Request Counter" (default off). The source
+// readouts ARE the per-source request counters, so the setting drops the whole
+// group - and the divider with it, or the bar would end in a bare "|".
+TEST_CASE("hide API request counter drops the source readouts", "[ui][settings]") {
+  CaseSetup setup;
+
+  auto &registry = engine::Source::Registry::instance();
+  registry.register_provider(std::make_unique<MeteredFake>("CounterFake", "7/9"));
+  registry.register_provider(std::make_unique<engine::Source::Steam::Provider>(
+      (setup.scratch.root / "workshop_cache.db").string(), 60));
+
+  auto &s = Settings::instance();
+  CHECK_FALSE(s.hide_api_counter());  // the stored default
+
+  ui::StatusBar bar;
+  bar.set_sources({"CounterFake", "Steam"});
+  REQUIRE(bar.source_names().contains("CounterFake"));
+  CHECK(bar.source_text("CounterFake") == "CounterFake: 7/9");
+
+  s.set_hide_api_counter(true);
+  bar.set_sources({"CounterFake", "Steam"});
+  CHECK(bar.source_names().isEmpty());
+  CHECK(bar.source_text("CounterFake").isEmpty());
+  CHECK(bar.source_text("Steam").isEmpty());
+
+  s.set_hide_api_counter(false);
+  bar.set_sources({"CounterFake", "Steam"});
+  CHECK(bar.source_names().contains("CounterFake"));
+}
+
 // The game's real download_sources list: Skyrim's includes LoversLab, which
 // has no meter, so it must not appear while Nexus Mods does.
 TEST_CASE("a game listing an unmetered source shows no label for it", "[ui]") {

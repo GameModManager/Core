@@ -11,9 +11,11 @@
 #include <vector>
 
 #include <algorithm>
+#include <atomic>
 #include <cctype>
 #include <cerrno>
 #include <cstring>
+#include <memory>
 
 #if defined(_WIN32)
 #define WIN32_LEAN_AND_MEAN
@@ -453,6 +455,45 @@ size_t relay_output_to_mod(const std::filesystem::path &scratch_dir,
   return relayed;
 }
 
+// One shared snapshot of the Workarounds lists. An atomic shared_ptr (not a
+// plain global) because a conflict scan reads it from worker threads while the
+// settings tab may be writing it; readers get a consistent snapshot for the
+// duration of one call and never see a half-updated list.
+static std::atomic<std::shared_ptr<const Workarounds>> &workarounds_slot() {
+  static std::atomic<std::shared_ptr<const Workarounds>> slot;
+  return slot;
+}
+
+void set_workarounds(Workarounds workarounds) {
+  workarounds_slot().store(std::make_shared<const Workarounds>(std::move(workarounds)),
+                           std::memory_order_release);
+}
+
+static const Workarounds &workarounds() {
+  static const auto empty = std::make_shared<const Workarounds>();
+  const auto held         = workarounds_slot().load(std::memory_order_acquire);
+  return held ? *held : *empty;
+}
+
+bool is_blacklisted_executable(const std::string &name, const std::string &blacklist) {
+  if (name.empty() || blacklist.empty())
+    return false;
+  // Compare basenames so an entry written as "Steam.exe" also drops the
+  // absolute path a scan may have produced.
+  const auto base = toLower(std::filesystem::path(name).filename().string());
+  std::istringstream ss(blacklist);
+  std::string token;
+  while (std::getline(ss, token, ';')) {
+    const auto first = token.find_first_not_of(" \t");
+    if (first == std::string::npos)
+      continue;
+    const auto last = token.find_last_not_of(" \t");
+    if (toLower(token.substr(first, last - first + 1)) == base)
+      return true;
+  }
+  return false;
+}
+
 bool is_hidden_file(const std::filesystem::path &path) {
   const auto name = path.filename().string();
   const auto gmm  = std::string(kGmmHiddenSuffix);
@@ -463,6 +504,37 @@ bool is_hidden_file(const std::filesystem::path &path) {
   if (name.size() > mo2.size() &&
       name.compare(name.size() - mo2.size(), mo2.size(), mo2) == 0)
     return true;
+  // User-configured "Skip file suffixes". Compared case-insensitively against a
+  // lowercased name because the entry comes from a free-text field and a
+  // Windows-authored mod folder can spell the suffix any way it likes.
+  const auto lower = toLower(name);
+  for (const auto &raw : workarounds().hidden_suffixes) {
+    if (raw.empty())
+      continue;
+    const auto suffix = toLower(raw.front() == '.' ? raw.substr(1) : raw);
+    const auto dotted = "." + suffix;
+    if (lower.size() > dotted.size() &&
+        lower.compare(lower.size() - dotted.size(), dotted.size(), dotted) == 0)
+      return true;
+  }
+  return false;
+}
+
+bool is_skipped_directory(const std::string &name) {
+  if (name.empty() || name.find('/') != std::string::npos ||
+      name.find('\\') != std::string::npos)
+    return false;
+  const auto lower = toLower(name);
+  for (const auto &raw : workarounds().skipped_dirs) {
+    if (raw.empty())
+      continue;
+    // Tolerate a trailing separator so ".git/" reads the same as ".git".
+    auto entry = raw;
+    while (!entry.empty() && (entry.back() == '/' || entry.back() == '\\'))
+      entry.pop_back();
+    if (toLower(entry) == lower)
+      return true;
+  }
   return false;
 }
 

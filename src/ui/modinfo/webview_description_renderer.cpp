@@ -1,6 +1,7 @@
 #include "ui/modinfo/webview_description_renderer.h"
 
-#include <QDesktopServices>
+#include "ui/widgets/web_link.h"
+
 #include <QSizePolicy>
 #include <QUrl>
 #include <QVBoxLayout>
@@ -102,7 +103,7 @@ bool WebViewDescriptionRenderer::InterceptPage::acceptNavigationRequest(
   if (renderer != nullptr)
     emit renderer->link_clicked(url);
   else
-    QDesktopServices::openUrl(url);
+    WebLink::open(url.toString());
   return false;
 }
 
