@@ -12,7 +12,7 @@ endif()
 # the plugins (GMM_VERSION, visible in the add_subdirectory'd external/plugins
 # scope below).
 project(GameModManager
-    VERSION 0.5.28
+    VERSION 0.5.29
     DESCRIPTION "Cross-platform game mod manager"
     LANGUAGES CXX C
 )
