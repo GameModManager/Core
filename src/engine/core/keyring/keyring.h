@@ -3,6 +3,7 @@
 #include <filesystem>
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace engine {
 
@@ -57,10 +58,22 @@ public:
   // Only ever used to read an existing blob, never to create one.
   static std::string legacy_seed();
 
+  // Every key a build that predates the per-install seed could have written a
+  // blob under. A blob's key is its own property, and the write-time condition
+  // is not recoverable from the file, so a read has to try each of these.
+  static std::vector<std::string> legacy_seeds();
+
 private:
   std::filesystem::path file_for(const std::string &name) const;
 
-  // The 16-byte random seed in <config_dir>/keyring_seed.dat, created on
+  // Decrypts under `seed` and returns the plaintext only if it is a value this
+  // keyring could have stored. A wrong key does not fail - it yields a
+  // same-length string of near-random bytes - so callers must never treat
+  // "non-empty" as "decrypted".
+  static std::string decrypt_if_valid(const std::string &seed,
+                                      const std::string &ciphertext);
+
+  // The 16-byte random seed in <config_dir>/.keyring_seed, created on
   // first use. Static so the legacy blob reader (which has a config dir but no
   // instance) resolves the seed the same way.
   static std::string load_or_create_seed(const std::filesystem::path &dir);
