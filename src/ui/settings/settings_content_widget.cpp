@@ -128,8 +128,8 @@ QWidget *SettingsContentWidget::build_general_tab() {
           });
 
   // General options ---------------------------------------------------------
-  auto *gen_group  = new QGroupBox(tr("General"), page);
-  auto *gen_layout = new QVBoxLayout(gen_group);
+  auto *gen_group = new QGroupBox(tr("General"), page);
+  auto *gen_grid  = new QGridLayout(gen_group);
 
   // What this copy of the application is, and therefore which update route
   // could ever apply to it. Detection is read-only, so this is safe to build
@@ -146,7 +146,7 @@ QWidget *SettingsContentWidget::build_general_tab() {
             .arg(tr(upd::install_method_name(method)),
                  tr(upd::install_method_route(method)),
                  tr("This build reports the route but does not run it.")));
-    gen_layout->addWidget(install_label);
+    gen_grid->addWidget(install_label, 0, 0, 1, 2);
   }
 
   auto *update_box =
@@ -210,17 +210,17 @@ QWidget *SettingsContentWidget::build_general_tab() {
   engine::parallel::set_enabled(s.performance_multi_core());
   update_cadence_label_ = new QLabel(gen_group);
   update_cadence_label_->setWordWrap(true);
-  gen_layout->addWidget(update_cadence_label_);
+  gen_grid->addWidget(update_cadence_label_, 1, 0, 1, 2);
   refresh_update_cadence();
-  gen_layout->addWidget(update_box);
-  gen_layout->addWidget(prerelease_box);
-  gen_layout->addWidget(smooth_box);
-  gen_layout->addWidget(dl_notify_box);
-  gen_layout->addWidget(full_ui_box);
-  gen_layout->addWidget(extract_prio_box);
-  gen_layout->addWidget(multicore_box);
-  gen_layout->addWidget(previews_box);
-  gen_layout->addWidget(confirm_change_box);
+  // Nine toggles in two columns, filled row-major: read left to right, then
+  // down. Qt's focus chain follows child order rather than layout order, and
+  // the children are constructed in the same order they are added here, so
+  // Tab walks them left to right and top to bottom - no setTabOrder needed.
+  const QList<QCheckBox *> gen_boxes{update_box,    prerelease_box, smooth_box,
+                                     dl_notify_box, full_ui_box,    extract_prio_box,
+                                     multicore_box, previews_box,   confirm_change_box};
+  for (int i = 0; i < gen_boxes.size(); ++i)
+    gen_grid->addWidget(gen_boxes.at(i), 2 + i / 2, i % 2);
   layout->addWidget(gen_group);
 
   connect(update_box, &QCheckBox::toggled, this, [&s, this](bool on) {
