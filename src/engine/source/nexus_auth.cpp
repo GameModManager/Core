@@ -64,15 +64,20 @@ bool Auth::has_api_key() const {
 
 std::string Auth::get_api_key() const {
   try {
-    Keyring &kr = effective_keyring();
-    if (!kr.available()) {
-      Logger::instance().error(
-          "NexusAuth: no OS keyring; falling back to insecure file storage");
+    // Test the injected backend, not effective_keyring(): the file fallback
+    // reports available() == true unconditionally, so checking the returned
+    // reference could never fire and the warning never reached the log.
+    if (!keyring_ || !keyring_->available()) {
+      Logger::instance().warn(
+          "NexusAuth: no OS keyring; reading the API key from insecure file "
+          "storage");
     }
 
-    // One-time migration: an OS keyring is available but holds no key yet,
-    // and a legacy pre-keyring file exists -> move it into the keyring.
-    if (kr.available() && !kr.has(kKeyName)) {
+    Keyring &kr = effective_keyring();
+
+    // One-time migration: the effective store holds no key yet, and a legacy
+    // pre-keyring file exists -> move it into the store.
+    if (!kr.has(kKeyName)) {
       std::string legacy = FileKeyring::read_legacy(config_dir());
       if (!legacy.empty()) {
         if (kr.set(kKeyName, legacy)) {
