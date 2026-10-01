@@ -618,10 +618,11 @@ void SettingsController::set_game_info(const std::string &game_id,
       w_->debug_window_->rebind_for_instance(
           w_->current_instance_root_, w_->current_game_id_, w_->current_game_name_);
       // active_profile_ may have changed since the last populate (the
-      // profile combo refreshes late in this method). Re-bind it so the
-      // Info tab profile group updates too.
-      if (w_->active_profile_)
-        w_->debug_window_->set_active_profile(w_->active_profile_.get());
+      // profile combo refreshes late in this method, and an instance
+      // switch replaces it outright). Re-bind unconditionally: guarding
+      // on non-null would leave the panel holding the previous
+      // instance's freed ProfileManager.
+      w_->debug_window_->set_active_profile(w_->active_profile_.get());
       // Re-bind the late current Instance so any per-instance overrides
       // apply. The pointer inside DebugWindow already tracks
       // w_->current_instance_ (see create_debug_window), so this is a
@@ -1615,8 +1616,10 @@ bool SettingsController::handle_global_event(QObject *obj, QEvent *event) {
         // construction.
         w_->debug_window_->rebind_for_instance(
             w_->current_instance_root_, w_->current_game_id_, w_->current_game_name_);
-        if (w_->active_profile_)
-          w_->debug_window_->set_active_profile(w_->active_profile_.get());
+        // Unconditional for the same reason as set_game_info(): a guarded
+        // re-bind leaves the panel on the previous instance's freed
+        // ProfileManager whenever the new one has not been built yet.
+        w_->debug_window_->set_active_profile(w_->active_profile_.get());
         w_->debug_window_->set_current_instance(&w_->current_instance_);
         w_->debug_window_->show();
         w_->debug_window_->raise();
