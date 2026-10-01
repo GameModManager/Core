@@ -363,7 +363,7 @@ QVariant ModList::data(const QModelIndex &index, int role) const {
     case Category:
       return mod.category;
     case Source:
-      return QString();  // vendor icon via DecorationRole
+      return QString();  // vendor icon via kSourceIconsRole
     case SourceId:
       return mod.source_id;
     case Version:
@@ -376,18 +376,20 @@ QVariant ModList::data(const QModelIndex &index, int role) const {
       return mod.priority;
     }
   }
-  // Vendor icon for the Source column (MO2 COL_GAME analogue): the badge of
+  // Vendor icons for the Source column (MO2 COL_GAME analogue): the badge of
   // the site the download came from (Nexus/LoversLab/Steam/ModDB). A mod can
-  // also be a git working copy, in which case it wears a SECOND badge, so the
-  // Source column returns a QList under kSourceIconsRole (painted by a
-  // FlagsDelegate) instead of a single DecorationRole icon - Qt renders only
-  // one DecorationRole icon per cell. DecorationRole keeps returning the
-  // primary vendor icon for consumers that only want one.
+  // also be a git working copy, in which case it wears a SECOND badge, and Qt
+  // renders only one DecorationRole icon per cell - so the badges arrive as a
+  // QList under kSourceIconsRole, which the FlagsDelegate paints one at a time,
+  // the same mechanism Conflicts/Flags already use.
+  //
+  // This role is the cell's ONLY painter. The delegate's first act is
+  // QStyledItemDelegate::paint, which draws whatever DecorationRole holds, so
+  // answering both roles drew the vendor badge twice and left the git-only mod
+  // with a cell the default painter had an opinion about. The Flags column
+  // already answers no DecorationRole for the same reason.
   if (role == kSourceIconsRole && index.column() == Source && !mod.is_separator)
     return QVariant::fromValue(source_icons(mod));
-  if (role == Qt::DecorationRole && index.column() == Source && !mod.is_separator) {
-    return source_icon(mod.source_type);
-  }
   // Name cell (MO2 ModInfoRegular::getDescription). MO2's "description" is
   // not a text description: an invalid mod reports what it lacks, and a
   // valid one lists its categories - the same list the Category cell shows.
@@ -1617,9 +1619,11 @@ void ModList::set_source_info(const QString &id, const QString &source_type,
         mods_[i].source_type     = source_type;
         mods_[i].source_id       = source_id;
         mods_[i].source_page_url = page_url;
-        // Source icon + Source ID text both derive from this.
+        // Source badges + Source ID text + tooltip all derive from this.
+        // kSourceIconsRole is the role the Source cell is painted from, so a
+        // changed download source must repaint it.
         emit dataChanged(index(i, Source), index(i, SourceId),
-                         {Qt::DisplayRole, Qt::DecorationRole, Qt::ToolTipRole});
+                         {Qt::DisplayRole, kSourceIconsRole, Qt::ToolTipRole});
       }
       return;
     }

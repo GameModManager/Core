@@ -804,15 +804,20 @@ TEST_CASE("mod list model", "[ui]") {
         model.data(model.index(tr, ui::ModList::Source), Qt::ToolTipRole);
     check(tip.isValid() && tip.toString() == QLatin1String("nexusmods"),
           "Source tooltip shows the vendor name");
-    // Icon only when the icon pack actually resolves the vendor badge:
-    // whatever resolve_icon yields, the model's DecorationRole must match
-    // (null in a hermetic test with no icon pack, non-null otherwise).
-    const QIcon vendor = engine::IconManager::instance().resolve_icon("nexusmods");
+    // The vendor badge arrives as the kSourceIconsRole LIST (the delegate's
+    // only paint for this cell), so DecorationRole must stay empty: the
+    // default QStyledItemDelegate::paint would draw a second badge over it.
     const QVariant dec =
         model.data(model.index(tr, ui::ModList::Source), Qt::DecorationRole);
-    const QIcon dec_icon = dec.canConvert<QIcon>() ? dec.value<QIcon>() : QIcon();
-    check(dec_icon.isNull() == vendor.isNull(),
-          "Source DecorationRole matches the resolved vendor icon");
+    check(!dec.isValid(), "Source column answers no DecorationRole icon");
+    const QList<QIcon> badges =
+        model.data(model.index(tr, ui::ModList::Source), ui::ModList::kSourceIconsRole)
+            .value<QList<QIcon>>();
+    const QIcon vendor = engine::IconManager::instance().resolve_icon("nexusmods");
+    // One badge, and it is the vendor one - but only when the chain resolves
+    // it at all (null in a hermetic test with no icon pack).
+    check(badges.size() == (vendor.isNull() ? 0 : 1),
+          "Source column carries the vendor badge exactly once");
 
     // Version and Priority keep rendering after the enum reorder.
     const QVariant ver =
@@ -3741,4 +3746,86 @@ TEST_CASE("mod list source column shows download and git badges together", "[ui]
   CHECK(badges("Mod").size() == 1);
 
   std::filesystem::remove_all("/tmp/gmm_mod_list_git");
+}
+
+// The Source cell is painted by TWO paths when the model answers both roles:
+// the FlagsDelegate calls QStyledItemDelegate::paint (which draws whatever
+// Qt::DecorationRole holds) and then paints the kSourceIconsRole list on top.
+// A Steam mod therefore wore the Steam badge twice, and a git mod with no
+// download source had nothing to draw from the role the default painter reads.
+//
+// So exactly ONE role may answer for the Source column. This asserts the
+// per-badge identity (the duplicate was a second steam icon, not a null), and
+// that no second role paints the same cell.
+TEST_CASE("source column badges are painted once by a single role", "[ui]") {
+  qputenv("QT_QPA_PLATFORM", "offscreen");
+  qputenv("TZ", "UTC");
+  tzset();
+  const std::filesystem::path cfg =
+      std::filesystem::temp_directory_path() / "gmm_source_once_config";
+  std::filesystem::remove_all(cfg);
+  std::filesystem::create_directories(cfg);
+  qputenv("XDG_CONFIG_HOME", cfg.c_str());
+  int test_argc     = 1;
+  char test_argv0[] = "test";
+  char *test_argv[] = {test_argv0, test_argv0, nullptr};
+  QApplication app(test_argc, test_argv);
+  QCoreApplication::setOrganizationName("GameModManager");
+  QCoreApplication::setApplicationName("GameModManager");
+  engine::IconManager::instance().discover_packs(GMM_TEST_RESOURCES_DIR);
+
+  ui::ModList model;
+  model.add_mod(QStringLiteral("SteamMod"), QStringLiteral("Steam Mod"), QString());
+  model.add_mod(QStringLiteral("GitMod"), QStringLiteral("Git Mod"), QString());
+  model.add_mod(QStringLiteral("PlainGitMod"), QStringLiteral("Plain Git Mod"),
+                QString());
+
+  auto cell = [&model](const char *id) {
+    return model.index(row_with_id(model, id), ui::ModList::Source);
+  };
+  auto badges = [&model](const char *id) {
+    return model
+        .data(model.index(row_with_id(model, id), ui::ModList::Source),
+              ui::ModList::kSourceIconsRole)
+        .value<QList<QIcon>>();
+  };
+
+  model.set_source_info(QStringLiteral("SteamMod"), QStringLiteral("steam"),
+                        QStringLiteral("777"));
+  model.set_source_info(QStringLiteral("GitMod"), QString(), QString());
+  model.set_git_info(QStringLiteral("GitMod"), true,
+                     QStringLiteral("https://github.com/user/repo.git"));
+  model.set_source_info(QStringLiteral("PlainGitMod"), QString(), QString());
+  model.set_git_info(QStringLiteral("PlainGitMod"), true, QString());
+
+  // A Steam mod wears the vendor badge exactly once. The badge must also be a
+  // real icon and not the one the git path resolves, so a count of 1 cannot be
+  // satisfied by the wrong icon coming back.
+  const QList<QIcon> steam = badges("SteamMod");
+  REQUIRE(steam.size() == 1);
+  REQUIRE(!steam.first().isNull());
+
+  // A git-sourced mod wears a git badge exactly once - not zero (the missing
+  // badge) and not two (the duplicate).
+  const QList<QIcon> git = badges("GitMod");
+  REQUIRE(git.size() == 1);
+  REQUIRE(!git.first().isNull());
+
+  // Both git rows carry the badge, and the remote's host is what picks which:
+  // a GitHub origin gets the branded badge, a remote-less repo the generic one.
+  // Comparing the two also proves each resolved to something distinct.
+  const QList<QIcon> plain_git = badges("PlainGitMod");
+  REQUIRE(plain_git.size() == 1);
+  REQUIRE(!plain_git.first().isNull());
+  CHECK(git.first().cacheKey() != plain_git.first().cacheKey());
+
+  // The badges are the cell's ONLY painter. If the default delegate painter
+  // finds an icon here it draws a second one, on top of the delegate's.
+  for (const char *id : {"SteamMod", "GitMod", "PlainGitMod"}) {
+    const QVariant dec = model.data(cell(id), Qt::DecorationRole);
+    CHECK(!dec.isValid());
+    CHECK(dec.value<QIcon>().isNull());
+  }
+
+  std::filesystem::remove_all(cfg);
 }

@@ -243,6 +243,11 @@ public:
   // Qt renders exactly one DecorationRole icon per cell - the FlagsDelegate
   // paints this list one icon at a time, the same mechanism the Flags column
   // already uses for multiple badges.
+  //
+  // This is the Source cell's ONLY icon role. The Source column deliberately
+  // answers no Qt::DecorationRole: the delegate's first act is the default
+  // QStyledItemDelegate::paint, which would draw a second badge on top of this
+  // list. One role, one paint.
   static constexpr int kSourceIconsRole = Qt::UserRole + 6;
 
   // Visual-nesting indentation depth for the Name column (0 = top-level).

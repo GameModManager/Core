@@ -1,5 +1,6 @@
 #include "engine/source/git/git_info.h"
 
+#include <algorithm>
 #include <cctype>
 #include <fstream>
 #include <system_error>
@@ -84,13 +85,13 @@ std::string remote_url(const std::filesystem::path &dir) {
         continue;
       }
       std::string section = to_lower(line.substr(first + 1, close - first - 1));
-      // Strip the quotes git writes around the remote name.
-      const auto quote = section.find('"');
-      if (quote != std::string::npos) {
-        const auto end_quote = section.find('"', quote + 1);
-        if (end_quote != std::string::npos)
-          section = section.substr(quote + 1, end_quote - quote - 1);
-      }
+      // git names a remote as a QUOTED SUBSECTION, so the section header reads
+      // `remote "origin"`. Deleting the quote characters leaves
+      // `remote origin`; keeping only the quoted part instead would leave a
+      // bare `origin`, which can never equal the section name and so matched
+      // no config git has ever written. An unquoted `[remote origin]` collapses
+      // to the same string, so both spellings are accepted.
+      section.erase(std::remove(section.begin(), section.end(), '"'), section.end());
       in_origin = section == "remote origin";
       continue;
     }
@@ -99,7 +100,14 @@ std::string remote_url(const std::filesystem::path &dir) {
     const auto eq = line.find('=', first);
     if (eq == std::string::npos)
       continue;
-    const std::string key = to_lower(line.substr(first, eq - first));
+    // git pads the key with spaces around `=` ("\turl = <value>"), and the
+    // padding is part of the span between the line start and the `=`. Only the
+    // leading whitespace is already skipped by `first`, so the trailing run has
+    // to come off here - without it the key is "url " and matches no lookup
+    // table, which is every key in every config git has written.
+    const std::string raw_key = line.substr(first, eq - first);
+    const std::string key =
+        to_lower(raw_key.substr(0, raw_key.find_last_not_of(" \t") + 1));
     if (key != "url")
       continue;
     const auto value_first = line.find_first_not_of(" \t", eq + 1);
