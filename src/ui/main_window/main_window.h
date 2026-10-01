@@ -185,6 +185,11 @@ public:
   [[nodiscard]] ModView *mod_view() const { return mod_view_; }
   [[nodiscard]] QSplitter *console_splitter() const { return console_splitter_; }
 
+  // The game the current instance is bound to, empty when no game is set.
+  // The mod update check needs it to ask the mod update database about the
+  // game whose mod was just installed.
+  [[nodiscard]] const std::string &current_game_id() const { return current_game_id_; }
+
   // True while a mod scan / install pipeline stage owns the UI state
   // (loading_ flag). Tests and controllers use it to defer disk-effect
   // assertions until the async instance scan has landed.

@@ -114,14 +114,24 @@ namespace {
 }  // namespace
 
 // ---------------------------------------------------------------------------
+// GitHub::releases_endpoint
+// ---------------------------------------------------------------------------
+std::string GitHub::releases_endpoint(const std::string &owner,
+                                      const std::string &repo,
+                                      bool include_prereleases) {
+  std::string url = "https://api.github.com/repos/" + owner + "/" + repo + "/releases";
+  if (!include_prereleases)
+    url += "/latest";
+  return url;
+}
+
+// ---------------------------------------------------------------------------
 // GitHub::latest_release
 // ---------------------------------------------------------------------------
 std::optional<GitHub::Release> GitHub::latest_release(const std::string &owner,
                                                       const std::string &repo,
                                                       bool include_prereleases) {
-  std::string url = "https://api.github.com/repos/" + owner + "/" + repo + "/releases";
-  if (!include_prereleases)
-    url += "/latest";
+  const std::string url = releases_endpoint(owner, repo, include_prereleases);
 
   // Network:: applies timeout, redirect, log redaction uniformly. The body
   // comes back as a string ready for JSON parsing.

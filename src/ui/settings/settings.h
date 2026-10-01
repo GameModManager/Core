@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QColor>
+#include <QDateTime>
 #include <QMessageBox>
 #include <QSettings>
 #include <QString>
@@ -61,8 +62,16 @@ public:
   void set_collapsible_separators_icons_content(bool on);
   bool collapsible_separators_icons_version() const;
   void set_collapsible_separators_icons_version(bool on);
-  bool check_update_after_install() const;
-  void set_check_update_after_install(bool on);
+  // Check the mod update database after a mod finishes installing. This is a
+  // MOD update check, not an app update: MO2's equivalent
+  // (InterfaceSettings::checkUpdateAfterInstallation) is consumed by
+  // MainWindow::modInstalled, which asks the mod update DB about the mod that
+  // was just installed. The key was interface/check_update_after_install,
+  // which read as an app update and would have been wired to the wrong
+  // feature; the old key is still read (see the .cpp) so an existing stored
+  // choice survives the rename. Default ON.
+  bool check_update_after_mod_install() const;
+  void set_check_update_after_mod_install(bool on);
   bool hide_api_counter() const;
   void set_hide_api_counter(bool on);
   bool show_change_game_confirmation() const;
@@ -107,8 +116,20 @@ public:
   void set_modlist_filter_categories(const QStringList &ids);
 
   // general ---------------------------------------------------------------
-  bool check_for_updates() const;
+  // Allow a periodic background app-update check (at most once per 24h).
+  // Default OFF: a check on every launch is an unauthenticated request to a
+  // third party on every start, which discloses the user's IP, the app
+  // version and the fact they run this app. The label in the settings panel
+  // names this cadence, not a startup check.
+  bool check_for_updates() const;  // key: general/check_for_updates
   void set_check_for_updates(bool on);
+  // When the last successful check ran, so the 24h timer means something and
+  // the panel can say when it last looked. Invalid = never checked.
+  QDateTime last_update_check() const;  // key: general/last_update_check
+  void set_last_update_check(const QDateTime &when);
+  // Prerelease channel selection. There is no channel concept on the release
+  // feed, so the panel keeps this control disabled with a tooltip naming the
+  // prerequisite. The value is still stored so nothing is lost.
   bool use_prereleases() const;
   void set_use_prereleases(bool on);
 
