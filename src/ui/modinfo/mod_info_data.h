@@ -69,6 +69,14 @@ struct ModInfoData {
   // Source page URL persisted in the mod's per-source meta section
   // (LoversLab: the page the download came from). Used by "Visit on ...".
   QString source_page_url;
+  // Git provenance, independent of source_type: a mod can be a Nexus install
+  // AND a git working copy. is_git is the authoritative signal (a .git inside
+  // the mod folder or a [Git] sidecar section); git_remote_url is what the
+  // Git tab shows and what the icon's platform pick comes from.
+  bool is_git = false;
+  QString git_remote_url;
+  QString git_commit;
+  QString git_branch;
   // Installation (folder birth time) and Changed (folder last-write time).
   // 0 = unavailable (separators, Overwrite/MERGED pseudo-rows). Used for
   // out-of-date detection against dateModified scraped from LoversLab

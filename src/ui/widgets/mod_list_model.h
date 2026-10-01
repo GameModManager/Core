@@ -55,6 +55,14 @@ struct ModEntry {
   // Source page URL persisted in the mod's per-source meta section
   // (LoversLab: the page the download came from). Used by "Visit on ...".
   QString source_page_url;
+  // Git provenance, INDEPENDENT of source_type: a mod can be downloaded from
+  // Nexus AND be a git working copy, and then it wears both badges. `is_git`
+  // is the authoritative signal - a `.git` inside the mod folder (or a
+  // [Git] section in its sidecar); `git_remote_url` is what the icon picks
+  // the branded badge from, and is empty for a repo with no recorded remote
+  // (which still shows, as the generic git badge).
+  bool is_git = false;
+  QString git_remote_url;
   QString separator_id;
   bool is_separator   = false;
   bool is_overwrite   = false;
@@ -229,6 +237,14 @@ public:
   // column width, instead of stacking them into one squeezed icon.
   static constexpr int kFlagIconsRole = Qt::UserRole + 2;
 
+  // Every icon the Source column should wear, as QList<QIcon>: the download
+  // source's vendor badge (when it has one) followed by the git badge when the
+  // mod is also a git working copy. A QList rather than a single QIcon because
+  // Qt renders exactly one DecorationRole icon per cell - the FlagsDelegate
+  // paints this list one icon at a time, the same mechanism the Flags column
+  // already uses for multiple badges.
+  static constexpr int kSourceIconsRole = Qt::UserRole + 6;
+
   // Visual-nesting indentation depth for the Name column (0 = top-level).
   // Always 0 while the "Nested mod list" setting is off, even if parent_id
   // links persist (preserved-but-inert so re-enabling restores the layout).
@@ -308,6 +324,11 @@ public:
   void set_tags(const QString &id, const QVector<ModTag> &tags);
   void set_source_info(const QString &id, const QString &source_type,
                        const QString &source_id, const QString &page_url = {});
+  // Git provenance (ModEntry::is_git / ::git_remote_url). Separate from
+  // set_source_info because the two coexist: a Nexus mod that is also a git
+  // working copy keeps its Nexus badge AND gains the git one. Only the Source
+  // column is affected, so only Source is notified.
+  void set_git_info(const QString &id, bool is_git, const QString &remote_url = {});
   // Category name for the Category column (resolved by the window layer from
   // the instance's category DB; the model just stores the display string).
   void set_category(const QString &id, const QString &category);
@@ -470,6 +491,12 @@ private:
   // Vendor badge for a mod's source_type (via engine::vendor_icon_key), or
   // null for unknown/empty sources.
   [[nodiscard]] QIcon source_icon(const QString &source_type) const;
+  // Every badge the Source column wears for a mod: the download source's
+  // vendor icon (when one resolves) plus the git badge when the mod is a git
+  // working copy. Order is download source first, then git. A null icon is
+  // never added, so an unresolvable key (a GitLab remote before git.ico
+  // exists) degrades to "no icon" rather than a broken one.
+  [[nodiscard]] QList<QIcon> source_icons(const ModEntry &mod) const;
   // Whether row's parent_id chain reaches ancestor_id (row is in the
   // ancestor's subtree). Cycle-guarded. Used by fold scopes, nesting_depth,
   // the drop cycle guard and sanitize_parent_links.

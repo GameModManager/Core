@@ -1,9 +1,11 @@
 #include "ui/modinfo/source_tab.h"
 
 #include "engine/mod/meta/mod_meta.h"
+#include "engine/source/git/git_info.h"
 #include "engine/source/source_provider.h"
 #include "ui/modinfo/mod_info_data.h"
 #include "ui/modinfo/source_panels/generic_source_panel.h"
+#include "ui/modinfo/source_panels/git_source_panel.h"
 #include "ui/modinfo/source_panels/loverslab_source_panel.h"
 #include "ui/modinfo/source_panels/modpub_source_panel.h"
 #include "ui/modinfo/source_panels/nexus_source_panel.h"
@@ -27,6 +29,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <filesystem>
 #include <optional>
 #include <string>
 
@@ -68,6 +71,42 @@ namespace {
                        QString::fromStdString(vendor_key)),
                    title);
     }
+  }
+
+  // Whether this mod is a git working copy. The .git inside the mod folder is
+  // the authoritative signal - a recorded [Git] section alone is not enough,
+  // since a mod whose .git was deleted is no longer managed from git. The
+  // sidecar is consulted as well so a repo that exists but was never stamped
+  // (a manual clone dropped into mods/) still counts.
+  bool mod_is_git(const ModInfoData &data) {
+    // A default-constructed QDir reports "." as its path, and the process's
+    // working directory is not a mod folder - so a caller that never set
+    // mod_dir must not be read as "the repo we happen to be standing in".
+    const QString dir_path = data.mod_dir.path();
+    if (!dir_path.isEmpty() && dir_path != QLatin1String(".")) {
+      const std::filesystem::path dir(dir_path.toStdString());
+      if (engine::Git::is_repository(dir))
+        return true;
+    }
+    return data.is_git;
+  }
+
+  // The upstream URL the git badge is picked from: the live repository's
+  // remote when there is one, else the recorded [Git] remote_url. Empty for a
+  // repo with no configured remote, which shows the generic git badge.
+  QString git_remote_url(const ModInfoData &data) {
+    const QString dir_path = data.mod_dir.path();
+    if (!dir_path.isEmpty() && dir_path != QLatin1String(".")) {
+      const std::filesystem::path dir(dir_path.toStdString());
+      const std::string live = engine::Git::remote_url(dir);
+      if (!live.empty())
+        return QString::fromStdString(live);
+    }
+    if (!data.git_remote_url.isEmpty())
+      return data.git_remote_url;
+    if (data.load_meta)
+      return QString::fromStdString(data.load_meta().git_remote_url());
+    return {};
   }
 
   // Determine the mod's actual source from meta + ModInfoData fallback.
@@ -580,19 +619,28 @@ void SourceTab::populate() {
     delete page;
   }
 
+  // A mod can be a git working copy AND have a download source; the two
+  // coexist as two tabs. Git first when it is the only source, so a git-only
+  // mod shows a single "Git" tab and never a "Manual" placeholder beside it.
+  const bool is_git = mod_is_git(current());
+
   const QString actual_source = resolve_actual_source(current());
   if (actual_source.isEmpty()) {
-    // No source attributed. Show a Manual placeholder (Workspace-fqf5:
-    // manual mods must never show a Nexus tab) and the "+" affordance.
-    auto *hint =
-        new QLabel(tr("This mod has no download source.\n\n"
-                      "It is treated as a manual install. Click \"+\" to attach a "
-                      "source (Nexus, LoversLab, Steam Workshop, ...) if you know "
-                      "where this mod came from."),
-                   sources_);
-    hint->setWordWrap(true);
-    hint->setAlignment(Qt::AlignCenter);
-    sources_->addTab(hint, tr("Manual"));
+    if (is_git) {
+      // Git-only: no Manual placeholder, nothing to warn about.
+    } else {
+      // No source attributed. Show a Manual placeholder (Workspace-fqf5:
+      // manual mods must never show a Nexus tab) and the "+" affordance.
+      auto *hint =
+          new QLabel(tr("This mod has no download source.\n\n"
+                        "It is treated as a manual install. Click \"+\" to attach a "
+                        "source (Nexus, LoversLab, Steam Workshop, ...) if you know "
+                        "where this mod came from."),
+                     sources_);
+      hint->setWordWrap(true);
+      hint->setAlignment(Qt::AlignCenter);
+      sources_->addTab(hint, tr("Manual"));
+    }
   } else {
     QWidget *page = build_panel_for(actual_source, current(), sources_);
     if (page == nullptr) {
@@ -607,6 +655,16 @@ void SourceTab::populate() {
       const QString icon_key = display ? display->icon_key : actual_source;
       add_tab_with_icon(sources_, page, title, icon_key);
     }
+  }
+
+  if (is_git) {
+    // The title is always "Git" - GitHub, GitLab and a self-hosted server are
+    // the same source with a different badge, so the platform never names a
+    // tab. add_tab_with_icon takes a resolved vendor key, which is exactly
+    // what GitSourcePanel::icon_key_for() produces.
+    const QString git_key = GitSourcePanel::icon_key_for(git_remote_url(current()));
+    add_tab_with_icon(sources_, new GitSourcePanel(current(), sources_), tr("Git"),
+                      git_key);
   }
 
   // The "+" affordance: a tab on the right that, when activated, opens
