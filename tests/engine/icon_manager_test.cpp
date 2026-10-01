@@ -11,6 +11,7 @@
 //
 // Hermetic: offscreen platform, throwaway HOME/XDG_DATA_HOME, synthetic
 // resources tree (no real app assets), no network.
+#include "engine/source/git/git_info.h"
 #include "ui/theme/icon_manager.h"
 
 #include <QApplication>
@@ -171,6 +172,37 @@ TEST_CASE("icon manager", "[ui]") {
   check(engine::vendor_icon_key("Manual").empty(),
         "vendor_icon_key: manual has no icon");
   check(engine::vendor_icon_key("").empty(), "vendor_icon_key: empty has no icon");
+
+  // git_icon_key: the source_type is always "git", so the remote's HOST is the
+  // only thing that picks a badge. github.com is branded; every other host -
+  // GitLab, Bitbucket, a self-hosted server, an unknown remote - is the
+  // generic git badge, never a missing one.
+  check(engine::git_icon_key("github.com") == "github",
+        "git_icon_key: github.com gets the branded badge");
+  check(engine::git_icon_key("www.github.com") == "github",
+        "git_icon_key: www.github.com is the same host");
+  check(engine::git_icon_key("GitHub.com") == "github",
+        "git_icon_key: host match is case-insensitive");
+  check(engine::git_icon_key("gitlab.com") == "git",
+        "git_icon_key: gitlab falls back to generic git");
+  check(engine::git_icon_key("bitbucket.org") == "git",
+        "git_icon_key: bitbucket falls back to generic git");
+  check(engine::git_icon_key("git.example.com") == "git",
+        "git_icon_key: self-hosted falls back to generic git");
+  check(engine::git_icon_key("") == "git",
+        "git_icon_key: no remote still resolves to the generic badge key");
+  // Host extraction from the URL forms git actually writes.
+  check(engine::Git::host_of("https://github.com/user/repo.git") == "github.com",
+        "host_of: https URL");
+  check(engine::Git::host_of("git@gitlab.com:group/proj.git") == "gitlab.com",
+        "host_of: scp-like syntax");
+  check(engine::Git::host_of("ssh://git@git.example.com:2222/p.git") ==
+            "git.example.com",
+        "host_of: ssh URL drops user and port");
+  check(engine::Git::host_of("https://user:tok@BitBucket.org/a/b.git") ==
+            "bitbucket.org",
+        "host_of: embedded credentials and case are stripped");
+  check(engine::Git::host_of("").empty(), "host_of: empty URL has no host");
 
   fs::remove_all(base);
 }

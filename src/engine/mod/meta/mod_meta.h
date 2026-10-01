@@ -67,6 +67,23 @@ public:
   [[nodiscard]] std::string parent_id() const;
   void set_parent_id(const std::string &id);
 
+  // --- Git provenance ([Git]) ---
+  // A mod can be BOTH a download install (its [Nexusmods] / [SteamWorkshop]
+  // section) and a git working copy. The [Git] section records what the
+  // manager knows about the repository without re-deriving it every paint:
+  //   remote_url  - the upstream URL (the icon picks github vs generic git
+  //                 from its host)
+  //   commit      - the commit the mod was last seen at
+  //   branch      - the checked-out branch
+  // Absent section = the mod is not tracked as a git checkout, which is
+  // different from a repo whose remote is simply not known.
+  [[nodiscard]] bool has_git() const;
+  [[nodiscard]] std::string git_remote_url() const;
+  [[nodiscard]] std::string git_commit() const;
+  [[nodiscard]] std::string git_branch() const;
+  void set_git(const std::string &remote_url, const std::string &commit,
+               const std::string &branch);
+
   // --- Collection tracking (in-folder meta.ini, Workspace-5wmu) ---
   // Source-agnostic collection membership persisted per mod in
   // [GameModManager]: owning collection id, revision at install time, and

@@ -17,6 +17,15 @@ namespace engine {
 // no branded icon exists for this source (e.g. "Manual").
 std::string vendor_icon_key(const std::string &source);
 
+// Icon key for a git-managed mod, chosen from the remote's host alone. The
+// source type is always "git" and never the platform: a GitHub remote gets
+// the branded "github" badge, every other host (GitLab, Bitbucket, a
+// self-hosted server) falls back to the generic "git" badge. The generic
+// badge resolves only when resources/icons/vendor/git.* exists; until then
+// this returns a key that resolves to a null QIcon, which callers must
+// render as no icon at all.
+std::string git_icon_key(const std::string &host);
+
 // Central icon resolution. Every logical icon key ("list-add",
 // "conflict-overwrite", "gmm-logo", ...) resolves through one chain, so a
 // theme or icon pack can override any icon and every caller sees the same
