@@ -122,6 +122,13 @@ private:
 // Backward-compatible free function wrapper
 LaunchResult launch_game(const LaunchParams &params);
 
+// Applies the per-executable "Environment" entries (NAME=value) to this
+// process before fork/exec, so an explicit override wins over the inherited
+// value. Logs each name with its value redacted, and drops an entry that has no
+// NAME= prefix entirely rather than echoing it. Extracted from the launch path
+// so the handling is reachable without forking a game.
+void apply_launch_env(const std::vector<std::string> &vars);
+
 void capture_overwrite(const std::filesystem::path &game_dir,
                        const std::filesystem::path &overwrite_dir,
                        std::filesystem::file_time_type capture_time,

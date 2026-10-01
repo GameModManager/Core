@@ -264,16 +264,19 @@ bool Provider::fetch(const Mod &mod, PipelineContext &ctx,
 
   // ---- Step 2: Download the file ----
   Logger::instance().debug("[NexusProvider] Step 2: Downloading file from URL: " +
-                           download_url);
+                           network::redaction::redact_url(download_url));
   return download_from_url(download_url, ctx, dest_path, server_name);
 }
 
 bool Provider::download_from_url(const std::string &download_url, PipelineContext &ctx,
                                  const std::filesystem::path &dest_path,
                                  const std::string &server_name) {
-  Logger::instance().debug("[NexusProvider] download_from_url: url=" + download_url +
-                           " dest=" + dest_path.string() + " server=" + server_name +
-                           " resume_from=" + std::to_string(ctx.download_resume_from));
+  // The Nexus signed URL carries key= - redact before it reaches the log file.
+  Logger::instance().debug(
+      "[NexusProvider] download_from_url: url=" +
+      network::redaction::redact_url(download_url) + " dest=" + dest_path.string() +
+      " server=" + server_name +
+      " resume_from=" + std::to_string(ctx.download_resume_from));
   long dl_code = 0;
 
   engine::download::Progress dp;

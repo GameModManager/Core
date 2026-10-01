@@ -12,7 +12,7 @@ endif()
 # the plugins (GMM_VERSION, visible in the add_subdirectory'd external/plugins
 # scope below).
 project(GameModManager
-    VERSION 0.5.28
+    VERSION 0.5.29
     DESCRIPTION "Cross-platform game mod manager"
     LANGUAGES CXX C
 )
@@ -104,7 +104,23 @@ endif()
 
 # QtKeychain OS keyring (Secret Service / KWallet / macOS Keychain / Windows
 # Credential Locker) — pulled on every platform that ships it.
+#
+# NOT optional: without it the app silently falls back to FileKeyring, which
+# stores the Nexus API key and the LoversLab session cookie in an obfuscated
+# file on disk instead of the OS keyring. A packaging environment missing the
+# library would ship that binary with no build error and no signal, so say so
+# loudly here. There is no release/relwithdebinfo distinction in this project -
+# CMAKE_BUILD_TYPE carries no GMM-specific flavour - so the warning is emitted
+# for every configure rather than only for release builds.
 find_package(Qt6Keychain QUIET)
+if(NOT Qt6Keychain_FOUND)
+    message(WARNING
+        "Qt6Keychain not found - building WITHOUT an OS keyring backend.\n"
+        "Every stored secret (Nexus API key, LoversLab session cookie) will "
+        "go to the obfuscated FileKeyring on disk instead of the OS keyring. "
+        "Install qtkeychain-qt6-dev (Debian/Ubuntu) or qtkeychain-qt6 "
+        "(Fedora/Arch) before producing a distributable build.")
+endif()
 
 # macOS Keychain backing frameworks — QtKeychain talks to Security (via
 # CoreFoundation); link them explicitly so keyring code resolves regardless of
