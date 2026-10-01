@@ -98,6 +98,13 @@ private:
 // Host callbacks exposed to plugins at runtime (C ABI). A plugin may dlsym
 // these from the engine and call them outside registration to read/write its
 // own settings. Returned string is engine-owned; the plugin must copy it.
+//
+// There is no secret setting type: whatever a plugin passes here is persisted
+// verbatim as plaintext in the QSettings file (GameModManager.conf, mode 0644
+// on Linux). A credential written this way is readable by any local user. The
+// C ABI offers no keyring route, and no in-tree plugin stores a credential
+// this way, so this is a contract note rather than a live exposure - but a
+// plugin author should treat it as "plaintext or nothing".
 extern "C" {
 const char *gmm_host_get_setting(const char *plugin_name, const char *key);
 void gmm_host_set_setting(const char *plugin_name, const char *key, const char *value);

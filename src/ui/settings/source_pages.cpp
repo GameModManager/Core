@@ -589,7 +589,8 @@ QWidget *build_loverslab_page(QWidget *parent) {
                              "Any format is fine (name=value pairs, or the browser's "
                              "tab-separated cookie list) - GMM normalizes it on save. "
                              "The cookie is a session secret - it is stored in your OS "
-                             "keyring and never shown back to you."),
+                             "keyring, and the field below is masked, so it shows as "
+                             "dots rather than text."),
                  group);
   hint->setWordWrap(true);
   v->addWidget(hint);

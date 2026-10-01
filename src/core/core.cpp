@@ -24,6 +24,7 @@
 #include "engine/core/log/crash_handler.h"
 #include "engine/core/log/logger.h"
 #include "engine/game/detect/game_detector.h"
+#include "engine/network/network_manager.h"
 #include "engine/pipeline/plugin_host/plugin_loader.h"
 #include "engine/platform/theme/theme_manager.h"
 #include "engine/source/loverslab_auth.h"
@@ -464,7 +465,10 @@ int Application::run() {
   if (args.handle_nxm || args.handle_gmm) {
     auto link = engine::NxmRouter::parse(pending_url_);
     if (!link.valid()) {
-      engine::Logger::instance().error("Invalid download URL: " + pending_url_);
+      // Redact: a malformed nxm:// URL can still carry key= / expires=.
+      engine::Logger::instance().error(
+          "Invalid download URL: " +
+          engine::network::redaction::redact_url(pending_url_));
       return 1;
     }
 
@@ -527,7 +531,10 @@ int Application::run() {
     // GameShortName (not a Nexus domain) and "other" means "last instance".
     auto link = engine::Source::Router::parse_modl(pending_url_);
     if (!link.valid()) {
-      engine::Logger::instance().error("Invalid modl:// URL: " + pending_url_);
+      // Redact: a malformed modl:// URL can still carry key= / expires=.
+      engine::Logger::instance().error(
+          "Invalid modl:// URL: " +
+          engine::network::redaction::redact_url(pending_url_));
       return 1;
     }
 

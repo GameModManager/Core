@@ -1,5 +1,6 @@
 #include "ui/nxm/nxm_ipc.h"
 #include "engine/core/log/logger.h"
+#include "engine/network/network_manager.h"
 #include "platform/platform.h"
 
 #include <QLocalServer>
@@ -38,7 +39,18 @@ NxmIpcServer::NxmIpcServer(QObject *parent) : QObject(parent), impl_(new Impl) {
       auto data = sock->readAll();
       auto url  = QString::fromUtf8(data);
       if (!url.isEmpty()) {
-        Logger::instance().debug("[NXM-IPC] Received URL: " + url.toStdString());
+        // The nxm:// key= token is in this URL. Redact it before logging.
+        //
+        // argv exposure is inherent to the URL-handler pattern: the desktop
+        // entry launches us as `Exec=... --handle-nxm %u`, so any local user
+        // can read the token from /proc/<pid>/cmdline for the life of the
+        // process. MO2 has the identical exposure and there is no fix short of
+        // redesigning the protocol handler. What is ours to remove is the
+        // persistent copy on disk - which is why every log of this URL is
+        // redacted rather than written whole.
+        Logger::instance().debug(
+            "[NXM-IPC] Received URL: " +
+            engine::network::redaction::redact_url(url.toStdString()));
         emit urlReceived(url);
         emit nxmUrlReceived(url);
       }
