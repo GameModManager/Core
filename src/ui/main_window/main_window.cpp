@@ -34,6 +34,7 @@
 #include "ui/settings/settings.h"
 #include "ui/theme/icon_manager.h"
 #include "ui/widgets/console_panel.h"
+#include "ui/widgets/debug_window.h"
 #include "ui/widgets/exec_controls_bar.h"
 #include "ui/widgets/game_path_banner.h"
 #include "ui/widgets/main_tab_container.h"
@@ -392,6 +393,13 @@ void MainWindow::set_game_info(const std::string &game_id,
   // config, app-state restore) lives in SettingsController::set_game_info.
   settings_->set_game_info(game_id, game_display_name, profile_name, game_dir,
                            instance_root);
+}
+
+void MainWindow::set_active_profile(
+    std::unique_ptr<engine::profile::ProfileManager> profile) {
+  active_profile_ = std::move(profile);
+  if (debug_window_)
+    debug_window_->set_active_profile(active_profile_.get());
 }
 
 bool MainWindow::prompt_for_game_path() {
