@@ -155,6 +155,8 @@ gmm_catch2_test(loverslab_provider_test engine/loverslab_provider_test.cpp)
 gmm_catch2_test(modpub_provider_test engine/modpub_provider_test.cpp)
 gmm_catch2_test(loverslab_real_test engine/loverslab_real_test.cpp)
 gmm_catch2_test(mod_update_db_client_test engine/mod_update_db_client_test.cpp)
+gmm_catch2_test(install_method_test engine/install_method_test.cpp)
+gmm_catch2_test(self_updater_test engine/self_updater_test.cpp)
 gmm_catch2_test(update_policy_test engine/update_policy_test.cpp)
 gmm_catch2_test(install_progress_test engine/install_progress_test.cpp)
 
@@ -330,6 +332,12 @@ gmm_catch2_test(settings_sources_tab_test ui/settings_sources_tab_test.cpp
     LIBS gmm_ui ${CMAKE_DL_LIBS})
 
 gmm_catch2_test(settings_content_widget_test ui/settings_content_widget_test.cpp
+    UI
+    LIBS gmm_ui Qt6::Test)
+
+# The three updater settings and the read-only install-method line: asserts on
+# what each setting's consumer renders, not on a getter round-trip.
+gmm_catch2_test(settings_updater_test ui/settings_updater_test.cpp
     UI
     LIBS gmm_ui Qt6::Test)
 

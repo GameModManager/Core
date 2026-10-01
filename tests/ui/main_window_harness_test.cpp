@@ -31,7 +31,9 @@
 #include "engine/core/instance/instance.h"
 #include "engine/game/registry/game_capabilities.h"
 #include "engine/game/registry/game_knowledge.h"
+#include "engine/update/mod_update_db_client.h"
 #include "platform/platform.h"
+#include "ui/controllers/downloads_controller.h"
 #include "ui/controllers/mod_list_controller.h"
 #include "ui/main_window/main_window.h"
 #include "ui/modinfo/mod_info_data.h"
@@ -81,9 +83,11 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <atomic>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
@@ -1141,4 +1145,102 @@ TEST_CASE("MainWindow: display_foreign hides the game-native rows",
   Settings::instance().set_display_foreign(true);
   mlc->apply_mod_filter();
   CHECK(!view->isRowHidden(row_of(QStringLiteral("TestGame.esm")), QModelIndex()));
+}
+
+// Settings > Mod List > "Check for mods for updates after install".
+//
+// The setting gates a MOD update poll, not an application update: MO2's
+// equivalent is consumed by modInstalled, which asks the mod update database
+// about the mod that was just installed. The assertion is on the consumer's
+// output - whether the database was actually asked, and about which game - so
+// a getter round-trip cannot satisfy it: that would pass with the poll body
+// emptied.
+TEST_CASE("MainWindow: check_update_after_mod_install gates the mod update poll",
+          "[ui][settings][harness]") {
+  const fs::path root     = make_case_root("gmm_h75m_modupdate");
+  const fs::path inst_dir = root / "instances";
+
+  qputenv("QT_QPA_PLATFORM", "offscreen");
+  int app_argc     = 1;
+  char app_argv0[] = "main_window_harness_test";
+  char *app_argv[] = {app_argv0, nullptr};
+  QApplication app(app_argc, app_argv);
+  QCoreApplication::setOrganizationName("GameModManager");
+  QCoreApplication::setApplicationName("GameModManager");
+
+  // skyrimspecialedition so ModUpdateDbClient::db_game_for resolves it to a
+  // DB tag; an unmapped game would be skipped before the fake is reached and
+  // the case would pass for the wrong reason.
+  auto inst           = engine::Instance::installed("TestGame", inst_dir);
+  inst.info().game_id = "skyrimspecialedition";
+  REQUIRE(inst.create_directories());
+  REQUIRE(inst.write_toml());
+
+  engine::GameKnowledge knowledge;
+  knowledge.set("skyrimspecialedition", "mods_subpath", "Mods");
+  FakePlatform platform(root / "data");
+
+  // Records what the poll was asked for. Returns ok=false, so nothing is
+  // written to the mod update disk cache and the network is never touched.
+  struct PollRecorder : public engine::update::ModUpdateDbClient {
+    std::atomic<int> polls{0};
+    std::string last_db_game;
+    engine::update::PollResult fetch_index_impl(const std::string &db_game,
+                                                const std::string &) override {
+      ++polls;
+      last_db_game = db_game;
+      engine::update::PollResult res;
+      res.last_error = "harness fake";
+      return res;
+    }
+    engine::update::ModUpdateShardRecord
+    fetch_shard_record_impl(const std::string &, std::int64_t) override {
+      return {};
+    }
+  };
+  auto recorder = std::make_unique<PollRecorder>();
+  auto *rec     = recorder.get();
+  engine::update::ModUpdateDbClient::set_instance(std::move(recorder));
+  struct RestoreClient {
+    ~RestoreClient() { engine::update::ModUpdateDbClient::set_instance(nullptr); }
+  } restore_client;
+
+  ui::MainWindow w;
+  w.set_game_knowledge(&knowledge);
+  w.set_platform(&platform);
+  w.show();
+  w.set_game_info("skyrimspecialedition", "Skyrim", "Default", {}, inst.info().root);
+  REQUIRE(pump_until([&w] {
+    return !w.is_loading();
+  }));
+  REQUIRE(w.current_game_id() == "skyrimspecialedition");
+
+  auto *ctl = w.findChild<ui::DownloadsController *>();
+  REQUIRE(ctl != nullptr);
+  auto &s = Settings::instance();
+
+  // Setting OFF: the database is not asked at all.
+  s.set_check_update_after_mod_install(false);
+  ctl->check_mod_updates_after_install();
+  CHECK(rec->polls.load() == 0);
+
+  // Setting ON: the database IS asked, and about this game.
+  s.set_check_update_after_mod_install(true);
+  ctl->check_mod_updates_after_install();
+  REQUIRE(pump_until(
+      [&rec] {
+        return rec->polls.load() > 0;
+      },
+      10000));
+  CHECK(rec->last_db_game == "SE");
+
+  // No game bound: nothing to ask about, even with the setting on. This is the
+  // guard that stops a poll against an empty game id.
+  w.set_game_info("", "No Game", "Default", {}, inst.info().root);
+  const int before = rec->polls.load();
+  ctl->check_mod_updates_after_install();
+  pump_ms(150);
+  CHECK(rec->polls.load() == before);
+
+  fs::remove_all(root);
 }

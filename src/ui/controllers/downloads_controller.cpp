@@ -8,6 +8,7 @@
 #include <QAbstractButton>
 #include <QMessageBox>
 #include <QPushButton>
+#include <QThread>
 #include <QTimer>
 #include <cstdint>
 #include <cstring>
@@ -21,6 +22,7 @@
 #include "engine/core/log/logger.h"
 #include "engine/core/trace/trace_recorder.h"
 #include "engine/core/util/fs_utils.h"
+#include "engine/update/mod_update_db_client.h"
 #include "engine/deploy/interface.h"
 #include "engine/deploy/launch/overlay_launcher.h"
 #include "engine/game/registry/game_knowledge.h"
@@ -188,6 +190,7 @@ void DownloadsController::setup_pipeline() {
                                                             {"mod", installed_folder},
                                                             {"name", installed_folder},
                                                         }));
+                  check_mod_updates_after_install();
                 }
                 dt->mark_installed(mod_id);
               }
@@ -1067,6 +1070,24 @@ void DownloadsController::start_loverslab_download(const std::string &url) {
       Qt::QueuedConnection);
 
   engine::Logger::instance().debug("LoversLab download queued: " + key);
+}
+
+// MO2 asks the mod update database about the mod that was just installed when
+// InterfaceSettings::checkUpdateAfterInstallation is on
+// (references/modorganizer/src/mainwindow.cpp:2461-2476 ->
+// checkModsForUpdates). The setting that gates it is the mod-update one, and
+// nothing in this path touches the application updater. The fetch is a
+// network call on the install-complete path, so it goes to its own thread
+// rather than blocking the UI the install just unblocked.
+void DownloadsController::check_mod_updates_after_install() {
+  if (!Settings::instance().check_update_after_mod_install())
+    return;
+  const std::string game = w_ ? w_->current_game_id() : std::string();
+  if (game.empty())
+    return;
+  QThread::create([game] {
+    engine::update::ModUpdateDbClient::instance().fetch_index(game);
+  })->start();
 }
 
 }  // namespace ui

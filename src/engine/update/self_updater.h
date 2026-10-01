@@ -42,13 +42,11 @@ public:
   // Restart the application (called after a successful install).
   virtual void restart() = 0;
 
-  // Factory: create the right updater for this platform.
+  // Factory: create the right updater for this platform, chosen by
+  // detect_install_method(). Returns nullptr when this install has no updater
+  // in this build (QtIFW, Flatpak, or a layout we do not recognise) rather
+  // than guessing one.
   static std::unique_ptr<SelfUpdater> create();
-
-  // Detect the Linux distribution type.
-  // Returns "flatpak", "appimage", "deb", "rpm", "aur", or "unknown".
-  // On non-Linux platforms returns "unknown".
-  static std::string detect_distro_type();
 };
 
 }  // namespace engine::update

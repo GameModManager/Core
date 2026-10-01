@@ -160,13 +160,10 @@ collection/batch_installer.cpp
     network/nexus_v2/client.cpp
     network/nexus_v2/collection_revision.cpp
     update/self_updater.cpp
+    update/install_method.cpp
     update/windows_self_updater.cpp
-    update/linux_self_updater.cpp
     update/macos_self_updater.cpp
-    update/flatpak_updater.cpp
     update/appimage_updater.cpp
-    update/deb_rpm_updater.cpp
-    update/aur_updater.cpp
     update/mod_update_db_client.cpp
     core/keyring/keyring.cpp
     core/github.cpp
