@@ -809,8 +809,8 @@ void ModListController::switch_profile(const QString &profile) {
   const auto expected_profile_dir = profiles_dir / w_->current_profile_name_;
   if (engine::profile::profile_needs_recreate(w_->active_profile_.get(),
                                               expected_profile_dir)) {
-    w_->active_profile_ =
-        std::make_unique<engine::profile::ProfileManager>(expected_profile_dir);
+    w_->set_active_profile(
+        std::make_unique<engine::profile::ProfileManager>(expected_profile_dir));
     w_->active_profile_->refresh_mod_status(state.known_mods, state.foreign_mods);
   }
 
@@ -850,7 +850,7 @@ void ModListController::switch_profile(const QString &profile) {
   // Adopt the new profile's engine model (modlist.txt state already restored
   // by the switcher). The scan launched by the refresh callback lands after
   // this, so on_mod_scan_finished applies the new profile's state.
-  w_->active_profile_ = std::move(result.profile);
+  w_->set_active_profile(std::move(result.profile));
 
   // Delayed disable capability: queue the FULL desired state of the new
   // profile so the next Run reconciles the on-disk sentinels with the profile.
@@ -1315,8 +1315,8 @@ void ModListController::load_mods_from_game() {
         w_->profiles_dir_path() / w_->current_profile_name_;
     if (engine::profile::profile_needs_recreate(w_->active_profile_.get(),
                                                 expected_profile_dir)) {
-      w_->active_profile_ =
-          std::make_unique<engine::profile::ProfileManager>(expected_profile_dir);
+      w_->set_active_profile(
+          std::make_unique<engine::profile::ProfileManager>(expected_profile_dir));
       w_->active_profile_->refresh_mod_status({}, {});
     }
   }
