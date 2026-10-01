@@ -1128,7 +1128,7 @@ void run_hover_parity_fixture() {
 // It does not change the load order: natives and CC come first either way.
 void run_force_core_files_fixture() {
   std::error_code ec;
-  const fs::path base = fs::current_path() / "gmm_force_core_files";
+  const fs::path base = fs::temp_directory_path() / "gmm_force_core_files";
   fs::remove_all(base, ec);
   const fs::path game = base / "game";
   const fs::path mods = base / "mods";
