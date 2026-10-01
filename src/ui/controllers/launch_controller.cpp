@@ -284,10 +284,12 @@ std::vector<std::string> extract_executables(const std::string &content) {
 std::vector<std::string>
 seed_executable_candidates(const std::filesystem::path &game_dir,
                            const std::string &declared,
-                           const std::vector<std::filesystem::path> &extra_roots) {
-  auto names = engine::filter_existing_executables(game_dir, declared);
+                           const std::vector<std::filesystem::path> &extra_roots,
+                           const std::string &blacklist) {
+  auto names = engine::filter_existing_executables(game_dir, declared, blacklist);
   for (const auto &root : extra_roots) {
-    for (const auto &name : engine::filter_existing_executables(root, declared)) {
+    for (const auto &name :
+         engine::filter_existing_executables(root, declared, blacklist)) {
       const auto base = (root / name).filename();
       bool seen       = false;
       for (const auto &n : names) {
@@ -379,8 +381,9 @@ void LaunchController::populate_executables() {
     fallback_roots.push_back(engine::safe_home_dir() / "Applications");
     fallback_roots.push_back("/Applications");
 #endif
-    for (const auto &name :
-         seed_executable_candidates(w_->current_game_dir_, declared, fallback_roots))
+    for (const auto &name : seed_executable_candidates(
+             w_->current_game_dir_, declared, fallback_roots,
+             Settings::instance().executables_blacklist().toStdString()))
       exec_list.append(QString::fromStdString(name));
   }
 

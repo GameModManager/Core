@@ -3335,3 +3335,324 @@ TEST_CASE("a toggle failure is not flagged for a game with no sentinel of its ow
             .size() == icons + 1);
 }
 
+// ---------------------------------------------------------------------------
+// Settings > Mod List: the separator-renderer keys and the drag-hover fold.
+// Every case asserts on what the model DRAWS or REVEALS, so a key that reached
+// only the settings store would leave the case red.
+// ---------------------------------------------------------------------------
+namespace {
+
+// One folded separator over a two-mod band; the first mod wins a file the
+// second also ships, so the band has a conflict state to report.
+void load_band(ui::ModList &model, bool fold_separator) {
+  QVector<ui::ModEntry> entries;
+  ui::ModEntry sep;
+  sep.id           = QStringLiteral("Sep1");
+  sep.name         = QStringLiteral("Band");
+  sep.enabled      = true;
+  sep.is_separator = true;
+  sep.folded       = fold_separator;
+  entries.append(sep);
+  for (const char *id : {"Winner", "Loser"}) {
+    ui::ModEntry m;
+    m.id              = QString::fromLatin1(id);
+    m.name            = m.id;
+    m.enabled         = true;
+    m.conflict_wins   = QString::fromLatin1(id) == QStringLiteral("Winner") ? 1 : 0;
+    m.conflict_losses = QString::fromLatin1(id) == QStringLiteral("Loser") ? 1 : 0;
+    entries.append(m);
+  }
+  // Beaten is OUTSIDE the band and collides with Winner; Outsider is in no
+  // pair at all, so it is the row that must never be marked.
+  ui::ModEntry beaten;
+  beaten.id              = QStringLiteral("Beaten");
+  beaten.name            = beaten.id;
+  beaten.enabled         = true;
+  beaten.conflict_losses = 1;
+  entries.append(beaten);
+  ui::ModEntry other;
+  other.id      = QStringLiteral("Outsider");
+  other.name    = other.id;
+  other.enabled = true;
+  entries.append(other);
+  model.reset_with_order(entries);
+}
+
+int sep_flag_icons(const ui::ModList &model) {
+  return model.data(model.index(0, ui::ModList::Conflicts), ui::ModList::kFlagIconsRole)
+      .value<QList<QIcon>>()
+      .size();
+}
+
+QColor sep_band_foreground(const ui::ModList &model) {
+  return model.data(model.index(0, ui::ModList::Flags), Qt::ForegroundRole)
+      .value<QColor>();
+}
+
+// One folded separator over a band where the first mod carries the hidden-files
+// badge and the second is ordinary, so the union is a single icon. Load it
+// separately from load_band because that fixture is about conflicts, and the
+// flags icon is drawn for a band with none.
+void load_badged_band(ui::ModList &model) {
+  QVector<ui::ModEntry> entries;
+  ui::ModEntry sep;
+  sep.id           = QStringLiteral("SepF");
+  sep.name         = QStringLiteral("Flagged band");
+  sep.enabled      = true;
+  sep.is_separator = true;
+  sep.folded       = false;
+  entries.append(sep);
+  ui::ModEntry hidden_mod;
+  hidden_mod.id               = QStringLiteral("HiddenMod");
+  hidden_mod.name             = hidden_mod.id;
+  hidden_mod.enabled          = true;
+  hidden_mod.has_hidden_files = true;
+  entries.append(hidden_mod);
+  ui::ModEntry plain;
+  plain.id      = QStringLiteral("PlainMod");
+  plain.name    = plain.id;
+  plain.enabled = true;
+  entries.append(plain);
+  model.reset_with_order(entries);
+}
+
+int sep_flags_badges(const ui::ModList &model) {
+  return model.data(model.index(0, ui::ModList::Flags), ui::ModList::kFlagIconsRole)
+      .value<QList<QIcon>>()
+      .size();
+}
+
+}  // namespace
+
+TEST_CASE("collapsible separator icon key gates the separator conflict icon",
+          "[ui][settings]") {
+  qputenv("QT_QPA_PLATFORM", "offscreen");
+  const std::filesystem::path cfg = "/tmp/gmm_sep_icons/config";
+  std::filesystem::remove_all("/tmp/gmm_sep_icons");
+  std::filesystem::create_directories(cfg);
+  qputenv("XDG_CONFIG_HOME", cfg.c_str());
+  int argc     = 1;
+  char argv0[] = "test";
+  char *argv[] = {argv0, nullptr};
+  QApplication app(argc, argv);
+  QCoreApplication::setOrganizationName("GameModManager");
+  QCoreApplication::setApplicationName("GameModManager");
+
+  auto &s = Settings::instance();
+  ui::ModList model;
+  load_band(model, /*fold_separator=*/false);
+
+  // Default (the key's stored default is on): the band state reaches the icon.
+  CHECK(s.collapsible_separators_icons_conflicts());
+  CHECK(sep_flag_icons(model) == 1);
+
+  s.set_collapsible_separators_icons_conflicts(false);
+  CHECK(sep_flag_icons(model) == 0);
+  // A mod row is unaffected: the key only speaks about separator rows.
+  CHECK(model.data(model.index(1, ui::ModList::Conflicts), ui::ModList::kFlagIconsRole)
+            .value<QList<QIcon>>()
+            .size() == 1);
+
+  s.set_collapsible_separators_icons_conflicts(true);
+  CHECK(sep_flag_icons(model) == 1);
+  std::filesystem::remove_all("/tmp/gmm_sep_icons");
+}
+
+// Settings > Mod List > Collapsible Separators > "flags". A separator row wears
+// the union of its band's badges, so a folded band still says what is inside it.
+TEST_CASE("collapsible separator flags key gates the band badge union",
+          "[ui][settings]") {
+  qputenv("QT_QPA_PLATFORM", "offscreen");
+  const std::filesystem::path cfg = "/tmp/gmm_sep_flags/config";
+  std::filesystem::remove_all("/tmp/gmm_sep_flags");
+  std::filesystem::create_directories(cfg);
+  qputenv("XDG_CONFIG_HOME", cfg.c_str());
+  int argc     = 1;
+  char argv0[] = "test";
+  char *argv[] = {argv0, nullptr};
+  QApplication app(argc, argv);
+  QCoreApplication::setOrganizationName("GameModManager");
+  QCoreApplication::setApplicationName("GameModManager");
+
+  auto &s = Settings::instance();
+  ui::ModList model;
+  load_badged_band(model);
+
+  // Default (on): the band shows the hidden-files badge its first mod carries.
+  CHECK(s.collapsible_separators_icons_flags());
+  CHECK(sep_flags_badges(model) == 1);
+  // The row that actually carries it still shows it - the key speaks about the
+  // separator row only.
+  CHECK(model.data(model.index(1, ui::ModList::Flags), ui::ModList::kFlagIconsRole)
+            .value<QList<QIcon>>()
+            .size() == 1);
+  // The plain mod in the band is unchanged.
+  CHECK(model.data(model.index(2, ui::ModList::Flags), ui::ModList::kFlagIconsRole)
+            .value<QList<QIcon>>()
+            .size() == 0);
+
+  s.set_collapsible_separators_icons_flags(false);
+  CHECK(sep_flags_badges(model) == 0);
+  // Still on for the mod rows: the key is about the separator row.
+  CHECK(model.data(model.index(1, ui::ModList::Flags), ui::ModList::kFlagIconsRole)
+            .value<QList<QIcon>>()
+            .size() == 1);
+
+  s.set_collapsible_separators_icons_flags(true);
+  CHECK(sep_flags_badges(model) == 1);
+  std::filesystem::remove_all("/tmp/gmm_sep_flags");
+}
+
+TEST_CASE("collapsible separator highlight_to gates the band highlight",
+          "[ui][settings]") {
+  qputenv("QT_QPA_PLATFORM", "offscreen");
+  const std::filesystem::path cfg = "/tmp/gmm_sep_hl/config";
+  std::filesystem::remove_all("/tmp/gmm_sep_hl");
+  std::filesystem::create_directories(cfg);
+  qputenv("XDG_CONFIG_HOME", cfg.c_str());
+  int argc     = 1;
+  char argv0[] = "test";
+  char *argv[] = {argv0, nullptr};
+  QApplication app(argc, argv);
+  QCoreApplication::setOrganizationName("GameModManager");
+  QCoreApplication::setApplicationName("GameModManager");
+
+  auto &s = Settings::instance();
+  ui::ModList model;
+  load_band(model, /*fold_separator=*/false);
+
+  // The band has both wins and losses, so the aggregate is the mixed colour.
+  // Default (on) = exactly what the mod list has always drawn.
+  const QColor mixed(255, 180, 0);
+  CHECK(sep_band_foreground(model) == mixed);
+
+  s.set_collapsible_separators_highlight_to(false);
+  CHECK(sep_band_foreground(model) != mixed);
+  // The separator still has readable text: the fallback is the contrast
+  // colour, not an unset brush.
+  CHECK(sep_band_foreground(model).isValid());
+
+  s.set_collapsible_separators_highlight_to(true);
+  CHECK(sep_band_foreground(model) == mixed);
+  std::filesystem::remove_all("/tmp/gmm_sep_hl");
+}
+
+TEST_CASE("collapsible separator highlight_from seeds the band conflicts",
+          "[ui][settings]") {
+  qputenv("QT_QPA_PLATFORM", "offscreen");
+  const std::filesystem::path cfg = "/tmp/gmm_sep_hf/config";
+  std::filesystem::remove_all("/tmp/gmm_sep_hf");
+  std::filesystem::create_directories(cfg);
+  qputenv("XDG_CONFIG_HOME", cfg.c_str());
+  int argc     = 1;
+  char argv0[] = "test";
+  char *argv[] = {argv0, nullptr};
+  QApplication app(argc, argv);
+  QCoreApplication::setOrganizationName("GameModManager");
+  QCoreApplication::setApplicationName("GameModManager");
+
+  auto &s = Settings::instance();
+  ui::ModList model;
+  load_band(model, /*fold_separator=*/false);
+
+  // Winner (row 1) overwrites the files Loser (row 2) and Beaten (row 3) ship;
+  // Outsider (row 4) is in no pair at all.
+  QMap<QString, ui::ConflictPairs> pairs;
+  ui::ConflictPairs win;
+  win.wins_against = {QStringLiteral("Loser"), QStringLiteral("Beaten")};
+  pairs.insert(QStringLiteral("Winner"), win);
+  ui::ConflictPairs lose;
+  lose.loses_to = {QStringLiteral("Winner")};
+  pairs.insert(QStringLiteral("Loser"), lose);
+  model.set_conflict_pairs(pairs);
+
+  // A row with no highlight returns no background at all (data() falls through
+  // to an invalid variant), so that is the "nothing is marked" state.
+  const auto beaten_bg = [&] {
+    return model.data(model.index(3, ui::ModList::Name), Qt::BackgroundRole);
+  };
+  const auto outsider_bg = [&] {
+    return model.data(model.index(4, ui::ModList::Name), Qt::BackgroundRole);
+  };
+  const auto winner_bg = [&] {
+    return model.data(model.index(1, ui::ModList::Name), Qt::BackgroundRole);
+  };
+
+  // Default: a selected separator highlights nothing, which is what the mod
+  // list has always done.
+  CHECK_FALSE(s.collapsible_separators_highlight_from());
+  model.set_selected_mods({QStringLiteral("Sep1")});
+  CHECK_FALSE(beaten_bg().isValid());
+
+  s.set_collapsible_separators_highlight_from(true);
+  model.set_selected_mods({QStringLiteral("Sep1")});
+  // Beaten is in no band and is not the selection, yet it is now marked: the
+  // band member Winner contributes its partners. Green - the "overwritten"
+  // colour, because Winner wins.
+  CHECK(beaten_bg().value<QBrush>().color() ==
+        Settings::instance().modlist_overwritten_loose());
+  // A mod that collides with nothing is still not marked.
+  CHECK_FALSE(outsider_bg().isValid());
+
+  // Selecting a plain mod still uses the direct-pair path, unchanged: Loser
+  // is beaten by Winner, so selecting it marks Winner red (overwriting).
+  model.set_selected_mods({QStringLiteral("Loser")});
+  CHECK(winner_bg().value<QBrush>().color() ==
+        Settings::instance().modlist_overwriting_loose());
+
+  s.set_collapsible_separators_highlight_from(false);
+  std::filesystem::remove_all("/tmp/gmm_sep_hf");
+}
+
+TEST_CASE("auto-collapse separators on hover opens the band under a drag",
+          "[ui][settings]") {
+  qputenv("QT_QPA_PLATFORM", "offscreen");
+  const std::filesystem::path cfg = "/tmp/gmm_sep_hover/config";
+  std::filesystem::remove_all("/tmp/gmm_sep_hover");
+  std::filesystem::create_directories(cfg);
+  qputenv("XDG_CONFIG_HOME", cfg.c_str());
+  int argc     = 1;
+  char argv0[] = "test";
+  char *argv[] = {argv0, nullptr};
+  QApplication app(argc, argv);
+  QCoreApplication::setOrganizationName("GameModManager");
+  QCoreApplication::setApplicationName("GameModManager");
+
+  auto &s = Settings::instance();
+  ui::ModList model;
+  load_band(model, /*fold_separator=*/true);
+
+  // Folded: both band members are hidden.
+  CHECK(model.is_row_fold_hidden(1));
+  CHECK(model.is_row_fold_hidden(2));
+
+  SECTION("off (the default): a hover opens nothing") {
+    CHECK(!s.auto_collapse_on_hover());
+    model.hover_expand_separator(0);
+    CHECK(model.is_row_fold_hidden(1));
+    CHECK(model.is_row_fold_hidden(2));
+  }
+
+  SECTION("on: the row under the drag opens, and closes when it leaves") {
+    s.set_auto_collapse_on_hover(true);
+    model.hover_expand_separator(0);
+    CHECK(!model.is_row_fold_hidden(1));
+    CHECK(!model.is_row_fold_hidden(2));
+
+    model.hover_expand_separator(-1);
+    CHECK(model.is_row_fold_hidden(1));
+    CHECK(model.is_row_fold_hidden(2));
+  }
+
+  SECTION("the fold is transient: the persisted flag is untouched") {
+    s.set_auto_collapse_on_hover(true);
+    model.hover_expand_separator(0);
+    // The separator row is still reported as folded - nothing was written.
+    CHECK(model.mods().at(0).folded);
+    model.hover_expand_separator(-1);
+    CHECK(model.mods().at(0).folded);
+  }
+
+  s.set_auto_collapse_on_hover(false);
+  std::filesystem::remove_all("/tmp/gmm_sep_hover");
+}

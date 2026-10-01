@@ -7,6 +7,7 @@
 //
 // Hermetic: offscreen platform, throwaway XDG_CONFIG_HOME, no network.
 #include "engine/pipeline/plugin_host/category_factory.h"
+#include "ui/settings/settings.h"
 #include "ui/widgets/category_filter_panel.h"
 
 #include <QApplication>
@@ -71,6 +72,13 @@ TEST_CASE("category filter panel", "[ui]") {
   factory.addCategory(2, "Armour", 0);
   factory.addCategory(3, "Poses", 1);  // child of Animations
   factory.addCategory(4, "Idles", 1);  // child of Animations
+
+  // This case is about the tree and the signal; persistence has its own case
+  // below. Switching it off also keeps the sections independent - with it on,
+  // an earlier section's ticks would be restored into a later section's panel
+  // and a "tick this item" would start as a no-op.
+  Settings::instance().set_save_filters(false);
+  Settings::instance().set_modlist_filter_categories({});
 
   ui::CategoryFilterPanel panel;
   QSignalSpy changed_spy(&panel, &ui::CategoryFilterPanel::category_filter_changed);
@@ -140,14 +148,93 @@ TEST_CASE("category filter panel", "[ui]") {
       REQUIRE(n.checked == Qt::Unchecked);
   }
 
-  SECTION("rebuild keeps the tree but resets the checked state") {
+  SECTION("rebuild repopulates the tree and keeps the checked state") {
+    // The category editor calls rebuild() when the category list changes.
+    // Dropping the ticks there would silently lose a remembered filter, so the
+    // selection survives - by id, which is also what makes a remembered
+    // selection survivable across a relaunch.
     auto *tree = panel.findChild<QTreeWidget *>();
     REQUIRE(tree != nullptr);
     tree->topLevelItem(0)->setCheckState(0, Qt::Checked);
     REQUIRE(panel.has_active_filter());
 
     panel.rebuild();
-    REQUIRE_FALSE(panel.has_active_filter());
+    REQUIRE(panel.has_active_filter());
+    REQUIRE(panel.checked_category_ids() == QSet<int>({1}));
     REQUIRE(nodes_of(panel).size() == 4);
   }
+}
+
+TEST_CASE("category filter panel remembers its selection", "[ui][settings]") {
+  qputenv("QT_QPA_PLATFORM", "offscreen");
+  const std::filesystem::path cfg = "/tmp/gmm_category_filter_state/config";
+  std::filesystem::remove_all("/tmp/gmm_category_filter_state");
+  std::filesystem::create_directories(cfg);
+  qputenv("XDG_CONFIG_HOME", cfg.c_str());
+  int test_argc     = 1;
+  char test_argv0[] = "test";
+  char *test_argv[] = {test_argv0, nullptr};
+  QApplication app(test_argc, test_argv);
+  QCoreApplication::setOrganizationName("GameModManager");
+  QCoreApplication::setApplicationName("GameModManager");
+
+  auto &factory = engine::Category::Factory::instance();
+  factory.removeCategory(1);
+  factory.removeCategory(4);
+  factory.addCategory(1, "Animations", 0);
+  factory.addCategory(4, "Idle", 1);
+
+  auto &s = Settings::instance();
+  // Cases in one binary share a sandbox, so start from a known-empty store.
+  s.set_modlist_filter_categories({});
+
+  SECTION("off (nothing remembered until the user ticks something)") {
+    s.set_save_filters(false);
+    ui::CategoryFilterPanel panel;
+    CHECK_FALSE(panel.has_active_filter());
+    CHECK(Settings::instance().modlist_filter_categories().isEmpty());
+  }
+
+  SECTION("on: ticking a category reaches the next panel") {
+    s.set_save_filters(true);
+    s.set_modlist_filter_categories({});
+    {
+      ui::CategoryFilterPanel panel;
+      auto *tree = panel.findChild<QTreeWidget *>();
+      REQUIRE(tree != nullptr);
+      // A real user action: ticking the item emits itemChanged, which is what
+      // saves it.
+      tree->topLevelItem(0)->setCheckState(0, Qt::Checked);
+      CHECK(panel.has_active_filter());
+    }
+    // A fresh panel - what the next launch builds - comes back with the tick.
+    ui::CategoryFilterPanel relaunched;
+    CHECK(relaunched.has_active_filter());
+    CHECK(relaunched.checked_category_ids() == QSet<int>({1}));
+  }
+
+  SECTION("on: Clear is remembered too") {
+    s.set_save_filters(true);
+    s.set_modlist_filter_categories({});
+    {
+      ui::CategoryFilterPanel panel;
+      auto *tree = panel.findChild<QTreeWidget *>();
+      REQUIRE(tree != nullptr);
+      tree->topLevelItem(0)->setCheckState(0, Qt::Checked);
+      panel.clear_filter();
+      CHECK_FALSE(panel.has_active_filter());
+    }
+    ui::CategoryFilterPanel relaunched;
+    CHECK_FALSE(relaunched.has_active_filter());
+  }
+
+  SECTION("a remembered id with no category is dropped, not honoured") {
+    s.set_save_filters(true);
+    s.set_modlist_filter_categories({QStringLiteral("999")});
+    ui::CategoryFilterPanel panel;
+    CHECK_FALSE(panel.has_active_filter());
+  }
+
+  s.set_save_filters(false);
+  std::filesystem::remove_all("/tmp/gmm_category_filter_state");
 }

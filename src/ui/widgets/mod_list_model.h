@@ -337,6 +337,14 @@ public:
   void set_folded(int row, bool folded);
   // Set folded state for all separator rows.
   void set_all_separators_folded(bool folded);
+  // Settings > Mod List > "Auto-collapse separators on hover". The view calls
+  // this on every drag-move with the row under the cursor: with the setting on,
+  // a folded separator row opens for as long as the drag is over it and
+  // re-folds when the cursor leaves (-1 closes, also what a drop and a finished
+  // drag pass). With the setting off every call closes instead, so a band
+  // opened while it was on closes again. Transient: the persisted `folded`
+  // flag is never written, so hovering leaves nothing on disk.
+  void hover_expand_separator(int row);
   void apply_fold_state();
   // Visual nesting gate (per-instance "Nested mod list" setting). When off,
   // parent_id links are preserved but inert: no indentation, no fold arrows
@@ -441,6 +449,12 @@ private:
   // when a caller inserted the rows themselves.
   void pin_pinned_rows();
   [[nodiscard]] QString compute_separator_flags(int row) const;
+  // Appends to `out` the union of the badge icons carried by the mods in the
+  // band that starts at `row` (every row up to the next separator). Backs
+  // Settings > Mod List > Collapsible Separators > "flags": a folded separator
+  // row shows what is inside it. The badges are the same ones a mod row draws
+  // from its own entry, so the two never disagree.
+  void band_flag_badges(int row, QList<QIcon> &out) const;
   // "Categories: " + every category name, " , " apart (MO2's COL_CATEGORY
   // cell tooltip). Empty when the mod has no categories, which is what MO2
   // returns for an uncategorized mod.
@@ -489,6 +503,13 @@ private:
   bool uses_merged_             = false;
   bool nesting_enabled_         = false;
   QSet<QString> selected_mod_ids_;
+  // Ids a selected separator's band conflicts with (Collapsible Separators >
+  // "from separators"); empty when no separator is selected or the setting is
+  // off. Rebuilt by set_selected_mods().
+  QSet<QString> separator_partners_;
+  // Separator id temporarily opened by a drag hover; empty when none. Consulted
+  // by compute_fold_hidden() on top of the persisted `folded` flag.
+  QString hover_expanded_separator_;
   QSet<QString> highlighted_mods_;
   QMap<QString, ConflictPairs> conflict_pairs_;
   QString overwrite_path_;

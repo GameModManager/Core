@@ -11,6 +11,7 @@
 #include "ui/settings/settings.h"
 #include "ui/widgets/mod_list_model.h"
 #include "ui/widgets/mod_table_view.h"
+#include "ui/widgets/web_link.h"
 
 #include <QActionGroup>
 #include <QDesktopServices>
@@ -405,7 +406,7 @@ void ModContextMenu::setup_mod_list_context_menu() {
                 engine::IconManager::instance().resolve_icon("text-html"), src.label,
                 w_, [src]() {
                   if (!src.url.isEmpty())
-                    QDesktopServices::openUrl(QUrl(src.url));
+                    WebLink::open(src.url);
                 });
             visit_act->setEnabled(!src.url.isEmpty());
           }

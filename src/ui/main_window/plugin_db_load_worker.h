@@ -20,6 +20,10 @@ struct PluginDbLoadRequest {
   std::filesystem::path mods_dir;  // resolved mods_dir_path() (instance or game)
   std::string disable_mechanism;   // sentinel filename marking a mod disabled
   std::string game_native;         // comma-separated vanilla plugins
+  // Settings > Workarounds > "Force-enable game core files", read on the main
+  // thread and copied here like the two fields above: the worker must not reach
+  // QSettings. True locks the base game's own plugins and Creation Club content.
+  bool force_core_files = true;
 };
 
 // Runs the plugin-DB disk load (PluginDatabase::refresh -> parse headers ->

@@ -112,6 +112,11 @@ ConflictEngine::walk_mod(const std::filesystem::path &mod_path,
       auto dir = std::dynamic_pointer_cast<const DirectoryFileTree>(entry);
       if (dir != nullptr && dir->is_symlink())
         return FileTree::WalkReturn::Skip;
+      // "Skip directories" (Settings > Workarounds): the whole subtree is
+      // absent from the registry, exactly as if deploy would never have
+      // copied it, so a file the game cannot see raises no conflict.
+      if (dir != nullptr && is_skipped_directory(dir->name()))
+        return FileTree::WalkReturn::Skip;
       return FileTree::WalkReturn::Continue;
     }
 

@@ -12,7 +12,7 @@ PluginDbLoadWorker::PluginDbLoadWorker(QObject *parent) : QObject(parent) {}
 void PluginDbLoadWorker::run(PluginDbLoadRequest request, quint64 generation) {
   engine::PluginDb::Database db;
   db.refresh(request.game_dir, request.mods_dir, request.disable_mechanism,
-             request.game_native);
+             request.game_native, request.force_core_files);
   db.load_creation_club(request.game_dir);
   db.sort_load_order();
 

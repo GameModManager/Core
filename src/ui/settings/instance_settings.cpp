@@ -175,6 +175,14 @@ void set_instance_plugin_setting(const std::filesystem::path &instance_root,
                                     instance_root.string());
 }
 
+InstanceSwitch instance_switch_plan(const std::filesystem::path &from_root,
+                                    const std::filesystem::path &to_root) {
+  if (!instance_effective_settings_differ(from_root, to_root))
+    return InstanceSwitch::Live;
+  return Settings::instance().show_change_game_confirmation() ? InstanceSwitch::Ask
+                                                              : InstanceSwitch::Restart;
+}
+
 bool instance_effective_settings_differ(const std::filesystem::path &from,
                                         const std::filesystem::path &to) {
   if (effective_theme(from) != effective_theme(to))

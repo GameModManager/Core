@@ -90,6 +90,14 @@ resolve_regular_file_ci(const std::filesystem::path &dir,
   return {};
 }
 
+// Settings > Workarounds > "Executable blacklist": names that must never be
+// offered as a launch target, because they are not the game's - a browser, a
+// launcher, an overlay helper. The stored value is a ';'-separated list, the
+// shape the MO2 blacklist uses, and names are compared case-insensitively on
+// the basename, so an entry also matches an absolute path.
+[[nodiscard]] bool is_blacklisted_executable(const std::string &name,
+                                             const std::string &blacklist);
+
 // Filter a plugin's comma-separated executable declarations down to the ones
 // that physically exist under game_dir (detection only - never consults the
 // deploy overlay; use merged_view_file_exists for that). Kept entries retain
@@ -98,10 +106,11 @@ resolve_regular_file_ci(const std::filesystem::path &dir,
 // is launchable-shaped: a regular file, or - for macOS app bundles - a
 // ".app"-suffixed directory. Missing names are silently dropped, so one
 // declaration list doubles as a cross-platform candidate set: the scan itself
-// is the platform filter.
+// is the platform filter. Names in `blacklist` are dropped before the
+// existence check, so a blacklisted file never reaches the launch list.
 [[nodiscard]] inline std::vector<std::string>
 filter_existing_executables(const std::filesystem::path &game_dir,
-                            const std::string &csv) {
+                            const std::string &csv, const std::string &blacklist = {}) {
   std::vector<std::string> out;
   if (game_dir.empty() || csv.empty())
     return out;
@@ -114,7 +123,9 @@ filter_existing_executables(const std::filesystem::path &game_dir,
       continue;
     const auto last        = token.find_last_not_of(" \t");
     const std::string name = token.substr(first, last - first + 1);
-    const auto gf          = resolver.resolve(name);
+    if (is_blacklisted_executable(name, blacklist))
+      continue;
+    const auto gf = resolver.resolve(name);
     if (!gf)
       continue;
     std::error_code ec;
@@ -128,15 +139,46 @@ filter_existing_executables(const std::filesystem::path &game_dir,
   return out;
 }
 
+// ---------------------------------------------------------------------------
+// Workarounds (Settings > Workarounds > Miscellaneous)
+// ---------------------------------------------------------------------------
+// The two lists the Workarounds tab writes, held here because the engine is
+// Qt-free and cannot reach QSettings. The UI pushes them through
+// set_workarounds() once at startup and again whenever the tab writes a new
+// value. Both default to empty, which is exactly what the tab stores until the
+// user types something, so an untouched install deploys and walks everything.
+struct Workarounds {
+  // "Skip file suffixes": extra filename suffixes held to the same contract as
+  // the two built-in hidden markers - never deployed, and reported as hidden
+  // everywhere a file is listed. Entries are stored without the dot
+  // ("mohidden" and ".mohidden" mean the same thing) and matched
+  // case-insensitively against the filename.
+  std::vector<std::string> hidden_suffixes;
+  // "Skip directories": directory names never descended into during a deploy,
+  // conflict scan or mod scan. One path segment each, matched
+  // case-insensitively; a trailing slash in the entry is ignored, so ".git/"
+  // and ".git" behave the same.
+  std::vector<std::string> skipped_dirs;
+};
+
+void set_workarounds(Workarounds workarounds);
+
 // Hidden-file markers. GMM hides a mod file by renaming it to <name>.gmmhidden;
 // .mohidden is MO2's marker and is recognized so instances shared with MO2 hide
 // the same files. Both suffixes are skipped by deployment and shown as hidden
-// in the Data tab.
+// in the Data tab. A suffix listed in Workarounds::hidden_suffixes is treated
+// identically.
 inline constexpr const char *kGmmHiddenSuffix = ".gmmhidden";
 inline constexpr const char *kMo2HiddenSuffix = ".mohidden";
 
-// True if the file is hidden by either marker suffix (.gmmhidden or .mohidden).
+// True if the file is hidden by either marker suffix (.gmmhidden or .mohidden)
+// or by a suffix the user added under "Skip file suffixes".
 [[nodiscard]] bool is_hidden_file(const std::filesystem::path &path);
+
+// True when `name` - a single directory name, no path - is listed under
+// "Skip directories". A tree walk calls this on each directory node and skips
+// the whole subtree when it returns true.
+[[nodiscard]] bool is_skipped_directory(const std::string &name);
 
 // Returns true when `exec_path` is reachable in the game's merged view:
 // either physically on disk (native game file, live overlay mount, or a
