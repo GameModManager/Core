@@ -5,6 +5,7 @@
 #include "engine/parallel/parallel.h"
 #include "engine/pipeline/plugin_host/plugin_loader.h"
 #include "engine/source/source_provider.h"
+#include "engine/update/install_method.h"
 #include "ui/settings/instance_settings.h"
 #include "ui/settings/settings.h"
 #include "ui/settings/source_pages.h"
@@ -70,6 +71,28 @@ SettingsContentWidget::SettingsContentWidget(engine::StyleManager *style_manager
 
 // -- General ----------------------------------------------------------------
 
+// The read-only line under the app-update checkbox. It reads the stored
+// cadence and the last-checked timestamp, so ticking the checkbox changes what
+// the panel says rather than only what it stores - that is what gives the
+// setting a reader.
+void SettingsContentWidget::refresh_update_cadence() {
+  if (!update_cadence_label_)
+    return;
+  const auto &s        = Settings::instance();
+  const QDateTime last = s.last_update_check();
+  if (!s.check_for_updates()) {
+    update_cadence_label_->setText(tr("Automatic app update check: off."));
+    return;
+  }
+  update_cadence_label_->setText(
+      last.isValid()
+          ? tr("Automatic app update check: on, at most once every 24 hours. "
+               "Last checked: %1.")
+                .arg(last.toString(Qt::TextDate))
+          : tr("Automatic app update check: on, at most once every 24 hours. "
+               "Never checked yet."));
+}
+
 QWidget *SettingsContentWidget::build_general_tab() {
   auto &s      = Settings::instance();
   auto *page   = new QWidget(this);
@@ -107,16 +130,46 @@ QWidget *SettingsContentWidget::build_general_tab() {
   // General options ---------------------------------------------------------
   auto *gen_group  = new QGroupBox(tr("General"), page);
   auto *gen_layout = new QVBoxLayout(gen_group);
-  auto *update_box = new QCheckBox(tr("Check for updates on startup"), gen_group);
+
+  // What this copy of the application is, and therefore which update route
+  // could ever apply to it. Detection is read-only, so this is safe to build
+  // on every open of the panel. Read-only on purpose: the install method is
+  // not a preference, and nothing here can change it.
+  {
+    namespace upd       = engine::update;
+    const auto method   = upd::detect_install_method(upd::probe_install_facts());
+    auto *install_label = new QLabel(gen_group);
+    install_label->setWordWrap(true);
+    install_label->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    install_label->setText(
+        tr("This install: %1. %2 %3")
+            .arg(tr(upd::install_method_name(method)),
+                 tr(upd::install_method_route(method)),
+                 tr("This build reports the route but does not run it.")));
+    gen_layout->addWidget(install_label);
+  }
+
+  auto *update_box =
+      new QCheckBox(tr("Check for app updates every 24 hours"), gen_group);
   update_box->setChecked(s.check_for_updates());
   update_box->setToolTip(
-      tr("Not wired to anything yet: the app never contacts a release feed, so "
-         "there is no check for this to gate."));
+      tr("Allows a background check for a new application version, at most "
+         "once every 24 hours. Off by default: an automatic check is a "
+         "network request to a third party on every launch, which discloses "
+         "your IP address, this app's version, and the fact that you run it. "
+         "No release feed is published yet, so nothing is checked either "
+         "way until one is."));
   auto *prerelease_box = new QCheckBox(tr("Use prerelease updates"), gen_group);
   prerelease_box->setChecked(s.use_prereleases());
+  // There is no channel concept to choose between: the repository publishes
+  // no releases at all, only one non-release tag. Enabled here it would be a
+  // control that appears to select something that does not exist.
+  prerelease_box->setEnabled(false);
   prerelease_box->setToolTip(
-      tr("Not wired to anything yet: with no release feed being read, there are "
-         "no releases for this to choose between."));
+      tr("Unavailable: there are no prerelease builds to choose between. The "
+         "repository publishes no GitHub releases and no channel concept, so "
+         "this needs at least a second tagged prerelease and a published "
+         "release feed before it can select anything."));
   auto *smooth_box = new QCheckBox(tr("Smooth scrolling in lists"), gen_group);
   smooth_box->setChecked(s.smooth_scrolling());
   smooth_box->setToolTip(tr("Animates wheel scrolling in mod/executable lists."));
@@ -155,6 +208,10 @@ QWidget *SettingsContentWidget::build_general_tab() {
          "plugin settings. Turn it off and the switch always restarts."));
   // Push the persisted toggle value into the engine so the next scan uses it.
   engine::parallel::set_enabled(s.performance_multi_core());
+  update_cadence_label_ = new QLabel(gen_group);
+  update_cadence_label_->setWordWrap(true);
+  gen_layout->addWidget(update_cadence_label_);
+  refresh_update_cadence();
   gen_layout->addWidget(update_box);
   gen_layout->addWidget(prerelease_box);
   gen_layout->addWidget(smooth_box);
@@ -166,8 +223,9 @@ QWidget *SettingsContentWidget::build_general_tab() {
   gen_layout->addWidget(confirm_change_box);
   layout->addWidget(gen_group);
 
-  connect(update_box, &QCheckBox::toggled, this, [&s](bool on) {
+  connect(update_box, &QCheckBox::toggled, this, [&s, this](bool on) {
     s.set_check_for_updates(on);
+    refresh_update_cadence();
   });
   connect(prerelease_box, &QCheckBox::toggled, this, [&s](bool on) {
     s.set_use_prereleases(on);
@@ -527,11 +585,14 @@ QWidget *SettingsContentWidget::build_modlist_tab() {
   auto *sep_scrollbar_box =
       new QCheckBox(tr("Color the scrollbar at separators"), page);
   sep_scrollbar_box->setChecked(s.color_separator_scrollbar());
-  auto *check_update_box = new QCheckBox(tr("Check for updates after install"), page);
-  check_update_box->setChecked(s.check_update_after_install());
+  auto *check_update_box =
+      new QCheckBox(tr("Check for mods for updates after install"), page);
+  check_update_box->setChecked(s.check_update_after_mod_install());
   check_update_box->setToolTip(
-      tr("Not wired to anything yet: the app never contacts a release feed, so "
-         "no install is followed by a check."));
+      tr("After a mod finishes installing, asks the mod update database "
+         "whether a newer version of that mod has been published. This is a "
+         "mod update check, not an application update check; updating "
+         "GameModManager itself is on the General tab."));
 
   layout->addWidget(foreign_box);
   layout->addWidget(save_filters_box);
@@ -552,7 +613,7 @@ QWidget *SettingsContentWidget::build_modlist_tab() {
     s.set_color_separator_scrollbar(on);
   });
   connect(check_update_box, &QCheckBox::toggled, this, [&s](bool on) {
-    s.set_check_update_after_install(on);
+    s.set_check_update_after_mod_install(on);
   });
 
   // Collapsible Separators box (mirrors MO2 settingsdialog.ui

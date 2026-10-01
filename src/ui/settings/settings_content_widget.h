@@ -4,6 +4,7 @@
 
 #include <filesystem>
 
+class QLabel;
 class QTabWidget;
 
 namespace engine {
@@ -58,11 +59,18 @@ private:
   QWidget *build_workarounds_tab();
   QWidget *build_diagnostics_tab();
 
+  // Rewrite the read-only line that reports whether an automatic app update
+  // check is currently allowed and when it last ran. Re-run on every toggle of
+  // the checkbox that gates it, which is what makes that setting a live
+  // control rather than a stored value with no reader.
+  void refresh_update_cadence();
+
   engine::StyleManager *style_manager_;
   QString native_style_name_;
   std::filesystem::path instance_root_;
   engine::PluginLoader *plugin_loader_ = nullptr;
   QTabWidget *tabs_                    = nullptr;
+  QLabel *update_cadence_label_        = nullptr;
 };
 
 }  // namespace ui

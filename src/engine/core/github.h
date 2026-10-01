@@ -28,6 +28,16 @@ public:
     bool prerelease = false;
   };
 
+  // The releases endpoint a release query uses. include_prereleases picks
+  // /releases (the full list, drafts and prereleases included, newest first)
+  // over /releases/latest, which by GitHub's definition returns the most
+  // recent NON-prerelease, non-draft release and can therefore never yield a
+  // prerelease. Exposed because that choice is the whole meaning of the flag:
+  // a parameter that cannot change the URL cannot change the answer.
+  [[nodiscard]] static std::string releases_endpoint(const std::string &owner,
+                                                     const std::string &repo,
+                                                     bool include_prereleases);
+
   // Fetch the latest release from a GitHub repository.
   // When include_prereleases is false, only stable releases are returned.
   // Returns std::nullopt on network error or when no release exists.
