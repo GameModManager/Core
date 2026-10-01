@@ -18,12 +18,17 @@
 #include "ui/modinfo/source_panels/git_source_panel.h"
 #include "ui/modinfo/source_panels/nexus_source_panel.h"
 #include "ui/modinfo/source_tab.h"
+#include "ui/theme/icon_manager.h"
 
 #include <QApplication>
+#include <QByteArray>
+#include <QColor>
 #include <QLabel>
 #include <QLineEdit>
+#include <QPixmap>
 #include <QPushButton>
 #include <QSemaphore>
+#include <QTabBar>
 #include <QThread>
 
 #include <atomic>
@@ -656,14 +661,162 @@ TEST_CASE("git source coexists with a download source", "[ui]") {
       }
     }
     check(!banner, "a git-only mod gets no coexistence warning");
+  }
+}
 
-    // The host drives the icon and nothing else: a GitLab remote resolves to
-    // the generic git key, a GitHub remote to the branded one.
-    check(ui::GitSourcePanel::icon_key_for(
-              QStringLiteral("git@gitlab.com:group/proj.git")) == QLatin1String("git"),
-          "gitlab remote resolves to the generic git icon key");
-    check(ui::GitSourcePanel::icon_key_for(QStringLiteral(
-              "https://github.com/user/repo.git")) == QLatin1String("github"),
-          "github remote resolves to the branded github icon key");
+// The Git tab wears the branded badge when the remote's host is known and the
+// generic one otherwise, and every other source tab keeps its own badge.
+//
+// The defect this guards: add_tab_with_icon() took a "vendor key" and fed
+// whatever it was handed back through engine::vendor_icon_key(). The git call
+// site passed an ALREADY-final key from icon_key_for() - "github" or "git" -
+// and vendor_icon_key() knows neither, so it returned "" and the tab was added
+// with no icon at all. The other sources pass a source_type, which that map
+// does know, which is why only the Git tab was bare.
+//
+// Asserting the resolved KEY proves nothing here: the broken code produced a
+// correct "github" key and then discarded it. These assertions read the icon
+// the QTabBar actually holds, and compare it against the exact asset the key
+// names, so a tab can be caught wearing the wrong badge as well as none.
+//
+// Hermetic: IconManager is pointed at a synthetic resources tree holding one
+// flat-colour image per key, so no bundled asset, icon pack or desktop icon
+// theme takes part. Offscreen; throwaway XDG_CONFIG_HOME.
+TEST_CASE("source tab icons", "[ui]") {
+  qputenv("QT_QPA_PLATFORM", "offscreen");
+  const std::filesystem::path root = "/tmp/gmm_source_tab_icons";
+  std::filesystem::remove_all(root);
+  const std::filesystem::path cfg = root / "config";
+  std::filesystem::create_directories(cfg);
+  qputenv("XDG_CONFIG_HOME", cfg.c_str());
+  shared_app();  // process-lifetime QApplication (see above)
+  QCoreApplication::setOrganizationName("GameModManager");
+  QCoreApplication::setApplicationName("GameModManager");
+
+  const std::filesystem::path mods_dir = root / "instances" / "Test" / "mods";
+  std::filesystem::create_directories(mods_dir);
+
+  // 8x8 solid-colour PNGs; the colour IS the identity of the key, so two
+  // tabs that must differ cannot pass by both resolving to the same file.
+  static const char *kRedPng =
+      "iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAAEklEQVR4nGP4z8CAFWEXHbQSACj/"
+      "P8Fu7N9hAAAAAElFTkSuQmCC";
+  static const char *kGreenPng =
+      "iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAAEElEQVR4nGNgOMGAHQ0tCQCJ5TIBaf"
+      "w8vQAAAABJRU5ErkJggg==";
+  static const char *kBluePng =
+      "iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAAEElEQVR4nGNgYPiPAw0pCQCpcD/BFM"
+      "rqcwAAAABJRU5ErkJggg==";
+  const QColor kGithub(255, 0, 0), kGit(0, 200, 0), kNexus(0, 0, 255);
+
+  // discover_packs() derives the resources dir from the app dir's PARENT, so
+  // <root>/app resolves <root>/resources/icons/vendor/<key>.*. The swatches are
+  // named .png, not .ico: Qt picks a decoder by suffix, and a PNG wearing an
+  // .ico name loads as nothing. What is under test is the key -> file ->
+  // QTabBar chain, not Qt's ICO reader.
+  const std::filesystem::path vendor = root / "resources" / "icons" / "vendor";
+  std::filesystem::create_directories(vendor);
+  auto write_swatch = [&](const char *key, const char *b64) {
+    std::ofstream out(vendor / (std::string(key) + ".png"), std::ios::binary);
+    const auto bytes = QByteArray::fromBase64(b64);
+    out.write(bytes.constData(), bytes.size());
+  };
+  write_swatch("github", kRedPng);
+  write_swatch("git", kGreenPng);
+  write_swatch("nexusmods", kBluePng);
+  engine::IconManager::instance().discover_packs(root / "app");
+
+  // An unmapped source leaves the final key empty; the tab must then carry no
+  // icon rather than a stray one.
+  check(engine::IconManager::instance().resolve_icon(QString()).isNull(),
+        "an empty icon key resolves to no icon at all");
+  // The fixture itself, or nothing below it means anything.
+  check(!engine::IconManager::instance().resolve_icon(QLatin1String("github")).isNull(),
+        "the synthetic vendor tree resolves at all");
+  // The colour a tab wears. An unpainted tab yields an invalid colour, which is
+  // what keeps "no icon" distinguishable from "the wrong icon".
+  auto tab_colour = [](QTabWidget *qtw, int index) {
+    const QPixmap pm = qtw->tabBar()->tabIcon(index).pixmap(8, 8);
+    return pm.isNull() ? QColor() : pm.toImage().pixelColor(0, 0);
+  };
+
+  engine::SourceRegistry::instance().register_provider(
+      std::make_unique<FakeNexusProvider>());
+
+  // --- Git + Nexus on github.com: the branded badge, and the Nexus tab keeps
+  //     its own. ---
+  {
+    const std::string id                = "IconNexusMod";
+    const std::filesystem::path mod_dir = mods_dir / id;
+    std::filesystem::create_directories(mod_dir / ".git");
+    {
+      std::ofstream cfgout(mod_dir / ".git" / "config");
+      cfgout << "[remote \"origin\"]\n\turl = https://github.com/user/repo.git\n";
+    }
+
+    engine::ModMeta meta;
+    meta.set("General", "version", "1.0");
+    meta.set("GameModManager", "source_type", "nexus");
+    meta.set("GameModManager", "source_id", "42");
+    meta.set("Nexusmods", "modid", "42");
+    meta.save(mods_dir, id);
+
+    ui::ModInfoData data = make_data(id, nullptr, mods_dir);
+    data.mod_dir         = QDir(QString::fromStdString(mod_dir.string()));
+    data.is_git          = true;
+    data.git_remote_url  = QStringLiteral("https://github.com/user/repo.git");
+
+    ui::SourceTab tab;
+    tab.set_current(data);
+    tab.set_mod(data);
+    tab.first_activation();
+    QApplication::processEvents();
+
+    auto *qtw = tab.findChild<QTabWidget *>();
+    REQUIRE(qtw != nullptr);
+    check(qtw->count() == 3, "git + nexus shows 3 tabs (Nexus, Git, '+')");
+    check(qtw->tabText(1) == QLatin1String("Git"), "tab 1 is the Git tab");
+    check(tab_colour(qtw, 1) == kGithub,
+          "a github.com remote paints the branded github badge on the Git tab");
+    check(tab_colour(qtw, 0) == kNexus,
+          "the Nexus tab still paints its own vendor badge");
+    check(!qtw->tabIcon(1).isNull(),
+          "the Git tab carries a real QIcon, not a null one that paints nothing");
+  }
+
+  // --- Git only on a non-github host: the generic badge, still an icon. ---
+  {
+    const std::string id                = "IconGitOnlyMod";
+    const std::filesystem::path mod_dir = mods_dir / id;
+    std::filesystem::create_directories(mod_dir / ".git");
+    {
+      std::ofstream cfgout(mod_dir / ".git" / "config");
+      cfgout << "[remote \"origin\"]\n\turl = git@gitlab.com:group/proj.git\n";
+    }
+
+    engine::ModMeta meta;
+    meta.set("General", "version", "1.0");
+    meta.set("GameModManager", "source_type", "manual");
+    meta.save(mods_dir, id);
+
+    ui::ModInfoData data = make_manual_data(id, mods_dir);
+    data.mod_dir         = QDir(QString::fromStdString(mod_dir.string()));
+    data.is_git          = true;
+    data.git_remote_url  = QStringLiteral("git@gitlab.com:group/proj.git");
+
+    ui::SourceTab tab;
+    tab.set_current(data);
+    tab.set_mod(data);
+    tab.first_activation();
+    QApplication::processEvents();
+
+    auto *qtw = tab.findChild<QTabWidget *>();
+    REQUIRE(qtw != nullptr);
+    check(qtw->count() == 2, "a git-only mod shows 2 tabs (Git, '+')");
+    check(qtw->tabText(0) == QLatin1String("Git"), "tab 0 is the Git tab");
+    check(tab_colour(qtw, 0) == kGit,
+          "a non-github host falls back to the generic git badge, still an icon");
+    check(tab_colour(qtw, 0) != kGithub,
+          "branded and generic git badges are distinguishable from each other");
   }
 }
