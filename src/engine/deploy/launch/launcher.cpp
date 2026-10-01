@@ -42,6 +42,25 @@ namespace fs = std::filesystem;
 
 namespace engine {
 
+void apply_launch_env(const std::vector<std::string> &vars) {
+  for (const auto &var : vars) {
+    auto eq = var.find('=');
+    if (eq == std::string::npos || eq == 0) {
+      // Drop the entry whole: a secret pasted into the Environment field
+      // without a NAME= prefix is still a secret, and nothing is skipped.
+      Logger::instance().warn(
+          "Launch env: ignoring malformed entry (no 'NAME=' part): <redacted>");
+      continue;
+    }
+    const std::string key   = var.substr(0, eq);
+    const std::string value = var.substr(eq + 1);
+#ifndef _WIN32
+    setenv(key.c_str(), value.c_str(), 1);
+#endif
+    Logger::instance().debug("Launch env: " + key + "=<redacted>");
+  }
+}
+
 #ifndef _WIN32  // POSIX-only launcher - Windows USVFS launch is ticket
                 // Workspace-3br4
 
@@ -363,18 +382,7 @@ static LaunchResult do_launch(const LaunchParams &params) {
   // applied before downstream launch decisions (e.g. the broken-CI-shim
   // opt-in gate) so launch knobs can be supplied per executable via the
   // Environment field.
-  for (const auto &var : params.environment) {
-    auto eq = var.find('=');
-    if (eq == std::string::npos || eq == 0) {
-      Logger::instance().warn(
-          "Launch env: ignoring malformed entry (no 'NAME=' part): " + var);
-      continue;
-    }
-    const std::string key   = var.substr(0, eq);
-    const std::string value = var.substr(eq + 1);
-    setenv(key.c_str(), value.c_str(), 1);
-    Logger::instance().debug("Launch env: " + key + "=<redacted>");
-  }
+  apply_launch_env(params.environment);
 
   // === BROKEN FEATURE - DO NOT ENABLE ===
   // The custom case-insensitive interposer (libgmm_ci_intercept.so) is

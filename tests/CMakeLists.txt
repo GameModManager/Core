@@ -125,6 +125,9 @@ gmm_catch2_test(scanner_test engine/scanner_test.cpp)
 gmm_catch2_test(mod_toggle_reason_test engine/mod_toggle_reason_test.cpp)
 gmm_catch2_test(theme_test engine/theme_test.cpp)
 gmm_catch2_test(keyring_test engine/keyring_test.cpp)
+# Negative redaction tests at the log call sites: a signed URL or an
+# unparseable env entry must not reach gamemodmanager.log with its secret.
+gmm_catch2_test(redaction_callsite_test engine/redaction_callsite_test.cpp)
 gmm_catch2_test(conflict_test engine/conflict_test.cpp)
 gmm_catch2_test(conflict_external_merge_test engine/conflict_external_merge_test.cpp)
 gmm_catch2_test(overwrite_utils_test engine/overwrite_utils_test.cpp)

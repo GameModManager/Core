@@ -14,6 +14,7 @@
 // (overlay mode), and direct mode writes into game_dir with no staging or
 // lowerdirs.
 #include "engine/core/instance/instance_utils.h"
+#include "engine/core/log/logger.h"
 #include "engine/core/util/fs_utils.h"
 #include "engine/deploy/launch/launcher.h"
 #include "engine/deploy/launch/overlay_launcher.h"
@@ -600,6 +601,62 @@ static void check_overlay_unavailable(const fs::path &root) {
           "no-overlay: no staging dir created off Linux");
   require(!fs::exists(game_dir / "Data"),
           "no-overlay: nothing deployed into game_dir either");
+}
+
+// The Environment field is where a user pastes NAME=value pairs. An entry with
+// no '=' is dropped - a bare secret pasted there without a name would otherwise
+// be logged verbatim, while a well-formed entry has its value redacted. Both
+// halves are asserted here so the malformed case cannot regress to "echo it".
+TEST_CASE("launch env entries never log their value", "[engine][redaction]") {
+  const std::string kSecret = "SUPER-SECRET-ENV-VALUE-7d1e4c";
+
+  // Logger::add_callback keeps its callback for the life of the process, so a
+  // lambda over a local vector would outlive it. `seen` is static and the
+  // callback writes to it only, which stays valid; each block clears it first.
+  static std::vector<std::string> seen;
+  engine::Logger::instance().add_callback(
+      [](engine::LogLevel, const std::string &, const std::string &msg) {
+        seen.push_back(msg);
+      });
+  const auto contains = [](const std::string &needle) {
+    for (const auto &m : seen)
+      if (m.find(needle) != std::string::npos)
+        return true;
+    return false;
+  };
+
+  seen.clear();
+  // Malformed: no '=' at all, and the whole entry is the secret.
+  engine::apply_launch_env({kSecret});
+  require(!contains(kSecret),
+          "a malformed entry with no '=' must not be logged verbatim");
+  require(contains("<redacted>"), "the dropped entry is still logged, redacted");
+
+  // Negative control: the test is asserting the code, not the logger. Feeding
+  // the secret through an unredacted path must show up here, or the assertions
+  // above would pass for the wrong reason.
+  seen.clear();
+  engine::Logger::instance().debug("control: " + kSecret);
+  require(contains(kSecret),
+          "control: an unredacted line IS captured, so the checks above bite");
+
+  seen.clear();
+  // Leading '=' (empty name) is malformed for the same reason.
+  engine::apply_launch_env({"=" + kSecret});
+  require(!contains(kSecret), "an entry with an empty name must not be logged");
+
+  seen.clear();
+  // Well-formed: the name is useful for diagnosis, the value is not.
+  engine::apply_launch_env({"GMM_TEST_ENV_NAME=" + kSecret});
+  require(!contains(kSecret), "a well-formed entry redacts its value");
+  require(contains("GMM_TEST_ENV_NAME=<redacted>"),
+          "the name is logged so the launch stays diagnosable");
+  // The value really was applied - redaction is a logging concern only.
+  const char *applied = getenv("GMM_TEST_ENV_NAME");
+  require(applied && std::string(applied) == kSecret,
+          "the entry still reaches the environment");
+
+  unsetenv("GMM_TEST_ENV_NAME");
 }
 
 TEST_CASE("launch params", "[engine]") {

@@ -81,14 +81,17 @@ bool Auth::has_cookie() const {
 
 std::string Auth::get_cookie() const {
   try {
-    Keyring &kr = effective_keyring();
-    if (!kr.available()) {
-      Logger::instance().error(
-          "LoversLabAuth: no OS keyring; falling back to insecure file storage");
+    // Test the injected backend, not effective_keyring(): the file fallback
+    // reports available() == true unconditionally, so checking the returned
+    // reference could never fire and the warning never reached the log.
+    if (!keyring_ || !keyring_->available()) {
+      Logger::instance().warn(
+          "LoversLabAuth: no OS keyring; reading the session cookie from "
+          "insecure file storage");
     }
     // Sanitize on read too: a cookie stored before sanitization existed
     // (e.g. pasted multi-line) is fixed without forcing a re-paste.
-    return sanitize_cookie(kr.get(kCookieName));
+    return sanitize_cookie(effective_keyring().get(kCookieName));
   } catch (const std::exception &e) {
     Logger::instance().error("LoversLabAuth: keyring get() failed: " +
                              std::string(e.what()));
@@ -98,12 +101,12 @@ std::string Auth::get_cookie() const {
 
 void Auth::set_cookie(const std::string &cookie) {
   try {
-    Keyring &kr = effective_keyring();
-    if (!kr.available()) {
-      Logger::instance().error(
-          "LoversLabAuth: no OS keyring; falling back to insecure file storage");
+    if (!keyring_ || !keyring_->available()) {
+      Logger::instance().warn(
+          "LoversLabAuth: no OS keyring; writing the session cookie to "
+          "insecure file storage");
     }
-    if (!kr.set(kCookieName, sanitize_cookie(cookie))) {
+    if (!effective_keyring().set(kCookieName, sanitize_cookie(cookie))) {
       Logger::instance().error(
           "LoversLabAuth: failed to store session cookie in keyring");
     }

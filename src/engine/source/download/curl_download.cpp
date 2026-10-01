@@ -216,8 +216,12 @@ std::string parse_content_disposition_filename(const std::string &header_value) 
 bool curl_download(const std::string &url, const std::filesystem::path &dest_path,
                    long &http_code, const Options &opts, Progress *progress,
                    int64_t resume_from, bool *aborted, const std::string &caller) {
+  // Network:: records the same request already redacted; these lines are
+  // separate entries, so a signed URL (Nexus key=, LoversLab csrfKey=) has to
+  // go through the redactor here too or it lands in the log file verbatim.
+  const std::string safe_url = network::redaction::redact_url(url);
   Logger::instance().debug(
-      "[curl_download] Entry: url=" + url + " dest=" + dest_path.string() +
+      "[curl_download] Entry: url=" + safe_url + " dest=" + dest_path.string() +
       " resume_from=" + std::to_string(resume_from) + " caller=" + caller);
   network::DownloadRequest req = to_request(url, dest_path, opts, progress, resume_from,
                                             caller.empty() ? NET_CALLER : caller);
@@ -229,17 +233,17 @@ bool curl_download(const std::string &url, const std::filesystem::path &dest_pat
 
   if (!res.ok) {
     if (res.aborted) {
-      Logger::instance().debug("[curl_download] Aborted (pause): url=" + url);
+      Logger::instance().debug("[curl_download] Aborted (pause): url=" + safe_url);
       return false;
     }
     // Network:: already removed the partial file on failure. We mirror
     // the original helper's behaviour by logging through Logger::error
     // so callers don't need to change their diagnostics.
     Logger::instance().error("[curl_download] Error: " + res.error + " (http_code=" +
-                             std::to_string(res.http_code) + ") url=" + url);
+                             std::to_string(res.http_code) + ") url=" + safe_url);
     return false;
   }
-  Logger::instance().debug("[curl_download] Success: url=" + url +
+  Logger::instance().debug("[curl_download] Success: url=" + safe_url +
                            " http_code=" + std::to_string(http_code));
   return true;
 }
