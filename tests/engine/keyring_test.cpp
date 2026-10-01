@@ -7,7 +7,9 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
 #include <string>
+#include <utility>
 #include <vector>
 #include <unistd.h>
 #include <catch2/catch_test_macros.hpp>
@@ -40,6 +42,28 @@ static bool is_owner_only_file(fs::perms m) {
   return m == (fs::perms::owner_read | fs::perms::owner_write);
 }
 #endif
+
+// A blob exactly as a build predating the per-install seed left it: encrypt_with
+// over one of the keys such a build used, written straight to the file. `stem`
+// is the already-sanitized file stem (nexus_api_key, not nexus-api-key).
+static void write_blob_under(const fs::path &dir, const std::string &stem,
+                             const std::string &key, const std::string &plaintext) {
+  std::ofstream f(dir / ("keyring_" + stem + ".dat"), std::ios::trunc);
+  f << engine::FileKeyring::encrypt_with(key, plaintext) << std::endl;
+}
+
+static std::string read_blob(const fs::path &dir, const std::string &stem) {
+  std::ifstream f(dir / ("keyring_" + stem + ".dat"), std::ios::binary);
+  return std::string(std::istreambuf_iterator<char>(f),
+                     std::istreambuf_iterator<char>());
+}
+
+static std::string read_seed_file(const fs::path &dir) {
+  std::ifstream f(dir / ".keyring_seed");
+  std::string s;
+  f >> s;
+  return s;
+}
 
 TEST_CASE("keyring", "[engine]") {
   // NexusAuth's config_dir() follows XDG_CONFIG_HOME; redirect it to a temp
@@ -182,6 +206,105 @@ TEST_CASE("keyring", "[engine]") {
     CHECK_MSG(now != engine::FileKeyring::encrypt_with(
                         engine::FileKeyring::legacy_seed(), "old-install-secret"),
               "blob re-encrypted under the per-install seed");
+  }
+
+  // ---- Two legacy blobs, either order --------------------------------
+  // Both secrets in one config dir, both written before the per-install seed.
+  // The first read migrates the install and creates the shared seed file; the
+  // second then meets a directory that "already has a seed". If the decision to
+  // migrate is per directory rather than per blob, that second blob is decrypted
+  // with a key it was never written under, the garbage reads as a success, and
+  // write_blob() puts it back over the real secret - which no longer exists
+  // anywhere. Whichever secret is read first survives and the other is lost, so
+  // the order is the variable and both have to be covered.
+  const auto two_legacy_blobs = [](bool nexus_first) {
+    const std::string nexus_v  = "REAL-NEXUS-KEY-abc123";
+    const std::string cookie_v = "ips4_session=REAL-LOVERSLAB-COOKIE-xyz789";
+    const std::pair<const char *, std::string> nexus{"nexus_api_key", nexus_v};
+    const std::pair<const char *, std::string> cookie{"loverslab_cookie", cookie_v};
+    const auto first  = nexus_first ? nexus : cookie;
+    const auto second = nexus_first ? cookie : nexus;
+
+    const fs::path dir = temp_dir(nexus_first ? "pair_a_first" : "pair_b_first");
+    fs::create_directories(dir);
+    const std::string legacy = engine::FileKeyring::legacy_seed();
+    write_blob_under(dir, "nexus_api_key", legacy, nexus_v);
+    write_blob_under(dir, "loverslab_cookie", legacy, cookie_v);
+    CHECK_MSG(!fs::exists(dir / ".keyring_seed"), "no seed file before the first read");
+
+    // Case 1 / 2: both values come back, in whichever order they are read.
+    {
+      engine::FileKeyring kr(dir);
+      CHECK_MSG(kr.get(first.first) == first.second,
+                "first legacy blob reads correctly");
+      CHECK_MSG(fs::exists(dir / ".keyring_seed"),
+                "the first read created the seed file");
+      // The state the second read used to trip over.
+      CHECK_MSG(kr.get(second.first) == second.second,
+                "second legacy blob reads correctly after the first migrated");
+    }
+
+    // Case 3: the values are on disk, not merely returned once by the instance
+    // that happened to migrate them. A new FileKeyring on the same dir resolves
+    // the seed from the file exactly as a new process does.
+    {
+      engine::FileKeyring fresh(dir);
+      CHECK_MSG(fresh.get("nexus_api_key") == nexus_v,
+                "nexus key survives a fresh reader");
+      CHECK_MSG(fresh.get("loverslab_cookie") == cookie_v,
+                "cookie survives a fresh reader");
+    }
+
+    // ... and the bytes themselves decrypt under the seed actually stored, so
+    // this is a statement about what is on disk rather than about the reader.
+    const std::string stored_seed = read_seed_file(dir);
+    CHECK_MSG(!stored_seed.empty(), "a seed is stored");
+    CHECK_MSG(stored_seed != legacy, "the legacy key is no longer the key");
+    for (const auto &[stem, want] : {nexus, cookie}) {
+      const std::string label   = "keyring_" + std::string(stem) + ".dat";
+      const std::string on_disk = read_blob(dir, stem);
+      CHECK_MSG(!on_disk.empty(), label + " is not empty");
+      CHECK_MSG(engine::FileKeyring::decrypt_with(stored_seed, on_disk) == want,
+                label + " on disk decrypts to the original value");
+    }
+  };
+
+  two_legacy_blobs(/*nexus_first=*/true);
+  two_legacy_blobs(/*nexus_first=*/false);
+
+  // ---- A blob no key opens is left alone, not rewritten -------------
+  // The case that destroys data. A blob written under a third key - a seed file
+  // lost or replaced - decrypts to garbage under every key this build knows, and
+  // that garbage is never empty. The old code read it as a successful decrypt and
+  // wrote it back, so a blob that a user could still have recovered by hand was
+  // replaced with noise. Nothing that fails to decrypt may reach write_blob().
+  {
+    fs::path dir = temp_dir("undecryptable");
+    fs::create_directories(dir);
+    const std::string hidden =
+        "VALUE-NOBODY-CAN-READ-ANY-MORE-but-the-bytes-are-still-on-disk";
+    write_blob_under(dir, "nexus_api_key", "a-seed-this-build-never-had", hidden);
+    const std::string before = read_blob(dir, "nexus_api_key");
+    CHECK_MSG(!before.empty(), "the blob is on disk to begin with");
+
+    {
+      engine::FileKeyring kr(dir);
+      CHECK_MSG(kr.get("nexus_api-key").empty(),
+                "a blob that decrypts under no known key reads as empty");
+    }
+    // Byte-for-byte, not "still has some content": truncation, a partial write
+    // and an empty-plaintext write all look different from the original bytes.
+    CHECK_MSG(read_blob(dir, "nexus_api_key") == before,
+              "a failed decrypt leaves the blob byte-for-byte identical");
+    // Still decryptable by whoever holds the key that wrote it.
+    CHECK_MSG(engine::FileKeyring::decrypt_with("a-seed-this-build-never-had",
+                                                before) == hidden,
+              "the original bytes are still recoverable by hand");
+    // And it keeps failing the same way rather than degrading on a second read.
+    engine::FileKeyring again(dir);
+    CHECK_MSG(again.get("nexus-api-key").empty(), "still empty on re-read");
+    CHECK_MSG(read_blob(dir, "nexus_api_key") == before,
+              "still byte-for-byte identical after a second read");
   }
 
   // ---- Legacy nexus_auth.dat format compatibility ---------------

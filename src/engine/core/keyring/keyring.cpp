@@ -51,6 +51,30 @@ namespace {
     }
   }
 
+  // Whether a decrypted blob is a value this keyring could have stored rather
+  // than the output of a wrong key. Every secret here is text - a Nexus API
+  // key, a cookie header, a URL - so a decrypt containing bytes no text value
+  // carries did not come from the key it was tried with. `!plaintext.empty()`
+  // is not that test: a wrong-key decrypt is never empty, it is garbage, which
+  // is how a blob could be read as a success and then written back over.
+  //
+  // This is a check, not proof - XOR leaves no integrity signal of its own. A
+  // 36-byte random payload is entirely printable ASCII with probability
+  // (95/256)^36, so the odds of a wrong key passing are negligible, and the
+  // consequence of one that did is bounded: the value read is wrong, and it is
+  // not written anywhere.
+  bool looks_like_stored_value(const std::string &s) {
+    if (s.empty())
+      return false;
+    for (const unsigned char c : s) {
+      if (c == '\t' || c == '\n' || c == '\r')
+        continue;
+      if (c < 0x20 || c > 0x7e)
+        return false;
+    }
+    return true;
+  }
+
 }  // namespace
 
 FileKeyring::FileKeyring(std::filesystem::path config_dir)
@@ -268,8 +292,27 @@ std::string FileKeyring::load_or_create_seed(const std::filesystem::path &dir) {
 }
 
 std::string FileKeyring::legacy_seed() {
+  return legacy_seeds().front();
+}
+
+std::vector<std::string> FileKeyring::legacy_seeds() {
+  // Both, not just the one this machine would have chosen: a blob records the
+  // key it was written with and nothing about the conditions at the time, so an
+  // install whose machine-id was unreadable when the blob was written, or whose
+  // config dir has since moved to a machine with a different one, is still
+  // holding a blob the current machine-id cannot open.
+  std::vector<std::string> out;
   const std::string mid = machine_id();
-  return mid.empty() ? std::string(kLegacySeed) : mid;
+  if (!mid.empty())
+    out.push_back(mid);
+  out.emplace_back(kLegacySeed);
+  return out;
+}
+
+std::string FileKeyring::decrypt_if_valid(const std::string &seed,
+                                          const std::string &ciphertext) {
+  const std::string plaintext = decrypt_with(seed, ciphertext);
+  return looks_like_stored_value(plaintext) ? plaintext : std::string{};
 }
 
 bool FileKeyring::has(const std::string &name) const {
@@ -288,22 +331,41 @@ std::string FileKeyring::get(const std::string &name) const {
     return {};
   f.close();
 
-  // No seed file means this blob predates them, so its key is known exactly -
-  // no guesswork, and the old key never gets reused for a new blob.
-  std::error_code ec;
-  if (!std::filesystem::exists(config_dir_ / kSeedFile, ec)) {
-    const std::string plaintext = decrypt_with(legacy_seed(), encrypted);
-    if (!plaintext.empty()) {
-      // Re-encrypt under a fresh per-install seed: the readable machine-id (or
-      // the shared constant) stops being the key from here on.
-      const std::string seed = load_or_create_seed(config_dir_);
-      write_blob(path, encrypt_with(seed, plaintext));
-    }
+  // The key is a property of this blob, not of the config dir. .keyring_seed is
+  // shared by every secret stored here, so its presence says nothing about
+  // which key this particular file was written with - using it as the migration
+  // gate meant the first secret read created the seed and every later read took
+  // the "already migrated" path, decrypted a legacy-key blob with the new seed,
+  // and wrote the garbage back over the good one. Whichever secret was read
+  // first survived; the other was destroyed.
+  //
+  // So the key is chosen per blob: the install seed first, then each key an
+  // older build could have used. Only a decrypt that actually yields a stored
+  // value counts, and only that one is rewritten.
+  restrict(path);
+
+  const std::string install_seed = load_or_create_seed(config_dir_);
+  if (std::string plaintext = decrypt_if_valid(install_seed, encrypted);
+      !plaintext.empty())
+    return plaintext;  // already under the install seed; nothing to rewrite
+
+  for (const std::string &old_seed : legacy_seeds()) {
+    std::string plaintext = decrypt_if_valid(old_seed, encrypted);
+    if (plaintext.empty())
+      continue;
+    // Re-encrypt under a fresh per-install seed: the readable machine-id (or
+    // the shared constant) stops being the key from here on.
+    write_blob(path, encrypt_with(install_seed, plaintext));
     return plaintext;
   }
 
-  restrict(path);
-  return decrypt_with(load_or_create_seed(config_dir_), encrypted);
+  // No key opens it. Return nothing and leave the file exactly as it is -
+  // writing back a decrypt that failed turns a recoverable blob into a lost
+  // secret, and there is nothing better to write.
+  Logger::instance().warn("FileKeyring: " + path.filename().string() +
+                          " did not decrypt under any known key; leaving it "
+                          "untouched");
+  return {};
 }
 
 bool FileKeyring::write_blob(const std::filesystem::path &path,
@@ -359,10 +421,22 @@ std::string FileKeyring::read_legacy(const std::filesystem::path &config_dir) {
   f.close();
   restrict(path);
 
-  std::error_code ec;
-  if (std::filesystem::exists(config_dir / kSeedFile, ec))
-    return decrypt_with(load_or_create_seed(config_dir), encrypted);
-  return decrypt_with(legacy_seed(), encrypted);
+  // Key selection is per blob here too, for the same reason it is in get():
+  // nexus_auth.dat was written under whichever key was current when it was
+  // created, and the seed file that now shares the directory says only what
+  // the other blobs in it use. Tried newest first, then each key an older
+  // build wrote with, and a decrypt that yields nothing readable is not
+  // returned as if it had.
+  if (std::string plaintext =
+          decrypt_if_valid(load_or_create_seed(config_dir), encrypted);
+      !plaintext.empty())
+    return plaintext;
+  for (const std::string &old_seed : legacy_seeds()) {
+    if (std::string plaintext = decrypt_if_valid(old_seed, encrypted);
+        !plaintext.empty())
+      return plaintext;
+  }
+  return {};
 }
 
 void FileKeyring::remove_legacy(const std::filesystem::path &config_dir) {
