@@ -15,6 +15,7 @@
 #include "engine/source/nexus_provider.h"
 #include "engine/source/source_provider.h"
 #include "ui/modinfo/description_renderer.h"
+#include "ui/modinfo/source_panels/git_source_panel.h"
 #include "ui/modinfo/source_panels/nexus_source_panel.h"
 #include "ui/modinfo/source_tab.h"
 
@@ -29,6 +30,7 @@
 #include <chrono>
 #include <cstdio>
 #include <filesystem>
+#include <fstream>
 #include <functional>
 #include <memory>
 #include <string>
@@ -526,4 +528,142 @@ TEST_CASE("source tab add source flow", "[ui]") {
     nexus = p;
   check(nexus != nullptr, "after add: Nexus panel exists");
   check(nexus && nexus->has_data(), "after add: Nexus panel has_data()==true");
+}
+
+// Git coexists with a download source: a mod whose folder is a git working
+// copy shows a Git tab BESIDE its Nexus tab, and the warning banner appears
+// inside the Git panel only because the second source exists. The tab title is
+// always "Git" - GitHub is a badge, never a name.
+//
+// Hermetic: no network, no git invocation. The .git directory is written by
+// hand and only the display path (is_repository / remote_url / host) runs,
+// so this passes whether or not git is installed.
+TEST_CASE("git source coexists with a download source", "[ui]") {
+  qputenv("QT_QPA_PLATFORM", "offscreen");
+  const std::filesystem::path root = "/tmp/gmm_source_tab_git";
+  std::filesystem::remove_all(root);
+  const std::filesystem::path cfg = root / "config";
+  std::filesystem::create_directories(cfg);
+  qputenv("XDG_CONFIG_HOME", cfg.c_str());
+  shared_app();  // process-lifetime QApplication (see above)
+  QCoreApplication::setOrganizationName("GameModManager");
+  QCoreApplication::setApplicationName("GameModManager");
+
+  const std::filesystem::path mods_dir = root / "instances" / "Test" / "mods";
+  std::filesystem::create_directories(mods_dir);
+
+  engine::SourceRegistry::instance().register_provider(
+      std::make_unique<FakeNexusProvider>());
+
+  // --- Git + Nexus: two tabs, Git second, banner shown. ---
+  {
+    const std::string id                = "GitNexusMod";
+    const std::filesystem::path mod_dir = mods_dir / id;
+    std::filesystem::create_directories(mod_dir / ".git");
+    {
+      std::ofstream cfgout(mod_dir / ".git" / "config");
+      cfgout << "[remote \"origin\"]\n\turl = https://github.com/user/repo.git\n";
+    }
+
+    engine::ModMeta meta;
+    meta.set("General", "version", "1.0");
+    meta.set("GameModManager", "source_type", "nexus");
+    meta.set("GameModManager", "source_id", "42");
+    meta.set("Nexusmods", "modid", "42");
+    meta.save(mods_dir, id);
+
+    ui::ModInfoData data = make_data(id, nullptr, mods_dir);
+    data.mod_dir         = QDir(QString::fromStdString(mod_dir.string()));
+    data.is_git          = true;
+    data.git_remote_url  = QStringLiteral("https://github.com/user/repo.git");
+
+    ui::SourceTab tab;
+    tab.set_current(data);
+    tab.set_mod(data);
+    tab.first_activation();
+    QApplication::processEvents();
+
+    auto *qtw = tab.findChild<QTabWidget *>();
+    REQUIRE(qtw != nullptr);
+    // Nexus + Git + "+". The Manual placeholder is gone: the mod HAS a source.
+    check(qtw->count() == 3, "git + nexus shows 3 tabs (Nexus, Git, '+')");
+    check(qtw->tabText(0) == QLatin1String("Test Nexus"),
+          "the download source keeps its own tab");
+    check(qtw->tabText(1) == QLatin1String("Git"),
+          "the git tab is titled Git, never GitHub");
+
+    bool has_git_panel = false;
+    for (auto *p : tab.findChildren<ui::GitSourcePanel *>()) {
+      has_git_panel = true;
+      check(p->has_data(), "the git panel reports source data");
+    }
+    check(has_git_panel, "the git panel exists alongside the nexus panel");
+
+    // The banner is what tells the user the two sources can disagree.
+    // isVisibleTo(panel), not isVisible(): the Git panel is not the selected
+    // tab, so a plain isVisible() is false for the whole page.
+    bool banner = false;
+    for (auto *p : tab.findChildren<ui::GitSourcePanel *>()) {
+      for (auto *l : p->findChildren<QLabel *>()) {
+        if (l->isVisibleTo(p) &&
+            l->text().contains(QLatin1String("downloaded from a different source")))
+          banner = true;
+      }
+    }
+    check(banner, "a coexisting download source shows the git warning banner");
+  }
+
+  // --- Git only: one content tab, no Manual placeholder, no banner. ---
+  {
+    const std::string id                = "GitOnlyMod";
+    const std::filesystem::path mod_dir = mods_dir / id;
+    std::filesystem::create_directories(mod_dir / ".git");
+    {
+      // A GitLab remote: the host is unknown to the vendor set, so the
+      // generic git badge is the one that must apply.
+      std::ofstream cfgout(mod_dir / ".git" / "config");
+      cfgout << "[remote \"origin\"]\n\turl = git@gitlab.com:group/proj.git\n";
+    }
+
+    engine::ModMeta meta;
+    meta.set("General", "version", "1.0");
+    meta.set("GameModManager", "source_type", "manual");
+    meta.save(mods_dir, id);
+
+    ui::ModInfoData data = make_manual_data(id, mods_dir);
+    data.mod_dir         = QDir(QString::fromStdString(mod_dir.string()));
+    data.is_git          = true;
+    data.git_remote_url  = QStringLiteral("git@gitlab.com:group/proj.git");
+
+    ui::SourceTab tab;
+    tab.set_current(data);
+    tab.set_mod(data);
+    tab.first_activation();
+    QApplication::processEvents();
+
+    auto *qtw = tab.findChild<QTabWidget *>();
+    REQUIRE(qtw != nullptr);
+    check(qtw->count() == 2, "a git-only mod shows 2 tabs (Git, '+')");
+    check(qtw->tabText(0) == QLatin1String("Git"),
+          "a git-only mod is the Git tab, not Manual");
+
+    bool banner = false;
+    for (auto *p : tab.findChildren<ui::GitSourcePanel *>()) {
+      for (auto *l : p->findChildren<QLabel *>()) {
+        if (l->isVisibleTo(p) &&
+            l->text().contains(QLatin1String("downloaded from a different source")))
+          banner = true;
+      }
+    }
+    check(!banner, "a git-only mod gets no coexistence warning");
+
+    // The host drives the icon and nothing else: a GitLab remote resolves to
+    // the generic git key, a GitHub remote to the branded one.
+    check(ui::GitSourcePanel::icon_key_for(
+              QStringLiteral("git@gitlab.com:group/proj.git")) == QLatin1String("git"),
+          "gitlab remote resolves to the generic git icon key");
+    check(ui::GitSourcePanel::icon_key_for(QStringLiteral(
+              "https://github.com/user/repo.git")) == QLatin1String("github"),
+          "github remote resolves to the branded github icon key");
+  }
 }

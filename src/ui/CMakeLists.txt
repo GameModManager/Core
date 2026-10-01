@@ -142,6 +142,7 @@ set(MODINFO_SOURCES
     modinfo/conflicts_tab.cpp
     modinfo/categories_tab.cpp
     modinfo/source_tab.cpp
+    modinfo/git_ops.cpp
     modinfo/source_fetch_worker.cpp
     modinfo/loverslab_fetch_worker.cpp
     modinfo/modpub_fetch_worker.cpp
@@ -151,6 +152,7 @@ set(MODINFO_SOURCES
     modinfo/source_panels/steam_source_panel.cpp
     modinfo/source_panels/loverslab_source_panel.cpp
     modinfo/source_panels/modpub_source_panel.cpp
+    modinfo/source_panels/git_source_panel.cpp
     modinfo/notes_tab.cpp
     modinfo/filetree_tab.cpp
     modinfo/description_browser.cpp
