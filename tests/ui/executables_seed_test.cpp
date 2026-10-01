@@ -53,6 +53,43 @@ TEST_CASE("seed_executable_candidates", "[ui]") {
   REQUIRE(out.size() == 2);
   CHECK(out[1] == "The Binding of Isaac Rebirth.app");
 
+  // Settings > Workarounds > "Executable blacklist": a name on the list is
+  // never offered as a launch target, at any root. Matching is on the
+  // basename and case-insensitive, and the list is ';'-separated.
+  touch(game / "Steam.exe");
+  touch(apps / "Discord.exe");  // a regular file: a directory would not count
+  const std::string with_blacklisted =
+      "isaac-ng.exe,Steam.exe,Discord.exe,The Binding of Isaac Rebirth.app";
+  SECTION("blacklist drops the entry at every root") {
+    const std::string blacklist = "Steam.exe; Discord.exe";
+    auto filtered =
+        ui::seed_executable_candidates(game, with_blacklisted, {apps}, blacklist);
+    for (const auto &entry : filtered) {
+      const auto base = std::filesystem::path(entry).filename().string();
+      CHECK(base != "Steam.exe");
+      CHECK(base != "Discord.exe");
+    }
+    // isaac-ng.exe and the .app bundle survive. The bundle exists in both
+    // roots and the game_dir copy wins the basename dedupe, so it stays a
+    // relative name.
+    REQUIRE(filtered.size() == 2);
+    CHECK(filtered[0] == "isaac-ng.exe");
+    CHECK(filtered[1] == "The Binding of Isaac Rebirth.app");
+
+    // Case-insensitive, so a differently-cased entry still matches.
+    auto lower_blacklist =
+        ui::seed_executable_candidates(game, with_blacklisted, {apps}, "sTeAm.ExE");
+    for (const auto &entry : lower_blacklist)
+      CHECK(std::filesystem::path(entry).filename() != "Steam.exe");
+
+    // An empty list is the untouched install: every declared name is offered.
+    // The .app dedupes to its game_dir copy, so Discord is the only extra.
+    auto unfiltered = ui::seed_executable_candidates(game, with_blacklisted, {apps});
+    REQUIRE(unfiltered.size() == 4);
+    CHECK(unfiltered[1] == "Steam.exe");
+    CHECK(unfiltered[3] == (apps / "Discord.exe").string());
+  }
+
   // Missing names are dropped by the underlying filter (Workspace-6su).
   out = ui::seed_executable_candidates(game, "missing.exe", {apps});
   CHECK(out.empty());

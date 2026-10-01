@@ -1,6 +1,7 @@
 #include "ui/widgets/save_info_dialog.h"
 
 #include "ui/settings/settings.h"
+#include "ui/widgets/dialog_placement.h"
 
 #include <QDateTime>
 #include <QDialogButtonBox>
@@ -302,6 +303,7 @@ int SaveInfoDialog::exec() {
   const auto geo = Settings::instance().saveinfo_window_geometry();
   if (!geo.isEmpty())
     restoreGeometry(geo);
+  center_dialog_on_screen(this);
   const int rc = QDialog::exec();
   Settings::instance().set_saveinfo_window_geometry(saveGeometry());
   return rc;

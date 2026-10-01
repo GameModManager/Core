@@ -79,6 +79,11 @@ QVariant ModList::data(const QModelIndex &index, int role) const {
     QList<QIcon> icons;
     if (index.column() == Conflicts) {
       if (m.is_separator) {
+        // Settings > Mod List > Collapsible Separators > "conflicts": the
+        // aggregate of the band's own conflict state, off means the separator
+        // row shows no icon even when its band has wins or losses.
+        if (!Settings::instance().collapsible_separators_icons_conflicts())
+          return QVariant::fromValue(icons);
         auto flag = compute_separator_flags(index.row());
         if (flag == "+")
           icons << overwrite_icon_;
@@ -97,6 +102,15 @@ QVariant ModList::data(const QModelIndex &index, int role) const {
       } else if (m.conflict_losses > 0) {
         icons << overwritten_icon_;
       }
+      return QVariant::fromValue(icons);
+    }
+    if (m.is_separator) {
+      // Settings > Mod List > Collapsible Separators > "flags": a separator row
+      // wears the union of its band's badges, so a folded band still says what
+      // is inside it. The band's rows are the only rows that can hold these
+      // badges, so a separator would otherwise show an empty Flags cell always.
+      if (Settings::instance().collapsible_separators_icons_flags())
+        band_flag_badges(index.row(), icons);
       return QVariant::fromValue(icons);
     }
     if (m.has_hidden_files)
@@ -211,8 +225,14 @@ QVariant ModList::data(const QModelIndex &index, int role) const {
       return mod.name;
     }
     if (role == Qt::ForegroundRole) {
-      // Use conflict colors for the Flags column on separators
-      if (index.column() == Flags) {
+      // Use conflict colors for the Flags column on separators.
+      // Settings > Mod List > Collapsible Separators > "on separators": this is
+      // the band-derived highlight, i.e. the row is marked because of the
+      // conflicts among the mods it contains. Off leaves the separator with
+      // the plain black/white contrast its own colour implies. The Conflicts
+      // column icon for the same band is a separate key ("conflicts").
+      if (index.column() == Flags &&
+          Settings::instance().collapsible_separators_highlight_to()) {
         auto flag = compute_separator_flags(index.row());
         if (flag == "+")
           return QColor(80, 200, 80);
@@ -1798,6 +1818,21 @@ void ModList::set_all_separators_folded(bool folded) {
   emit mod_list_changed();  // ONE persistence write
 }
 
+void ModList::hover_expand_separator(int row) {
+  QString open;
+  if (Settings::instance().auto_collapse_on_hover() && row >= 0 && row < mods_.size() &&
+      mods_[row].is_separator)
+    open = mods_[row].id;
+  if (open == hover_expanded_separator_)
+    return;
+  hover_expanded_separator_ = open;
+  // No mod_list_changed() emit: the persisted `folded` flag is untouched, so a
+  // hover must never reach the separator's meta.ini.
+  apply_fold_state();
+  if (!open.isEmpty())
+    emit dataChanged(index(0, Fold), index(mods_.size() - 1, Name), {Qt::DisplayRole});
+}
+
 void ModList::set_nesting_enabled(bool on) {
   if (nesting_enabled_ == on)
     return;
@@ -1944,7 +1979,7 @@ QVector<bool> ModList::compute_fold_hidden() const {
         continue;
       }
     }
-    if (m.is_separator && m.folded) {
+    if (m.is_separator && m.folded && m.id != hover_expanded_separator_) {
       hiding    = true;
       hide_root = m.id;
     }
@@ -2148,6 +2183,43 @@ QString ModList::compute_separator_flags(int row) const {
   return QString();
 }
 
+void ModList::band_flag_badges(int row, QList<QIcon> &out) const {
+  // One entry per badge, in the order a mod row draws them, and each badge at
+  // most once however many mods in the band carry it.
+  bool hidden = false, empty = false, fomod = false, root = false;
+  bool mirror = false, mirror_missing = false, toggle_error = false;
+  bool invalid = false;
+  for (int i = row + 1; i < mods_.size(); ++i) {
+    if (mods_[i].is_separator)
+      break;
+    const auto &m  = mods_[i];
+    hidden         = hidden || m.has_hidden_files;
+    empty          = empty || m.is_empty;
+    fomod          = fomod || m.is_fomod;
+    root           = root || m.root_override;
+    mirror         = mirror || (m.is_mirrored && !m.mirror_source_missing);
+    mirror_missing = mirror_missing || (m.is_mirrored && m.mirror_source_missing);
+    toggle_error   = toggle_error || !m.toggle_error.isEmpty();
+    invalid        = invalid || m.invalid_data || m.no_metadata;
+  }
+  if (hidden)
+    out << hidden_icon_;
+  if (empty)
+    out << empty_icon_;
+  if (fomod)
+    out << fomod_icon_;
+  if (root)
+    out << root_override_icon_;
+  if (mirror)
+    out << mirror_icon_;
+  if (mirror_missing)
+    out << mirror_missing_icon_;
+  if (toggle_error)
+    out << toggle_error_icon_;
+  if (invalid)
+    out << invalid_icon_;
+}
+
 void ModList::set_conflict_pairs(const QMap<QString, ConflictPairs> &pairs) {
   conflict_pairs_ = pairs;
 }
@@ -2180,9 +2252,40 @@ bool ModList::has_conflicts_within_separator(const QString &mod_id) const {
 }
 
 void ModList::set_selected_mods(const QSet<QString> &ids) {
-  if (selected_mod_ids_ == ids)
+  // Settings > Mod List > Collapsible Separators > "from separators": a band
+  // that is folded away still has to show what it touches, so selecting a
+  // separator contributes its mods' conflict partners to the highlight. A mod
+  // selection needs no seeding - it is itself a participant in every pair it
+  // appears in. Off (the default, and the state an untouched install is in)
+  // nothing is seeded, so a selected separator still highlights nothing.
+  //
+  // Seeded before the early-out, so flipping the setting while a separator is
+  // already selected takes effect instead of waiting for the next click.
+  QSet<QString> partners;
+  if (Settings::instance().collapsible_separators_highlight_from()) {
+    for (const auto &sel : ids) {
+      const int sep_row = priority_of(sel);
+      if (sep_row < 0 || !mods_[sep_row].is_separator)
+        continue;
+      for (int row = sep_row + 1; row < mods_.size(); ++row) {
+        if (mods_[row].is_separator)
+          break;
+        const auto it = conflict_pairs_.constFind(mods_[row].id);
+        if (it == conflict_pairs_.constEnd())
+          continue;
+        for (const auto &partner : it->wins_against)
+          partners.insert(partner);
+        for (const auto &partner : it->loses_to)
+          partners.insert(partner);
+      }
+    }
+  }
+
+  if (selected_mod_ids_ == ids && separator_partners_ == partners)
     return;
-  selected_mod_ids_ = ids;
+  selected_mod_ids_   = ids;
+  separator_partners_ = std::move(partners);
+
   // One dataChanged over the full range repaints the visible rows and the
   // scrollbar marks (ModMarkingScrollBar listens to dataChanged).
   emit dataChanged(index(0, 0), index(mods_.size() - 1, ColumnCount - 1),
@@ -2209,6 +2312,11 @@ QColor ModList::conflict_highlight_color(const QString &id) const {
     if (it->wins_against.contains(id))
       return Settings::instance().modlist_overwritten_loose();
   }
+  // Mods a selected separator's band conflicts with, seeded by
+  // set_selected_mods() under "from separators". Green first, then red: this
+  // is a weaker signal than a direct pair, so it never displaces one.
+  if (separator_partners_.contains(id))
+    return Settings::instance().modlist_overwritten_loose();
   return {};
 }
 

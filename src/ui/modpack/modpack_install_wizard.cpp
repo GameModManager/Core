@@ -1,11 +1,11 @@
 #include "ui/modpack/modpack_install_wizard.h"
+#include "ui/widgets/web_link.h"
 
 #include <algorithm>
 #include <variant>
 
 #include <QButtonGroup>
 #include <QCheckBox>
-#include <QDesktopServices>
 #include <QFileDialog>
 #include <QFormLayout>
 #include <QGroupBox>
@@ -24,7 +24,6 @@
 #include <QTableWidget>
 #include <QThread>
 #include <QTimer>
-#include <QUrl>
 #include <QVBoxLayout>
 
 #include <filesystem>
@@ -1572,7 +1571,7 @@ void ModpackInstallWizard::on_download_open_browser() {
   const QString url = route_for(*mod).open_url;
   if (url.isEmpty())
     return;
-  QDesktopServices::openUrl(QUrl(url));
+  WebLink::open(url);
 }
 
 void ModpackInstallWizard::on_download_mark_done() {

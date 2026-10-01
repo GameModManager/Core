@@ -1046,3 +1046,99 @@ TEST_CASE("MainWindow: mod list double-click tabs, separator toggle, bounce guar
   probe.disarm();
   fs::remove_all(root);
 }
+
+// Settings > Mod List > "Display foreign mods (DLC, Creation Club)".
+//
+// The setting decides whether the game-native rows a scan synthesizes for
+// content the game manages itself appear in the mod list. The case drives the
+// real window with a real game dir, so the row really comes from the scanner
+// and really goes through the filter - a stub would prove nothing.
+TEST_CASE("MainWindow: display_foreign hides the game-native rows",
+          "[ui][settings][harness]") {
+  const fs::path root     = make_case_root("gmm_qs50_foreign");
+  const fs::path inst_dir = root / "instances";
+
+  qputenv("QT_QPA_PLATFORM", "offscreen");
+  int app_argc     = 1;
+  char app_argv0[] = "main_window_harness_test";
+  char *app_argv[] = {app_argv0, nullptr};
+  QApplication app(app_argc, app_argv);
+  QCoreApplication::setOrganizationName("GameModManager");
+  QCoreApplication::setApplicationName("GameModManager");
+
+  // The knowledge key the mod scanner reads to synthesize the declared
+  // game-native plugin rows (engine::native_plugins_csv).
+  engine::GameKnowledge knowledge;
+  knowledge.set("testgame", "mods_subpath", "Mods");
+  knowledge.set("testgame", "game_native_plugins", "TestGame.esm");
+
+  auto inst           = engine::Instance::installed("TestGame", inst_dir);
+  inst.info().game_id = "testgame";
+  REQUIRE(inst.create_directories());
+  REQUIRE(inst.write_toml());
+  const fs::path inst_root = inst.info().root;
+  const fs::path mods_dir =
+      engine::Instance::from_root(inst_root).path_for(engine::InstanceKind::Mods);
+  fs::create_directories(mods_dir / "Foo_mod");
+  write_file(mods_dir / "Foo_mod" / "meta.ini", "[General]\npriority=0\n");
+
+  // The declared native plugin, present where the scanner resolves natives
+  // from for this instance: it synthesizes a game-native row for it.
+  const fs::path game_dir = root / "game";
+  fs::create_directories(game_dir / "Mods");
+  write_file(game_dir / "Mods" / "TestGame.esm", std::string("\0\0\0\0", 4));
+
+  ui::MainWindow w;
+  w.set_game_knowledge(&knowledge);
+  w.show();
+  w.set_game_info("testgame", "Test Game", "Default", game_dir, inst_root);
+  REQUIRE(pump_until([&w] {
+    return !w.is_loading();
+  }));
+
+  auto *view = w.mod_view();
+  REQUIRE(view != nullptr);
+  auto *model = w.findChild<ui::ModList *>();
+  REQUIRE(model != nullptr);
+
+  // A game-native row shows as "Unmanaged: <file>", so it is located by the
+  // model's id rather than by a Name-cell text match.
+  const auto row_of = [&](const QString &id) {
+    for (int r = 0; r < model->rowCount(); ++r)
+      if (model->mods().at(r).id == id)
+        return r;
+    return -1;
+  };
+  REQUIRE(pump_until([&] {
+    return row_of(QStringLiteral("Foo_mod")) >= 0;
+  }));
+
+  // Both rows are listed, and both visible, with the setting on (the stored
+  // default). isRowHidden is the same call the filter makes.
+  REQUIRE(Settings::instance().display_foreign());
+  const int foo_on    = row_of(QStringLiteral("Foo_mod"));
+  const int native_on = row_of(QStringLiteral("TestGame.esm"));
+  REQUIRE(foo_on >= 0);
+  REQUIRE(native_on >= 0);
+  CHECK(!view->isRowHidden(foo_on, QModelIndex()));
+  CHECK(!view->isRowHidden(native_on, QModelIndex()));
+
+  // The setting off: the foreign row leaves the list, the managed mod stays.
+  Settings::instance().set_display_foreign(false);
+  auto *mlc = w.findChild<ui::ModListController *>();
+  REQUIRE(mlc != nullptr);
+  mlc->apply_mod_filter();
+
+  const int foo_off    = row_of(QStringLiteral("Foo_mod"));
+  const int native_off = row_of(QStringLiteral("TestGame.esm"));
+  REQUIRE(foo_off >= 0);
+  REQUIRE(native_off >= 0);
+  CHECK(!view->isRowHidden(foo_off, QModelIndex()));
+  CHECK(view->isRowHidden(native_off, QModelIndex()));
+
+  // Back on: the row returns, which is the same path the setting takes when a
+  // user re-checks the box.
+  Settings::instance().set_display_foreign(true);
+  mlc->apply_mod_filter();
+  CHECK(!view->isRowHidden(row_of(QStringLiteral("TestGame.esm")), QModelIndex()));
+}

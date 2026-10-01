@@ -453,8 +453,14 @@ bool deploy_impl(const path &mods_dir, const path &deploy_root,
         auto dir = std::dynamic_pointer_cast<const DirectoryFileTree>(entry);
         if (dir != nullptr && dir->is_symlink())
           return FileTree::WalkReturn::Skip;
+        // "Skip directories" (Settings > Workarounds): the subtree is never
+        // descended into, so nothing under it can reach the game. A name the
+        // user typed is matched case-insensitively on one segment.
+        if (dir != nullptr && is_skipped_directory(dir->name()))
+          return FileTree::WalkReturn::Skip;
         return FileTree::WalkReturn::Continue;
       }
+
       // Hidden files (.gmmhidden here, .mohidden from MO2-imported
       // instances) and the disable sentinel must not reach the game.
       const std::string rel = prefix + entry->name();

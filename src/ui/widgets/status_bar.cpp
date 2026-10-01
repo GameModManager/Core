@@ -2,6 +2,7 @@
 
 #include "engine/source/registry.h"
 #include "engine/core/trace/trace_recorder.h"
+#include "ui/settings/settings.h"
 
 #include <QCoreApplication>
 #include <QFrame>
@@ -119,11 +120,17 @@ void StatusBar::set_sources(const QStringList &sources) {
   // Only a source that meters a request budget gets a label. A source with no
   // meter - one with no API and no cooldown we enforce - would otherwise sit
   // there reading "--" forever, advertising a number we never compute.
+  //
+  // Settings > Sources > "Hide API Request Counter" (default off) drops the
+  // whole group: the readouts ARE the per-source request counters, and hiding
+  // them also drops the divider, so an empty bar is never left with a bare "|".
   QStringList metered;
-  for (const auto &source : sources) {
-    auto *provider = provider_for(source);
-    if (provider != nullptr && provider->rate_limit_readout().metered)
-      metered.append(source);
+  if (!Settings::instance().hide_api_counter()) {
+    for (const auto &source : sources) {
+      auto *provider = provider_for(source);
+      if (provider != nullptr && provider->rate_limit_readout().metered)
+        metered.append(source);
+    }
   }
 
   // The separator divides the source readouts from the rest of the bar, so it

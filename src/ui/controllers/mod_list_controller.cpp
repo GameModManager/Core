@@ -78,6 +78,7 @@
 #include "ui/preview/preview_window.h"
 #include "ui/profile/profile_manager_dialog.h"
 #include "ui/settings/settings.h"
+#include "ui/widgets/web_link.h"
 #include "ui/theme/icon_manager.h"
 #include "ui/widgets/category_filter_panel.h"
 #include "ui/widgets/column_toggle_header.h"
@@ -490,7 +491,7 @@ void ModListController::setup_mod_list(QVBoxLayout *left_layout) {
                 auto src = source_visit_info(entry.source_type, entry.source_id,
                                              entry.source_page_url);
                 if (!src.url.isEmpty())
-                  QDesktopServices::openUrl(QUrl(src.url));
+                  WebLink::open(src.url);
               }
               return;
             }
@@ -622,6 +623,9 @@ void ModListController::setup_mod_list(QVBoxLayout *left_layout) {
   // Category filter panel (MO2 parity): hidden by default; the << / >> toggle
   // in the filter bar shows/hides it. Placed on the LEFT side of the mod list
   // using a horizontal splitter (standard mod-manager UX pattern).
+  // The panel restores its own remembered category selection
+  // ("Remember filter settings"), so the first apply_mod_filter() below -
+  // during the mod load - already reads the restored set.
   w_->category_filter_panel_ = new CategoryFilterPanel(w_);
   w_->category_filter_panel_->hide();
   w_->category_filter_panel_->setMinimumWidth(160);
@@ -1382,7 +1386,8 @@ void ModListController::launch_plugin_db_preload() {
   request.mods_dir = w_->mods_dir_path();
   request.disable_mechanism =
       engine::disable_mechanism_for(*w_->knowledge_, w_->current_game_id_);
-  request.game_native = game_native;
+  request.game_native      = game_native;
+  request.force_core_files = Settings::instance().force_enable_core_files();
 
   w_->preload_pending_              = true;
   w_->preloaded_plugin_db_game_dir_ = w_->current_game_dir_;
@@ -2711,7 +2716,7 @@ ui::ModInfoData ModListController::build_mod_info_data(const ModEntry &mod) {
     on_data_preview(path, {}, {});
   };
   data.open_url = [](const QString &url) {
-    QDesktopServices::openUrl(QUrl(url));
+    WebLink::open(url);
   };
   data.hide_file = [this, mod_id = mod.id, mod_folder](const QString &abs, bool hide) {
     const std::filesystem::path p(abs.toStdString());
@@ -2981,7 +2986,8 @@ void ModListController::refresh_plugins_tab() {
     const auto disable_mechanism =
         engine::disable_mechanism_for(*w_->knowledge_, w_->current_game_id_);
     w_->plugins_db_.refresh(w_->current_game_dir_, w_->mods_dir_path(),
-                            disable_mechanism, game_native);
+                            disable_mechanism, game_native,
+                            Settings::instance().force_enable_core_files());
     w_->plugins_db_.load_creation_club(
         w_->current_game_dir_,
         engine::creation_club_file_for(*w_->knowledge_, w_->current_game_id_));
@@ -3564,11 +3570,11 @@ void ModListController::visit_selected_mod_source() {
   const auto &entry = mods[row];
   if (entry.is_overwrite || entry.is_separator || entry.is_game_native)
     return;
-  const auto src = source_visit_info(entry.source_type, entry.source_id,
-                                     entry.source_page_url);
+  const auto src =
+      source_visit_info(entry.source_type, entry.source_id, entry.source_page_url);
   if (src.url.isEmpty())
     return;
-  QDesktopServices::openUrl(QUrl(src.url));
+  WebLink::open(src.url);
 }
 
 QString ModListController::create_separator_named(const QString &name,
@@ -4374,6 +4380,15 @@ void ModListController::apply_mod_filter() {
     if (m.is_separator)
       continue;
 
+    // Settings > Mod List > "Display foreign mods (DLC, Creation Club)": the
+    // game-native rows a scan synthesizes for content the game manages itself
+    // (declared vanilla plugins, stray plugin files in the game's Data dir,
+    // registered unmanaged mod folders). With the setting off they leave the
+    // list, exactly like a filtered-out row - and since separators only show
+    // when a child shows, a band left with nothing in it goes too.
+    const bool foreign_match =
+        Settings::instance().display_foreign() || !m.is_game_native;
+
     // Text filter: match against name or id
     bool text_match = text.isEmpty() || m.name.toLower().contains(text) ||
                       m.id.toLower().contains(text);
@@ -4404,7 +4419,7 @@ void ModListController::apply_mod_filter() {
       }
     }
 
-    visible[row] = text_match && group_match && category_match;
+    visible[row] = foreign_match && text_match && group_match && category_match;
 
     // If an active fold scope (folded separator band or folded mod subtree)
     // hides w_ row, hide it too - fold overrides search.

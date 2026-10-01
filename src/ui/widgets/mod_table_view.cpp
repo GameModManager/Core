@@ -424,6 +424,13 @@ void ModView::dragEnterEvent(QDragEnterEvent *event) {
 }
 
 void ModView::dragMoveEvent(QDragMoveEvent *event) {
+  // Settings > Mod List > "Auto-collapse separators on hover": while a drag is
+  // in flight the separator band under the cursor opens so it can be aimed at,
+  // and closes again as soon as the cursor leaves. The model ignores the call
+  // when the setting is off.
+  if (auto *mod_model = qobject_cast<ModList *>(model()))
+    mod_model->hover_expand_separator(indexAt(event->position().toPoint()).row());
+
   if (event->mimeData()->hasUrls()) {
     for (const auto &url : event->mimeData()->urls()) {
       if (!url.isLocalFile())
@@ -467,6 +474,14 @@ void ModView::dropEvent(QDropEvent *event) {
     }
   }
   QTreeView::dropEvent(event);
+}
+
+void ModView::dragLeaveEvent(QDragLeaveEvent *event) {
+  // The band opened by dragMoveEvent() closes the moment the drag leaves the
+  // view, so a cancelled drag never leaves a separator expanded.
+  if (auto *mod_model = qobject_cast<ModList *>(model()))
+    mod_model->hover_expand_separator(-1);
+  QTreeView::dragLeaveEvent(event);
 }
 
 bool ModView::is_under_overwrite(const QString &path) const {

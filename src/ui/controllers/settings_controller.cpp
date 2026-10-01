@@ -6,7 +6,6 @@
 
 #include <QApplication>
 #include <QCheckBox>
-#include <QDesktopServices>
 #include <QFileDialog>
 #include <QHeaderView>
 #include <QJsonArray>
@@ -20,7 +19,6 @@
 #include <QTimer>
 #include <QToolBar>
 #include <QTreeWidget>
-#include <QUrl>
 #include <QWhatsThis>
 #include <algorithm>
 #include <fstream>
@@ -67,6 +65,7 @@
 #include "ui/nxm/nxm_ipc.h"
 #include "ui/overwrite/query_overwrite_dialog.h"
 #include "ui/panels/tab_panels.h"
+#include "ui/widgets/web_link.h"
 #include "ui/preview/preview_window.h"
 #include "ui/settings/instance_settings.h"
 #include "ui/settings/settings.h"
@@ -119,7 +118,11 @@ void configure_instance_restart_dialog(TaskDialog &dlg) {
 }
 
 SettingsController::SettingsController(MainWindow *w, QObject *parent)
-    : QObject(parent), w_(w) {}
+    : QObject(parent), w_(w) {
+  // Hand the Workarounds lists to the engine before anything can scan or
+  // deploy, so the very first conflict scan and deploy already honour them.
+  Settings::instance().apply_workarounds();
+}
 
 void SettingsController::set_game_info(const std::string &game_id,
                                        const std::string &game_display_name,
@@ -815,8 +818,9 @@ void SettingsController::connect_menu_actions() {
   connect(w_->menu_bar_, &AppMenuBar::help_on_ui_requested, this, []() {
     QWhatsThis::enterWhatsThisMode();
   });
-  connect(w_->menu_bar_, &AppMenuBar::open_url_requested, this,
-          [](const QString &url) { QDesktopServices::openUrl(QUrl(url)); });
+  connect(w_->menu_bar_, &AppMenuBar::open_url_requested, this, [](const QString &url) {
+    WebLink::open(url);
+  });
   connect(w_->menu_bar_, &AppMenuBar::about_requested, this, [this]() {
     QMessageBox::about(w_, tr("About GameModManager"),
                        "<h3>GameModManager</h3>"
@@ -1515,18 +1519,25 @@ bool SettingsController::switch_to_instance(const QString &name) {
     // Continue live-switches and accepts possibly stale state (notably the
     // already-loaded plugin set - "some things might be weird"); closing the
     // dialog aborts the switch and stays on the current instance.
-    TaskDialog dlg(w_);
-    configure_instance_restart_dialog(dlg);
-    const auto reply = dlg.exec();
-    if (reply != QMessageBox::Yes && reply != QMessageBox::No)
-      return false;
-    if (reply == QMessageBox::No) {
-      engine::Logger::instance().info("Per-instance settings differ for " + selected +
-                                      " - continuing without restart");
-      engine::write_last_instance(selected);
-      set_game_info(game_id, display_name, "Default", info.game_dir, inst.info().root);
-      engine::Logger::instance().debug("Switched to instance: " + selected);
-      return true;
+    //
+    // With Settings > General > "Confirm before switching game instance" off
+    // there is no dialog at all and the switch always restarts.
+    if (ui::instance_switch_plan(w_->current_instance_root_, inst.info().root) ==
+        ui::InstanceSwitch::Ask) {
+      TaskDialog dlg(w_);
+      configure_instance_restart_dialog(dlg);
+      const auto reply = dlg.exec();
+      if (reply != QMessageBox::Yes && reply != QMessageBox::No)
+        return false;
+      if (reply == QMessageBox::No) {
+        engine::Logger::instance().info("Per-instance settings differ for " + selected +
+                                        " - continuing without restart");
+        engine::write_last_instance(selected);
+        set_game_info(game_id, display_name, "Default", info.game_dir,
+                      inst.info().root);
+        engine::Logger::instance().debug("Switched to instance: " + selected);
+        return true;
+      }
     }
     engine::Logger::instance().info("Per-instance settings differ for " + selected +
                                     " - restarting to apply");
