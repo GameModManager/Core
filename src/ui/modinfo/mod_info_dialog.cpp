@@ -2,6 +2,7 @@
 
 #include "ui/modinfo/mod_info_tab.h"
 #include "ui/settings/settings.h"
+#include "ui/widgets/dialog_placement.h"
 
 // Tabs (order matters - must match ModInfoTabId).
 #include "ui/modinfo/categories_tab.h"
@@ -333,6 +334,7 @@ void ModInfoDialog::restore_geometry() {
   const auto geo = Settings::instance().modinfo_window_geometry();
   if (!geo.isEmpty())
     restoreGeometry(geo);
+  center_dialog_on_screen(this);
 }
 
 void ModInfoDialog::closeEvent(QCloseEvent *event) {

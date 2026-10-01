@@ -611,15 +611,24 @@ scan_entry(const std::filesystem::path &entry_path, const ScanConfig &cfg,
 
   // Walk the folder recursively to detect hidden files and empty mods.
   // Mods store game files in subdirectories (textures/, meshes/, scripts/).
+  // A "Skip directories" entry is not descended into, so a mod whose only
+  // content lives under one still reports empty - the same verdict deploy
+  // gives it.
   bool found_real_file = false;
   std::error_code walk_ec;
-  for (const auto &entry :
-       std::filesystem::recursive_directory_iterator(entry_path, walk_ec)) {
-    if (!entry.is_regular_file())
+  for (auto it  = std::filesystem::recursive_directory_iterator(entry_path, walk_ec),
+            end = std::filesystem::recursive_directory_iterator();
+       it != end; ++it) {
+    if (it->is_directory() &&
+        engine::is_skipped_directory(it->path().filename().string())) {
+      it.disable_recursion_pending();
       continue;
-    if (engine::is_hidden_file(entry.path()))
+    }
+    if (!it->is_regular_file())
+      continue;
+    if (engine::is_hidden_file(it->path()))
       mod.has_hidden_files = true;
-    auto fname = entry.path().filename().string();
+    auto fname = it->path().filename().string();
     if (fname != "meta.ini" && fname != "metadata.xml")
       found_real_file = true;
     if (mod.has_hidden_files && found_real_file)

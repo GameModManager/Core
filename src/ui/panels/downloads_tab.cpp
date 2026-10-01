@@ -7,6 +7,7 @@
 #include "engine/source/loverslab_provider.h"
 #include "ui/theme/icon_manager.h"
 #include "ui/widgets/task_dialog.h"
+#include "ui/widgets/web_link.h"
 
 #include <QAction>
 #include <QCheckBox>
@@ -1120,7 +1121,7 @@ void DownloadsTab::add_context_menu_actions(QMenu &menu, const std::string &id) 
     auto *page_action =
         menu.addAction(icon_for("text-html", QStyle::SP_FileDialogInfoView), page_label,
                        this, [page_url]() {
-                         QDesktopServices::openUrl(QUrl(page_url));
+                         WebLink::open(page_url);
                        });
     page_action->setData(page_url);  // test handle for the target URL
   }

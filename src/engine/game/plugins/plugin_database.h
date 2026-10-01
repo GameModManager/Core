@@ -25,10 +25,16 @@ namespace PluginDb {
     //   game_native_plugins - comma-separated vanilla plugins (resolved via
     //   engine::native_plugins_csv(): a registered "game_plugins" game feature,
     //   else the game_native_plugins knowledge hook)
+    //   force_core_files - Settings > Workarounds > "Force-enable game core
+    //   files". True (the default, and what the app has always done) locks the
+    //   base game's own plugins and Creation Club content: they cannot be
+    //   disabled or moved, always load, and stay pinned above the user band.
+    //   False releases that lock so a total conversion can manage them like
+    //   any other plugin - the game then crashes if it needs one of them.
     bool refresh(const std::filesystem::path &game_dir,
                  const std::filesystem::path &mods_dir,
                  const std::string &disable_mechanism,
-                 const std::string &game_native_plugins);
+                 const std::string &game_native_plugins, bool force_core_files = true);
 
     // Read creation club file (game root, then Data/) and mark listed content as CC
     // (force-loaded, excluded from plugins.txt). Call before sort_load_order().
@@ -195,6 +201,10 @@ namespace PluginDb {
     std::vector<std::string> native_order_;
     // CC plugins in the order listed by the creation club file.
     std::vector<std::string> ccc_order_;
+    // Settings > Workarounds > "Force-enable game core files", carried from
+    // refresh() into load_creation_club() (which runs after it). True locks
+    // native + CC plugins; false leaves them ordinary draggable plugins.
+    bool force_core_files_ = true;
   };
 
 }  // namespace PluginDb

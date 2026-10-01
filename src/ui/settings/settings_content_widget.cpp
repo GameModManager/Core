@@ -109,8 +109,14 @@ QWidget *SettingsContentWidget::build_general_tab() {
   auto *gen_layout = new QVBoxLayout(gen_group);
   auto *update_box = new QCheckBox(tr("Check for updates on startup"), gen_group);
   update_box->setChecked(s.check_for_updates());
+  update_box->setToolTip(
+      tr("Not wired to anything yet: the app never contacts a release feed, so "
+         "there is no check for this to gate."));
   auto *prerelease_box = new QCheckBox(tr("Use prerelease updates"), gen_group);
   prerelease_box->setChecked(s.use_prereleases());
+  prerelease_box->setToolTip(
+      tr("Not wired to anything yet: with no release feed being read, there are "
+         "no releases for this to choose between."));
   auto *smooth_box = new QCheckBox(tr("Smooth scrolling in lists"), gen_group);
   smooth_box->setChecked(s.smooth_scrolling());
   smooth_box->setToolTip(tr("Animates wheel scrolling in mod/executable lists."));
@@ -140,6 +146,13 @@ QWidget *SettingsContentWidget::build_general_tab() {
          "exists (images, text), else open with the default app. Alt swaps "
          "the behavior. Ctrl reveals the file's folder. Off = double-click "
          "opens, Alt previews."));
+  auto *confirm_change_box =
+      new QCheckBox(tr("Confirm before switching game instance"), gen_group);
+  confirm_change_box->setChecked(s.show_change_game_confirmation());
+  confirm_change_box->setToolTip(
+      tr("Asks before the app restarts to move to another instance, which it "
+         "has to do when the two instances use different theme, style, icon or "
+         "plugin settings. Turn it off and the switch always restarts."));
   // Push the persisted toggle value into the engine so the next scan uses it.
   engine::parallel::set_enabled(s.performance_multi_core());
   gen_layout->addWidget(update_box);
@@ -150,6 +163,7 @@ QWidget *SettingsContentWidget::build_general_tab() {
   gen_layout->addWidget(extract_prio_box);
   gen_layout->addWidget(multicore_box);
   gen_layout->addWidget(previews_box);
+  gen_layout->addWidget(confirm_change_box);
   layout->addWidget(gen_group);
 
   connect(update_box, &QCheckBox::toggled, this, [&s](bool on) {
@@ -177,6 +191,9 @@ QWidget *SettingsContentWidget::build_general_tab() {
   });
   connect(previews_box, &QCheckBox::toggled, this, [&s](bool on) {
     s.set_double_clicks_open_previews(on);
+  });
+  connect(confirm_change_box, &QCheckBox::toggled, this, [&s](bool on) {
+    s.set_show_change_game_confirmation(on);
   });
 
   // Profile defaults ---------------------------------------------------------
@@ -386,46 +403,60 @@ QWidget *SettingsContentWidget::build_theme_tab() {
 
   struct ColorRow {
     const char *label;
+    // Tooltip shown next to the swatch. Empty means "the usual thing".
+    const char *tip;
     QColor current;
     std::function<void(const QColor &)> commit;
   };
   const auto rows = {
-      ColorRow{QT_TR_NOOP("Is overwritten (loose files)"),
+      ColorRow{QT_TR_NOOP("Is overwritten (loose files)"), "",
                s.modlist_overwritten_loose(),
                [&s](const QColor &c) {
                  s.set_modlist_overwritten_loose(c);
                }},
-      ColorRow{QT_TR_NOOP("Is overwriting (loose files)"),
+      ColorRow{QT_TR_NOOP("Is overwriting (loose files)"), "",
                s.modlist_overwriting_loose(),
                [&s](const QColor &c) {
                  s.set_modlist_overwriting_loose(c);
                }},
-      ColorRow{QT_TR_NOOP("Is overwritten (archives)"), s.modlist_overwritten_archive(),
-               [&s](const QColor &c) {
-                 s.set_modlist_overwritten_archive(c);
-               }},
-      ColorRow{QT_TR_NOOP("Is overwriting (archives)"), s.modlist_overwriting_archive(),
-               [&s](const QColor &c) {
-                 s.set_modlist_overwriting_archive(c);
-               }},
-      ColorRow{QT_TR_NOOP("Mod contains selected file"), s.modlist_contains_file(),
+      ColorRow{
+          QT_TR_NOOP("Is overwritten (archives)"),
+          "Not wired to anything yet: every mod is installed by extracting it, so a "
+          "conflict is always between two files already on disk and never between "
+          "an archive and a loose file.",
+          s.modlist_overwritten_archive(),
+          [&s](const QColor &c) {
+            s.set_modlist_overwritten_archive(c);
+          }},
+      ColorRow{
+          QT_TR_NOOP("Is overwriting (archives)"),
+          "Not wired to anything yet: every mod is installed by extracting it, so a "
+          "conflict is always between two files already on disk and never between "
+          "an archive and a loose file.",
+          s.modlist_overwriting_archive(),
+          [&s](const QColor &c) {
+            s.set_modlist_overwriting_archive(c);
+          }},
+      ColorRow{QT_TR_NOOP("Mod contains selected file"), "", s.modlist_contains_file(),
                [&s](const QColor &c) {
                  s.set_modlist_contains_file(c);
                }},
-      ColorRow{QT_TR_NOOP("Plugin is contained in selected mod"),
+      ColorRow{QT_TR_NOOP("Plugin is contained in selected mod"), "",
                s.plugin_list_contained(),
                [&s](const QColor &c) {
                  s.set_plugin_list_contained(c);
                }},
-      ColorRow{QT_TR_NOOP("Plugin is master of selected plugin"),
+      ColorRow{QT_TR_NOOP("Plugin is master of selected plugin"), "",
                s.plugin_list_master(),
                [&s](const QColor &c) {
                  s.set_plugin_list_master(c);
                }},
   };
   for (const auto &row : rows) {
-    colors_form->addRow(tr(row.label),
-                        make_swatch(row.current, row.commit, colors_group));
+    auto *swatch = make_swatch(row.current, row.commit, colors_group);
+    if (row.tip[0] != '\0')
+      swatch->setToolTip(tr(row.tip));
+    colors_form->addRow(tr(row.label), swatch);
   }
 
   auto *reset_colors = new QPushButton(tr("Reset colors"), colors_group);
@@ -477,15 +508,30 @@ QWidget *SettingsContentWidget::build_modlist_tab() {
   auto *foreign_box =
       new QCheckBox(tr("Display foreign mods (DLC, Creation Club)"), page);
   foreign_box->setChecked(s.display_foreign());
+  foreign_box->setToolTip(
+      tr("Lists the content the game manages itself - its own plugins, stray "
+         "plugin files in the game's Data folder, registered unmanaged mod "
+         "folders - as mod rows so they can be given a priority. Turn it off to "
+         "list only mods you installed; the plugins list is unaffected."));
   auto *save_filters_box = new QCheckBox(tr("Remember filter settings"), page);
   save_filters_box->setChecked(s.save_filters());
+  save_filters_box->setToolTip(
+      tr("Re-ticks the categories you ticked in the category filter panel the "
+         "next time the app starts."));
   auto *hover_box = new QCheckBox(tr("Auto-collapse separators on hover"), page);
   hover_box->setChecked(s.auto_collapse_on_hover());
+  hover_box->setToolTip(
+      tr("While you drag a mod over a folded separator, its band opens so you "
+         "can aim at it, and re-folds when the drag moves away. Nothing is "
+         "written to disk for a hover."));
   auto *sep_scrollbar_box =
       new QCheckBox(tr("Color the scrollbar at separators"), page);
   sep_scrollbar_box->setChecked(s.color_separator_scrollbar());
   auto *check_update_box = new QCheckBox(tr("Check for updates after install"), page);
   check_update_box->setChecked(s.check_update_after_install());
+  check_update_box->setToolTip(
+      tr("Not wired to anything yet: the app never contacts a release feed, so "
+         "no install is followed by a check."));
 
   layout->addWidget(foreign_box);
   layout->addWidget(save_filters_box);
@@ -517,24 +563,46 @@ QWidget *SettingsContentWidget::build_modlist_tab() {
   auto *sort_label = new QLabel(tr("Enable when sorting by"), sep_group);
   auto *asc_box    = new QCheckBox(tr("ascending priority"), sep_group);
   asc_box->setChecked(s.collapsible_separators_asc());
+  asc_box->setToolTip(tr("Not wired to anything yet: the mod list is always in "
+                         "priority order and never sorts by clicking a column, "
+                         "so this sort order cannot occur."));
   auto *dsc_box = new QCheckBox(tr("descending priority"), sep_group);
   dsc_box->setChecked(s.collapsible_separators_dsc());
+  dsc_box->setToolTip(tr("Not wired to anything yet: the mod list is always in "
+                         "priority order and never sorts by clicking a column, "
+                         "so this sort order cannot occur."));
 
   auto *conflicts_label  = new QLabel(tr("Show conflicts and plugins"), sep_group);
   auto *highlight_to_box = new QCheckBox(tr("on separators"), sep_group);
   highlight_to_box->setChecked(s.collapsible_separators_highlight_to());
+  highlight_to_box->setToolTip(
+      tr("Mark a separator with the conflicts its own band has, so a collapsed "
+         "band still shows that something inside it is overwriting something."));
   auto *highlight_from_box = new QCheckBox(tr("from separators"), sep_group);
   highlight_from_box->setChecked(s.collapsible_separators_highlight_from());
+  highlight_from_box->setToolTip(
+      tr("Select a separator and the mods its band conflicts with are "
+         "highlighted, so a collapsed band still shows what it touches."));
 
   auto *icons_label     = new QLabel(tr("Show icons on separators"), sep_group);
   auto *icons_conflicts = new QCheckBox(tr("conflicts"), sep_group);
   icons_conflicts->setChecked(s.collapsible_separators_icons_conflicts());
+  icons_conflicts->setToolTip(
+      tr("The Conflicts cell of a separator row shows its band's aggregate "
+         "state: overwriting, overwritten, or both."));
   auto *icons_flags = new QCheckBox(tr("flags"), sep_group);
   icons_flags->setChecked(s.collapsible_separators_icons_flags());
+  icons_flags->setToolTip(
+      tr("The Flags cell of a separator row wears the badges of the mods in "
+         "its band, so a folded band still shows what is inside it."));
   auto *icons_content = new QCheckBox(tr("content"), sep_group);
   icons_content->setChecked(s.collapsible_separators_icons_content());
+  icons_content->setToolTip(tr("Not wired to anything yet: the mod list has no "
+                               "Content column for a separator to summarise."));
   auto *icons_version = new QCheckBox(tr("version"), sep_group);
   icons_version->setChecked(s.collapsible_separators_icons_version());
+  icons_version->setToolTip(tr("Not wired to anything yet: a separator row "
+                               "shows no version."));
 
   sep_grid->addWidget(sort_label, 0, 0);
   sep_grid->addWidget(asc_box, 0, 1);
@@ -554,6 +622,10 @@ QWidget *SettingsContentWidget::build_modlist_tab() {
 
   auto *per_profile_box = new QCheckBox(tr("Collapsible separators per profile"), page);
   per_profile_box->setChecked(s.collapsible_separators_per_profile());
+  per_profile_box->setToolTip(
+      tr("Not wired to anything yet: a separator's folded state is stored in "
+         "its own meta.ini, which every profile of the instance shares, so "
+         "there is no per-profile copy for this to select between."));
   layout->addWidget(per_profile_box);
 
   // Per-instance nesting toggle (Settings > Mod List, below the per-profile
@@ -1262,6 +1334,11 @@ QWidget *SettingsContentWidget::build_workarounds_tab() {
   auto *browser_cmd = new QLineEdit(s.custom_browser_command(), net_group);
   browser_cmd->setEnabled(s.use_custom_browser());
   browser_cmd->setPlaceholderText(tr("e.g. firefox %1"));
+  browser_cmd->setToolTip(
+      tr("Every link the app opens - a mod's site, a Nexus page, a wiki - is "
+         "handed to this command instead of the desktop's default browser. "
+         "%1 stands for the URL; without it the URL is appended as the last "
+         "argument. Opening a file or folder is unaffected."));
 
   net_form->addRow(QString(), offline_box);
   net_form->addRow(QString(), proxy_box);
@@ -1293,12 +1370,24 @@ QWidget *SettingsContentWidget::build_workarounds_tab() {
     s.set_custom_browser_command(browser_cmd->text().trimmed());
   });
 
-  auto *misc_group     = new QGroupBox(tr("Miscellaneous"), page);
-  auto *misc_form      = new QFormLayout(misc_group);
-  auto *skip_suffixes  = new QLineEdit(s.skip_file_suffixes().join(", "), misc_group);
-  auto *skip_dirs      = new QLineEdit(s.skip_directories().join(", "), misc_group);
+  auto *misc_group    = new QGroupBox(tr("Miscellaneous"), page);
+  auto *misc_form     = new QFormLayout(misc_group);
+  auto *skip_suffixes = new QLineEdit(s.skip_file_suffixes().join(", "), misc_group);
+  skip_suffixes->setToolTip(
+      tr("Extra filename suffixes treated as hidden: never deployed, and shown "
+         "as hidden in the Data tab. Comma-separated. The .gmmhidden and "
+         ".mohidden markers always apply and do not need listing."));
+  auto *skip_dirs = new QLineEdit(s.skip_directories().join(", "), misc_group);
+  skip_dirs->setToolTip(
+      tr("Directory names never descended into when deploying or scanning for "
+         "conflicts, so nothing inside one reaches the game or counts as a "
+         "conflict. Comma-separated."));
   auto *exec_blacklist = new QLineEdit(s.executables_blacklist(), misc_group);
-  auto *delay_spin     = new QSpinBox(misc_group);
+  exec_blacklist->setToolTip(
+      tr("Names never offered as a launch target - browsers, launchers and "
+         "overlay helpers a game directory can also hold. Semicolon-separated, "
+         "matched case-insensitively."));
+  auto *delay_spin = new QSpinBox(misc_group);
   delay_spin->setRange(0, 30000);
   delay_spin->setSuffix(tr(" ms"));
   delay_spin->setValue(s.overlay_capture_delay_ms());
@@ -1307,8 +1396,18 @@ QWidget *SettingsContentWidget::build_workarounds_tab() {
 
   auto *core_box = new QCheckBox(tr("Force-enable game core files"), misc_group);
   core_box->setChecked(s.force_enable_core_files());
+  core_box->setToolTip(
+      tr("Keep the base game's own plugins and Creation Club content locked: "
+         "they always load, cannot be disabled or moved, and stay pinned above "
+         "your mods. Turn this off for a total conversion that replaces those "
+         "files - a game that needs one of them and does not get it will "
+         "crash."));
   auto *archive_box = new QCheckBox(tr("Experimental archive parsing"), misc_group);
   archive_box->setChecked(s.experimental_archive_parsing());
+  archive_box->setToolTip(
+      tr("Not wired to anything yet: every mod is installed by extracting it, "
+         "so no file ever lives only inside an archive for the file views to "
+         "have to read."));
 
   misc_form->addRow(tr("Skip file suffixes"), skip_suffixes);
   misc_form->addRow(tr("Skip directories"), skip_dirs);
@@ -1320,9 +1419,11 @@ QWidget *SettingsContentWidget::build_workarounds_tab() {
 
   connect(skip_suffixes, &QLineEdit::editingFinished, this, [&s, skip_suffixes]() {
     s.set_skip_file_suffixes(skip_suffixes->text().split(',', Qt::SkipEmptyParts));
+    s.apply_workarounds();
   });
   connect(skip_dirs, &QLineEdit::editingFinished, this, [&s, skip_dirs]() {
     s.set_skip_directories(skip_dirs->text().split(',', Qt::SkipEmptyParts));
+    s.apply_workarounds();
   });
   connect(exec_blacklist, &QLineEdit::editingFinished, this, [&s, exec_blacklist]() {
     s.set_executables_blacklist(exec_blacklist->text().trimmed());

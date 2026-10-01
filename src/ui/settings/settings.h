@@ -100,6 +100,11 @@ public:
   // children) without changing load order / priorities. Defaults to off.
   bool modlist_nested(const QString &instance_name) const;
   void set_modlist_nested(const QString &instance_name, bool on);
+  // Settings > Mod List > "Remember filter settings" (default on). The set of
+  // category ids the category filter panel had ticked when it was last
+  // changed, as a CSV. Empty = no remembered filter.
+  QStringList modlist_filter_categories() const;  // key: interface/filter_categories
+  void set_modlist_filter_categories(const QStringList &ids);
 
   // general ---------------------------------------------------------------
   bool check_for_updates() const;
@@ -216,6 +221,11 @@ public:
   void set_force_enable_core_files(bool on);
   bool experimental_archive_parsing() const;
   void set_experimental_archive_parsing(bool on);
+  // Push the two Workarounds lists into the engine. The engine is Qt-free and
+  // cannot read QSettings, so the values are handed over here: called once at
+  // startup and again whenever the tab writes, so a scan already running picks
+  // a new value up without a restart.
+  void apply_workarounds();
   int overlay_capture_delay_ms() const;
   void set_overlay_capture_delay_ms(int ms);
 

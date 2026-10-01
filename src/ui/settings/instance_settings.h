@@ -72,6 +72,23 @@ void set_instance_plugin_setting(const std::filesystem::path &instance_root,
 bool instance_effective_settings_differ(const std::filesystem::path &from,
                                         const std::filesystem::path &to);
 
+// What a switch from one instance root to another has to do. The app has to
+// restart whenever the two instances resolve a different theme, style, icon
+// pack or plugin set, because a live switch would leave the already-loaded
+// plugin set behind. Settings > General > "Confirm before switching game
+// instance" decides whether that restart asks first; with it off the restart
+// is the only possible outcome, never a live switch, so an unanswered switch
+// can never land in a half-applied state.
+enum class InstanceSwitch {
+  Live,     // same effective settings - switch in place
+  Ask,      // restart, confirming first
+  Restart,  // restart without asking
+};
+
+[[nodiscard]] InstanceSwitch
+instance_switch_plan(const std::filesystem::path &from_root,
+                     const std::filesystem::path &to_root);
+
 // Relaunch the app with the same CLI arguments (minus any --handle-*
 // download flags, which were already consumed) plus extra_args, then quit.
 // The caller is responsible for persisting state (e.g. MainWindow::close()

@@ -2,6 +2,7 @@
 
 #include "ui/fomod/fomod_image_viewer.h"
 #include "ui/settings/settings.h"
+#include "ui/widgets/dialog_placement.h"
 #include "engine/mod/fomod/file_installer.h"
 #include "engine/mod/fomod/fomod_utils.h"
 #include "engine/core/log/logger.h"
@@ -859,6 +860,7 @@ void FomodWizardDialog::save_geometry_and_state() {
 void FomodWizardDialog::restore_geometry_and_state() {
   auto &s = Settings::instance();
   restoreGeometry(s.fomod_window_geometry());
+  center_dialog_on_screen(this);
   center_row_->restoreState(s.fomod_center_split());
   left_pane_->restoreState(s.fomod_left_split());
 }
