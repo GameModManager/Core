@@ -164,12 +164,26 @@ void Settings::set_collapsible_separators_icons_version(bool on) {
   settings_.setValue("interface/collapsible_separators_icons_version", on);
 }
 
-bool Settings::check_update_after_install() const {
-  return settings_.value("interface/check_update_after_install", true).toBool();
+// The pre-rename key for the mod-update check. It read as an app-update
+// setting, which it never was. Read as a fallback rather than rewritten: a
+// stored value under the old name is honoured until the user touches the
+// checkbox (which writes the new key, which then wins), and nothing is ever
+// written during a read, so the migration cannot damage the config.
+static constexpr const char *kCheckUpdateAfterInstallKey =
+    "interface/check_update_after_install";
+static constexpr const char *kCheckUpdateAfterModInstallKey =
+    "interface/check_update_after_mod_install";
+
+bool Settings::check_update_after_mod_install() const {
+  if (settings_.contains(kCheckUpdateAfterModInstallKey))
+    return settings_.value(kCheckUpdateAfterModInstallKey, true).toBool();
+  if (settings_.contains(kCheckUpdateAfterInstallKey))
+    return settings_.value(kCheckUpdateAfterInstallKey, true).toBool();
+  return true;
 }
 
-void Settings::set_check_update_after_install(bool on) {
-  settings_.setValue("interface/check_update_after_install", on);
+void Settings::set_check_update_after_mod_install(bool on) {
+  settings_.setValue(kCheckUpdateAfterModInstallKey, on);
 }
 
 bool Settings::hide_api_counter() const {
@@ -250,11 +264,19 @@ void Settings::set_modlist_filter_categories(const QStringList &ids) {
 // general -----------------------------------------------------------------
 
 bool Settings::check_for_updates() const {
-  return settings_.value("general/check_for_updates", true).toBool();
+  return settings_.value("general/check_for_updates", false).toBool();
 }
 
 void Settings::set_check_for_updates(bool on) {
   settings_.setValue("general/check_for_updates", on);
+}
+
+QDateTime Settings::last_update_check() const {
+  return settings_.value("general/last_update_check").toDateTime();
+}
+
+void Settings::set_last_update_check(const QDateTime &when) {
+  settings_.setValue("general/last_update_check", when);
 }
 
 bool Settings::use_prereleases() const {

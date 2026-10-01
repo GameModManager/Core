@@ -30,6 +30,12 @@ public:
   // (MainWindow::closeEvent) ignores the event otherwise.
   bool confirm_close();
 
+  // Ask the mod update database about the current game, gated on the
+  // "check for mods for updates after install" setting. Called after a mod
+  // finishes installing; a no-op when the setting is off or no game is bound.
+  // This is a MOD update check, never an application update check.
+  void check_mod_updates_after_install();
+
 public slots:
   void save_download_manifest();
   void load_download_manifest();

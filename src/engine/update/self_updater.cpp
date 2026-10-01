@@ -1,95 +1,22 @@
 #include "engine/update/self_updater.h"
 #include "engine/update/self_updater_p.h"
+#include "engine/update/install_method.h"
 
 #include <cstdlib>
-#include <fstream>
-#include <regex>
+#include <string>
 
+#include "engine/core/github.h"
 #include "engine/core/log/logger.h"
-#include "engine/source/download/curl_download.h"
 #include "engine/network/network_manager.h"
 
 namespace engine::update {
 
 namespace {
 
-  // GitHub API endpoint for the latest release.
-  constexpr const char *kGitHubApiUrl =
-      "https://api.github.com/repos/GameModManager/GMM/releases/latest";
-  constexpr const char *kUserAgent = "GameModManager/SelfUpdater";
-
-  // Fetch the raw JSON body from the GitHub releases API.
-  bool fetch_github_latest(nlohmann::json &out) {
-    namespace dl = engine::download;
-
-    const auto tmp = std::filesystem::temp_directory_path() / "gmm_update.json";
-    long http_code = 0;
-    dl::Options opts;
-    opts.user_agent = kUserAgent;
-
-    bool ok = dl::curl_download(kGitHubApiUrl, tmp, http_code, opts, nullptr, 0,
-                                nullptr, NET_CALLER);
-    if (!ok || http_code >= 400) {
-      Logger::instance().error("SelfUpdater: GitHub API request failed (HTTP " +
-                               std::to_string(http_code) + ")");
-      std::error_code ec;
-      std::filesystem::remove(tmp, ec);
-      return false;
-    }
-
-    std::ifstream ifs(tmp);
-    if (!ifs) {
-      Logger::instance().error("SelfUpdater: cannot read GitHub response");
-      std::error_code ec;
-      std::filesystem::remove(tmp, ec);
-      return false;
-    }
-
-    try {
-      ifs >> out;
-    } catch (const std::exception &e) {
-      Logger::instance().error(std::string("SelfUpdater: JSON parse error: ") +
-                               e.what());
-      std::error_code ec;
-      std::filesystem::remove(tmp, ec);
-      return false;
-    }
-
-    std::error_code ec;
-    std::filesystem::remove(tmp, ec);
-    return true;
-  }
-
-  // Parse a "v0.4.2" tag into a comparable triple.
-  bool parse_version(const std::string &tag, int &major, int &minor, int &patch) {
-    std::string v = tag;
-    if (!v.empty() && v[0] == 'v')
-      v = v.substr(1);
-    std::regex re(R"((\d+)\.(\d+)\.(\d+))");
-    std::smatch m;
-    if (!std::regex_match(v, m, re))
-      return false;
-    major = std::stoi(m[1]);
-    minor = std::stoi(m[2]);
-    patch = std::stoi(m[3]);
-    return true;
-  }
-
-  // Find the best asset URL matching the platform suffix.
-  std::string find_asset_url(const nlohmann::json &release, const std::string &suffix) {
-    if (!release.contains("assets") || !release["assets"].is_array())
-      return {};
-    for (const auto &asset : release["assets"]) {
-      if (!asset.contains("name") || !asset.contains("browser_download_url"))
-        continue;
-      const std::string name = asset["name"].get<std::string>();
-      if (name.size() >= suffix.size() &&
-          name.compare(name.size() - suffix.size(), suffix.size(), suffix) == 0) {
-        return asset["browser_download_url"].get<std::string>();
-      }
-    }
-    return {};
-  }
+  // Release feed. 0 GitHub releases exist on this repo, so every query below
+  // is currently a 404 - the feed is a prerequisite, not a tuning knob.
+  constexpr const char *kFeedOwner = "GameModManager";
+  constexpr const char *kFeedRepo  = "GMM";
 
 }  // namespace
 
@@ -97,43 +24,54 @@ namespace {
 // Shared GitHub helpers for subclass use
 // ---------------------------------------------------------------------------
 
+std::string find_asset_url(const engine::GitHub::Release &release,
+                           const std::string &suffix) {
+  // A zero-length suffix is a suffix of every name, so matching it would
+  // return the first asset in the list purely by list order. Refuse it
+  // instead: an update with no asset for this platform has no URL, and
+  // silently picking an arbitrary one is how a .zip gets handed to an
+  // installer.
+  if (suffix.empty())
+    return {};
+  for (const auto &asset : release.assets) {
+    if (asset.name.size() >= suffix.size() &&
+        asset.name.compare(asset.name.size() - suffix.size(), suffix.size(), suffix) ==
+            0)
+      return asset.download_url;
+  }
+  return {};
+}
+
 UpdateInfo fetch_update_info(const std::string &asset_suffix,
                              bool include_prereleases) {
   UpdateInfo info;
-  nlohmann::json release;
-  if (!fetch_github_latest(release))
+
+  auto release =
+      engine::GitHub::latest_release(kFeedOwner, kFeedRepo, include_prereleases);
+  if (!release)
     return info;
 
-  if (release.contains("prerelease") && release["prerelease"].get<bool>() &&
-      !include_prereleases) {
-    return info;
-  }
-
-  const std::string tag = release.value("tag_name", "");
+  const std::string tag = release->tag_name;
   if (tag.empty())
     return info;
 
-  int major = 0, minor = 0, patch = 0;
-  if (!parse_version(tag, major, minor, patch))
+  // GitHub::compare_versions understands a prerelease suffix (v0.6.0-rc1
+  // sorts below v0.6.0); the previous full-string regex_match could not
+  // parse one at all, so a prerelease tag was treated as unparseable and
+  // silently reported as "no update".
+  if (engine::GitHub::compare_versions(tag, std::string(VERSION)) <= 0)
     return info;
-
-  std::regex ver_re(R"((\d+)\.(\d+)\.(\d+))");
-  std::smatch cur_m;
-  std::string cur_ver(VERSION);
-  if (std::regex_search(cur_ver, cur_m, ver_re)) {
-    int c_major = std::stoi(cur_m[1]);
-    int c_minor = std::stoi(cur_m[2]);
-    int c_patch = std::stoi(cur_m[3]);
-    if (std::make_tuple(major, minor, patch) <=
-        std::make_tuple(c_major, c_minor, c_patch)) {
-      return info;
-    }
-  }
 
   info.available    = true;
   info.version      = tag;
-  info.changelog    = release.value("body", "");
-  info.download_url = find_asset_url(release, asset_suffix);
+  info.changelog    = release->body;
+  info.download_url = find_asset_url(*release, asset_suffix);
+  if (info.download_url.empty()) {
+    // The release exists and is newer, but this platform has no asset for it.
+    // Reporting it as available with an empty URL would hand an install path
+    // nothing to fetch.
+    return UpdateInfo{};
+  }
 
   return info;
 }
@@ -143,96 +81,37 @@ UpdateInfo fetch_update_info(const std::string &asset_suffix,
 // ---------------------------------------------------------------------------
 
 std::unique_ptr<SelfUpdater> SelfUpdater::create() {
-#if defined(_WIN32)
-  extern std::unique_ptr<SelfUpdater> create_windows_updater();
-  return create_windows_updater();
-#elif defined(__APPLE)
-  extern std::unique_ptr<SelfUpdater> create_macos_updater();
-  return create_macos_updater();
-#elif defined(__linux__)
-  const std::string distro = detect_distro_type();
-  Logger::instance().info("SelfUpdater: detected distro type = " + distro);
+  // Detection is read-only and returns a method, not a guess: a layout we do
+  // not recognise yields nullptr rather than an updater that would write to
+  // the wrong place.
+  const InstallMethod method = detect_install_method(probe_install_facts());
+  Logger::instance().info(std::string("SelfUpdater: install method = ") +
+                          install_method_name(method));
 
-  if (distro == "flatpak") {
-    extern std::unique_ptr<SelfUpdater> create_flatpak_updater();
-    return create_flatpak_updater();
+  switch (method) {
+#if defined(_WIN32)
+  case InstallMethod::WindowsInstaller:
+  case InstallMethod::WindowsPortable: {
+    extern std::unique_ptr<SelfUpdater> create_windows_updater();
+    return create_windows_updater();
   }
-  if (distro == "appimage") {
+#elif defined(__APPLE__)
+  case InstallMethod::MacOsDmg:
+  case InstallMethod::MacOsMountedImage: {
+    extern std::unique_ptr<SelfUpdater> create_macos_updater();
+    return create_macos_updater();
+  }
+#elif defined(__linux__)
+  case InstallMethod::AppImage: {
     extern std::unique_ptr<SelfUpdater> create_appimage_updater();
     return create_appimage_updater();
   }
-  if (distro == "deb" || distro == "rpm") {
-    extern std::unique_ptr<SelfUpdater> create_debrpm_updater(
-        const std::string &pkg_type);
-    return create_debrpm_updater(distro);
-  }
-  if (distro == "aur") {
-    extern std::unique_ptr<SelfUpdater> create_aur_updater();
-    return create_aur_updater();
-  }
-
-  extern std::unique_ptr<SelfUpdater> create_linux_updater();
-  return create_linux_updater();
-#else
-  return nullptr;
 #endif
-}
-
-// ---------------------------------------------------------------------------
-// Distro detection (Linux only)
-// ---------------------------------------------------------------------------
-
-std::string SelfUpdater::detect_distro_type() {
-#if !defined(__linux__)
-  return "unknown";
-#else
-  if (const char *flatpak_id = std::getenv("FLATPAK_ID")) {
-    if (flatpak_id[0] != '\0')
-      return "flatpak";
+  // Qt Installer Framework, Flatpak and every unrecognised layout have no
+  // updater in this build. They are detected and reported, not written to.
+  default:
+    return nullptr;
   }
-
-  if (const char *appimage = std::getenv("APPIMAGE")) {
-    if (appimage[0] != '\0')
-      return "appimage";
-  }
-
-  {
-    FILE *pipe = popen("pacman -Q gamemodmanager 2>/dev/null", "r");
-    if (pipe) {
-      char buf[64];
-      if (std::fgets(buf, sizeof(buf), pipe)) {
-        pclose(pipe);
-        return "aur";
-      }
-      pclose(pipe);
-    }
-  }
-
-  {
-    FILE *pipe = popen("dpkg -l gamemodmanager 2>/dev/null", "r");
-    if (pipe) {
-      char buf[64];
-      if (std::fgets(buf, sizeof(buf), pipe)) {
-        pclose(pipe);
-        return "deb";
-      }
-      pclose(pipe);
-    }
-  }
-  {
-    FILE *pipe = popen("rpm -q gamemodmanager 2>/dev/null", "r");
-    if (pipe) {
-      char buf[64];
-      if (std::fgets(buf, sizeof(buf), pipe)) {
-        pclose(pipe);
-        return "rpm";
-      }
-      pclose(pipe);
-    }
-  }
-
-  return "unknown";
-#endif
 }
 
 }  // namespace engine::update
