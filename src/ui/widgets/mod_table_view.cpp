@@ -331,6 +331,12 @@ ModView::ModView(QWidget *parent) : QTreeView(parent) {
                            new FlagsDelegate(ModList::kFlagIconsRole, 0, this));
   setItemDelegateForColumn(ModList::Flags,
                            new FlagsDelegate(ModList::kFlagIconsRole, 0, this));
+  // Source column: a mod can carry more than one badge (a Nexus download AND
+  // a git upstream), and Qt renders exactly one DecorationRole icon per cell,
+  // so the badges arrive as a QList under kSourceIconsRole and this delegate
+  // paints them one at a time - the same mechanism as Conflicts/Flags.
+  setItemDelegateForColumn(ModList::Source,
+                           new FlagsDelegate(ModList::kSourceIconsRole, 0, this));
   // Name column: nesting indentation (shifts the name right under its parent,
   // purely visual). Depth 0 renders exactly like the default cell. Tree
   // connector lines are drawn in the indent gutter for depth > 0.

@@ -1,6 +1,7 @@
 #include "ui/widgets/mod_list_model.h"
 #include "ui/settings/settings.h"
 
+#include "engine/source/git/git_info.h"
 #include "ui/theme/icon_manager.h"
 
 #include <QBrush>
@@ -46,8 +47,11 @@ ModList::ModList(QObject *parent) : QAbstractTableModel(parent) {
   // will see", and neither is a reason to raise a modal over the list.
   toggle_error_icon_   = icons.resolve_icon("plugin-warning");
   // Vendor icons for the Source column (MO2 COL_GAME analogue): resolved
-  // through the same vendor_icon_key() mapping the Source tab uses.
-  for (const char *key : {"nexusmods", "loverslab", "steam", "moddb"}) {
+  // through the same vendor_icon_key() mapping the Source tab uses. "github"
+  // and "git" are git_icon_key() outputs - git's source_type is always "git",
+  // so the platform only ever picks WHICH of these two the badge is.
+  for (const char *key :
+       {"nexusmods", "loverslab", "steam", "moddb", "github", "git"}) {
     QIcon icon = icons.resolve_icon(QString::fromLatin1(key));
     if (!icon.isNull())
       vendor_icons_[QString::fromLatin1(key)] = icon;
@@ -373,7 +377,14 @@ QVariant ModList::data(const QModelIndex &index, int role) const {
     }
   }
   // Vendor icon for the Source column (MO2 COL_GAME analogue): the badge of
-  // the site the download came from (Nexus/LoversLab/Steam/ModDB).
+  // the site the download came from (Nexus/LoversLab/Steam/ModDB). A mod can
+  // also be a git working copy, in which case it wears a SECOND badge, so the
+  // Source column returns a QList under kSourceIconsRole (painted by a
+  // FlagsDelegate) instead of a single DecorationRole icon - Qt renders only
+  // one DecorationRole icon per cell. DecorationRole keeps returning the
+  // primary vendor icon for consumers that only want one.
+  if (role == kSourceIconsRole && index.column() == Source && !mod.is_separator)
+    return QVariant::fromValue(source_icons(mod));
   if (role == Qt::DecorationRole && index.column() == Source && !mod.is_separator) {
     return source_icon(mod.source_type);
   }
@@ -1615,6 +1626,21 @@ void ModList::set_source_info(const QString &id, const QString &source_type,
   }
 }
 
+void ModList::set_git_info(const QString &id, bool is_git, const QString &remote_url) {
+  for (int i = 0; i < mods_.size(); ++i) {
+    if (mods_[i].id == id) {
+      if (mods_[i].is_git == is_git && mods_[i].git_remote_url == remote_url)
+        return;
+      mods_[i].is_git         = is_git;
+      mods_[i].git_remote_url = remote_url;
+      // Only the Source column derives from these; Source ID and the tooltip
+      // describe the download source and stay untouched.
+      emit dataChanged(index(i, Source), index(i, Source), {kSourceIconsRole});
+      return;
+    }
+  }
+}
+
 void ModList::set_category(const QString &id, const QString &category) {
   for (int i = 0; i < mods_.size(); ++i) {
     if (mods_[i].id == id && mods_[i].category != category) {
@@ -2092,6 +2118,29 @@ QIcon ModList::source_icon(const QString &source_type) const {
   if (key.isEmpty())
     return {};
   return vendor_icons_.value(key);
+}
+
+QList<QIcon> ModList::source_icons(const ModEntry &mod) const {
+  QList<QIcon> icons;
+  // The download source first: it is what the Source ID column describes, so
+  // the two stay in a stable left-to-right order regardless of git.
+  const QIcon vendor = source_icon(mod.source_type);
+  if (!vendor.isNull())
+    icons << vendor;
+  if (!mod.is_git)
+    return icons;
+
+  // git's source_type is the constant "git"; the remote's HOST is what picks
+  // the branded badge (github.ico) over the generic one (git.ico). A repo with
+  // no recorded remote has no host, so it gets the generic badge. When the
+  // generic badge resolves to nothing (resources/icons/vendor/git.ico is not
+  // present), the cell simply shows no git icon - never a broken pixmap.
+  const std::string key =
+      engine::git_icon_key(engine::Git::host_of(mod.git_remote_url.toStdString()));
+  const QIcon git_icon = vendor_icons_.value(QString::fromStdString(key));
+  if (!git_icon.isNull())
+    icons << git_icon;
+  return icons;
 }
 
 QStringList ModList::existing_separator_names() const {

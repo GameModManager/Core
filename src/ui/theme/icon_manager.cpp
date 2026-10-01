@@ -31,6 +31,20 @@ std::string vendor_icon_key(const std::string &source) {
   return "";
 }
 
+std::string git_icon_key(const std::string &host) {
+  // The only host with a branded badge. Everything else - GitLab, Bitbucket,
+  // codeberg, a self-hosted Gitea - is the generic git badge, so an unknown
+  // host is never a missing icon.
+  std::string low;
+  low.reserve(host.size());
+  for (char c : host) {
+    low.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
+  }
+  if (low == "github.com" || low == "www.github.com")
+    return "github";
+  return "git";
+}
+
 IconManager &IconManager::instance() {
   static IconManager mgr;
   return mgr;

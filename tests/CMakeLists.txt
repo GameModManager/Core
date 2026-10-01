@@ -373,6 +373,14 @@ gmm_catch2_test(source_tab_test ui/source_tab_test.cpp
     UI
     LIBS gmm_ui)
 
+# The Git source actions against a real repository and a real git binary -
+# the reset's scope guard and its "says what it discards" promise are only
+# meaningful there, and a mock would assert the mock. Skips when git is
+# absent. Local paths only, no network.
+gmm_catch2_test(git_ops_test ui/git_ops_test.cpp
+    UI
+    LIBS gmm_ui)
+
 gmm_catch2_test(loverslab_source_panel_test ui/loverslab_source_panel_test.cpp
     UI
     LIBS gmm_ui)
@@ -450,7 +458,11 @@ gmm_catch2_test(save_info_dialog_test ui/save_info_dialog_test.cpp
 
 gmm_catch2_test(mod_list_model_test ui/mod_list_model_test.cpp
     UI
-    LIBS gmm_ui)
+    LIBS gmm_ui
+    # The Source column's badges (nexusmods, github, git) are only meaningful
+    # when the icon chain actually resolves; pointing IconManager at the source
+    # tree gives the coexistence case real icons to compare.
+    DEFINES GMM_TEST_RESOURCES_DIR="${PROJECT_SOURCE_DIR}/resources")
 
 # Settings > Workarounds > Network: the custom browser actually receives the URL
 # (a real recorder program is started, not just a getter round-trip).

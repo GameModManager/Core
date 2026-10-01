@@ -74,6 +74,11 @@ TEST_CASE("mod list model", "[ui]") {
   QCoreApplication::setOrganizationName("GameModManager");
   QCoreApplication::setApplicationName("GameModManager");
 
+  // The Source column's badges only mean something when the icon chain
+  // resolves them; pointing IconManager at the source tree gives the
+  // multi-badge coexistence case real icons to compare.
+  engine::IconManager::instance().discover_packs(GMM_TEST_RESOURCES_DIR);
+
   ui::ModList model;
 
   // Simulate the post-load state: game-native band on top, user mods below.
@@ -3655,4 +3660,85 @@ TEST_CASE("auto-collapse separators on hover opens the band under a drag",
 
   s.set_auto_collapse_on_hover(false);
   std::filesystem::remove_all("/tmp/gmm_sep_hover");
+}
+
+// A mod can carry TWO Source badges: a download source and git. They coexist
+// rather than replacing each other, and the cell must render both - which is
+// why the badges arrive as a QList under kSourceIconsRole instead of a single
+// DecorationRole icon.
+//
+// The host of the git remote picks WHICH git badge, and nothing else: a
+// GitHub remote gets the branded one, any other host the generic one.
+//
+// Hermetic: offscreen, throwaway XDG_CONFIG_HOME, no network, no git process.
+TEST_CASE("mod list source column shows download and git badges together", "[ui]") {
+  qputenv("QT_QPA_PLATFORM", "offscreen");
+  qputenv("TZ", "UTC");
+  tzset();
+  const std::filesystem::path cfg = "/tmp/gmm_mod_list_git/config";
+  std::filesystem::remove_all("/tmp/gmm_mod_list_git");
+  std::filesystem::create_directories(cfg);
+  qputenv("XDG_CONFIG_HOME", cfg.c_str());
+  int test_argc     = 1;
+  char test_argv0[] = "test";
+  char *test_argv[] = {test_argv0, test_argv0, nullptr};
+  QApplication app(test_argc, test_argv);
+  QCoreApplication::setOrganizationName("GameModManager");
+  QCoreApplication::setApplicationName("GameModManager");
+  engine::IconManager::instance().discover_packs(GMM_TEST_RESOURCES_DIR);
+
+  ui::ModList model;
+  model.add_mod(QStringLiteral("Mod"), QStringLiteral("Mod"), QString());
+
+  auto badges = [&model](const char *id) {
+    return model
+        .data(model.index(row_with_id(model, id), ui::ModList::Source),
+              ui::ModList::kSourceIconsRole)
+        .value<QList<QIcon>>();
+  };
+
+  model.set_source_info(QStringLiteral("Mod"), QStringLiteral("nexus"),
+                        QStringLiteral("42"));
+  const int download_only = badges("Mod").size();
+  // The Nexus badge is present in the real resources tree; if it ever stops
+  // resolving, the coexistence assertions below would pass for the wrong
+  // reason, so state that precondition explicitly.
+  CHECK(download_only == 1);
+
+  // Git + Nexus: the Nexus badge survives, the git badge is added.
+  model.set_git_info(QStringLiteral("Mod"), true,
+                     QStringLiteral("https://github.com/user/repo.git"));
+  CHECK(badges("Mod").size() == 2);
+  // The download source's own identity is untouched: same Source ID cell, same
+  // tooltip. Git is not a replacement for it.
+  CHECK(model
+            .data(model.index(row_with_id(model, "Mod"), ui::ModList::SourceId),
+                  Qt::DisplayRole)
+            .toString() == QLatin1String("42"));
+  CHECK(model
+            .data(model.index(row_with_id(model, "Mod"), ui::ModList::Source),
+                  Qt::ToolTipRole)
+            .toString() == QLatin1String("nexus"));
+
+  // The generic fallback: a GitLab remote still yields a second badge, because
+  // the fallback key resolves to the generic git icon rather than to nothing.
+  model.set_git_info(QStringLiteral("Mod"), true,
+                     QStringLiteral("git@gitlab.com:group/proj.git"));
+  CHECK(badges("Mod").size() == 2);
+
+  // Git with no remote at all: still a second badge (the generic one).
+  model.set_git_info(QStringLiteral("Mod"), true, QString());
+  CHECK(badges("Mod").size() == 2);
+
+  // Dropping git removes only the git badge; the download source is never lost.
+  model.set_git_info(QStringLiteral("Mod"), false, QString());
+  CHECK(badges("Mod").size() == 1);
+
+  // A git-only mod wears just the git badge.
+  model.set_source_info(QStringLiteral("Mod"), QString(), QString());
+  model.set_git_info(QStringLiteral("Mod"), true,
+                     QStringLiteral("https://github.com/user/repo.git"));
+  CHECK(badges("Mod").size() == 1);
+
+  std::filesystem::remove_all("/tmp/gmm_mod_list_git");
 }

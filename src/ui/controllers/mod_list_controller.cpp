@@ -62,6 +62,7 @@
 #include "engine/profile/profile_switching.h"
 #include "engine/sort/sorter/interface.h"
 #include "engine/sort/sorter/registry.h"
+#include "engine/source/git/git_info.h"
 #include "engine/source/loverslab/provider.h"
 #include "engine/source/modpub/provider.h"
 #include "engine/source/nexus_provider.h"
@@ -2034,6 +2035,26 @@ void ModListController::load_meta_for_mods() {
                                       QString::fromStdString(meta.source_page_url()));
     }
 
+    // Git provenance, independent of source_type: a Nexus mod whose folder is
+    // also a git working copy keeps its Nexus badge AND gains the git one.
+    // A .git in the mod folder is the authoritative signal; the recorded
+    // [Git] remote is used when the repo has no configured origin (or when
+    // the .git is a worktree/submodule file, whose real repo lives outside
+    // the mod and still counts as git-managed for display purposes).
+    {
+      const std::filesystem::path mod_folder =
+          is_external ? w_->current_game_mods_dir() / folder_name
+                      : mods_dir / folder_name;
+      const bool is_git = engine::Git::is_repository(mod_folder);
+      QString git_remote;
+      if (is_git) {
+        const std::string live = engine::Git::remote_url(mod_folder);
+        git_remote = live.empty() ? QString::fromStdString(meta.git_remote_url())
+                                  : QString::fromStdString(live);
+      }
+      w_->mod_model_->set_git_info(mod.id, is_git, git_remote);
+    }
+
     // Steam Workshop tags from metadata XML: games like Isaac put
     // <tag id="Lua"/> elements in metadata.xml. The plugin declares the
     // element name via the metadata_tag_element hook. Extract tag names
@@ -2604,6 +2625,8 @@ ui::ModInfoData ModListController::build_mod_info_data(const ModEntry &mod) {
   data.source_type     = mod.source_type;
   data.source_id       = mod.source_id;
   data.source_page_url = mod.source_page_url;
+  data.is_git          = mod.is_git;
+  data.git_remote_url  = mod.git_remote_url;
   // Folder birth time, used by the LoversLab Source panel to detect
   // out-of-date mods (compare [LoversLab]date_modified against this).
   data.installation_ts = mod.installation_ts;

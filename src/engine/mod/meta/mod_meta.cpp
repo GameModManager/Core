@@ -551,6 +551,39 @@ void ModMeta::clear_collection() {
 }
 
 // ---------------------------------------------------------------------------
+// Git provenance ([Git])
+// ---------------------------------------------------------------------------
+
+bool ModMeta::has_git() const {
+  return has_section("Git");
+}
+
+std::string ModMeta::git_remote_url() const {
+  return get("Git", "remote_url");
+}
+
+std::string ModMeta::git_commit() const {
+  return get("Git", "commit");
+}
+
+std::string ModMeta::git_branch() const {
+  return get("Git", "branch");
+}
+
+void ModMeta::set_git(const std::string &remote_url, const std::string &commit,
+                      const std::string &branch) {
+  // Keys are only written when known, so a repo with no configured remote
+  // keeps an absent remote_url rather than an empty one - the two read the
+  // same to callers but the absent form survives a round-trip cleanly.
+  if (!remote_url.empty())
+    set("Git", "remote_url", remote_url);
+  if (!commit.empty())
+    set("Git", "commit", commit);
+  if (!branch.empty())
+    set("Git", "branch", branch);
+}
+
+// ---------------------------------------------------------------------------
 // Mirror/backup tracking (Workspace-0pi5)
 // ---------------------------------------------------------------------------
 
