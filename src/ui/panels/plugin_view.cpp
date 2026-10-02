@@ -561,7 +561,10 @@ PluginView::PluginView(QWidget *parent) : QWidget(parent) {
                           item->checkState() == Qt::Checked);
   });
 
-  // Header row: refresh button + counter.
+  // Header row: refresh button + backup/restore pair + counter. MO2 parks
+  // its save/restore pair immediately left of the "Active:" counter
+  // (mainwindow.ui:840,863); the placement is the same, the buttons carry
+  // text because there is no backup/restore icon key in ACTIVE_ICONS.txt yet.
   auto *header = new QHBoxLayout;
   header->setContentsMargins(4, 2, 4, 2);
   refresh_button_ = new QPushButton(tr("Refresh"), this);
@@ -571,6 +574,29 @@ PluginView::PluginView(QWidget *parent) : QWidget(parent) {
     emit refresh_requested();
   });
   header->addWidget(refresh_button_);
+
+  backup_button_ = new QPushButton(tr("Backup"), this);
+  backup_button_->setObjectName("pluginBackupBtn");
+  backup_button_->setToolTip(tr("Create a backup of the load order."));
+  backup_button_->setWhatsThis(
+      tr("Write a timestamped copy of plugins.txt, loadorder.txt and "
+         "lockedorder.txt next to the live files. The 10 newest are kept."));
+  connect(backup_button_, &QPushButton::clicked, this, [this]() {
+    emit backup_requested();
+  });
+  header->addWidget(backup_button_);
+
+  restore_button_ = new QPushButton(tr("Restore"), this);
+  restore_button_->setObjectName("pluginRestoreBtn");
+  restore_button_->setToolTip(tr("Restore the load order from a backup."));
+  restore_button_->setWhatsThis(tr("Replace the current load order with one of "
+                                   "its backups. The state being replaced is "
+                                   "backed up first."));
+  connect(restore_button_, &QPushButton::clicked, this, [this]() {
+    emit restore_requested();
+  });
+  header->addWidget(restore_button_);
+
   header->addStretch(1);
   counter_display_ = new QLCDNumber(this);
   counter_display_->setObjectName("mo2CounterLabel");

@@ -90,6 +90,7 @@ class DownloadsController;
 class TabModeController;
 class ModActions;
 class ModContextMenu;
+class BackupActions;
 
 // Forward-declared: fully defined in ui/widgets/profile_bar.h, which owns the
 // FolderKind enum and is included before any use in .cpp files.
@@ -575,6 +576,7 @@ private:
   friend class TabModeController;
   friend class ModActions;
   friend class ModContextMenu;
+  friend class BackupActions;
 
   // UI Locker for disabling/enabling the interface during operations
   friend class Locker;
