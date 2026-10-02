@@ -47,11 +47,12 @@ ModList::ModList(QObject *parent) : QAbstractTableModel(parent) {
   // will see", and neither is a reason to raise a modal over the list.
   toggle_error_icon_   = icons.resolve_icon("plugin-warning");
   // Vendor icons for the Source column (MO2 COL_GAME analogue): resolved
-  // through the same vendor_icon_key() mapping the Source tab uses. "github"
-  // and "git" are git_icon_key() outputs - git's source_type is always "git",
-  // so the platform only ever picks WHICH of these two the badge is.
-  for (const char *key :
-       {"nexusmods", "loverslab", "steam", "moddb", "github", "git"}) {
+  // through the same vendor_icon_key() mapping the Source tab uses. "github",
+  // "gitlab", "gitea" and "git" are git_icon_key() outputs - git's source_type
+  // is always "git", so the platform only ever picks WHICH of these the badge
+  // is.
+  for (const char *key : {"nexusmods", "loverslab", "steam", "moddb", "github",
+                          "gitlab", "gitea", "git"}) {
     QIcon icon = icons.resolve_icon(QString::fromLatin1(key));
     if (!icon.isNull())
       vendor_icons_[QString::fromLatin1(key)] = icon;
