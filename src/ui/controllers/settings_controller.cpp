@@ -687,8 +687,12 @@ void SettingsController::connect_menu_actions() {
   });
   connect(w_->menu_bar_, &AppMenuBar::settings_requested, w_->tab_mode_.get(),
           &TabModeController::route_settings);
+  // Exit runs the real close path (tray Quit does the same) so the download
+  // manifest, app state and mod order are saved and active downloads are
+  // confirmed first. quitting_ short-circuits the hide-to-tray decision.
   connect(w_->menu_bar_, &AppMenuBar::exit_requested, this, [this]() {
-    QApplication::quit();
+    w_->quitting_ = true;
+    w_->close();
   });
 
   // --- Edit ---
