@@ -3,6 +3,7 @@
 #include "ui/fomod/fomod_image_viewer.h"
 #include "ui/settings/settings.h"
 #include "ui/widgets/dialog_placement.h"
+#include "ui/widgets/event_filter.h"
 #include "engine/mod/fomod/file_installer.h"
 #include "engine/mod/fomod/fomod_utils.h"
 #include "engine/core/log/logger.h"
@@ -37,6 +38,7 @@
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
+#include <functional>
 #include <utility>
 #include <vector>
 
@@ -45,77 +47,54 @@ namespace ui {
 namespace {
 
   // FOMOD Plus HoverEventFilter: shows the hovered plugin's description/image.
-  class HoverFilter final : public QObject {
-  public:
-    explicit HoverFilter(std::shared_ptr<engine::PluginViewModel> plugin,
-                         QObject *parent = nullptr)
-        : QObject(parent), plugin_(std::move(plugin)) {}
-
-    void set_on_hover(const std::function<void(engine::PluginRef)> &cb) {
-      on_hover_ = cb;
-    }
-
-  protected:
-    bool eventFilter(QObject *obj, QEvent *event) override {
-      if (event->type() == QEvent::HoverEnter) {
-        if (on_hover_) {
-          on_hover_(plugin_);
-        }
+  EventFilter *
+  make_hover_filter(engine::PluginRef plugin, QObject *parent,
+                    const std::function<void(engine::PluginRef)> &on_hover) {
+    return new EventFilter(parent, [plugin, on_hover](QObject *, QEvent *event) {
+      if (event->type() == QEvent::HoverEnter && on_hover) {
+        on_hover(plugin);
         return true;
       }
-      return QObject::eventFilter(obj, event);
-    }
-
-  private:
-    std::shared_ptr<engine::PluginViewModel> plugin_;
-    std::function<void(engine::PluginRef)> on_hover_;
-  };
+      return false;
+    });
+  }
 
   // FOMOD Plus ContextMenuEventFilter (Nexus search dropped; copy actions kept).
-  class ContextMenuFilter final : public QObject {
-  public:
-    ContextMenuFilter(std::shared_ptr<engine::PluginViewModel> plugin,
-                      std::shared_ptr<engine::GroupViewModel> group,
-                      std::shared_ptr<engine::StepViewModel> step,
-                      QObject *parent = nullptr)
-        : QObject(parent), plugin_(std::move(plugin)), group_(std::move(group)),
-          step_(std::move(step)) {}
-
-  protected:
-    bool eventFilter(QObject *obj, QEvent *event) override {
-      if (event->type() == QEvent::ContextMenu) {
-        auto *widget = qobject_cast<QWidget *>(obj);
-        if (!widget) {
-          return QObject::eventFilter(obj, event);
-        }
-        QMenu menu(widget);
-        const auto pluginName  = QString::fromStdString(plugin_->getName());
-        const auto description = QString::fromStdString(plugin_->getDescription());
-        const auto groupName   = QString::fromStdString(group_->getName());
-        const auto stepName    = QString::fromStdString(step_->getName());
-        menu.addAction(tr("Copy Option Name"), [pluginName] {
-          QApplication::clipboard()->setText(pluginName);
-        });
-        menu.addAction(tr("Copy Description"), [description] {
-          QApplication::clipboard()->setText(description);
-        });
-        menu.addAction(tr("Copy Group Name"), [groupName] {
-          QApplication::clipboard()->setText(groupName);
-        });
-        menu.addAction(tr("Copy Step Name"), [stepName] {
-          QApplication::clipboard()->setText(stepName);
-        });
-        menu.exec(QCursor::pos());
-        return true;
+  EventFilter *make_context_menu_filter(engine::PluginRef plugin,
+                                        engine::GroupRef group, engine::StepRef step,
+                                        QObject *parent) {
+    return new EventFilter(parent, [plugin, group, step](QObject *obj, QEvent *event) {
+      if (event->type() != QEvent::ContextMenu)
+        return false;
+      auto *widget = qobject_cast<QWidget *>(obj);
+      if (!widget) {
+        return false;
       }
-      return QObject::eventFilter(obj, event);
-    }
-
-  private:
-    std::shared_ptr<engine::PluginViewModel> plugin_;
-    std::shared_ptr<engine::GroupViewModel> group_;
-    std::shared_ptr<engine::StepViewModel> step_;
-  };
+      QMenu menu(widget);
+      const auto pluginName  = QString::fromStdString(plugin->getName());
+      const auto description = QString::fromStdString(plugin->getDescription());
+      const auto groupName   = QString::fromStdString(group->getName());
+      const auto stepName    = QString::fromStdString(step->getName());
+      // FomodWizardDialog::tr, not a bare tr(): this is a free function now, so
+      // an unqualified tr() would resolve to QObject's and request the context
+      // "QObject", which matches nothing in projects/i18n. The static call keeps
+      // the context this dialog's other strings already use.
+      menu.addAction(FomodWizardDialog::tr("Copy Option Name"), [pluginName] {
+        QApplication::clipboard()->setText(pluginName);
+      });
+      menu.addAction(FomodWizardDialog::tr("Copy Description"), [description] {
+        QApplication::clipboard()->setText(description);
+      });
+      menu.addAction(FomodWizardDialog::tr("Copy Group Name"), [groupName] {
+        QApplication::clipboard()->setText(groupName);
+      });
+      menu.addAction(FomodWizardDialog::tr("Copy Step Name"), [stepName] {
+        QApplication::clipboard()->setText(stepName);
+      });
+      menu.exec(QCursor::pos());
+      return true;
+    });
+  }
 
 }  // namespace
 
@@ -633,13 +612,12 @@ QRadioButton *FomodWizardDialog::create_plugin_radio(
   auto *radio = new QRadioButton(QString::fromStdString(plugin->getName()), parent);
   radio->setObjectName(object_name_for(plugin, group));
   radio->setAttribute(Qt::WA_Hover);
-  radio->installEventFilter(new ContextMenuFilter(plugin, group, step, this));
+  radio->installEventFilter(make_context_menu_filter(plugin, group, step, this));
 
-  auto *hover_filter = new HoverFilter(plugin, this);
-  hover_filter->set_on_hover([this](engine::PluginRef p) {
-    on_plugin_hovered(p);
-  });
-  radio->installEventFilter(hover_filter);
+  radio->installEventFilter(
+      make_hover_filter(plugin, this, [this](engine::PluginRef p) {
+        on_plugin_hovered(p);
+      }));
 
   connect(radio, &QRadioButton::toggled, this, [this, group, plugin](bool checked) {
     on_plugin_toggled(checked, group, plugin);
@@ -657,13 +635,12 @@ QCheckBox *FomodWizardDialog::create_plugin_checkbox(
   auto *checkbox = new QCheckBox(QString::fromStdString(plugin->getName()), parent);
   checkbox->setObjectName(object_name_for(plugin, group));
   checkbox->setAttribute(Qt::WA_Hover);
-  checkbox->installEventFilter(new ContextMenuFilter(plugin, group, step, this));
+  checkbox->installEventFilter(make_context_menu_filter(plugin, group, step, this));
 
-  auto *hover_filter = new HoverFilter(plugin, this);
-  hover_filter->set_on_hover([this](engine::PluginRef p) {
-    on_plugin_hovered(p);
-  });
-  checkbox->installEventFilter(hover_filter);
+  checkbox->installEventFilter(
+      make_hover_filter(plugin, this, [this](engine::PluginRef p) {
+        on_plugin_hovered(p);
+      }));
 
   checkbox->setEnabled(plugin->isEnabled());
   checkbox->setChecked(plugin->isSelected());

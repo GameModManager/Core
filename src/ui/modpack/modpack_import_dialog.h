@@ -7,9 +7,9 @@
 #include <optional>
 
 #include "engine/gmmpack/types.h"
+#include "ui/widgets/line_edit_clear.h"
 
 class QLabel;
-class QLineEdit;
 class QPushButton;
 
 namespace ui {
@@ -47,7 +47,7 @@ private:
 
   QPushButton *pick_button_   = nullptr;
   QLabel *picked_file_label_  = nullptr;
-  QLineEdit *url_edit_        = nullptr;
+  LineEditClear *url_edit_    = nullptr;
   QPushButton *import_button_ = nullptr;
 
   QString picked_file_;

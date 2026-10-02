@@ -90,10 +90,7 @@ TaskDialog::TaskDialog(QWidget *parent, const QString &title) : QWidget(parent) 
 
   details_toggle_ = new QToolButton(this);
   details_toggle_->setText(tr("Show details"));
-  details_toggle_->setCheckable(true);
-  details_toggle_->setChecked(true);
   details_toggle_->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
-  details_toggle_->setArrowType(Qt::ArrowType::DownArrow);
   details_toggle_->setVisible(false);
   content_layout_->addWidget(details_toggle_);
 
@@ -112,11 +109,12 @@ TaskDialog::TaskDialog(QWidget *parent, const QString &title) : QWidget(parent) 
   details_edit_->setFixedHeight(metrics.lineSpacing() * 10 + 8);
   content_layout_->addWidget(details_edit_);
 
-  connect(details_toggle_, &QToolButton::toggled, this, [this](bool on) {
-    details_edit_->setVisible(on);
-    details_toggle_->setArrowType(on ? Qt::ArrowType::DownArrow
-                                     : Qt::ArrowType::RightArrow);
-  });
+  // ExpanderWidget owns the button/check state, the arrow direction and the
+  // click wiring, so the details section is one construction instead of a
+  // toggled lambda that has to keep all three in step.
+  details_expander_ = new ExpanderWidget(this);
+  // Opens expanded: the details are what the dialog was called to show.
+  details_expander_->set(details_toggle_, details_edit_, true);
 
   content_layout_->addStretch(1);
 }
@@ -141,7 +139,18 @@ TaskDialog &TaskDialog::details(const QString &text) {
   details_edit_->setPlainText(text);
   const bool has = !text.isEmpty();
   details_toggle_->setVisible(has);
-  details_edit_->setVisible(has && details_toggle_->isChecked());
+  if (has) {
+    // Force the section open whenever details arrive. The old code read
+    // details_toggle_->isChecked(), which also opened it unconditionally for
+    // the way this is actually called - the dialog is built opened-at-
+    // construction and every call site calls details() once with the full
+    // text. The difference is only reachable if a caller did
+    // details("text") -> user collapsed -> details("text") again, which no
+    // call site does.
+    details_expander_->toggle(true);
+  } else {
+    details_expander_->toggle(false);
+  }
   return *this;
 }
 
