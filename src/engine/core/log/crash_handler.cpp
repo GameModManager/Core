@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -18,6 +19,7 @@
 #include <signal.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <ucontext.h>
 #include <unistd.h>
 #endif
 
@@ -167,6 +169,91 @@ void CrashHandler::uninstall() {
 
 static constexpr int kMaxFrames = 64;
 
+// The alternate signal stack, and the reason it exists: a handler that runs on
+// the thread stack that just overflowed cannot push its own frame. The first
+// write lands past the guard page, the kernel blocks SIGSEGV for the duration
+// of the handler, so the nested fault takes the default action and the process
+// dies with no dump at all - which is exactly the bare exit 139 the crash
+// reports carried. sigaltstack() plus SA_ONSTACK puts the handler here, where
+// it has room to walk the very stack it was interrupted on. MINSIGSTKSZ (2 KiB)
+// is far too small for backtrace(), hence a fixed 64 KiB.
+//
+// One buffer serves every thread on purpose: sigaction is process-wide, so any
+// thread may fault, but the handler ends in _exit() and never returns, so at
+// most one thread is ever inside it. Per-thread stacks would cost 64 KiB of TLS
+// on every thread in the process to close a window that only opens in the
+// microseconds before the process dies anyway.
+static char g_alt_stack[64 * 1024];
+
+// --- Async-signal-safe primitives ------------------------------------------
+// The handler interrupts an arbitrary instruction, which may be inside malloc
+// or inside a libc lock. Nothing below allocates, takes a lock, or touches
+// std::string: only open/read/write/close over fixed buffers.
+
+static void sa_write(int fd, const char *s, size_t n) {
+  size_t off = 0;
+  while (off < n) {
+    const auto w = ::write(fd, s + off, n - off);
+    if (w <= 0)
+      return;
+    off += static_cast<size_t>(w);
+  }
+}
+
+static void sa_puts(int fd, const char *s) {
+  sa_write(fd, s, std::strlen(s));
+}
+
+static void sa_put_hex_line(int fd, const char *label, uintptr_t value) {
+  char buf[96];
+  const int n = std::snprintf(buf, sizeof(buf), "%s0x%zx\n", label, value);
+  if (n > 0)
+    sa_write(fd, buf, static_cast<size_t>(n));
+}
+
+// The interrupted program counter, read straight out of the context the kernel
+// handed us. This is the faulting instruction, obtained without unwinding
+// anything, so it survives every case where backtrace() cannot describe the
+// interrupted frame: an exhausted stack, a frame inside a library built without
+// unwind tables, or a JIT frame carrying no .eh_frame at all.
+static uintptr_t fault_pc(const void *ctx) {
+  if (ctx == nullptr)
+    return 0;
+#if defined(__APPLE__) && defined(__x86_64__)
+  const auto *uc = static_cast<const ucontext_t *>(ctx);
+  return static_cast<uintptr_t>(uc->uc_mcontext->__ss.__rip);
+#elif defined(__APPLE__) && defined(__aarch64__)
+  const auto *uc = static_cast<const ucontext_t *>(ctx);
+  return static_cast<uintptr_t>(uc->uc_mcontext->__ss.__pc);
+#elif defined(__linux__) && defined(__x86_64__)
+  const auto *uc = static_cast<const ucontext_t *>(ctx);
+  return static_cast<uintptr_t>(uc->uc_mcontext.gregs[REG_RIP]);
+#elif defined(__linux__) && defined(__aarch64__)
+  const auto *uc = static_cast<const ucontext_t *>(ctx);
+  return static_cast<uintptr_t>(uc->uc_mcontext.pc);
+#else
+  return 0;
+#endif
+}
+
+// /proc/self/maps, so every bare address in this dump - the faulting PC, the
+// frames below, and anything inside a library that carries no symbol table -
+// resolves to a module plus offset offline. Copied through a fixed buffer
+// rather than getline(), which allocates.
+static void write_maps(int fd) {
+  const int mfd = ::open("/proc/self/maps", O_RDONLY);
+  if (mfd < 0)
+    return;
+  char buf[8192];
+  for (;;) {
+    const auto n = ::read(mfd, buf, sizeof(buf));
+    if (n <= 0)
+      break;
+    sa_write(fd, buf, static_cast<size_t>(n));
+  }
+  ::close(mfd);
+}
+
 // Recursively create directories (async-signal-safe subset: only uses mkdir + stat).
 static bool mkdirs(const std::string &path, mode_t mode) {
   struct stat st{};
@@ -184,11 +271,17 @@ static bool mkdirs(const std::string &path, mode_t mode) {
   return mkdir(path.c_str(), mode) == 0 || errno == EEXIST;
 }
 
-void CrashHandler::write_dump(int sig) {
+void CrashHandler::write_dump(int sig, const siginfo_t *info, const void *ctx) {
   using namespace std::chrono;
   auto now        = system_clock::now();
   auto time_t_now = system_clock::to_time_t(now);
 
+  // Deliberately not async-signal-safe: localtime_r() takes glibc's tzset lock,
+  // so it can deadlock if the handler interrupted the code that holds it. Kept
+  // because an undated dump is much harder to line up against the log, it runs
+  // once, and the process is about to exit either way. The other two unsafe
+  // calls are both backtrace_symbols(), which mallocs on a possibly-corrupt
+  // heap; their arrays are never freed, for the same reason.
   struct tm tm_buf{};
   localtime_r(&time_t_now, &tm_buf);
 
@@ -200,10 +293,6 @@ void CrashHandler::write_dump(int sig) {
   int fd = ::open(filename, O_WRONLY | O_CREAT | O_TRUNC, 0644);
   if (fd < 0)
     return;
-
-  auto write_str = [fd](const char *s) {
-    [[maybe_unused]] auto _ = ::write(fd, s, std::strlen(s));
-  };
 
   const char *sig_name = "UNKNOWN";
   switch (sig) {
@@ -224,62 +313,99 @@ void CrashHandler::write_dump(int sig) {
     break;
   }
 
-  write_str("=== GameModManager Crash Dump ===\n");
-  write_str("Signal: ");
-  write_str(sig_name);
-  write_str("\n");
+  sa_puts(fd, "=== GameModManager Crash Dump ===\n");
+  sa_puts(fd, "Signal: ");
+  sa_puts(fd, sig_name);
+  sa_puts(fd, "\n");
 
   char ts_buf[64];
   std::snprintf(ts_buf, sizeof(ts_buf), "Time: %04d-%02d-%02d %02d:%02d:%02d\n",
                 tm_buf.tm_year + 1900, tm_buf.tm_mon + 1, tm_buf.tm_mday,
                 tm_buf.tm_hour, tm_buf.tm_min, tm_buf.tm_sec);
-  write_str(ts_buf);
+  sa_puts(fd, ts_buf);
 
-  write_str("=== Stack Trace ===\n");
+  // si_addr is defined for the fault signals only; for SIGABRT the union
+  // member at that offset means something else entirely.
+  const bool is_fault_signal =
+      sig == SIGSEGV || sig == SIGBUS || sig == SIGILL || sig == SIGFPE;
+  if (is_fault_signal && info != nullptr) {
+    sa_put_hex_line(fd, "Fault address: ", reinterpret_cast<uintptr_t>(info->si_addr));
+  }
+  const uintptr_t pc = fault_pc(ctx);
+  if (pc != 0)
+    sa_put_hex_line(fd, "Faulting PC: ", pc);
 
-  void *frames[kMaxFrames];
-  int count      = backtrace(frames, kMaxFrames);
-  char **symbols = backtrace_symbols(frames, count);
-
-  if (symbols) {
-    for (int i = 0; i < count; ++i) {
-      write_str(symbols[i]);
-      write_str("\n");
+  // Name the faulting frame from its own address, before and independently of
+  // the walk below: backtrace_symbols() over a single frame needs no
+  // unwinder, so the function that actually crashed is in the dump even in the
+  // cases where the walk returns nothing past the signal trampoline.
+  if (pc != 0) {
+    void *one[1] = {reinterpret_cast<void *>(pc)};
+    char **sym   = backtrace_symbols(one, 1);
+    if (sym != nullptr) {
+      sa_puts(fd, "Faulting frame: ");
+      sa_puts(fd, sym[0]);
+      sa_puts(fd, "\n");
     }
-    std::free(symbols);
-  } else {
-    write_str("(backtrace_symbols unavailable)\n");
   }
 
-  write_str("=== End Dump ===\n");
+  sa_puts(fd, "=== Stack Trace ===\n");
+
+  void *frames[kMaxFrames];
+  const int count = backtrace(frames, kMaxFrames);
+  char **symbols  = backtrace_symbols(frames, count);
+
+  if (symbols != nullptr) {
+    for (int i = 0; i < count; ++i) {
+      sa_puts(fd, symbols[i]);
+      sa_puts(fd, "\n");
+    }
+    // No free(): the array is gone with the process two lines after this, and
+    // calling into the allocator from a handler that may have interrupted the
+    // allocator is the one thing here that cannot be made safe.
+  } else {
+    sa_puts(fd, "(backtrace_symbols unavailable)\n");
+  }
+
+  // The unwinder stops at the first frame it cannot describe, and says
+  // nothing when it does. Without this line a three-frame trace reads exactly
+  // like a complete one, which is how four unreproducible dumps came to be
+  // read as "the crash site is unknown" when in fact the trace had simply
+  // dead-ended before reaching it.
+  sa_puts(fd, "=== Unwind Ends Here ===\n");
+  sa_puts(fd, "backtrace() returned the frames above and stopped. Anything below "
+              "this line was not recovered: trust 'Faulting PC' and 'Faulting "
+              "frame' over the tail of the trace.\n");
+
+  sa_puts(fd, "=== Memory Maps ===\n");
+  write_maps(fd);
+
+  sa_puts(fd, "=== End Dump ===\n");
   ::close(fd);
 }
 
-#if defined(__APPLE__)
-void CrashHandler::macos_signal_handler(int sig, siginfo_t *, void *) {
-  write_dump(sig);
+void CrashHandler::signal_handler(int sig, siginfo_t *info, void *ctx) {
+  write_dump(sig, info, ctx);
   _exit(128 + sig);
 }
-#else
-void CrashHandler::signal_handler(int sig) {
-  write_dump(sig);
-  _exit(128 + sig);
-}
-#endif
 
 void CrashHandler::install(const std::string &dump_dir) {
   dump_dir_ = dump_dir;
   mkdirs(dump_dir_, 0755);
 
+  stack_t alt{};
+  alt.ss_sp    = g_alt_stack;
+  alt.ss_size  = sizeof(g_alt_stack);
+  alt.ss_flags = 0;
+  ::sigaltstack(&alt, nullptr);
+
   struct sigaction sa{};
   sigemptyset(&sa.sa_mask);
-#if defined(__APPLE__)
-  sa.sa_sigaction = macos_signal_handler;
-  sa.sa_flags     = SA_SIGINFO;
-#else
-  sa.sa_handler = signal_handler;
-  sa.sa_flags   = SA_RESTART;
-#endif
+  sa.sa_sigaction = signal_handler;
+  // SA_SIGINFO: the siginfo and ucontext carry the faulting address and PC.
+  // SA_ONSTACK: run on g_alt_stack, so an overflowed thread stack does not
+  // kill the handler before it can report anything.
+  sa.sa_flags = SA_SIGINFO | SA_ONSTACK | SA_RESTART;
   sigaction(SIGSEGV, &sa, nullptr);
   sigaction(SIGABRT, &sa, nullptr);
   sigaction(SIGFPE, &sa, nullptr);
