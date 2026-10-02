@@ -58,19 +58,16 @@ namespace {
     return nullptr;
   }
 
-  // Add a tab to sources_ with the vendor icon when one resolves. Used for
-  // the single source panel and for the "+" affordance.
+  // Add a tab to sources_ wearing `icon_key`, the FINAL icon key - the name of
+  // a file under resources/icons/vendor/ ("nexusmods", "steam", "github",
+  // "git"), never a source_type. Mapping a source_type to that key is the
+  // CALL SITE's job: feeding an already-final key back through
+  // vendor_icon_key() drops it, because that function only knows the five
+  // vendor source types. An empty key adds the tab with no icon, which is
+  // what resolve_icon("") returns.
   void add_tab_with_icon(QTabWidget *tabs, QWidget *page, const QString &title,
-                         const QString &source_key) {
-    const std::string vendor_key = engine::vendor_icon_key(source_key.toStdString());
-    if (vendor_key.empty()) {
-      tabs->addTab(page, title);
-    } else {
-      tabs->addTab(page,
-                   engine::IconManager::instance().resolve_icon(
-                       QString::fromStdString(vendor_key)),
-                   title);
-    }
+                         const QString &icon_key) {
+    tabs->addTab(page, engine::IconManager::instance().resolve_icon(icon_key), title);
   }
 
   // Whether this mod is a git working copy. The .git inside the mod folder is
@@ -650,9 +647,13 @@ void SourceTab::populate() {
       hint->setWordWrap(true);
       sources_->addTab(hint, actual_source);
     } else {
-      auto display           = display_for_source(actual_source);
-      const QString title    = display ? display->title : actual_source;
-      const QString icon_key = display ? display->icon_key : actual_source;
+      auto display        = display_for_source(actual_source);
+      const QString title = display ? display->title : actual_source;
+      // display->icon_key is a source_type ("nexus", "loverslab", "steam",
+      // "modpub"), so it still needs the map to a vendor icon key. The git tab
+      // below has no such step: its key is already final.
+      const QString icon_key = QString::fromStdString(engine::vendor_icon_key(
+          (display ? display->icon_key : actual_source).toStdString()));
       add_tab_with_icon(sources_, page, title, icon_key);
     }
   }
@@ -660,8 +661,9 @@ void SourceTab::populate() {
   if (is_git) {
     // The title is always "Git" - GitHub, GitLab and a self-hosted server are
     // the same source with a different badge, so the platform never names a
-    // tab. add_tab_with_icon takes a resolved vendor key, which is exactly
-    // what GitSourcePanel::icon_key_for() produces.
+    // tab. icon_key_for() reads the remote's host and returns the FINAL icon
+    // key ("github" for github.com, "git" for every other host), which is
+    // exactly what add_tab_with_icon() takes.
     const QString git_key = GitSourcePanel::icon_key_for(git_remote_url(current()));
     add_tab_with_icon(sources_, new GitSourcePanel(current(), sources_), tr("Git"),
                       git_key);

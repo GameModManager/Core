@@ -32,9 +32,9 @@ std::string vendor_icon_key(const std::string &source) {
 }
 
 std::string git_icon_key(const std::string &host) {
-  // The only host with a branded badge. Everything else - GitLab, Bitbucket,
-  // codeberg, a self-hosted Gitea - is the generic git badge, so an unknown
-  // host is never a missing icon.
+  // The source_type is always "git", so only the badge varies: a host with a
+  // vendored icon gets it, and anything else - Bitbucket, codeberg, a plain
+  // server, an unknown remote - is the generic git badge, never a missing one.
   std::string low;
   low.reserve(host.size());
   for (char c : host) {
@@ -42,6 +42,13 @@ std::string git_icon_key(const std::string &host) {
   }
   if (low == "github.com" || low == "www.github.com")
     return "github";
+  if (low == "gitlab.com" || low == "www.gitlab.com")
+    return "gitlab";
+  // Gitea is self-hosted, so there is no single canonical host. The badge is
+  // chosen by the FIRST label being "gitea" - the usual naming for a hosted
+  // instance - plus gitea.com itself.
+  if (low == "gitea.com" || low.compare(0, 6, "gitea.") == 0)
+    return "gitea";
   return "git";
 }
 
