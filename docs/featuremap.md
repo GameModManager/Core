@@ -1314,7 +1314,7 @@ port - their cited GMM symbol names were invented, the features are not.
 
 | Feature | MO2 | GMM | Status |
 |---------|-----|-----|--------|
-| U267 TaskDialog component (multi-button dialog reused by restart/delete/INI/overwrite flows) | ✅ `taskdialog.ui` (uibase) | ❌ | ❌ · |
+| U267 TaskDialog component (multi-button dialog reused by restart/delete/INI/overwrite flows) | ✅ `taskdialog.ui` (uibase) | ✅ `TaskDialog`, TaskDialogButton ported 1:1; 10 call sites across launch/mod_actions/settings/overwrite - `task_dialog.h:57` | ✅ · |
 
 ## 46. Notifications / Problems System
 
@@ -1328,9 +1328,9 @@ port - their cited GMM symbol names were invented, the features are not.
 
 | Feature | MO2 | GMM | Status |
 |---------|-----|-----|--------|
-| U034 Load order backup/restore (timestamped plugins/loadorder/lockedorder, SelectionDialog, error strings) | ✅ `mainwindow.cpp:3841-3916` | ❌ | ❌ · |
-| U035 Mod list backup/restore (save/restore modlist.txt + toasts) | ✅ `mainwindow.cpp:3918-3940` | ❌ | ❌ · |
-| U036 Backup naming scheme (.yyyy_MM_dd_hh_mm_ss, keep 10 newest) | ✅ `mainwindow.cpp:3823-3840` | ❌ | ❌ · |
+| U034 Load order backup/restore (timestamped plugins/loadorder/lockedorder, SelectionDialog, error strings) | ✅ `mainwindow.cpp:3841-3916` | 🚀 same 3 files + confirm, per-file safety copy, per-file error lines; a failed copy is spared, not overwritten - `backup_actions.cpp:214` | 🚀 ✔ |
+| U035 Mod list backup/restore (save/restore modlist.txt + toasts) | ✅ `mainwindow.cpp:3918-3940` | 🚀 `modlist.txt` pair; restore drops the pending debounced write and reloads from disk instead of flushing it back - `backup_actions.cpp:214` | 🚀 ✔ |
+| U036 Backup naming scheme (.yyyy_MM_dd_hh_mm_ss, keep 10 newest) | ✅ `mainwindow.cpp:3823-3840` | 🚀 same stamp; retention by PARSED stamp + copy index, MO2 name-sorts and evicts "-10" before "-2" - `backup_service.cpp:184` | 🚀 ✔ |
 
 ## 48. File Tree Menu Protocol
 
@@ -1415,32 +1415,31 @@ column.
 | 42. Packaging & Distribution | 0 | 2 | 0 | 7 | 0 | 1 | 1 |
 | 43. CLI Command System | 1 | 3 | 0 | 8 | 0 | 0 | 0 |
 | 44. Tutorial System | 0 | 0 | 0 | 4 | 0 | 0 | 0 |
-| 45. TaskDialog Component | 0 | 0 | 0 | 1 | 0 | 0 | 0 |
+| 45. TaskDialog Component | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
 | 46. Notifications / Problems System | 0 | 0 | 0 | 3 | 0 | 0 | 0 |
-| 47. Backup / Restore (Load Order + Mod List) | 0 | 0 | 0 | 3 | 0 | 0 | 0 |
+| 47. Backup / Restore (Load Order + Mod List) | 0 | 0 | 3 | 0 | 0 | 0 | 0 |
 | 48. File Tree Menu Protocol | 0 | 2 | 0 | 1 | 0 | 0 | 0 |
 | 49. CLI Help Grammar | 0 | 0 | 0 | 2 | 0 | 0 | 0 |
 | 50. My Games Resolution | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
 | 51. Conflict Scan Refresh | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
-| **TOTAL** | **306** | **182** | **176** | **283** | **52** | **43** | **62** |
+| **TOTAL** | **307** | **182** | **179** | **279** | **52** | **43** | **62** |
 
 ### The arithmetic
 
 ```
 rows in file                          1093
-scored rows (ok + part + miss)         771
+scored rows (ok + part + miss)         768
 
-MO2 parity        ok   / scored        306 /  771  = 39.7%
-partial           part / scored        182 /  771  = 23.6%
-missing           miss / scored        283 /  771  = 36.7%
-GMM-exclusive     surp / all rows      176 / 1093  = 16.1%   (not scored)
+MO2 parity        ok   / scored        307 /  768  = 40.0%
+partial           part / scored        182 /  768  = 23.7%
+missing           miss / scored        279 /  768  = 36.3%
+GMM-exclusive     surp / all rows      179 / 1093  = 16.4%   (not scored)
 ```
 
-**Parity is 306 / 771 = 39.7%.** 283 rows are outright missing and 182 partial.
-The largest untouched surfaces are **44. Tutorial**, **45. TaskDialog**,
-**46. Notifications / Problems** and **47. Backup / Restore** (zero matched
-rows), then **16. Nexus** and **15. Downloads**, which carry the most missing
-rows in absolute terms.
+**Parity is 307 / 768 = 40.0%.** 279 rows are outright missing and 182 partial.
+The largest untouched surfaces are **44. Tutorial** and **46. Notifications /
+Problems** (zero matched rows), then **16. Nexus** and **15. Downloads**, which
+carry the most missing rows in absolute terms.
 
 **4. Settings** was re-verified row by row and is no longer a missing-row
 surface: 57 `❌` became 1. What it actually holds is 26 `⚠️` rows where a
@@ -1450,6 +1449,8 @@ absent features was never the real gap in that section.
 
 ### Confidence
 
-276 of 1093 rows carry `✔` (both sides re-read); the rest carry `·` and are
+279 of 1093 rows carry `✔` (both sides re-read); the rest carry `·` and are
 leads, not findings. The `✔` rows concentrate in sections 3, 4, 15, 21, 18 and
-30.
+30. Section 45's `TaskDialog` row is a stale `❌` corrected here; uibase's
+`taskdialog.ui` is not vendored under `references/`, so its MO2 half is still
+`·`.
