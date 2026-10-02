@@ -23,9 +23,8 @@ ListDialog::ListDialog(QWidget *parent) : QDialog(parent) {
   list_->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
   layout->addWidget(list_);
 
-  filter_ = new QLineEdit(this);
+  filter_ = new LineEditClear(this);
   filter_->setPlaceholderText(tr("Filter"));
-  filter_->setClearButtonEnabled(true);
   layout->addWidget(filter_);
 
   buttons_ =

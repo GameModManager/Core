@@ -1,11 +1,12 @@
 #pragma once
 
+#include "ui/widgets/line_edit_clear.h"
+
 #include <QDialog>
 
 #include <QStringList>
 
 class QDialogButtonBox;
-class QLineEdit;
 class QListWidget;
 
 namespace ui {
@@ -41,7 +42,7 @@ private:
   void apply_filter();
 
   QListWidget *list_         = nullptr;
-  QLineEdit *filter_         = nullptr;
+  LineEditClear *filter_     = nullptr;
   QDialogButtonBox *buttons_ = nullptr;
   QStringList choices_;
   QList<QVariant> data_;

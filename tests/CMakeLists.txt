@@ -667,6 +667,13 @@ gmm_catch2_test(launch_failure_dialog_test ui/launch_failure_dialog_test.cpp
     LIBS gmm_ui
     DEFINES PROJECT_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
 
+# Workspace-axva: reusable UI primitives pack (MO2 U264 / U265 / U269).
+# SortableTreeWidget + set_customizable_columns, ExpanderWidget, LinkLabel,
+# LineEditClear and the generic EventFilter, one test case per primitive.
+gmm_catch2_test(ui_primitives_test ui/ui_primitives_test.cpp
+    UI
+    LIBS gmm_ui Qt6::Test)
+
 # Workspace-so1s: global ui::report_error / ui::critical_on_top error popup
 # (MO2 U268 port). TDD red phase: fails to compile until
 # src/ui/widgets/error_popup.{h,cpp} exists.

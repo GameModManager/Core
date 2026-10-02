@@ -12,6 +12,8 @@ class QLabel;
 class QLineEdit;
 class QPushButton;
 
+#include "ui/widgets/line_edit_clear.h"
+
 namespace ui {
 
 // Import entry point for modpacks (File > Import Modpack...).
@@ -47,7 +49,7 @@ private:
 
   QPushButton *pick_button_   = nullptr;
   QLabel *picked_file_label_  = nullptr;
-  QLineEdit *url_edit_        = nullptr;
+  LineEditClear *url_edit_    = nullptr;
   QPushButton *import_button_ = nullptr;
 
   QString picked_file_;
