@@ -174,19 +174,30 @@ TEST_CASE("icon manager", "[ui]") {
   check(engine::vendor_icon_key("").empty(), "vendor_icon_key: empty has no icon");
 
   // git_icon_key: the source_type is always "git", so the remote's HOST is the
-  // only thing that picks a badge. github.com is branded; every other host -
-  // GitLab, Bitbucket, a self-hosted server, an unknown remote - is the
-  // generic git badge, never a missing one.
+  // only thing that picks a badge. github.com and gitlab.com are branded, and
+  // a self-hosted Gitea is recognised by its first host label; every other
+  // host - Bitbucket, a plain server, an unknown remote - is the generic git
+  // badge, never a missing one.
   check(engine::git_icon_key("github.com") == "github",
         "git_icon_key: github.com gets the branded badge");
   check(engine::git_icon_key("www.github.com") == "github",
         "git_icon_key: www.github.com is the same host");
   check(engine::git_icon_key("GitHub.com") == "github",
         "git_icon_key: host match is case-insensitive");
-  check(engine::git_icon_key("gitlab.com") == "git",
-        "git_icon_key: gitlab falls back to generic git");
+  check(engine::git_icon_key("gitlab.com") == "gitlab",
+        "git_icon_key: gitlab.com gets the branded badge");
+  check(engine::git_icon_key("www.gitlab.com") == "gitlab",
+        "git_icon_key: www.gitlab.com is the same host");
+  check(engine::git_icon_key("gitea.example.com") == "gitea",
+        "git_icon_key: a self-hosted gitea is recognised by its first label");
+  check(engine::git_icon_key("GitEa.example.com") == "gitea",
+        "git_icon_key: gitea label match is case-insensitive");
+  check(engine::git_icon_key("gitea.com") == "gitea",
+        "git_icon_key: the public gitea host");
   check(engine::git_icon_key("bitbucket.org") == "git",
         "git_icon_key: bitbucket falls back to generic git");
+  check(engine::git_icon_key("notgitea.example.com") == "git",
+        "git_icon_key: gitea only matches as the first label");
   check(engine::git_icon_key("git.example.com") == "git",
         "git_icon_key: self-hosted falls back to generic git");
   check(engine::git_icon_key("") == "git",
