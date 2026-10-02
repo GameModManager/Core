@@ -81,7 +81,7 @@ signals:
   void refresh_requested();
   /// Backup / Restore pressed: write or read a timestamped copy of
   /// plugins.txt + loadorder.txt + lockedorder.txt beside the live files
-  /// (Workspace-czc0, MO2 mainwindow.ui:840,863). Both are MANUAL only -
+  /// (MO2 mainwindow.ui:840,863). Both are MANUAL only -
   /// MO2 has no automatic trigger, and neither do we.
   void backup_requested();
   void restore_requested();

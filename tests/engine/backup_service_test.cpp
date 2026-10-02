@@ -1,5 +1,5 @@
 // Engine test for engine::backup - timestamped backup / restore points of a
-// profile's load order and mod list (Workspace-czc0).
+// profile's load order and mod list.
 //
 // MO2 parity, and the three deliberate divergences from it:
 //   1. restore confirms before overwriting          (UI layer; MO2 is silent)
@@ -287,22 +287,28 @@ TEST_CASE("retention keeps 10 stamped backups and never evicts anything else",
   fs::remove_all(dir);
 }
 
-// Ordering by the PARSED stamp, not by file-name sort. Eleven backups taken in
-// the SAME second (the same-second disambiguator at its limit): a name sort
-// puts "...-10" before "...-2" and would evict the newest of them, while the
-// parsed copy index orders them numerically.
+// Ordering by the PARSED stamp, not by file-name sort. The fixture is built so
+// the two rules DISAGREE on the victim set, because with a single victim they
+// cannot: the plain stamp is both lexicographically first and copy index 0, so
+// it is the victim either way and the assertions would pass under a name sort.
 TEST_CASE("eviction orders the same-second suffix numerically, not by name",
           "[engine][backup]") {
   const fs::path dir = make_temp_dir("suffix");
   engine::profile::ProfileManager profile(dir, std::chrono::milliseconds{50});
   write_text(profile.modlist_path(), "live\n");
 
-  // The plain stamp plus -2 .. -11: exactly what eleven same-second backups
-  // produce, so the twelfth has to become -12.
+  // The plain stamp plus -2 .. -10: what ten same-second backups produce.
   write_text(dir / ("modlist.txt." + kStamp), "seed\n");
-  for (int i = 2; i <= 11; ++i)
+  for (int i = 2; i <= 10; ++i)
     write_text(dir / (std::string("modlist.txt.") + kStamp + "-" + std::to_string(i)),
                "seed\n");
+  // Eleven stamped entries. The next two stamps are a DAY apart, so the copy
+  // under test is the twelfth entry and retention has to drop TWO - which is
+  // what makes the two orderings pick different victims. A day, not a second:
+  // an adjacent second can land on the far side of a DST fall-back and reorder
+  // the whole fixture.
+  const std::string next = stamp_of(at(kStampInstant) + std::chrono::hours(24));
+  write_text(dir / ("modlist.txt." + next), "seed\n");
   REQUIRE(count_stamped(profile.modlist_path()) == 11);
 
   const auto result = engine::backup::create_backup(
@@ -310,17 +316,19 @@ TEST_CASE("eviction orders the same-second suffix numerically, not by name",
       [] {
         return true;
       },
-      at(kStampInstant));
+      at(kStampInstant) + std::chrono::hours(48));
   REQUIRE(result.ok());
-  // A twelfth copy of the same instant is disambiguated again.
-  REQUIRE(result.stamp == std::string(kStamp) + "-12");
+  REQUIRE(result.stamp == stamp_of(at(kStampInstant) + std::chrono::hours(48)));
 
   CHECK(count_stamped(profile.modlist_path()) == 10);
-  // The plain stamp is the oldest (copy index 0) and is evicted; "-10"
-  // survives, which a name sort would have picked first.
+  // Numeric copy index: the two OLDEST copies of that second go, the plain
+  // stamp (index 0) and "-2".
   CHECK_FALSE(fs::exists(dir / (std::string("modlist.txt.") + kStamp)));
+  CHECK_FALSE(fs::exists(dir / (std::string("modlist.txt.") + kStamp + "-2")));
+  // A name sort would instead have taken "-10" - "...-10" sorts before "...-2" -
+  // so this line is what the ordering rule buys.
   CHECK(fs::exists(dir / (std::string("modlist.txt.") + kStamp + "-10")));
-  CHECK(fs::exists(dir / (std::string("modlist.txt.") + kStamp + "-12")));
+  CHECK(fs::exists(dir / (std::string("modlist.txt.") + result.stamp)));
 
   fs::remove_all(dir);
 }

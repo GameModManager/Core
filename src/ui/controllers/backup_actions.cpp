@@ -72,13 +72,13 @@ namespace {
     case RestoreFailure::SafetyBackupFailed:
       // The engine leaves this file alone rather than overwrite a state it has
       // no copy of. Saying so is the point: the user must know this one was
-      // SPARED, not that it was skipped.
+      // SPARED by the restore, not that it was skipped.
       return detail.isEmpty()
-                 ? QObject::tr("%1 could not be backed up before restoring, so it "
-                               "was left unchanged.")
+                 ? QObject::tr("%1 could not be backed up before restoring, so the "
+                               "restore left it alone.")
                        .arg(name)
                  : QObject::tr("%1 could not be backed up before restoring (%2), so "
-                               "it was left unchanged.")
+                               "the restore left it alone.")
                        .arg(name, detail);
     case RestoreFailure::NoSuchBackup:
       return QObject::tr("No backup of %1 at %2.").arg(name, detail);
@@ -243,9 +243,11 @@ void BackupActions::run_restore(engine::backup::BackupKind kind, const QString &
     return;
 
   // The mod-list restore is the one with a stale in-memory twin: ProfileManager
-  // debounces modlist.txt writes by 5s, so a pending write would overwrite the
-  // file we just restored. Cancel it - and do NOT flush, which is the mistake
-  // MO2's refresh(true) makes (organizercore.cpp:1281-1283, design 6.2).
+  // debounces modlist.txt writes by 5s, so a write scheduled BEFORE the restore
+  // serialises the pre-restore list. Drop it rather than let it land after the
+  // restore has rewritten the file. Do NOT flush instead - that is the mistake
+  // MO2's refresh(true) makes (organizercore.cpp:1281-1283, design 6.2), and it
+  // overwrites the file with the very list the restore just replaced.
   if (kind == engine::backup::BackupKind::ModList && w_->active_profile_)
     w_->active_profile_->cancel_modlist_write();
 
@@ -285,17 +287,31 @@ void BackupActions::report(const engine::backup::RestoreResult &result) {
     transient(tr("Backup restored"));
     return;
   }
-  // NEVER a blanket claim about the whole set. The engine refuses to overwrite
-  // a file whose safety copy failed, so some files may well have changed while
-  // others did not; a single "nothing was overwritten" over that state is a
-  // lie, and dropping failure_lines() here would also lose the per-file
-  // reporting that divergence 3 exists for. The headline says what is true for
-  // every combination, and the detail names every file that did not change.
+  // Scoped to what the RESTORE did, which is what the engine actually decides -
+  // not to what the files hold a second later. A background mod scan finishes by
+  // persisting the whole profile from the in-memory plugin database
+  // (mod_list_controller.cpp:1710), so a file the restore spared can still be
+  // re-derived afterwards; claiming it "was not changed" would be false by the
+  // time the dialog is read.
+  //
+  // Within the restore, the headline is true for EVERY combination of per-file
+  // outcomes, because two engine properties make it so by construction:
+  //   1. a file whose safety copy failed is never written, so `ok == false`
+  //      there means the restore did not touch it;
+  //   2. `ok == false` after a successful safety copy means
+  //      `profile::safe_write_file` returned false, and it is all-or-nothing -
+  //      the bytes go to `<target>.tmp<pid>_<n>` and are renamed over the target
+  //      only on success, so a false return leaves the target byte-identical.
+  // Therefore `ok == false` implies "not written" with no third possibility, and
+  // `any_restored() == false` implies the restore wrote nothing at all. A
+  // set-wide "nothing was overwritten" over a set where some files DID change
+  // would be a lie; failure_lines() is also what names the files left stale, so
+  // dropping it here would lose the per-file reporting divergence 3 exists for.
   const bool none_restored = !result.any_restored();
   const QString headline =
-      none_restored ? tr("The backup could not be restored. Nothing was changed.")
+      none_restored ? tr("The backup could not be restored. No files were written.")
                     : tr("The backup was only partly restored. The files listed below "
-                         "were not changed, so the profile is now in a mixed state.");
+                         "were not written, so the profile is now in a mixed state.");
   ui::report_error(headline, w_, failure_lines(result.files).join("\n"));
 }
 

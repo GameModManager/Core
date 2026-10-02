@@ -51,7 +51,7 @@ signals:
   void lock_requested(const std::string &name, bool locked);
   void refresh_requested();
   // Forwarded from PluginView: the backup / restore pair beside the "Active:"
-  // counter (Workspace-czc0). Both are manual-only actions.
+  // counter. Both are manual-only actions.
   void backup_requested();
   void restore_requested();
   // Forwarded from PluginView: double-clicking a row asks for the owning

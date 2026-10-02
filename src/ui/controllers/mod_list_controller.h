@@ -138,7 +138,7 @@ public slots:
   // profile on disk. false makes the refresh a pure read-and-push, for the
   // post-restore reload in BackupActions - there, "the profile on disk cannot
   // be applied" is exactly the state the restore left behind, and writing would
-  // silently undo the "left unchanged" the report just promised about it.
+  // silently undo the "not written" the report just promised about it.
   void refresh_plugins_tab(bool write_back = true);
   // Push the current mod selection's conflicts to the ConflictsTab.
   // No-op while the tab is still a lazy placeholder (Workspace-j6ty); the
@@ -219,7 +219,7 @@ private:
   std::unique_ptr<ModActions> mod_actions_;
   std::unique_ptr<ModContextMenu> mod_context_menu_;
   // Backup / restore points for the load order and the mod list
-  // (Workspace-czc0). Owns the four toolbar actions and their dialogs; the
+  // Owns the four toolbar actions and their dialogs; the
   // engine does the file work.
   std::unique_ptr<BackupActions> backup_actions_;
 };

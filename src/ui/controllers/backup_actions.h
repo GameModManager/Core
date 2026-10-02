@@ -15,7 +15,7 @@ class MainWindow;
 class TaskDialog;
 
 // Backup and restore points for an instance's load order and mod list
-// (Workspace-czc0; MO2 mainwindow.cpp:3823-3940).
+// (MO2 mainwindow.cpp:3823-3940).
 //
 // Four MANUAL toolbar actions, two per tab, parked beside the "Active:"
 // counter exactly where MO2 puts them (mainwindow.ui:840,863 and :326,340):

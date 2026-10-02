@@ -11,7 +11,7 @@
 #include <vector>
 
 // engine/backup - timestamped backup and restore points for a profile's load
-// order and mod list (Workspace-czc0).
+// order and mod list.
 //
 // This is MO2's MainWindow::createBackup / queryRestore / on_restoreButton
 // feature (references/modorganizer/src/mainwindow.cpp:3823-3940), and the one
@@ -42,8 +42,9 @@
 // Qt-free: the engine owns the file handling, the UI owns every dialog. Three
 // deliberate divergences from MO2, all on the restore path:
 //   1. the UI confirms before overwriting (MO2 overwrites silently, :3904-3906)
-//   2. restore_backup takes an UNCONDITIONAL pre-restore safety backup
-//      (MO2 has none, so a bad restore there is unrecoverable)
+//   2. restore_backup takes a pre-restore safety backup of the live files
+//      (MO2 has none, so a bad restore there is unrecoverable), and SPARES any
+//      file whose copy failed rather than overwrite a state nothing holds
 //   3. restore_backup attempts and reports every file independently (MO2
 //      ||-chains its three copies, so the first failure skips the rest and
 //      leaves the profile silently mixed)
