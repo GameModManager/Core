@@ -14,18 +14,21 @@ class DescriptionBrowser;
 // the value (no CSS theming there).
 enum class SourceCSS { Default, Nexus, LoversLab, Steam, ModPub };
 
-// Chromium's GPU process must not pick Vulkan. With a Vulkan overlay
-// interposed - MangoHud does exactly this whenever MANGOHUD=1 is in the
-// environment - the first vkCreateDevice reaches the overlay's shim, which
-// dispatches through a callback it never installed and the process jumps to
-// address 0. The description view only ever renders a static BBCode fragment,
-// which software rasterisation draws perfectly well, so the GPU stack is
-// switched off rather than the crash being left to chance.
+// Keeps the description view away from a faulting Vulkan path.
 //
-// Must run before any Qt object exists: Chromium reads these when WebEngine
-// starts it, which is the first QWebEngineView construction. Declared here
-// rather than next to the WebEngine backend because this header is the only
-// one every build of the app and its tests can include.
+// With a Vulkan overlay interposed - MangoHud does exactly this whenever
+// MANGOHUD=1 is in the environment, and LSFG installs a layer the loader then
+// refuses - the first vkCreateDevice reaches the overlay's shim, which
+// dispatches through a callback it never installed, and the process jumps to
+// address 0. That is a fault inside a third-party library in this process, so
+// the only thing available is to keep the call from being made: Chromium is
+// told to skip the GPU process, and the Vulkan loader is pointed at no driver
+// so nothing can interpose on it at all. See the .cpp for what was measured.
+//
+// Runs before any Qt object exists, from a static initialiser in the .cpp, so
+// it cannot be forgotten by a new entry point or skipped in a test binary.
+// Declared here rather than next to the WebEngine backend because this header
+// is the only one every build of the app and its tests can include.
 void configure_chromium_flags();
 
 // Description view shared by the four source panels (Nexus / Steam /

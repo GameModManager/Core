@@ -97,14 +97,14 @@ static QApplication &shared_app() {
   static int argc     = 1;
   static char argv0[] = "source_tab_test";
   static char *argv[] = {argv0, nullptr};
-  // Offscreen tests never render to a real surface, so keep Chromium's
-  // GPU/Vulkan stack out entirely: with the app kept alive to exit, the
-  // GPU thread outlives the test and calls vkCreateInstance during process
-  // teardown, which crashes inside system Vulkan layers (MangoHud on this
-  // machine). Must be set before the first QWebEnginePage/profile is built -
-  // and it is the APP's own configuration, not a private copy, so these tests
-  // exercise what the app actually ships.
-  ui::configure_chromium_flags();
+  // Offscreen tests never render to a real surface, so Chromium's GPU stack
+  // has to be out: with the app kept alive to exit, the GPU thread outlives
+  // the test and calls vkCreateInstance during process teardown, which
+  // crashes inside system Vulkan layers (MangoHud on this machine). That is
+  // the app's own configuration, applied by a static initialiser in
+  // description_renderer.cpp before any Qt object exists - deliberately not
+  // repeated here, so a test binary cannot end up rendering under different
+  // flags than the app ships. The next test case asserts it is really there.
   static QApplication *app = new QApplication(argc, argv);
   return *app;
 }
@@ -973,4 +973,31 @@ TEST_CASE("source tab steam mod survives a rebuild mid-parse", "[ui]") {
     check(other_dlg.current_mod_id() == d.id,
           std::string(other.type).append(" mod opens in Mod Info").c_str());
   }
+}
+
+// The containment that stops a Vulkan overlay from taking the process down has
+// to be in place before Chromium starts, and Chromium starts on the first
+// QWebEngineView - which is whichever description the user happens to open
+// first, not app launch, because profile setup was deferred to first use. So it
+// is asserted here on the path that builds a view: the one factory all four
+// source panels go through. Red before the loader was pointed at no driver,
+// because nothing set VK_DRIVER_FILES.
+TEST_CASE("chromium configuration is applied before the first web view", "[ui]") {
+  qputenv("QT_QPA_PLATFORM", "offscreen");
+  shared_app();
+
+  // Read by WebEngine when it starts Chromium, i.e. immediately below.
+  check(qEnvironmentVariableIsSet("QTWEBENGINE_CHROMIUM_FLAGS"),
+        "the Chromium switches are in the environment before any view exists");
+#ifdef Q_OS_LINUX
+  check(qgetenv("VK_DRIVER_FILES") == QByteArray("/dev/null"),
+        "the Vulkan loader is pointed at no driver before any view exists");
+#endif
+
+  auto *view = ui::create_description_renderer();
+  REQUIRE(view != nullptr);
+  view->set_description(QStringLiteral("<p>a mod description</p>"));
+  check(view->current_description() == QStringLiteral("<p>a mod description</p>"),
+        "a description renders through a view built on that path");
+  delete view;
 }
