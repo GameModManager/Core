@@ -25,15 +25,13 @@ public:
   static void prune_old_dumps(int max_kept, const std::string &dump_dir = "");
 
 private:
-  // POSIX signal handler. On macOS this is installed with SA_SIGINFO, so it
-  // takes the extended (siginfo) signature; on Linux the simple one-arg form
-  // is used.
-#if defined(__APPLE__)
-  static void macos_signal_handler(int sig, siginfo_t *, void *);
-#else
-  static void signal_handler(int sig);
-#endif
-  static void write_dump(int sig);
+  // POSIX signal handler. Installed with SA_SIGINFO on every POSIX platform,
+  // not just macOS: the siginfo carries the faulting address and the
+  // ucontext carries the interrupted program counter, and those two are the
+  // only record of the crash site when the stack unwinder cannot walk past
+  // the signal trampoline.
+  static void signal_handler(int sig, siginfo_t *info, void *ctx);
+  static void write_dump(int sig, const siginfo_t *info, const void *ctx);
   static std::string dump_dir_;
 };
 

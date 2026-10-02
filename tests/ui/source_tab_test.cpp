@@ -15,8 +15,10 @@
 #include "engine/source/nexus_provider.h"
 #include "engine/source/source_provider.h"
 #include "ui/modinfo/description_renderer.h"
+#include "ui/modinfo/mod_info_dialog.h"
 #include "ui/modinfo/source_panels/git_source_panel.h"
 #include "ui/modinfo/source_panels/nexus_source_panel.h"
+#include "ui/modinfo/source_panels/steam_source_panel.h"
 #include "ui/modinfo/source_tab.h"
 #include "ui/theme/icon_manager.h"
 
@@ -99,8 +101,10 @@ static QApplication &shared_app() {
   // GPU/Vulkan stack out entirely: with the app kept alive to exit, the
   // GPU thread outlives the test and calls vkCreateInstance during process
   // teardown, which crashes inside system Vulkan layers (MangoHud on this
-  // machine). Must be set before the first QWebEnginePage/profile is built.
-  qputenv("QTWEBENGINE_CHROMIUM_FLAGS", "--disable-gpu --disable-features=Vulkan");
+  // machine). Must be set before the first QWebEnginePage/profile is built -
+  // and it is the APP's own configuration, not a private copy, so these tests
+  // exercise what the app actually ships.
+  ui::configure_chromium_flags();
   static QApplication *app = new QApplication(argc, argv);
   return *app;
 }
@@ -820,5 +824,153 @@ TEST_CASE("source tab icons", "[ui]") {
           "a non-github host falls back to the generic git badge, still an icon");
     check(tab_colour(qtw, 0) != kGithub,
           "branded and generic git badges are distinguishable from each other");
+  }
+}
+
+// A Steam-sourced mod whose description is long enough to take the ASYNC
+// bbcode path, driven through ModInfoDialog - the surface the app actually
+// opens the Source tab on. The dialog builds all nine tabs, restores the
+// last-used tab from Settings (so Source is selected the moment the dialog
+// opens) and eagerly calls set_mod() on the tabs it can enable-disable.
+//
+// The description has to be over set_bbcode_html_async()'s 1 KiB threshold and
+// multi-core has to be on, or the parse runs synchronously on the UI thread
+// and there is nothing in flight. Both are the app's defaults, which is why
+// this only ever showed up on a real mod with a real description.
+TEST_CASE("source tab steam mod survives a rebuild mid-parse", "[ui]") {
+  qputenv("QT_QPA_PLATFORM", "offscreen");
+  const std::filesystem::path root = "/tmp/gmm_source_tab_steam";
+  std::filesystem::remove_all(root);
+  const std::filesystem::path cfg = root / "config";
+  std::filesystem::create_directories(cfg);
+  qputenv("XDG_CONFIG_HOME", cfg.c_str());
+  shared_app();  // process-lifetime QApplication (see above)
+  QCoreApplication::setOrganizationName("GameModManager");
+  QCoreApplication::setApplicationName("GameModManager");
+
+  const std::filesystem::path mods_dir = root / "instances" / "Test" / "mods";
+  const std::filesystem::path mod_dir  = mods_dir / "SteamMod";
+  std::filesystem::create_directories(mod_dir);
+
+  // Real Steam Workshop metadata, with a description comfortably past the
+  // async threshold.
+  {
+    std::string desc = "[b]A mod.[/b]\n";
+    while (desc.size() < 4096)
+      desc += "[quote]some longer workshop chatter[/quote] and a "
+              "https://example.com/link\n";
+    std::ofstream xml(mod_dir / "metadata.xml");
+    xml << "<metadata>\n  <version>2.1</version>\n  <description>" << desc
+        << "</description>\n</metadata>\n";
+  }
+
+  engine::ModMeta meta;
+  meta.set("General", "version", "2.1");
+  meta.set("GameModManager", "source_type", "steam");
+  meta.set("GameModManager", "source_id", "123456789");
+  meta.set("SteamWorkshop", "workshop_id", "123456789");
+  meta.set("SteamWorkshop", "description", "workshop body");
+  meta.save(mods_dir, "SteamMod");
+
+  ui::ModInfoData data;
+  data.id          = QStringLiteral("SteamMod");
+  data.name        = QStringLiteral("SteamMod");
+  data.version     = QStringLiteral("2.1");
+  data.source_type = QStringLiteral("steam");
+  data.source_id   = QStringLiteral("123456789");
+  data.mod_dir     = QDir(QString::fromStdString(mod_dir.string()));
+  data.delete_mod  = [] {
+    return false;
+  };
+  data.load_meta = [mods_dir] {
+    return engine::ModMeta::load(mods_dir, "SteamMod");
+  };
+  data.save_meta = [mods_dir](const engine::ModMeta &m) {
+    return m.save(mods_dir, "SteamMod");
+  };
+
+  // Opening Mod Info with Source already selected: the dialog constructs every
+  // tab, then activates Source, which runs set_mod() and
+  // first_activation() over it back to back.
+  ui::ModInfoDialog dialog(data, {{QStringLiteral("SteamMod"), true}},
+                           ui::ModInfoTabId::Source, nullptr);
+  dialog.show();
+  for (int i = 0; i < 40; ++i) {
+    QApplication::processEvents(QEventLoop::AllEvents, 50);
+    QThread::msleep(25);
+  }
+
+  check(dialog.current_mod_id() == QLatin1String("SteamMod"),
+        "the dialog opened on the Steam mod");
+
+  auto *tab = dialog.findChild<ui::SourceTab *>();
+  REQUIRE(tab != nullptr);
+  ui::SteamSourcePanel *steam = nullptr;
+  for (auto *p : tab->findChildren<ui::SteamSourcePanel *>())
+    steam = p;
+  check(steam != nullptr, "the Steam panel survives the dialog's rebuild");
+  check(steam && steam->has_data(), "the rebuilt Steam panel still reports data");
+
+  // The same shape for the other sources, because the crash was never Steam
+  // specific: it was whatever built the first QWebEngineView. A regression
+  // here would hit all of them.
+  struct {
+    const char *type;
+    const char *id;
+  } kOthers[] = {
+      {"nexus", "555"},
+      {"loverslab", "666"},
+      {"modpub", "777"},
+  };
+  for (const auto &other : kOthers) {
+    const std::string id            = std::string(other.type) + "Mod";
+    const std::filesystem::path dir = mods_dir / id;
+    std::filesystem::create_directories(dir);
+    std::ofstream xml(dir / "metadata.xml");
+    std::string desc = "[b]Body.[/b]\n";
+    while (desc.size() < 4096)
+      desc += "[quote]more text[/quote] and https://example.com/x\n";
+    xml << "<metadata>\n  <version>1.4</version>\n  <description>" << desc
+        << "</description>\n</metadata>\n";
+    xml.close();
+
+    engine::ModMeta m;
+    m.set("General", "version", "1.4");
+    m.set("GameModManager", "source_type", other.type);
+    m.set("GameModManager", "source_id", other.id);
+    if (std::string(other.type) == "nexus") {
+      m.set("Nexusmods", "modid", other.id);
+    } else if (std::string(other.type) == "loverslab") {
+      m.set("LoversLab", "fileid", other.id);
+    } else {
+      m.set("ModPub", "mod_id", other.id);
+    }
+    m.save(mods_dir, id);
+
+    ui::ModInfoData d;
+    d.id          = QString::fromStdString(id);
+    d.name        = QString::fromStdString(id);
+    d.version     = QStringLiteral("1.4");
+    d.source_type = QString::fromLatin1(other.type);
+    d.source_id   = QString::fromLatin1(other.id);
+    d.mod_dir     = QDir(QString::fromStdString(dir.string()));
+    d.delete_mod  = [] {
+      return false;
+    };
+    d.load_meta = [mods_dir, id] {
+      return engine::ModMeta::load(mods_dir, id);
+    };
+    d.save_meta = [mods_dir, id](const engine::ModMeta &mm) {
+      return mm.save(mods_dir, id);
+    };
+
+    ui::ModInfoDialog other_dlg(d, {{d.id, true}}, ui::ModInfoTabId::Source, nullptr);
+    other_dlg.show();
+    for (int i = 0; i < 10; ++i) {
+      QApplication::processEvents(QEventLoop::AllEvents, 50);
+      QThread::msleep(25);
+    }
+    check(other_dlg.current_mod_id() == d.id,
+          std::string(other.type).append(" mod opens in Mod Info").c_str());
   }
 }
