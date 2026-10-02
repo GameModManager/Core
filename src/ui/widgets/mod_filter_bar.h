@@ -1,9 +1,10 @@
 #pragma once
 
+#include "ui/widgets/line_edit_clear.h"
+
 #include <QWidget>
 
 class QComboBox;
-class QLineEdit;
 class QToolButton;
 
 namespace ui {
@@ -36,7 +37,7 @@ signals:
 private:
   QToolButton *category_toggle_btn_ = nullptr;
   QComboBox *group_combo_           = nullptr;
-  QLineEdit *filter_edit_           = nullptr;
+  LineEditClear *filter_edit_       = nullptr;
 };
 
 }  // namespace ui

@@ -254,9 +254,8 @@ ModpackImportDialog::ModpackImportDialog(QWidget *parent) : QDialog(parent) {
 
   auto *url_card   = new QGroupBox(tr("From collection URL"), this);
   auto *url_layout = new QVBoxLayout(url_card);
-  url_edit_        = new QLineEdit(url_card);
+  url_edit_        = new LineEditClear(url_card);
   url_edit_->setPlaceholderText(tr("Paste a collection URL..."));
-  url_edit_->setClearButtonEnabled(true);
   url_layout->addWidget(url_edit_);
   connect(url_edit_, &QLineEdit::textChanged, this,
           &ModpackImportDialog::on_url_edited);

@@ -18,9 +18,8 @@ RightFilterBar::RightFilterBar(QWidget *parent) : QWidget(parent) {
 
   // MO2's right-hand lists use the same plain "Filter" placeholder as the
   // mod list (references/modorganizer/src/mainwindow.ui:997).
-  filter_edit_ = new QLineEdit(this);
+  filter_edit_ = new LineEditClear(this);
   filter_edit_->setPlaceholderText(tr("Filter"));
-  filter_edit_->setClearButtonEnabled(true);
   layout->addWidget(filter_edit_, 1);
 
   sort_button_ = new QPushButton(tr("Sort"), this);

@@ -33,9 +33,8 @@ ModFilterBar::ModFilterBar(QWidget *parent) : QWidget(parent) {
 
   // Filter text input. The placeholder is MO2's plain "Filter"
   // (references/modorganizer/src/mainwindow.ui:584) - not "Filter...".
-  filter_edit_ = new QLineEdit(this);
+  filter_edit_ = new LineEditClear(this);
   filter_edit_->setPlaceholderText(tr("Filter"));
-  filter_edit_->setClearButtonEnabled(true);
   layout->addWidget(filter_edit_, 1);
 
   connect(filter_edit_, &QLineEdit::textChanged, this, &ModFilterBar::filter_changed);

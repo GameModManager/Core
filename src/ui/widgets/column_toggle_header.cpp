@@ -1,13 +1,25 @@
 #include "ui/widgets/column_toggle_header.h"
 
+#include <QAbstractItemModel>
 #include <QAction>
 #include <QContextMenuEvent>
 #include <QCursor>
 #include <QHelpEvent>
 #include <QMenu>
 #include <QToolTip>
+#include <QTreeView>
 
 namespace ui {
+
+void set_customizable_columns(QTreeView *view) {
+  if (!view)
+    return;
+  // Parented to the view, like every other hand-built header in the app, so it
+  // dies with it (setHeader does not take ownership).
+  auto *header = new ColumnToggleHeaderView(Qt::Horizontal, view);
+  header->set_enablement_model(view->model());
+  view->setHeader(header);
+}
 
 ColumnToggleHeaderView::ColumnToggleHeaderView(Qt::Orientation orientation,
                                                QWidget *parent)
@@ -29,6 +41,22 @@ void ColumnToggleHeaderView::set_section_tooltips(const QStringList &tooltips) {
 
 QString ColumnToggleHeaderView::section_tooltip(int section) const {
   return tooltips_.value(section);
+}
+
+void ColumnToggleHeaderView::set_enablement_model(QAbstractItemModel *model) {
+  enablement_model_ = model;
+}
+
+bool ColumnToggleHeaderView::section_is_enabled(int section) const {
+  if (!enablement_model_)
+    return true;
+  const QVariant value =
+      enablement_model_->headerData(section, Qt::Horizontal, kEnabledColumnRole);
+  // No value for the role means the model has no opinion, which MO2 reads as
+  // "enabled" (uibase/widgetutility.h:11-14).
+  if (!value.isValid())
+    return true;
+  return value.toBool();
 }
 
 void ColumnToggleHeaderView::set_locked_section(int section) {
@@ -64,8 +92,8 @@ bool ColumnToggleHeaderView::eventFilter(QObject *obj, QEvent *event) {
         if (i >= labels_.size())
           // Positional list, and a short one ships a nameless entry: the
           // caller has to supply a label for every section the view has.
-          qWarning("ColumnToggleHeaderView: no label for section %d of %d sections",
-                   i, count());
+          qWarning("ColumnToggleHeaderView: no label for section %d of %d sections", i,
+                   count());
         QString label = (i < labels_.size()) ? labels_[i] : tr("Column %1").arg(i + 1);
         QAction *action = menu.addAction(label);
         action->setCheckable(true);
@@ -77,6 +105,13 @@ bool ColumnToggleHeaderView::eventFilter(QObject *obj, QEvent *event) {
           continue;
         }
         action->setChecked(!isSectionHidden(i));
+        if (!section_is_enabled(i)) {
+          // The model says this column is not optional. Show its real state,
+          // but refuse the toggle - unlike a locked section, which is always
+          // forced visible.
+          action->setEnabled(false);
+          continue;
+        }
         connect(action, &QAction::toggled, this, [this, i](bool checked) {
           const bool hidden = !checked;
           setSectionHidden(i, hidden);

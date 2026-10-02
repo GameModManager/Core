@@ -13,6 +13,8 @@
 class QLineEdit;
 class QLabel;
 
+#include "ui/widgets/line_edit_clear.h"
+
 namespace ui {
 
 // Game selection screen (Workspace-4fu): a filter bar over an alphabetically
@@ -37,9 +39,9 @@ private:
   void on_icon_ready(const QString &game_id);
   void apply_filter(const QString &text);
 
-  QLineEdit *filter_ = nullptr;
-  QWidget *list_     = nullptr;
-  QLabel *status_    = nullptr;
+  LineEditClear *filter_ = nullptr;
+  QWidget *list_         = nullptr;
+  QLabel *status_        = nullptr;
   std::vector<QPointer<GameCard>> cards_;
 };
 
