@@ -103,6 +103,12 @@ gmm_catch2_test(mod_meta_test engine/mod_meta_test.cpp)
 gmm_catch2_test(profile_test engine/profile_test.cpp)
 gmm_catch2_test(profile_creation_test engine/profile_creation_test.cpp)
 gmm_catch2_test(profile_switching_test engine/profile_switching_test.cpp)
+
+# Workspace-czc0: timestamped backup / restore points of a profile's load order
+# and mod list. Qt-free, so the whole of the feature's risk (stamp naming, the
+# keep-10 eviction, the unconditional pre-restore safety backup and the
+# per-file restore reporting) is covered here without a GUI.
+gmm_catch2_test(backup_service_test engine/backup_service_test.cpp)
 gmm_catch2_test(launch_params_test engine/launch_params_test.cpp)
 
 # Workspace-cch0: headless CLI launch honors per-executable args/env/cwd -
@@ -685,6 +691,14 @@ gmm_catch2_test(error_popup_test ui/error_popup_test.cpp
 gmm_catch2_test(main_window_harness_test ui/main_window_harness_test.cpp
     UI
     LIBS gmm_ui Qt6::Test PkgConfig::ZLIB)
+
+# Workspace-czc0: the load-order / mod-list backup and restore points, driven
+# through the real window's four toolbar buttons with QTest clicks, asserting
+# the bytes on disk. Consumer-reaches-control: a button click is the whole
+# chain, and only the files afterwards are worth asserting.
+gmm_catch2_test(backup_restore_test ui/backup_restore_test.cpp
+    UI
+    LIBS gmm_ui Qt6::Test)
 
 # Filter-bar MO2 parity - the "Filter" placeholder plus the
 # Ctrl+F focus / Escape clear pair. Drives the REAL MainWindow offscreen and
