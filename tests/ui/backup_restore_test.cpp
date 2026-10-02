@@ -17,6 +17,8 @@
 //     state recoverable as a safety backup (MO2 has no such copy)
 //   - a partial Restore names the file it did not restore, so the profile is
 //     never left mixed in silence (MO2 ||-chains its three copies)
+//   - a Restore whose safety copy failed for one file reports the mix, and
+//     never claims nothing was overwritten while its siblings were replaced
 //   - the picker with nothing to offer says so rather than failing quietly
 //   - the mod-list pair behaves like the load-order pair
 //
@@ -601,6 +603,131 @@ TEST_CASE("a partial restore reports which file it did not restore",
 }
 
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// The safety backup can fail for one file while the others restore cleanly. The
+// report must then describe what actually happened - some files changed, one did
+// not - and must NEVER claim that nothing was overwritten. A feature whose whole
+// job is safety cannot tell the user their data is intact when it is not.
+// ---------------------------------------------------------------------------
+TEST_CASE("a failed safety copy never reports that nothing was overwritten",
+          "[ui][harness][backup]") {
+  const fs::path root = make_case_root("czc0_lie");
+
+  qputenv("QT_QPA_PLATFORM", "offscreen");
+  int app_argc     = 1;
+  char app_argv0[] = "backup_restore_test";
+  char *app_argv[] = {app_argv0, nullptr};
+  QApplication app(app_argc, app_argv);
+  QCoreApplication::setOrganizationName("GameModManager");
+  QCoreApplication::setApplicationName("GameModManager");
+
+  const fs::path game_dir = root / "game";
+  fs::create_directories(game_dir / "Data");
+  write_file(game_dir / "Data" / "Skyrim.esm", "fake esm");
+  write_file(game_dir / "Data" / "MyMod.esp", "fake esp");
+
+  auto inst           = engine::Instance::installed("TestGame", root / "instances");
+  inst.info().game_id = "testgame";
+  REQUIRE(inst.create_directories());
+  REQUIRE(inst.write_toml());
+
+  engine::GameKnowledge knowledge;
+  knowledge.set("testgame", "mods_subpath", "Mods");
+  knowledge.set("testgame", "game_native_plugins", "Skyrim.esm");
+
+  engine::GameCapabilities caps;
+  engine::CapabilityInfo plugins_cap;
+  plugins_cap.game_id      = "testgame";
+  plugins_cap.capability   = "plugins";
+  plugins_cap.display_name = "Plugins";
+  caps.register_capability(plugins_cap);
+
+  ui::MainWindow w;
+  w.set_game_knowledge(&knowledge);
+  auto *rp = w.findChild<ui::RightPanel *>();
+  REQUIRE(rp != nullptr);
+  rp->set_capabilities(&caps);
+  w.show();
+  w.set_game_info("testgame", "Test Game", "Default", game_dir, inst.info().root);
+  REQUIRE(pump_until([&w] {
+    return !w.is_loading();
+  }));
+
+  click_tab(rp->tab_widget(), QStringLiteral("Plugins"));
+  auto *ptab = rp->plugins_tab();
+  REQUIRE(ptab != nullptr);
+
+  const fs::path profile_dir = engine::Instance::from_root(inst.info().root)
+                                   .path_for(engine::InstanceKind::Profiles) /
+                               "Default";
+  REQUIRE(fs::is_directory(profile_dir));
+
+  QTest::mouseClick(find_button(ptab, "pluginBackupBtn"), Qt::LeftButton);
+  REQUIRE(pump_until([&] {
+    return backup_stamps_of(profile_dir, "plugins.txt").size() == 1;
+  }));
+  const std::string stamp = backup_stamps_of(profile_dir, "plugins.txt").front();
+
+  // The live lockedorder.txt goes away, so the safety copy has nothing to
+  // capture for it. Its backup still exists, so nothing else is wrong.
+  std::error_code ec;
+  REQUIRE(fs::remove(profile_dir / "lockedorder.txt", ec));
+  REQUIRE(!ec);
+
+  const std::string clobbered = "clobbered\n";
+  write_file(profile_dir / "plugins.txt", clobbered);
+  write_file(profile_dir / "loadorder.txt", clobbered);
+
+  QString report_main;
+  QString report_details;
+  ui::set_error_presenter_for_tests([&](ui::TaskDialog &dlg) {
+    for (const auto *label : dlg.findChildren<QLabel *>())
+      report_main += label->text() + "\n";
+    if (const auto *edit = dlg.findChild<QPlainTextEdit *>())
+      report_details += edit->toPlainText();
+  });
+  struct RestorePresenter {
+    ~RestorePresenter() { ui::set_error_presenter_for_tests({}); }
+  } restore_presenter;
+
+  {
+    ModalDriver driver;
+    driver.arm(QStringLiteral("Restore"));
+    QTest::mouseClick(find_button(ptab, "pluginRestoreBtn"), Qt::LeftButton);
+    REQUIRE(driver.answered() == 2);
+    driver.disarm();
+  }
+  QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
+
+  // The two files whose safety copy landed were restored...
+  CHECK(read_file(profile_dir / "plugins.txt") != clobbered);
+  CHECK(read_file(profile_dir / "loadorder.txt") != clobbered);
+  // ...and the one whose copy failed was SPARED, not created and not written.
+  // The post-restore reload must not put it back either: it reloads without
+  // writing back, precisely so the promise it just made survives.
+  CHECK_FALSE(fs::exists(profile_dir / "lockedorder.txt"));
+
+  INFO("report: " << report_main.toStdString() << report_details.toStdString());
+  // NOT the false claim. Two of three files really were replaced, so any
+  // sentence saying nothing was overwritten or nothing changed is a lie.
+  CHECK_FALSE(report_main.toLower().contains("nothing was overwritten"));
+  CHECK_FALSE(report_main.toLower().contains("nothing was changed"));
+  // What DID happen, and which file is stale.
+  CHECK(report_main.toLower().contains("partly restored"));
+  CHECK(report_details.contains("lockedorder.txt"));
+
+  // A restore that partly fails still leaves the state it replaced recoverable:
+  // the safety copy holds the pre-restore bytes of both files that changed.
+  const auto safety = backup_stamps_of(profile_dir, "loadorder.txt");
+  REQUIRE(safety.size() == 2);
+  const std::string safety_stamp = safety.back();
+  REQUIRE(safety_stamp != stamp);
+  CHECK(read_file(profile_dir / ("plugins.txt." + safety_stamp)) == clobbered);
+  CHECK(read_file(profile_dir / ("loadorder.txt." + safety_stamp)) == clobbered);
+
+  fs::remove_all(root);
+}
+
 // The mod-list pair: same shape, one file. The in-memory profile state must not
 // clobber the restore within the debounce window.
 // ---------------------------------------------------------------------------
@@ -659,9 +786,9 @@ TEST_CASE("mod list Backup and Restore buttons round-trip modlist.txt",
   const std::string clobbered = "# clobbered\r\n+Foo_mod\r\n";
   write_file(profile_dir / "modlist.txt", clobbered);
 
-  // 3. Restore, and accept. A restore that does not cancel the debounced write
-  //    is overwritten by the app's own writer within five seconds, so the
-  //    assertion has to see the restored bytes and not the clobbered ones.
+  // 3. Restore, and accept. The restore cancels any pending debounced modlist
+  //    write before it writes, so the app's own writer cannot clobber these
+  //    bytes afterwards.
   {
     ModalDriver driver;
     driver.arm(QStringLiteral("Restore"));

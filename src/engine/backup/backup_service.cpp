@@ -18,6 +18,9 @@ namespace {
 
   // MO2's PATTERN_BACKUP_DATE (mainwindow.cpp:3826). Local time, zero padded.
   constexpr std::size_t kStampLength = 19;  // yyyy_MM_dd_hh_mm_ss
+  // Ceiling on the `-N` disambiguator's digits: `copy` is an int, so 9 is the
+  // largest count that cannot overflow it.
+  constexpr std::size_t kMaxCopyDigits = 9;
 
   std::tm local_calendar(std::chrono::system_clock::time_point tp) {
     const auto seconds = std::chrono::system_clock::to_time_t(tp);
@@ -81,6 +84,23 @@ namespace {
     });
   }
 
+  // OUR OWN atomic-write temporary: safe_write_file names its temp
+  // `<target>.tmp<pid>_<counter>` (safe_write_file.cpp:64), so the suffix is
+  // `tmp<pid>_<n>`. MO2's six-letter test never matches it, which would leave a
+  // half-written plugins.txt - exactly the bad backup design 6.1 calls the
+  // realistic one - listed with no warning at all.
+  bool is_our_atomic_temp(const std::string &text) {
+    const std::string prefix = "tmp";
+    if (text.size() <= prefix.size() + 2 || text.compare(0, prefix.size(), prefix) != 0)
+      return false;
+    const std::size_t underscore = text.find('_', prefix.size());
+    if (underscore == std::string::npos || underscore == prefix.size() ||
+        underscore + 1 == text.size())
+      return false;
+    return all_digits(text, prefix.size(), underscore - prefix.size()) &&
+           all_digits(text, underscore + 1, text.size() - underscore - 1);
+  }
+
   struct SourceRead {
     bool exists   = false;
     bool readable = false;
@@ -103,13 +123,20 @@ namespace {
     return read;
   }
 
-  bool directory_is_writable(const std::filesystem::path &dir) {
-    std::error_code ec;
-    const auto status = std::filesystem::status(dir, ec);
-    if (ec || !std::filesystem::is_directory(status))
-      return false;
-    return (status.permissions() & std::filesystem::perms::owner_write) !=
-           std::filesystem::perms::none;
+  // Can `file` be opened for writing WITHOUT creating it? `std::ofstream` with
+  // any mode creates a missing file, which on the error path would leave a
+  // 0-byte live file behind - and an empty plugins.txt reads as a perfectly
+  // valid load order of zero plugins. fstream(in|out) opens only an existing
+  // file and touches nothing.
+  //
+  // This replaces a permissions-mode pre-check on the PARENT directory, which
+  // was both wrong (it refused a writable directory whose owner bit was clear -
+  // ntfs-3g, exFAT, CIFS - and accepted a read-only file in a writable one) and
+  // redundant: safe_write_file already returns a bool and leaves the target
+  // untouched when it fails.
+  bool file_is_openable(const std::filesystem::path &file) {
+    std::fstream probe(file, std::ios::in | std::ios::out);
+    return probe.is_open();
   }
 
   // Every `<live file name>.<suffix>` regular sibling of `live`.
@@ -137,7 +164,7 @@ namespace {
       be.stamp_key      = stamp_key(be.suffix);
       be.copy_index     = stamp_copy_index(be.suffix);
       be.is_stamp       = be.stamp_key != 0;
-      be.is_orphan_temp = is_six_letters(be.suffix);
+      be.is_orphan_temp = is_six_letters(be.suffix) || is_our_atomic_temp(be.suffix);
       entries.push_back(std::move(be));
     }
     return entries;
@@ -145,12 +172,17 @@ namespace {
 
   // Keep the `kKeepCount` newest stamped backups of `live`; evict the rest.
   //
-  // `protected_stamp` is the stamp just created. A backwards clock jump (or a
-  // DST fall-back that repeats a local hour) makes it the OLDEST by stamp, and
-  // evicting it would delete the newest thing the user did - the exact outcome
-  // the rule exists to prevent. When the protected entry falls in the eviction
-  // set it is skipped and the next-oldest goes instead.
-  void sweep(const std::filesystem::path &live, const std::string &protected_stamp) {
+  // Entries whose suffix must never be evicted. Two reasons to be on the list:
+  //   - the stamp just created, because a backwards clock jump (or a DST
+  //     fall-back that repeats a local hour) makes it the OLDEST by stamp, and
+  //     evicting it would delete the newest thing the user did - the exact
+  //     outcome the rule exists to prevent;
+  //   - on the restore path, the stamp being restored, so the backup the user
+  //     picked cannot be pushed out of history by the safety copy that restore
+  //     takes. It vanishes from the picker afterwards if it does.
+  // A protected entry in the eviction set is skipped and the next-oldest goes.
+  void sweep(const std::filesystem::path &live,
+             const std::vector<std::string> &protected_stamps) {
     std::vector<BackupEntry> stamped;
     for (auto &entry : siblings_of(live)) {
       if (entry.is_stamp)
@@ -173,12 +205,8 @@ namespace {
     for (const auto &entry : stamped) {
       if (to_drop == 0)
         return;
-      // `protected_stamp` is the stamp just created. A backwards clock jump
-      // (or a DST fall-back that repeats a local hour) makes it the OLDEST by
-      // stamp, and evicting it would delete the newest thing the user did -
-      // the exact outcome the rule exists to prevent. When the protected entry
-      // falls in the eviction set it is skipped and the next-oldest goes.
-      if (entry.suffix == protected_stamp)
+      if (std::find(protected_stamps.begin(), protected_stamps.end(), entry.suffix) !=
+          protected_stamps.end())
         continue;
       std::error_code ec;
       std::filesystem::remove(entry.path, ec);
@@ -208,11 +236,23 @@ namespace {
   // Copy every file to `<file>.<stamp>`, then sweep each file's own history.
   // No flush: the caller decides whether the live files need making current
   // first (that is what separates a backup from the safety copy taken on the
-  // restore path).
+  // restore path). `extra_protected` holds any further suffix the sweep must
+  // not evict - the restore path passes the stamp being restored.
   BackupResult copy_with_stamp(const std::vector<std::filesystem::path> &files,
-                               const std::string &stamp) {
+                               const std::string &stamp,
+                               const std::vector<std::string> &extra_protected = {}) {
     BackupResult result;
     result.stamp = stamp;
+
+    // The stamp just created is always protected from the sweep; the restore
+    // path adds the stamp it is restoring, so the safety copy cannot push the
+    // backup the user picked out of the history they are looking at.
+    std::vector<std::string> protected_stamps;
+    protected_stamps.reserve(extra_protected.size() + 1);
+    protected_stamps.push_back(stamp);
+    protected_stamps.insert(protected_stamps.end(), extra_protected.begin(),
+                            extra_protected.end());
+
     for (const auto &file : files) {
       FileResult fr;
       fr.file = file.filename().string();
@@ -225,18 +265,23 @@ namespace {
       }
       // copy_file's result IS the feature: ignoring it is how a backup reports
       // success while having done nothing (design 6.6).
-      if (std::filesystem::copy_file(file, backup_path_for(file, stamp),
-                                     std::filesystem::copy_options::overwrite_existing,
-                                     ec)) {
-        fr.ok = true;
-      } else {
+      if (!std::filesystem::copy_file(file, backup_path_for(file, stamp),
+                                      std::filesystem::copy_options::overwrite_existing,
+                                      ec)) {
         fr.failure = RestoreFailure::WriteFailed;
         fr.detail  = ec.message();
+        result.files.push_back(std::move(fr));
+        // No sweep on a failed copy: nothing was added to this file's history,
+        // and evicting now would make room for nothing while quietly dropping
+        // an existing backup the user may still want.
+        continue;
       }
+      fr.ok = true;
       result.files.push_back(std::move(fr));
       // Swept per source file, so a failure on one never takes another's
-      // history with it (MO2 :3833-3834 also sweeps once per source file).
-      sweep(file, stamp);
+      // history with it (MO2 :3833-3834 also sweeps once per source file), and
+      // only after the copy landed.
+      sweep(file, protected_stamps);
     }
     return result;
   }
@@ -288,13 +333,14 @@ namespace {
         second > 59)
       return;
 
-    // Optional `-N` same-second disambiguator, at least one digit. It carries no
-    // time of its own, so it does not change the key - but it DOES make the
-    // entry a real backup for the sweep and the picker, which is why it is
-    // parsed here.
+    // Optional `-N` same-second disambiguator, at least one digit and at most
+    // kMaxCopyDigits of them: `copy` is an int and the suffix comes from a file
+    // NAME, so an unbounded parse of `...-99999999999` is signed-overflow UB
+    // and would order the entry by garbage.
     if (suffix.size() > kStampLength) {
-      if (suffix[kStampLength] != '-' || suffix.size() == kStampLength + 1 ||
-          !all_digits(suffix, kStampLength + 1, suffix.size() - kStampLength - 1))
+      const std::size_t digits = suffix.size() - kStampLength - 1;
+      if (suffix[kStampLength] != '-' || digits == 0 || digits > kMaxCopyDigits ||
+          !all_digits(suffix, kStampLength + 1, digits))
         return;
       for (std::size_t i = kStampLength + 1; i < suffix.size(); ++i)
         *copy = *copy * 10 + (suffix[i] - '0');
@@ -340,6 +386,12 @@ bool RestoreResult::ok() const {
          std::all_of(files.begin(), files.end(), [](const FileResult &f) {
            return f.ok;
          });
+}
+
+bool RestoreResult::any_restored() const {
+  return std::any_of(files.begin(), files.end(), [](const FileResult &f) {
+    return f.ok;
+  });
 }
 
 std::vector<std::filesystem::path>
@@ -419,11 +471,13 @@ RestoreResult restore_backup(const std::vector<std::filesystem::path> &files,
                    return read_source(backup_path_for(file, stamp));
                  });
 
-  // 2. UNCONDITIONAL safety backup of the live files, before the first write and
+  // 2. Safety backup of the live files, before the first write and attempted
   //    whatever happens next: MO2 has no such copy, so a wrong restore there
   //    leaves the user with nothing to go back to. No flush here - the point is
-  //    to capture the on-disk bytes as they are right now.
-  const auto safety   = copy_with_stamp(files, unique_stamp(files, now));
+  //    to capture the on-disk bytes as they are right now. The stamp being
+  //    restored is protected from the sweep so the copy cannot push the backup
+  //    the user picked out of history.
+  const auto safety   = copy_with_stamp(files, unique_stamp(files, now), {stamp});
   result.safety_stamp = safety.stamp;
   result.safety_ok    = safety.ok();
 
@@ -437,25 +491,28 @@ RestoreResult restore_backup(const std::vector<std::filesystem::path> &files,
     FileResult fr;
     fr.file = file.filename().string();
 
-    if (!reads[i].exists) {
+    if (!safety.files[i].ok) {
+      // The safety copy of THIS file failed. Writing it now would destroy a
+      // state there is no copy of, which is the one outcome the safety backup
+      // exists to prevent - so leave it alone and say so. Its siblings still
+      // restore, which is why this is per file and not a set-wide abort.
+      fr.failure = RestoreFailure::SafetyBackupFailed;
+      fr.detail  = safety.files[i].detail;
+    } else if (!reads[i].exists) {
       fr.failure = RestoreFailure::NoSuchBackup;
       fr.detail  = stamp;
     } else if (!reads[i].readable) {
       fr.failure = RestoreFailure::UnreadableBackup;
-    } else if (!directory_is_writable(file.parent_path())) {
-      fr.failure = RestoreFailure::NotWritable;
-      fr.detail  = "permission denied";
     } else if (!profile::safe_write_file(file, reads[i].bytes)) {
-      // safe_write_file reports a bool and nothing else; re-probe the target
-      // so the report can name the reason instead of shrugging with "failed".
-      std::ofstream probe(file, std::ios::app);
-      if (probe) {
-        fr.failure = RestoreFailure::WriteFailed;
-        fr.detail  = "the write did not complete";
-      } else {
-        fr.failure = RestoreFailure::NotWritable;
-        fr.detail  = "permission denied";
-      }
+      // safe_write_file reports a bool and nothing else; re-probe the target so
+      // the report can name the reason instead of shrugging with "failed". The
+      // probe opens WITHOUT creating, so a file that was missing cannot be left
+      // behind as a 0-byte file that reads as a valid empty load order.
+      fr.failure = file_is_openable(file) ? RestoreFailure::WriteFailed
+                                          : RestoreFailure::NotWritable;
+      fr.detail  = fr.failure == RestoreFailure::NotWritable
+                       ? "permission denied"
+                       : "the write did not complete";
     } else {
       fr.ok = true;
     }

@@ -31,8 +31,7 @@ PluginsTab::PluginsTab(QWidget *parent) : QWidget(parent) {
   connect(view_, &PluginView::refresh_requested, this, &PluginsTab::refresh_requested);
   connect(view_, &PluginView::backup_requested, this, &PluginsTab::backup_requested);
   connect(view_, &PluginView::restore_requested, this, &PluginsTab::restore_requested);
-  connect(view_, &PluginView::mod_info_requested, this,
-          &PluginsTab::mod_info_requested);
+  connect(view_, &PluginView::mod_info_requested, this, &PluginsTab::mod_info_requested);
   connect(view_, &PluginView::reveal_requested, this, &PluginsTab::reveal_requested);
 
   // Extracted context menu (lock/unlock actions).

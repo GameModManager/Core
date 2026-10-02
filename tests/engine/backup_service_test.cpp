@@ -3,7 +3,8 @@
 //
 // MO2 parity, and the three deliberate divergences from it:
 //   1. restore confirms before overwriting          (UI layer; MO2 is silent)
-//   2. restore takes an UNCONDITIONAL safety backup (MO2 has none)
+//   2. restore takes a safety backup first, and spares any file whose copy
+//      failed (MO2 takes no copy at all, so a wrong restore is unrecoverable)
 //   3. restore reports every file independently     (MO2 ||-chains its copies)
 // plus eviction ordered by the PARSED stamp rather than by file-name sort.
 //
@@ -236,8 +237,9 @@ TEST_CASE("retention keeps 10 stamped backups and never evicts anything else",
   engine::profile::ProfileManager profile(dir, std::chrono::milliseconds{50});
   write_text(profile.modlist_path(), "live\n");
 
-  // 12 stamps an hour apart the day before, oldest first. All 12 sort before the
-  // stamp under test, so the three oldest seeded ones are the eviction victims.
+  // 12 stamps an hour apart over the previous twelve hours, oldest first. All 12
+  // sort before the stamp under test, so the three oldest seeded ones are the
+  // eviction victims.
   std::vector<std::string> seeded;
   for (int h = 0; h < 12; ++h) {
     // An hour apart, newest last; all 12 sort before the stamp under test.
@@ -400,7 +402,10 @@ TEST_CASE("stamp validation accepts only a real stamp", "[engine][backup]") {
 }
 
 // The picker: newest first, and the three-way classification MO2 uses (real
-// stamp / six-letter crash-orphan temporary / hand-made copy).
+// stamp / crash-orphan temporary / hand-made copy). Both orphan shapes count:
+// MO2's six random letters and OUR OWN atomic-write temp, which safe_write_file
+// names `<target>.tmp<pid>_<counter>` - warning about only the first would never
+// fire for a half-written file this app itself produced.
 TEST_CASE("list_backups sorts newest first and classifies every suffix",
           "[engine][backup]") {
   const fs::path dir = make_temp_dir("list");
@@ -412,12 +417,13 @@ TEST_CASE("list_backups sorts newest first and classifies every suffix",
   write_text(dir / ("loadorder.txt.2026_10_02_08_45_55"), "middle\n");
   write_text(dir / ("loadorder.txt.2026_11_01_02_30_00-2"), "newest\n");
   write_text(dir / "loadorder.txt.ABCDEF", "orphan\n");
+  write_text(dir / "loadorder.txt.tmp12345_0", "own orphan\n");
   write_text(dir / "loadorder.txt.handmade-copy", "hand\n");
   // A sibling of a DIFFERENT anchor must never be offered.
   write_text(dir / "plugins.txt.2026_12_01_00_00_00", "other anchor\n");
 
   const auto entries = engine::backup::list_backups(live);
-  REQUIRE(entries.size() == 5);
+  REQUIRE(entries.size() == 6);
 
   CHECK(entries[0].suffix == "2026_11_01_02_30_00-2");
   CHECK(entries[0].is_stamp);
@@ -427,11 +433,14 @@ TEST_CASE("list_backups sorts newest first and classifies every suffix",
   CHECK(entries[2].suffix == "2026_09_01_10_00_00");
   CHECK(entries[2].is_stamp);
   // Non-stamps sink below every real stamp, newest name first.
-  CHECK(entries[3].suffix == "handmade-copy");
+  CHECK(entries[3].suffix == "tmp12345_0");
   CHECK_FALSE(entries[3].is_stamp);
-  CHECK_FALSE(entries[3].is_orphan_temp);
-  CHECK(entries[4].suffix == "ABCDEF");
-  CHECK(entries[4].is_orphan_temp);
+  CHECK(entries[3].is_orphan_temp);
+  CHECK(entries[4].suffix == "handmade-copy");
+  CHECK_FALSE(entries[4].is_stamp);
+  CHECK_FALSE(entries[4].is_orphan_temp);
+  CHECK(entries[5].suffix == "ABCDEF");
+  CHECK(entries[5].is_orphan_temp);
 
   CHECK(engine::backup::list_backups(dir / "no-such-file.txt").empty());
 
@@ -496,8 +505,6 @@ TEST_CASE("a failing file never stops the others and is named in the report",
   REQUIRE(result.files[0].file == "plugins.txt");
   CHECK_FALSE(result.files[0].ok);
   CHECK(result.files[0].failure == engine::backup::RestoreFailure::NoSuchBackup);
-  // Named, so the report can say WHICH file is now stale.
-  CHECK_FALSE(result.files[0].file.empty());
 
   // The two later files still restored.
   CHECK(result.files[1].ok);
@@ -623,6 +630,60 @@ TEST_CASE("the safety stamp never collides with the stamp being restored",
   CHECK(result.safety_stamp != kStamp);
   CHECK(fs::is_regular_file(dir / (std::string("modlist.txt.") + kStamp)));
   CHECK(read_text(profile.modlist_path()) == "v1\n");
+
+  fs::remove_all(dir);
+}
+
+// A file the safety copy could not capture is SPARED, not overwritten. MO2 has
+// no safety copy at all; once one exists, overwriting a file whose copy failed
+// destroys a state nothing holds - the exact outcome the safety backup is there
+// to prevent. The live lockedorder.txt is absent here, so there is nothing to
+// capture and nothing to clobber, while its two siblings restore normally.
+TEST_CASE("a file whose safety copy failed is spared, not overwritten",
+          "[engine][backup]") {
+  const fs::path dir = make_temp_dir("safetymiss");
+  engine::profile::ProfileManager profile(dir, std::chrono::milliseconds{50});
+  write_text(profile.plugins_path(), "current plugins\n");
+  write_text(profile.loadorder_path(), "current order\n");
+  // lockedorder.txt is deliberately absent from disk.
+
+  const auto files =
+      engine::backup::backup_files(engine::backup::BackupKind::LoadOrder, profile);
+  // A backup of it exists, so the refusal is about the SAFETY copy alone, not
+  // about the chosen stamp.
+  write_text(dir / (std::string("plugins.txt.") + kStamp), "backed up plugins\n");
+  write_text(dir / (std::string("loadorder.txt.") + kStamp), "backed up order\n");
+
+  const auto result =
+      engine::backup::restore_backup(files, kStamp, at(kStampInstant + 3600));
+
+  CHECK_FALSE(result.ok());
+  // Two of three changed, which is exactly the state no single blanket sentence
+  // about the whole set can honestly describe.
+  CHECK(result.any_restored());
+  REQUIRE(result.files.size() == 3);
+  CHECK(result.files[0].ok);
+  CHECK(result.files[1].ok);
+  CHECK_FALSE(result.files[2].ok);
+  CHECK(result.files[2].file == "lockedorder.txt");
+  CHECK(result.files[2].failure == engine::backup::RestoreFailure::SafetyBackupFailed);
+  // SPARED: not created, not written.
+  CHECK_FALSE(fs::exists(profile.lockedorder_path()));
+
+  // The two that DID change are recoverable, and restorable, from the safety
+  // stamp the same call reported.
+  const std::string safety = result.safety_stamp;
+  REQUIRE_FALSE(safety.empty());
+  REQUIRE(fs::is_regular_file(dir / ("plugins.txt." + safety)));
+  REQUIRE(fs::is_regular_file(dir / ("loadorder.txt." + safety)));
+  CHECK(read_text(dir / ("plugins.txt." + safety)) == "current plugins\n");
+  CHECK(read_text(dir / ("loadorder.txt." + safety)) == "current order\n");
+
+  const auto undo =
+      engine::backup::restore_backup(files, safety, at(kStampInstant + 7200));
+  CHECK(undo.any_restored());
+  CHECK(read_text(profile.plugins_path()) == "current plugins\n");
+  CHECK(read_text(profile.loadorder_path()) == "current order\n");
 
   fs::remove_all(dir);
 }

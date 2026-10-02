@@ -69,6 +69,17 @@ namespace {
           .arg(name);
     case RestoreFailure::MissingLiveFile:
       return QObject::tr("There is no %1 to back up.").arg(name);
+    case RestoreFailure::SafetyBackupFailed:
+      // The engine leaves this file alone rather than overwrite a state it has
+      // no copy of. Saying so is the point: the user must know this one was
+      // SPARED, not that it was skipped.
+      return detail.isEmpty()
+                 ? QObject::tr("%1 could not be backed up before restoring, so it "
+                               "was left unchanged.")
+                       .arg(name)
+                 : QObject::tr("%1 could not be backed up before restoring (%2), so "
+                               "it was left unchanged.")
+                       .arg(name, detail);
     case RestoreFailure::NoSuchBackup:
       return QObject::tr("No backup of %1 at %2.").arg(name, detail);
     case RestoreFailure::UnreadableBackup:
@@ -238,16 +249,19 @@ void BackupActions::run_restore(engine::backup::BackupKind kind, const QString &
   if (kind == engine::backup::BackupKind::ModList && w_->active_profile_)
     w_->active_profile_->cancel_modlist_write();
 
-  // Divergence 2 and 3 both live in the engine call: it takes an unconditional
-  // safety backup before the first write and reports every file separately.
+  // Divergence 2 and 3 both live in the engine call: it takes a safety backup
+  // before the first write (and refuses to overwrite a file whose safety copy
+  // failed), and reports every file separately.
   const auto result = engine::backup::restore_backup(files, stamp.toStdString(),
                                                      std::chrono::system_clock::now());
   report(result);
-  if (!result.ok())
-    return;
 
-  // Re-read from disk. A restore that does not reload leaves the views showing
-  // the pre-restore state until the next refresh.
+  // Reload whenever ANY file changed on disk - not only when all of them did.
+  // A partial restore leaves the profile MIXED by design (divergence 3), and
+  // skipping the reload there would show the user a view that agrees with two
+  // thirds of the disk while the report tells them the third is stale.
+  if (!result.any_restored())
+    return;
   if (kind == engine::backup::BackupKind::LoadOrder) {
     if (reload_load_order_cb_)
       reload_load_order_cb_();
@@ -271,18 +285,18 @@ void BackupActions::report(const engine::backup::RestoreResult &result) {
     transient(tr("Backup restored"));
     return;
   }
-  // A failed safety backup makes the restore unrecoverable, so it is called out
-  // first - it is the one case where the user should not carry on.
-  if (!result.safety_ok) {
-    ui::report_error(tr("The restore failed and the current files could not be "
-                        "backed up first. Nothing was overwritten."),
-                     w_);
-    return;
-  }
-  ui::report_error(
-      tr("The backup was only partly restored. The files listed below were not "
-         "changed and the profile is now in a mixed state."),
-      w_, failure_lines(result.files).join("\n"));
+  // NEVER a blanket claim about the whole set. The engine refuses to overwrite
+  // a file whose safety copy failed, so some files may well have changed while
+  // others did not; a single "nothing was overwritten" over that state is a
+  // lie, and dropping failure_lines() here would also lose the per-file
+  // reporting that divergence 3 exists for. The headline says what is true for
+  // every combination, and the detail names every file that did not change.
+  const bool none_restored = !result.any_restored();
+  const QString headline =
+      none_restored ? tr("The backup could not be restored. Nothing was changed.")
+                    : tr("The backup was only partly restored. The files listed below "
+                         "were not changed, so the profile is now in a mixed state.");
+  ui::report_error(headline, w_, failure_lines(result.files).join("\n"));
 }
 
 }  // namespace ui

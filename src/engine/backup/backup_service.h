@@ -68,8 +68,11 @@ struct BackupEntry {
   // A well-formed yyyy_MM_dd_hh_mm_ss (optionally plus our same-second
   // `-N` suffix). MO2's three-way classification (mainwindow.cpp:3860-3881).
   bool is_stamp = false;
-  // Six-letter suffix: an orphaned atomic-write temporary left by a crash or
-  // power loss. Offered, but warned about - MO2 :3874-3878.
+  // An orphaned atomic-write temporary left by a crash or power loss. Offered,
+  // but warned about - MO2 :3874-3878. Two shapes count: MO2's six random
+  // letters, and OUR OWN temp form, which safe_write_file names
+  // `<target>.tmp<pid>_<counter>` (safe_write_file.cpp:64). Warning only about
+  // MO2's shape would never fire for a temp this app produced.
   bool is_orphan_temp = false;
   // The parsed calendar key; 0 for a suffix that is not a stamp.
   std::int64_t stamp_key = 0;
@@ -94,10 +97,16 @@ enum class RestoreFailure {
   NoSuchBackup,
   // A backup exists at that stamp but its bytes could not be read.
   UnreadableBackup,
-  // The profile directory denies writes.
+  // The profile directory or the live file denies writes.
   NotWritable,
   // The write itself failed (out of space, a failed rename, ...).
   WriteFailed,
+  // The pre-restore safety copy of THIS file failed, so the file was left
+  // alone rather than overwritten with no copy of what it held. The whole
+  // point of the safety backup is that a wrong restore stays recoverable;
+  // overwriting a file whose copy failed would throw that away. Per file, so
+  // its siblings still restore and the report still names every one.
+  SafetyBackupFailed,
 };
 
 // One file's outcome. `file` is the file NAME (what the report says), never a
@@ -120,12 +129,21 @@ struct BackupResult {
 
 struct RestoreResult {
   std::vector<FileResult> files;
-  // Stamp of the UNCONDITIONAL pre-restore safety backup, taken before the
-  // first write. Empty when it could not be taken.
+  // Stamp of the pre-restore safety backup, taken before the first write.
+  // Empty when no copy was made at all.
   std::string safety_stamp;
+  // True when the safety copy succeeded for EVERY file. Per-file truth lives in
+  // files[] (RestoreFailure::SafetyBackupFailed), not here: a set-wide flag
+  // cannot describe a set where one file's copy failed and another's did not,
+  // and a UI that turns it into "nothing was overwritten" would then be lying
+  // about the files that DID restore.
   bool safety_ok = false;
 
   [[nodiscard]] bool ok() const;
+  // True when at least one file was restored. A partial restore still needs the
+  // view reloaded: the profile is mixed, and the screen showing the old state is
+  // the one thing not telling the truth.
+  [[nodiscard]] bool any_restored() const;
 };
 
 // The live files a backup of `kind` covers, in copy order. Reads the paths off
@@ -172,10 +190,16 @@ list_backups(const std::filesystem::path &anchor);
 //   1. read every source up front, so nothing later can remove the bytes we are
 //      about to write (the safety backup's retention sweep could otherwise
 //      evict the very backup being restored);
-//   2. take an UNCONDITIONAL safety backup of the live files - taken whatever
-//      happens next, because the live state is what a wrong restore destroys;
-//      no flush here, the point is to capture the on-disk bytes as they are;
+//   2. take a safety backup of the live files - attempted whatever happens next,
+//      because the live state is what a wrong restore destroys; no flush here,
+//      the point is to capture the on-disk bytes as they are;
 //   3. write each file independently and report every failure by name.
+//
+// A file whose safety copy FAILED is not overwritten: writing it would destroy
+// a state there is no copy of, which is the one outcome the safety backup
+// exists to prevent. Its siblings still restore. Both facts are reported per
+// file, so no report can claim a blanket "nothing was overwritten" over a set
+// where some files did change.
 [[nodiscard]] RestoreResult
 restore_backup(const std::vector<std::filesystem::path> &files,
                const std::string &stamp, std::chrono::system_clock::time_point now);
