@@ -619,6 +619,11 @@ void MainWindow::closeEvent(QCloseEvent *event) {
     mod_list_->save_order();
   }
 
+  // A visible QSystemTrayIcon suppresses QApplication's quit-on-last-window-
+  // closed, so the window would hide and the process would stay resident with
+  // no way back in. We are committed to quitting now, so drop the tray icon.
+  tray_->hide();
+
   QMainWindow::closeEvent(event);
 }
 

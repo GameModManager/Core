@@ -91,8 +91,6 @@ bool OverlayFsLauncher::is_supported(const std::filesystem::path &upper_dir) {
     }
   }
 
-  auto kernel_ver = line.substr(0, line.find(' ', space_before + 1));
-
   // 3. If upper_dir is given, probe that the filesystem supports user xattrs
   if (!upper_dir.empty()) {
     std::error_code ec;
@@ -113,7 +111,6 @@ bool OverlayFsLauncher::is_supported(const std::filesystem::path &upper_dir) {
     }
   }
 
-  Logger::instance().debug("OverlayFsLauncher: supported (kernel " + kernel_ver + ")");
   return true;
 }
 
