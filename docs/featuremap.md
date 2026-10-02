@@ -215,6 +215,7 @@ port - their cited GMM symbol names were invented, the features are not.
 | Lock GUI during executables | ✅ `InterfaceSettings::lockGUI()` | ⚠️ Locker ships for downloads, no setting or launch trigger - `ui_locker.cpp:14` | ⚠️ ✔ |
 | Center dialogs on parent | ✅ `GeometrySettings::centerDialogs()` | ⚠️ zero readers - `settings_content_widget.cpp:211` | ⚠️ ✔ |
 | Show change game confirmation | ✅ `InterfaceSettings::showChangeGameConfirmation()` | ❌ key only: no UI row, no reader | ❌ ✔ |
+| Close to system tray instead of quitting | ❌ per-executable flag only, no global toggle | 🚀 checkbox, default off, ignored without a tray - `settings.cpp:221` | 🚀 ✔ |
 | Show menubar on Alt | ✅ `InterfaceSettings::showMenubarOnAlt()` | ⏳ MO2 gates Alt on `UILocker`, GMM has no Alt reveal | ⏳ ✔ |
 | Double-clicks open previews | ✅ `InterfaceSettings::doubleClicksOpenPreviews()` | ✅ three file trees - `filetree_tab.cpp:111` | ✅ ✔ |
 | Tutorial completion tracking | ✅ `InterfaceSettings::isTutorialCompleted()` | 🚫 no tutorial content ships, submenu hidden - `menu_bar.cpp:379` | 🚫 ✔ |
@@ -1142,11 +1143,16 @@ port - their cited GMM symbol names were invented, the features are not.
 
 | Feature | MO2 | GMM | Status |
 |---------|-----|-----|--------|
-| System tray icon | ✅ `SystemTrayManager` | ⚠️ exists, context menu works, not wired for minimize - `system_tray_manager.h:16` | ⚠️ · |
-| Minimize to system tray | ✅ `minimizeToSystemTray()` | ⚠️ `closeEvent()` ignores the setting - `main_window.cpp:454` | ⚠️ · |
-| Restore from system tray | ✅ `restoreFromSystemTray()` | ⚠️ Show action exists, no restore logic - `system_tray_manager.cpp:18` | ⚠️ · |
-| Tray notification | ✅ `showNotification()` | ⚠️ `show_notification()` exists, not wired - `system_tray_manager.h:24` | ⚠️ · |
-| U222 Finished-run while hidden -> restoreFromSystemTray | ✅ `mainwindow.cpp:~508` | ⚠️ restore path exists, auto-restore unproven - `system_tray_manager.cpp:18` | ⚠️ · |
+| System tray icon | ✅ `SystemTrayManager` | ✅ shown at startup, context menu Show/Quit - `system_tray_manager.cpp:14` | ✅ ✔ |
+| Minimize to system tray | ✅ `minimizeToSystemTray()` (per-executable, hides while the exe runs) | ⚠️ global setting hides on close, no per-executable hide-on-launch - `main_window.cpp:578` | ⚠️ ✔ |
+| Restore from tray | ✅ `restoreFromSystemTray()` | ✅ tray click, Show menu and second launch all restore - `main_window.cpp:572` | ✅ ✔ |
+| Tray notification | ✅ `showNotification()` (download complete/fail) | ✅ same two events, status bar kept - `main_window.cpp:457` | ✅ ✔ |
+| U222 Finished-run while hidden -> restoreFromSystemTray | ✅ `mainwindow.cpp:488-492` | ✅ `kGameFinished` restores if hidden - `main_window.cpp:258` | ✅ ✔ |
+
+MO2 has no close-to-tray: its `closeEvent` always quits, and the flag is a
+per-Executable bit hiding the window for the duration of a game run. The GMM
+toggle is therefore global and opt-in, and it yields to a missing tray so the
+app can never end up unreachable - see `tray_decision.h:66`.
 
 ## 33. Self Updater
 
@@ -1374,7 +1380,7 @@ column.
 | 1. Virtual Filesystem | 5 | 2 | 5 | 0 | 0 | 5 | 5 |
 | 2. Launch Pipeline | 6 | 5 | 5 | 14 | 0 | 2 | 17 |
 | 3. Error Handling & Diagnostics | 8 | 9 | 0 | 0 | 28 | 11 | 35 |
-| 4. Settings & Configuration | 22 | 33 | 5 | 1 | 12 | 24 | 0 |
+| 4. Settings & Configuration | 23 | 32 | 6 | 1 | 12 | 24 | 0 |
 | 5. Executable Management | 8 | 6 | 4 | 9 | 0 | 0 | 0 |
 | 6. Mod Management | 22 | 5 | 8 | 11 | 0 | 0 | 1 |
 | 7. Mod Categories | 6 | 4 | 0 | 10 | 0 | 0 | 0 |
@@ -1402,7 +1408,7 @@ column.
 | 29. Instance Management | 3 | 1 | 6 | 7 | 0 | 0 | 0 |
 | 30. UI Layer | 23 | 8 | 17 | 16 | 2 | 0 | 2 |
 | 31. Log System | 6 | 3 | 3 | 4 | 0 | 0 | 0 |
-| 32. System Tray | 0 | 5 | 0 | 0 | 0 | 0 | 0 |
+| 32. System Tray | 4 | 1 | 0 | 0 | 0 | 0 | 0 |
 | 33. Self Updater | 2 | 3 | 0 | 4 | 0 | 0 | 0 |
 | 34. Multi-Process / IPC | 2 | 2 | 0 | 3 | 0 | 0 | 0 |
 | 35. Text Editor | 1 | 3 | 0 | 4 | 0 | 0 | 0 |
@@ -1422,21 +1428,21 @@ column.
 | 49. CLI Help Grammar | 0 | 0 | 0 | 2 | 0 | 0 | 0 |
 | 50. My Games Resolution | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
 | 51. Conflict Scan Refresh | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
-| **TOTAL** | **307** | **182** | **179** | **279** | **52** | **43** | **62** |
+| **TOTAL** | **312** | **177** | **180** | **279** | **52** | **43** | **62** |
 
 ### The arithmetic
 
 ```
-rows in file                          1093
+rows in file                          1094
 scored rows (ok + part + miss)         768
 
-MO2 parity        ok   / scored        307 /  768  = 40.0%
-partial           part / scored        182 /  768  = 23.7%
+MO2 parity        ok   / scored        312 /  768  = 40.6%
+partial           part / scored        177 /  768  = 23.0%
 missing           miss / scored        279 /  768  = 36.3%
-GMM-exclusive     surp / all rows      179 / 1093  = 16.4%   (not scored)
+GMM-exclusive     surp / all rows      180 / 1094  = 16.5%   (not scored)
 ```
 
-**Parity is 307 / 768 = 40.0%.** 279 rows are outright missing and 182 partial.
+**Parity is 312 / 768 = 40.6%.** 279 rows are outright missing and 177 partial.
 The largest untouched surfaces are **44. Tutorial** and **46. Notifications /
 Problems** (zero matched rows), then **16. Nexus** and **15. Downloads**, which
 carry the most missing rows in absolute terms.
@@ -1449,7 +1455,7 @@ absent features was never the real gap in that section.
 
 ### Confidence
 
-279 of 1093 rows carry `✔` (both sides re-read); the rest carry `·` and are
+285 of 1094 rows carry `✔` (both sides re-read); the rest carry `·` and are
 leads, not findings. The `✔` rows concentrate in sections 3, 4, 15, 21, 18 and
 30. Section 45's `TaskDialog` row is a stale `❌` corrected here; uibase's
 `taskdialog.ui` is not vendored under `references/`, so its MO2 half is still
