@@ -176,6 +176,15 @@ QWidget *SettingsContentWidget::build_general_tab() {
   smooth_box->setToolTip(tr("Animates wheel scrolling in mod/executable lists."));
   auto *dl_notify_box = new QCheckBox(tr("Show download notifications"), gen_group);
   dl_notify_box->setChecked(s.show_download_notifications());
+  auto *tray_box =
+      new QCheckBox(tr("Close to system tray instead of quitting"), gen_group);
+  tray_box->setChecked(s.minimize_to_tray());
+  tray_box->setToolTip(
+      tr("Keeps GameModManager running in the notification area when the "
+         "window is closed, so it stays reachable while a game or an install "
+         "is running. Turn it off to make closing the window quit. Has no "
+         "effect on a desktop with no system tray, where closing always "
+         "quits."));
   auto *full_ui_box = new QCheckBox(tr("Enable full UI tab mode"), gen_group);
   full_ui_box->setChecked(s.full_ui_mode());
   full_ui_box->setToolTip(tr("Opens Settings, Pipeline and other panels as "
@@ -213,13 +222,13 @@ QWidget *SettingsContentWidget::build_general_tab() {
   update_cadence_label_->setWordWrap(true);
   gen_grid->addWidget(update_cadence_label_, 1, 0, 1, 2);
   refresh_update_cadence();
-  // Nine toggles in two columns, filled row-major: read left to right, then
+  // Ten toggles in two columns, filled row-major: read left to right, then
   // down. Qt's focus chain follows child order rather than layout order, and
   // the children are constructed in the same order they are added here, so
   // Tab walks them left to right and top to bottom - no setTabOrder needed.
-  const QList<QCheckBox *> gen_boxes{update_box,    prerelease_box, smooth_box,
-                                     dl_notify_box, full_ui_box,    extract_prio_box,
-                                     multicore_box, previews_box,   confirm_change_box};
+  const QList<QCheckBox *> gen_boxes{
+      update_box,  prerelease_box,   smooth_box,    dl_notify_box, tray_box,
+      full_ui_box, extract_prio_box, multicore_box, previews_box,  confirm_change_box};
   for (int i = 0; i < gen_boxes.size(); ++i)
     gen_grid->addWidget(gen_boxes.at(i), 2 + i / 2, i % 2);
   layout->addWidget(gen_group);
@@ -236,6 +245,9 @@ QWidget *SettingsContentWidget::build_general_tab() {
   });
   connect(dl_notify_box, &QCheckBox::toggled, this, [&s](bool on) {
     s.set_show_download_notifications(on);
+  });
+  connect(tray_box, &QCheckBox::toggled, this, [&s](bool on) {
+    s.set_minimize_to_tray(on);
   });
   connect(full_ui_box, &QCheckBox::toggled, this, [&s, this](bool on) {
     s.set_full_ui_mode(on);

@@ -76,6 +76,7 @@ class RightPanel;
 class MainTabContainer;
 class DeployThread;
 class GamePathBanner;
+class SystemTrayManager;
 
 // Issue #16 controller split: the controllers own the behavior that used to
 // live in the 7211-line main_window.cpp; MainWindow is the composer (<300
@@ -214,6 +215,12 @@ public:
   // Apply saved window geometry after show() - needed for Wayland where
   // restoreGeometry() before platform-window creation is silently ignored.
   void apply_initial_geometry();
+
+  // Bring the window back on screen and take focus, whatever put it away:
+  // the tray icon, the tray menu, or another instance asking us to come
+  // forward over the single-instance socket. Safe to call when the window is
+  // already visible - it is then just a raise and an activate.
+  void restore_window();
 
 protected:
   void closeEvent(QCloseEvent *event) override;
@@ -592,6 +599,20 @@ private:
   std::unique_ptr<TabModeController> tab_mode_;
   // UI Locker instance for disabling/enabling the interface during operations
   std::unique_ptr<Locker> locker_;
+
+  // System tray. Null-equivalent to "no tray on this system": the icon still
+  // exists, is_available() reports false, and closeEvent then quits rather
+  // than hides, so the app is never left with no way to reach it.
+  SystemTrayManager *tray_ = nullptr;
+  // EventBus token for the kGameFinished auto-restore. The bus outlives this
+  // window, so the subscription has to be dropped in the destructor or a
+  // dispatch during shutdown would call through a dangling pointer.
+  uint64_t game_finished_sub_ = 0;
+  // Set for the duration of a deliberate shutdown (tray Quit). Keeps
+  // closeEvent from treating the shutdown as a close-to-tray request, and
+  // still routes it through the normal close path so the manifest, settings
+  // and mod order are saved.
+  bool quitting_ = false;
 };
 
 }  // namespace ui

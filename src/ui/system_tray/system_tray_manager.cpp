@@ -9,6 +9,10 @@
 namespace ui {
 
 SystemTrayManager::SystemTrayManager(MainWindow *parent) : QObject(parent) {
+  // Probed once, before anything can hide. A tray that only appears later must
+  // not retroactively make hiding safe.
+  available_ = QSystemTrayIcon::isSystemTrayAvailable();
+
   tray_icon_ = new QSystemTrayIcon(this);
   tray_icon_->setIcon(QApplication::windowIcon());
   tray_icon_->setToolTip("GameModManager");
