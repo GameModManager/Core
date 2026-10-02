@@ -1,5 +1,7 @@
 #pragma once
 
+#include "ui/widgets/expander_widget.h"
+
 #include <QList>
 #include <QMessageBox>
 #include <QString>
@@ -98,8 +100,11 @@ private:
   QDialogButtonBox *button_box_ = nullptr;
   QToolButton *details_toggle_  = nullptr;
   QPlainTextEdit *details_edit_ = nullptr;
-  QCheckBox *remember_check_    = nullptr;
-  QComboBox *remember_combo_    = nullptr;
+  // Drives the details_toggle_ / details_edit_ pair: the button carries the
+  // arrow, the click toggles the box. Owned by the dialog.
+  ExpanderWidget *details_expander_ = nullptr;
+  QCheckBox *remember_check_        = nullptr;
+  QComboBox *remember_combo_        = nullptr;
 
   QList<TaskDialogButton> buttons_;
   QString remember_action_;

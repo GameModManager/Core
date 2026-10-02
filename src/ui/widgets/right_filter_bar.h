@@ -1,8 +1,9 @@
 #pragma once
 
+#include "ui/widgets/line_edit_clear.h"
+
 #include <QWidget>
 
-class QLineEdit;
 class QPushButton;
 class QTableWidget;
 
@@ -37,8 +38,8 @@ signals:
   void sort_requested();
 
 private:
-  QLineEdit *filter_edit_   = nullptr;
-  QPushButton *sort_button_ = nullptr;
+  LineEditClear *filter_edit_ = nullptr;
+  QPushButton *sort_button_   = nullptr;
 };
 
 }  // namespace ui

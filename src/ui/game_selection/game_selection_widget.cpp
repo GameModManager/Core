@@ -166,9 +166,8 @@ GameSelectionWidget::GameSelectionWidget(QWidget *parent) : QWidget(parent) {
   outer->addWidget(divider);
 
   // -- Filter bar --
-  filter_ = new QLineEdit(this);
+  filter_ = new LineEditClear(this);
   filter_->setPlaceholderText(tr("Filter..."));
-  filter_->setClearButtonEnabled(true);
   outer->addWidget(filter_);
   connect(filter_, &QLineEdit::textChanged, this, &GameSelectionWidget::apply_filter);
 

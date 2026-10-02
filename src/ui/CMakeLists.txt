@@ -68,6 +68,12 @@ set(UI_SOURCES
     widgets/line_number_edit.cpp
     widgets/web_link.cpp
     widgets/dialog_placement.cpp
+    # Reusable UI primitives pack (Workspace-axva, MO2 U264/U265/U269).
+    widgets/sortable_tree_widget.cpp
+    widgets/expander_widget.cpp
+    widgets/link_label.cpp
+    widgets/line_edit_clear.cpp
+    widgets/event_filter.cpp
     panels/downloads_tab.cpp
     panels/plugin_view.cpp
     panels/plugins_tab.cpp

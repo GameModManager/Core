@@ -9,8 +9,8 @@
 #include <QWidget>
 
 #include "ui/game_selection/game_card.h"
+#include "ui/widgets/line_edit_clear.h"
 
-class QLineEdit;
 class QLabel;
 
 namespace ui {
@@ -37,9 +37,9 @@ private:
   void on_icon_ready(const QString &game_id);
   void apply_filter(const QString &text);
 
-  QLineEdit *filter_ = nullptr;
-  QWidget *list_     = nullptr;
-  QLabel *status_    = nullptr;
+  LineEditClear *filter_ = nullptr;
+  QWidget *list_         = nullptr;
+  QLabel *status_        = nullptr;
   std::vector<QPointer<GameCard>> cards_;
 };
 

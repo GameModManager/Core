@@ -11,6 +11,7 @@
 #include "ui/settings/source_pages.h"
 #include "ui/theme/icon_manager.h"
 #include "ui/theme/style_manager.h"
+#include "ui/widgets/line_edit_clear.h"
 
 #include <QAbstractItemView>
 #include <QApplication>
@@ -1117,10 +1118,9 @@ QWidget *SettingsContentWidget::build_plugins_tab() {
   auto *list = new QTreeWidget(left);
   list->setHeaderHidden(true);
   list->setRootIsDecorated(true);
-  auto *filter = new QLineEdit(left);
+  auto *filter = new LineEditClear(left);
   filter->setObjectName("pluginFilter");
   filter->setPlaceholderText(tr("Filter..."));
-  filter->setClearButtonEnabled(true);
   left_layout->addWidget(list, 1);
   left_layout->addWidget(filter);
 
