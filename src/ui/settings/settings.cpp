@@ -44,6 +44,14 @@ void Settings::set_hide_installed_downloads(bool on) {
   settings_.setValue("downloads/hide_installed", on);
 }
 
+bool Settings::show_hidden_downloads() const {
+  return settings_.value("downloads/show_hidden", false).toBool();
+}
+
+void Settings::set_show_hidden_downloads(bool on) {
+  settings_.setValue("downloads/show_hidden", on);
+}
+
 bool Settings::compact_downloads() const {
   return settings_.value("downloads/compact", true).toBool();
 }

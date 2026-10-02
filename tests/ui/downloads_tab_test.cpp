@@ -125,6 +125,11 @@ struct TestDownloadsTab : ui::DownloadsTab {
   using ui::DownloadsTab::dragEnterEvent;
   using ui::DownloadsTab::dragMoveEvent;
   using ui::DownloadsTab::dropEvent;
+  // The keyboard gating table and the confirmed batch action, for the same
+  // reason: driving a modal question box is not possible from a test, and an
+  // untestable key handler is the one that ends up wrong.
+  using ui::DownloadsTab::handle_download_key;
+  using ui::DownloadsTab::run_batch_delete;
 };
 
 TEST_CASE("downloads tab", "[ui]") {
@@ -1111,11 +1116,15 @@ TEST_CASE("downloads double-click state gating", "[ui]") {
   std::vector<std::string> resumed;
   std::vector<std::string> installed;
   QObject::connect(&tab, &ui::DownloadsTab::resume_requested,
-                   [&](const std::string &id) { resumed.push_back(id); });
+                   [&](const std::string &id) {
+                     resumed.push_back(id);
+                   });
   QObject::connect(&tab, &ui::DownloadsTab::install_requested,
                    [&](const std::string &id, const std::filesystem::path &,
-                       const std::string &, const std::string &, int, const std::string &,
-                       const std::string &) { installed.push_back(id); });
+                       const std::string &, const std::string &, int,
+                       const std::string &, const std::string &) {
+                     installed.push_back(id);
+                   });
 
   auto double_click = [&](const char *name) {
     const int row = row_with_name(tab.table(), name);
@@ -1191,8 +1200,7 @@ TEST_CASE("downloads resume without a link keeps the row paused", "[ui]") {
   // singleton, so it is destroyed after it and no callback can outlive it.
   static std::vector<std::string> warnings;
   engine::Logger::instance().add_callback(
-      [](engine::LogLevel level, const std::string &,
-         const std::string &message) {
+      [](engine::LogLevel level, const std::string &, const std::string &message) {
         if (level == engine::LogLevel::Warn)
           warnings.push_back(message);
       });
@@ -1235,10 +1243,11 @@ TEST_CASE("downloads resume without a link keeps the row paused", "[ui]") {
   if (status)
     CHECK(status->text() == QLatin1String("Paused"));
   // And the handler said why instead of dying silently.
-  const auto logged = std::any_of(warnings.begin(), warnings.end(), [](const std::string &m) {
-    return m.find("orphan-1") != std::string::npos &&
-           m.find("no NXM/modl/URL link") != std::string::npos;
-  });
+  const auto logged =
+      std::any_of(warnings.begin(), warnings.end(), [](const std::string &m) {
+        return m.find("orphan-1") != std::string::npos &&
+               m.find("no NXM/modl/URL link") != std::string::npos;
+      });
   CHECK(logged);
 }
 
@@ -1313,13 +1322,13 @@ TEST_CASE("downloads column set matches MO2", "[ui][mo2-parity]") {
   std::filesystem::remove_all("/tmp/gmm_downloads_columns");
   std::filesystem::create_directories(cfg);
   qputenv("XDG_CONFIG_HOME", cfg.c_str());
-  int         argc    = 1;
-  char        arg0[]  = "test";
-  char       *argv[]  = {arg0, nullptr};
+  int argc     = 1;
+  char arg0[]  = "test";
+  char *argv[] = {arg0, nullptr};
   QApplication app(argc, argv);
 
   TestDownloadsTab tab;
-  auto           *table = tab.table();
+  auto *table = tab.table();
   REQUIRE(table != nullptr);
 
   // The four columns the tab already had keep their indices - a saved
@@ -1327,7 +1336,7 @@ TEST_CASE("downloads column set matches MO2", "[ui][mo2-parity]") {
   // name) stores per-section width/visibility by index, so moving one of
   // them would reinterpret everything a previous build wrote.
   const QStringList expected = {
-      QStringLiteral("Name"), QStringLiteral("Source"), QStringLiteral("Status"),
+      QStringLiteral("Name"), QStringLiteral("Source"),   QStringLiteral("Status"),
       QStringLiteral("Size"), QStringLiteral("Filetime"), QStringLiteral("Nexus ID"),
   };
   INFO("column count: " << table->columnCount());
@@ -1359,15 +1368,15 @@ TEST_CASE("downloads column set matches MO2", "[ui][mo2-parity]") {
 
 TEST_CASE("downloads new columns carry the data they claim", "[ui][mo2-parity]") {
   qputenv("QT_QPA_PLATFORM", "offscreen");
-  const std::filesystem::path cfg  = "/tmp/gmm_downloads_columns_data/config";
-  const std::filesystem::path dl   = "/tmp/gmm_downloads_columns_data/dl";
+  const std::filesystem::path cfg = "/tmp/gmm_downloads_columns_data/config";
+  const std::filesystem::path dl  = "/tmp/gmm_downloads_columns_data/dl";
   std::filesystem::remove_all("/tmp/gmm_downloads_columns_data");
   std::filesystem::create_directories(cfg);
   std::filesystem::create_directories(dl);
   qputenv("XDG_CONFIG_HOME", cfg.c_str());
-  int         argc    = 1;
-  char        arg0[]  = "test";
-  char       *argv[]  = {arg0, nullptr};
+  int argc     = 1;
+  char arg0[]  = "test";
+  char *argv[] = {arg0, nullptr};
   QApplication app(argc, argv);
 
   const auto nexus_zip = dl / "Nexus Mod.zip";
@@ -1376,7 +1385,7 @@ TEST_CASE("downloads new columns carry the data they claim", "[ui][mo2-parity]")
   write_file(local_zip, 512);
 
   TestDownloadsTab tab;
-  auto           *table = tab.table();
+  auto *table = tab.table();
 
   // A Nexus row: mod id, file id and an archive on disk.
   tab.add_download("1234-5678", "Nexus Mod", "Nexus Mods", nexus_zip,
@@ -1414,13 +1423,14 @@ TEST_CASE("downloads new columns carry the data they claim", "[ui][mo2-parity]")
         "Filetime shows the archive's creation time");
   check(!ft_item->text().isEmpty(), "Filetime is populated for a finished download");
 
-  tab.add_download("pending-1", "Mod #9 - file 1", "Nexus Mods", {}, "skyrimspecialedition",
-                   1, "9");
+  tab.add_download("pending-1", "Mod #9 - file 1", "Nexus Mods", {},
+                   "skyrimspecialedition", 1, "9");
   const int pending_row = row_with_name(table, "Mod #9 - file 1");
   REQUIRE(pending_row >= 0);
   auto *pending_ft = table->item(pending_row, 4);
   REQUIRE(pending_ft != nullptr);
-  check(pending_ft->text().isEmpty(), "Filetime is blank while the archive is not on disk");
+  check(pending_ft->text().isEmpty(),
+        "Filetime is blank while the archive is not on disk");
   auto *pending_id = table->item(pending_row, 5);
   REQUIRE(pending_id != nullptr);
   check(pending_id->text() == QLatin1String("9"),
@@ -1434,8 +1444,10 @@ TEST_CASE("downloads new columns carry the data they claim", "[ui][mo2-parity]")
   auto *late_ft = table->item(pending_row, 4);
   REQUIRE(late_ft != nullptr);
   const QFileInfo late_info(QString::fromStdString(late_zip.string()));
-  check(late_ft->text() == QLocale().toString(late_info.birthTime(), QLocale::ShortFormat) ||
-            late_ft->text() == QLocale().toString(late_info.lastModified(), QLocale::ShortFormat),
+  check(late_ft->text() ==
+                QLocale().toString(late_info.birthTime(), QLocale::ShortFormat) ||
+            late_ft->text() ==
+                QLocale().toString(late_info.lastModified(), QLocale::ShortFormat),
         "Filetime follows set_file_path");
 }
 
@@ -1457,9 +1469,9 @@ TEST_CASE("downloads header state survives appending columns", "[ui][mo2-parity]
   std::filesystem::remove_all("/tmp/gmm_downloads_header_state");
   std::filesystem::create_directories(cfg);
   qputenv("XDG_CONFIG_HOME", cfg.c_str());
-  int         argc    = 1;
-  char        arg0[]  = "test";
-  char       *argv[]  = {arg0, nullptr};
+  int argc     = 1;
+  char arg0[]  = "test";
+  char *argv[] = {arg0, nullptr};
   QApplication app(argc, argv);
 
   // "Saved" state from a build that had only the original four columns:
@@ -1473,8 +1485,8 @@ TEST_CASE("downloads header state survives appending columns", "[ui][mo2-parity]
   }
 
   TestDownloadsTab tab;
-  auto           *table  = tab.table();
-  auto           *header = table->horizontalHeader();
+  auto *table  = tab.table();
+  auto *header = table->horizontalHeader();
   check(header->isSectionHidden(5), "Nexus ID starts hidden on a fresh tab");
 
   header->restoreState(legacy);
@@ -1489,7 +1501,8 @@ TEST_CASE("downloads header state survives appending columns", "[ui][mo2-parity]
 
   // ... which is why the re-apply runs after every restore.
   ui::DownloadsTab::apply_default_hidden_columns(table);
-  check(header->isSectionHidden(5), "the default-hidden set is re-applied after a restore");
+  check(header->isSectionHidden(5),
+        "the default-hidden set is re-applied after a restore");
   check(header->sectionSize(3) == 321, "the re-apply leaves saved widths alone");
   check(header->isSectionHidden(1), "the re-apply leaves the user's hidden flag alone");
 
@@ -1505,7 +1518,8 @@ TEST_CASE("downloads header state survives appending columns", "[ui][mo2-parity]
 // header; that is what these lock down.
 TEST_CASE("downloads column spec is positionally complete", "[ui][mo2-parity]") {
   const auto tooltips = ui::DownloadsTab::header_tooltips();
-  INFO("tooltip count: " << tooltips.size() << ", column count: " << ui::DownloadsTab::ColumnCount);
+  INFO("tooltip count: " << tooltips.size()
+                         << ", column count: " << ui::DownloadsTab::ColumnCount);
   check(static_cast<int>(tooltips.size()) == ui::DownloadsTab::ColumnCount,
         "the tooltip list is exactly as long as the column list");
   for (int c = 0; c < ui::DownloadsTab::ColumnCount; ++c) {
@@ -1514,20 +1528,24 @@ TEST_CASE("downloads column spec is positionally complete", "[ui][mo2-parity]") 
     INFO("tooltip: " << tooltips.value(c).toStdString());
     check(!tooltips.value(c).isEmpty(), "every column has a non-empty tooltip");
   }
-  check(ui::DownloadsTab::column_name(-1).isEmpty(), "an out-of-range column has no name");
+  check(ui::DownloadsTab::column_name(-1).isEmpty(),
+        "an out-of-range column has no name");
   check(ui::DownloadsTab::column_name(ui::DownloadsTab::ColumnCount).isEmpty(),
         "an out-of-range column has no name");
 
   // MO2's labels (downloadlist.cpp:76-91) for the columns we carry.
   check(ui::DownloadsTab::column_name(ui::DownloadsTab::Name) == QLatin1String("Name"),
         "Name");
-  check(ui::DownloadsTab::column_name(ui::DownloadsTab::Status) == QLatin1String("Status"),
+  check(ui::DownloadsTab::column_name(ui::DownloadsTab::Status) ==
+            QLatin1String("Status"),
         "Status");
   check(ui::DownloadsTab::column_name(ui::DownloadsTab::Size) == QLatin1String("Size"),
         "Size");
-  check(ui::DownloadsTab::column_name(ui::DownloadsTab::Filetime) == QLatin1String("Filetime"),
+  check(ui::DownloadsTab::column_name(ui::DownloadsTab::Filetime) ==
+            QLatin1String("Filetime"),
         "Filetime");
-  check(ui::DownloadsTab::column_name(ui::DownloadsTab::NexusId) == QLatin1String("Nexus ID"),
+  check(ui::DownloadsTab::column_name(ui::DownloadsTab::NexusId) ==
+            QLatin1String("Nexus ID"),
         "Nexus ID");
 
   // The default-hidden set, in both directions: every column except Name,
@@ -1570,7 +1588,8 @@ TEST_CASE("downloads column spec is positionally complete", "[ui][mo2-parity]") 
       if (ui::DownloadsTab::column_name(c) == name)
         resolved.insert(c);
   }
-  check(resolved.size() == 3, "the default-hidden list resolves to exactly three columns");
+  check(resolved.size() == 3,
+        "the default-hidden list resolves to exactly three columns");
   check(resolved.contains(ui::DownloadsTab::Source), "and one of them is Source");
   check(resolved.contains(ui::DownloadsTab::Filetime), "and one is Filetime");
   check(resolved.contains(ui::DownloadsTab::NexusId), "and one is Nexus ID");
@@ -1579,14 +1598,15 @@ TEST_CASE("downloads column spec is positionally complete", "[ui][mo2-parity]") 
   // which is what a future rename would leave behind.
   const QStringList with_retired = {QStringLiteral("Some Retired Column"),
                                     QStringLiteral("Nexus ID")};
-  QSet<int>         after_rename;
+  QSet<int> after_rename;
   for (const QString &name : with_retired) {
     for (int c = 0; c < ui::DownloadsTab::ColumnCount; ++c)
       if (ui::DownloadsTab::column_name(c) == name)
         after_rename.insert(c);
   }
   check(after_rename.size() == 1, "a retired name contributes nothing");
-  check(after_rename.contains(ui::DownloadsTab::NexusId), "the live name still resolves");
+  check(after_rename.contains(ui::DownloadsTab::NexusId),
+        "the live name still resolves");
 }
 
 // The header context menu is built from a positional label list, and a short
@@ -1601,9 +1621,9 @@ TEST_CASE("every toggle header labels every column", "[ui]") {
   std::filesystem::remove_all(root);
   std::filesystem::create_directories(root / "config");
   qputenv("XDG_CONFIG_HOME", (root / "config").c_str());
-  int         test_argc     = 1;
-  char        test_argv0[] = "test";
-  char       *test_argv[]  = {test_argv0, nullptr};
+  int test_argc     = 1;
+  char test_argv0[] = "test";
+  char *test_argv[] = {test_argv0, nullptr};
   QApplication app(test_argc, test_argv);
   QCoreApplication::setOrganizationName("GameModManager");
   QCoreApplication::setApplicationName("GameModManager");
@@ -1660,8 +1680,9 @@ TEST_CASE("every toggle header labels every column", "[ui]") {
 
   // The downloads menu is the one that shipped broken: pin the two labels it
   // was missing, and that they match the tab's own column list.
-  auto *dl_table   = downloads->table();
-  auto *dl_header  = qobject_cast<ui::ColumnToggleHeaderView *>(dl_table->horizontalHeader());
+  auto *dl_table = downloads->table();
+  auto *dl_header =
+      qobject_cast<ui::ColumnToggleHeaderView *>(dl_table->horizontalHeader());
   REQUIRE(dl_header != nullptr);
   CHECK(dl_header->column_labels() == ui::DownloadsTab::column_names());
   CHECK(dl_header->column_labels().value(ui::DownloadsTab::Filetime) ==
@@ -1673,8 +1694,7 @@ TEST_CASE("every toggle header labels every column", "[ui]") {
   // name of its own, so its entry is empty by design.
   auto *mod_view = w.findChild<ui::ModView *>();
   REQUIRE(mod_view != nullptr);
-  auto *mod_header =
-      qobject_cast<ui::ColumnToggleHeaderView *>(mod_view->header());
+  auto *mod_header = qobject_cast<ui::ColumnToggleHeaderView *>(mod_view->header());
   REQUIRE(mod_header != nullptr);
   INFO("mod list label count: " << mod_header->column_labels().size()
                                 << ", section count: " << mod_header->count());
@@ -1687,16 +1707,15 @@ TEST_CASE("every toggle header labels every column", "[ui]") {
 // who already has a saved header state, so it has to un-hide as well as hide:
 // a saved blob from the previous default shows Source and Filetime, and hiding
 // alone would leave them on screen.
-TEST_CASE("default hidden columns apply in both directions",
-          "[ui][mo2-parity]") {
+TEST_CASE("default hidden columns apply in both directions", "[ui][mo2-parity]") {
   qputenv("QT_QPA_PLATFORM", "offscreen");
   const std::filesystem::path cfg = "/tmp/gmm_downloads_default_both_ways/config";
   std::filesystem::remove_all("/tmp/gmm_downloads_default_both_ways");
   std::filesystem::create_directories(cfg);
   qputenv("XDG_CONFIG_HOME", cfg.c_str());
-  int         test_argc     = 1;
-  char        test_argv0[] = "test";
-  char       *test_argv[]  = {test_argv0, nullptr};
+  int test_argc     = 1;
+  char test_argv0[] = "test";
+  char *test_argv[] = {test_argv0, nullptr};
   QApplication app(test_argc, test_argv);
 
   const QStringList hidden = ui::DownloadsTab::default_hidden_column_names();
@@ -1758,8 +1777,8 @@ struct AppStateHarness {
   engine::GameCapabilities caps;
 
   void open(const std::filesystem::path &root) {
-    auto              inst           = engine::Instance::installed("TestGame", root);
-    inst.info().game_id = "statedatalab";
+    auto inst            = engine::Instance::installed("TestGame", root);
+    inst.info().game_id  = "statedatalab";
     inst.info().last_tab = "downloads";
     REQUIRE(inst.create_directories());
     REQUIRE(inst.write_toml());
@@ -1806,9 +1825,9 @@ TEST_CASE("a saved downloads header state does not freeze the old visible set",
   std::filesystem::remove_all(root);
   std::filesystem::create_directories(root / "config");
   qputenv("XDG_CONFIG_HOME", (root / "config").c_str());
-  int         test_argc     = 1;
-  char        test_argv0[] = "test";
-  char       *test_argv[]  = {test_argv0, nullptr};
+  int test_argc     = 1;
+  char test_argv0[] = "test";
+  char *test_argv[] = {test_argv0, nullptr};
   QApplication app(test_argc, test_argv);
   QCoreApplication::setOrganizationName("GameModManager");
   QCoreApplication::setApplicationName("GameModManager");
@@ -1827,8 +1846,8 @@ TEST_CASE("a saved downloads header state does not freeze the old visible set",
     for (int c = 0; c < ui::DownloadsTab::ColumnCount; ++c) {
       INFO("column " << c << " on a fresh tab");
       check(header->isSectionHidden(c) ==
-                ui::DownloadsTab::default_hidden_column_names()
-                    .contains(ui::DownloadsTab::column_name(c)),
+                ui::DownloadsTab::default_hidden_column_names().contains(
+                    ui::DownloadsTab::column_name(c)),
             "a fresh tab follows the default-hidden list");
     }
 
@@ -1871,9 +1890,9 @@ TEST_CASE("a downloads column shown from the menu survives a restart",
   std::filesystem::remove_all(root);
   std::filesystem::create_directories(root / "config");
   qputenv("XDG_CONFIG_HOME", (root / "config").c_str());
-  int         test_argc     = 1;
-  char        test_argv0[] = "test";
-  char       *test_argv[]  = {test_argv0, nullptr};
+  int test_argc     = 1;
+  char test_argv0[] = "test";
+  char *test_argv[] = {test_argv0, nullptr};
   QApplication app(test_argc, test_argv);
   QCoreApplication::setOrganizationName("GameModManager");
   QCoreApplication::setApplicationName("GameModManager");
@@ -1911,4 +1930,367 @@ TEST_CASE("a downloads column shown from the menu survives a restart",
     check(header->has_user_visibility_choice(),
           "the choice is recorded on the restored header");
   }
+}
+
+// ---------------------------------------------------------------------------
+// Hidden state, batch delete and the keyboard gating table (Workspace-9085).
+//
+// Three behaviours, each with a failure mode a user would notice:
+//
+//   1. A hidden download is REAL state, not a view toggle. It leaves the list,
+//      comes back only when "Hidden files" is on, and survives a restart -
+//      MO2 persists the same thing (downloadmanager.cpp:1798 writes the
+//      sidecar key "removed", :101 reads it back). A flag that never reached
+//      the manifest loses the user's decision every launch.
+//
+//   2. Batch delete must respect MO2's three scopes (All / Installed /
+//      Uninstalled, downloadmanager.cpp:970-983) and must never take the
+//      archive out from under a transfer in flight: MO2's "Delete All" is
+//      `state >= STATE_READY`, so a Downloading row is out of reach, and so is
+//      a Failed one. Deleting a file that is still being written is the
+//      unrecoverable failure, so the negative assertions matter most.
+//
+//   3. Enter installs a finished row and NOTHING else. That gate is the whole
+//      point (U217): handing a half-downloaded archive to the installer is a
+//      data-loss bug, so "did not install" is asserted at least as hard as
+//      "did".
+// ---------------------------------------------------------------------------
+namespace {
+
+struct ScratchRoot {
+  explicit ScratchRoot(const char *name)
+      : path(std::filesystem::temp_directory_path() / name) {
+    std::filesystem::remove_all(path);
+    std::filesystem::create_directories(path / "config");
+    std::filesystem::create_directories(path / "downloads");
+  }
+  ~ScratchRoot() {
+    std::error_code ec;
+    std::filesystem::remove_all(path, ec);
+  }
+  ScratchRoot(const ScratchRoot &)            = delete;
+  ScratchRoot &operator=(const ScratchRoot &) = delete;
+
+  std::filesystem::path path;
+};
+
+std::filesystem::path scratch_archive(const ScratchRoot &root, const char *name) {
+  const auto p = root.path / "downloads" / name;
+  write_file(p, 64);
+  return p;
+}
+
+}  // namespace
+
+// A hidden entry is out of the list, comes back on request, and is still hidden
+// after the manifest round-trip.
+TEST_CASE("a hidden download stays hidden and un-hides on request", "[ui]") {
+  qputenv("QT_QPA_PLATFORM", "offscreen");
+  ScratchRoot root("gmm_dl_hidden");
+  qputenv("XDG_CONFIG_HOME", (root.path / "config").c_str());
+  int argc     = 1;
+  char argv0[] = "test";
+  char *argv[] = {argv0, nullptr};
+  QApplication app(argc, argv);
+  QCoreApplication::setOrganizationName("GameModManager");
+  QCoreApplication::setApplicationName("GameModManager");
+
+  const auto kept = scratch_archive(root, "Kept.zip");
+  const auto gone = scratch_archive(root, "Hid.zip");
+
+  TestDownloadsTab tab;
+  REQUIRE(tab.add_download("a", "Kept", "Manual", kept));
+  REQUIRE(tab.add_download("b", "Hid", "Manual", gone));
+  tab.mark_complete("a", true);
+  tab.mark_complete("b", true);
+  REQUIRE(tab.table()->rowCount() == 2);
+  CHECK_FALSE(tab.is_hidden("a"));
+
+  tab.set_hidden("b", true);
+  CHECK(tab.is_hidden("b"));
+  // Hiding takes the row out of the list, and leaves the archive alone - it is
+  // a list operation, not a deletion.
+  CHECK(tab.table()->isRowHidden(row_with_name(tab.table(), "Hid")));
+  CHECK_FALSE(tab.table()->isRowHidden(row_with_name(tab.table(), "Kept")));
+  CHECK(std::filesystem::exists(gone));
+
+  // MO2's "Hidden files" checkbox reveals them again.
+  tab.set_show_hidden(true);
+  CHECK_FALSE(tab.table()->isRowHidden(row_with_name(tab.table(), "Hid")));
+  tab.set_show_hidden(false);
+  CHECK(tab.table()->isRowHidden(row_with_name(tab.table(), "Hid")));
+
+  // Real state, so it has to be in the manifest. A UI-only toggle is exactly
+  // the failure this catches: the flag would be absent and the row would come
+  // back on the next launch.
+  const std::string manifest = tab.serialize();
+  REQUIRE(manifest.find("\"hidden\":true") != std::string::npos);
+
+  TestDownloadsTab restored;
+  restored.deserialize(manifest, root.path / "downloads");
+  REQUIRE(restored.table()->rowCount() == 2);
+  CHECK(restored.is_hidden("b"));
+  CHECK_FALSE(restored.is_hidden("a"));
+  // Restored hidden, so it is out of the list with no further action.
+  CHECK(restored.table()->isRowHidden(row_with_name(restored.table(), "Hid")));
+
+  // Un-Hide All is the restore path MO2 offers (restoreDownload(-1),
+  // downloadmanager.cpp:917-946).
+  CHECK(restored.unhide_all() == 1);
+  CHECK_FALSE(restored.table()->isRowHidden(row_with_name(restored.table(), "Hid")));
+  CHECK(restored.unhide_all() == 0);
+}
+
+// The three batch-delete scopes, and the in-flight row none of them may touch.
+TEST_CASE("batch delete honours MO2's scopes and spares an in-flight row", "[ui]") {
+  qputenv("QT_QPA_PLATFORM", "offscreen");
+  ScratchRoot root("gmm_dl_bdelete");
+  qputenv("XDG_CONFIG_HOME", (root.path / "config").c_str());
+  int argc     = 1;
+  char argv0[] = "test";
+  char *argv[] = {argv0, nullptr};
+  QApplication app(argc, argv);
+  QCoreApplication::setOrganizationName("GameModManager");
+  QCoreApplication::setApplicationName("GameModManager");
+
+  const auto z1 = scratch_archive(root, "One.zip");
+  const auto z2 = scratch_archive(root, "Two.zip");
+  const auto z3 = scratch_archive(root, "Three.zip");
+  const auto z4 = scratch_archive(root, "Four.zip");
+
+  TestDownloadsTab tab;
+  REQUIRE(tab.add_download("1", "One", "Manual", z1));
+  REQUIRE(tab.add_download("2", "Two", "Manual", z2));
+  REQUIRE(tab.add_download("3", "Three", "Manual", z3));
+  REQUIRE(tab.add_download("4", "Four", "Manual", z4));
+  tab.mark_complete("1", true);  // installable -> Uninstalled scope
+  tab.mark_complete("2", true);  // installable -> Uninstalled scope
+  tab.mark_installed("3");       // Installed -> Installed scope
+  // 4 is left Downloading on purpose.
+  REQUIRE(tab.table()->rowCount() == 4);
+
+  // entry_removed is what makes the manifest persist and the controller forget
+  // the link maps, so the batch has to emit one per deleted row.
+  int removed_signals = 0;
+  QObject::connect(&tab, &ui::DownloadsTab::entry_removed,
+                   [&removed_signals](const std::string &) {
+                     ++removed_signals;
+                   });
+
+  CHECK(tab.delete_downloads(ui::DownloadBatchScope::Installed) == 1);
+  CHECK(tab.table()->rowCount() == 3);
+  CHECK(row_with_name(tab.table(), "One") >= 0);
+  CHECK(row_with_name(tab.table(), "Three") == -1);
+  // Same trash-not-unlink behaviour the per-row Remove has.
+  CHECK_FALSE(std::filesystem::exists(z3));
+  CHECK(std::filesystem::exists(z1));
+
+  CHECK(tab.delete_downloads(ui::DownloadBatchScope::Uninstalled) == 2);
+  CHECK(tab.table()->rowCount() == 1);
+  CHECK(row_with_name(tab.table(), "Four") >= 0);
+
+  // The live transfer's row AND its archive survive: deleting a file that is
+  // still being appended to is how an in-flight download gets destroyed.
+  CHECK(tab.delete_downloads(ui::DownloadBatchScope::All) == 0);
+  CHECK(tab.table()->rowCount() == 1);
+  CHECK(std::filesystem::exists(z4));
+  CHECK(removed_signals == 3);
+}
+
+// A declined confirmation must change nothing - the question is a gate, not a
+// decoration.
+TEST_CASE("a declined batch delete removes nothing", "[ui]") {
+  qputenv("QT_QPA_PLATFORM", "offscreen");
+  ScratchRoot root("gmm_dl_bdelete_decline");
+  qputenv("XDG_CONFIG_HOME", (root.path / "config").c_str());
+  int argc     = 1;
+  char argv0[] = "test";
+  char *argv[] = {argv0, nullptr};
+  QApplication app(argc, argv);
+  QCoreApplication::setOrganizationName("GameModManager");
+  QCoreApplication::setApplicationName("GameModManager");
+
+  const auto zip = scratch_archive(root, "Kept.zip");
+  TestDownloadsTab tab;
+  REQUIRE(tab.add_download("1", "Kept", "Manual", zip));
+  tab.mark_complete("1", true);
+
+  tab.set_batch_confirmer([](const QString &, const QString &) {
+    return false;
+  });
+  CHECK_FALSE(tab.run_batch_delete(ui::DownloadBatchScope::All));
+  CHECK(tab.table()->rowCount() == 1);
+  CHECK(std::filesystem::exists(zip));
+
+  // And an empty scope never opens the question box at all: a tab whose rows
+  // are all in flight has nothing to delete.
+  TestDownloadsTab live;
+  REQUIRE(live.add_download("9", "Live", "Manual", scratch_archive(root, "Live.zip")));
+  bool asked = false;
+  live.set_batch_confirmer([&asked](const QString &, const QString &) {
+    asked = true;
+    return true;
+  });
+  CHECK_FALSE(live.run_batch_delete(ui::DownloadBatchScope::All));
+  CHECK_FALSE(asked);
+}
+
+// Enter installs a finished row and nothing else; the negative cases are the
+// point of the gate.
+TEST_CASE("the Enter key installs only finished rows", "[ui]") {
+  qputenv("QT_QPA_PLATFORM", "offscreen");
+  ScratchRoot root("gmm_dl_keys");
+  qputenv("XDG_CONFIG_HOME", (root.path / "config").c_str());
+  int argc     = 1;
+  char argv0[] = "test";
+  char *argv[] = {argv0, nullptr};
+  QApplication app(argc, argv);
+  QCoreApplication::setOrganizationName("GameModManager");
+  QCoreApplication::setApplicationName("GameModManager");
+
+  const auto ready  = scratch_archive(root, "Ready.zip");
+  const auto live   = scratch_archive(root, "Live.zip");
+  const auto paused = scratch_archive(root, "Paused.zip");
+  const auto absent = scratch_archive(root, "Absent.zip");
+
+  TestDownloadsTab tab;
+  REQUIRE(tab.add_download("1", "Ready", "Manual", ready));
+  REQUIRE(tab.add_download("2", "Live", "Manual", live));
+  REQUIRE(tab.add_download("3", "Paused", "Manual", paused));
+  REQUIRE(tab.add_download("4", "Absent", "Manual", absent));
+  tab.mark_complete("1", true);
+  tab.mark_paused("3");
+  std::error_code ec;
+  std::filesystem::remove(absent, ec);
+
+  int installs = 0;
+  std::string installed_path;
+  QObject::connect(&tab, &ui::DownloadsTab::install_requested,
+                   [&](const std::string &, const std::filesystem::path &fp,
+                       const std::string &, const std::string &, int,
+                       const std::string &, const std::string &) {
+                     ++installs;
+                     installed_path = fp.string();
+                   });
+
+  const auto select = [&tab](int row) {
+    tab.table()->setCurrentCell(row, ui::DownloadsTab::Name);
+    tab.table()->selectRow(row);
+  };
+
+  // A finished row with its archive on disk installs, carrying the real path.
+  select(0);
+  CHECK(tab.handle_download_key(Qt::Key_Return));
+  REQUIRE(installs == 1);
+  CHECK(installed_path == ready.string());
+
+  // An in-flight row does NOT. MO2 gives a Downloading row only cancel and
+  // pause (downloadlistview.cpp:343-346); installing a half-written archive is
+  // precisely what this gate exists to prevent.
+  select(1);
+  tab.handle_download_key(Qt::Key_Return);
+  CHECK(installs == 1);
+
+  // A paused row does NOT either.
+  select(2);
+  tab.handle_download_key(Qt::Key_Return);
+  CHECK(installs == 1);
+
+  // Nor does a finished row whose archive is gone.
+  select(3);
+  tab.handle_download_key(Qt::Key_Return);
+  CHECK(installs == 1);
+
+  // With nothing selected, and for any key this tab does not bind, the handler
+  // declines so the view keeps it.
+  tab.table()->clearSelection();
+  tab.table()->setCurrentCell(-1, -1);
+  CHECK_FALSE(tab.handle_download_key(Qt::Key_Return));
+  select(0);
+  CHECK_FALSE(tab.handle_download_key(Qt::Key_F2));
+  CHECK(installs == 1);
+}
+
+// Delete removes the current row and its archive, and Space pauses or resumes
+// per state - never the wrong one of the two.
+TEST_CASE("Delete removes the row and Space toggles the transfer", "[ui]") {
+  qputenv("QT_QPA_PLATFORM", "offscreen");
+  ScratchRoot root("gmm_dl_keys_delete");
+  qputenv("XDG_CONFIG_HOME", (root.path / "config").c_str());
+  int argc     = 1;
+  char argv0[] = "test";
+  char *argv[] = {argv0, nullptr};
+  QApplication app(argc, argv);
+  QCoreApplication::setOrganizationName("GameModManager");
+  QCoreApplication::setApplicationName("GameModManager");
+
+  const auto live   = scratch_archive(root, "Live.zip");
+  const auto paused = scratch_archive(root, "Paused.zip");
+
+  TestDownloadsTab tab;
+  REQUIRE(tab.add_download("1", "Live", "Manual", live));
+  REQUIRE(tab.add_download("2", "Paused", "Manual", paused));
+  tab.mark_paused("2");
+
+  std::string paused_for;
+  std::string resumed_for;
+  QObject::connect(&tab, &ui::DownloadsTab::pause_requested,
+                   [&paused_for](const std::string &id) {
+                     paused_for = id;
+                   });
+  QObject::connect(&tab, &ui::DownloadsTab::resume_requested,
+                   [&resumed_for](const std::string &id) {
+                     resumed_for = id;
+                   });
+  QString asked_about;
+  tab.set_row_delete_confirm([&asked_about](const QString &file_name) {
+    asked_about = file_name;
+    return true;
+  });
+
+  tab.table()->setCurrentCell(0, ui::DownloadsTab::Name);
+  tab.table()->selectRow(0);
+
+  // Space pauses an in-flight transfer (downloadlistview.cpp:343-346).
+  CHECK(tab.handle_download_key(Qt::Key_Space));
+  CHECK(paused_for == "1");
+  CHECK(resumed_for.empty());
+
+  // Space resumes a paused one, never the reverse.
+  tab.table()->setCurrentCell(1, ui::DownloadsTab::Name);
+  tab.table()->selectRow(1);
+  CHECK(tab.handle_download_key(Qt::Key_Space));
+  CHECK(resumed_for == "2");
+
+  // Delete on an in-flight row must not fall through to remove_entry, which
+  // would trash the file the transfer is still writing.
+  tab.table()->setCurrentCell(0, ui::DownloadsTab::Name);
+  tab.table()->selectRow(0);
+  tab.handle_download_key(Qt::Key_Delete);
+  CHECK(tab.table()->rowCount() == 2);
+  CHECK(std::filesystem::exists(live));
+  CHECK(asked_about.isEmpty());
+
+  // Delete on a finished row removes that row and its archive, and only that
+  // one. The confirmation names the file so the user can see what is going.
+  tab.mark_complete("1", true);
+  tab.table()->setCurrentCell(0, ui::DownloadsTab::Name);
+  tab.table()->selectRow(0);
+  CHECK(tab.handle_download_key(Qt::Key_Delete));
+  CHECK(asked_about == "Live.zip");
+  CHECK(tab.table()->rowCount() == 1);
+  CHECK(row_with_name(tab.table(), "Paused") == 0);
+  CHECK_FALSE(std::filesystem::exists(live));
+  CHECK(std::filesystem::exists(paused));
+
+  // A declined per-row delete keeps both the row and the archive.
+  tab.mark_complete("2", true);
+  tab.set_row_delete_confirm([](const QString &) {
+    return false;
+  });
+  tab.table()->setCurrentCell(0, ui::DownloadsTab::Name);
+  tab.table()->selectRow(0);
+  CHECK_FALSE(tab.handle_download_key(Qt::Key_Delete));
+  CHECK(tab.table()->rowCount() == 1);
+  CHECK(std::filesystem::exists(paused));
 }
