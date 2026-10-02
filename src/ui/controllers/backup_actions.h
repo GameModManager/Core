@@ -37,9 +37,16 @@ class TaskDialog;
 // byte-for-byte copy, never a re-serialisation). This class owns the dialogs
 // and the reload, and it carries our three deliberate divergences from MO2:
 //   1. restore CONFIRMS before overwriting; MO2 overwrites silently (:3904-3906)
-//   2. an UNCONDITIONAL pre-restore safety backup; MO2 has none at all
+//   2. a safety backup of the live files is taken before the first write; MO2
+//      has none at all, so a wrong restore there is unrecoverable. A file whose
+//      safety copy FAILED is left alone rather than overwritten, and that is
+//      reported per file - so no report can claim a blanket "nothing was
+//      overwritten" over a set where some files did change
 //   3. per-file failure reporting; MO2 ||-chains its three copies (:3904-3906),
 //      so the first failure skips the rest and the profile is left silently mixed
+// The view is reloaded after ANY file changed on disk, partial restores
+// included: a mixed profile shown through a stale view is the one screen that
+// is not telling the truth.
 class BackupActions : public QObject {
   Q_OBJECT
 public:

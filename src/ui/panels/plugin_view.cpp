@@ -481,8 +481,8 @@ protected:
     // double-click that follows is swallowed. Programmatic toggles
     // (set_plugins / sync_enabled) never pass through here.
     const QModelIndex idx = indexAt(event->pos());
-    const bool watching =
-        event->button() == Qt::LeftButton && idx.isValid() && idx.column() == 0;
+    const bool watching = event->button() == Qt::LeftButton && idx.isValid() &&
+                          idx.column() == 0;
     // Copy the state, never hold the QTableWidgetItem*: the toggle emits
     // toggle_requested, and the controller behind it may rebuild the table
     // and delete the item (use-after-free). Re-looked up after the base call.
@@ -544,9 +544,7 @@ PluginView::PluginView(QWidget *parent) : QWidget(parent) {
   // Double-click routing (MO2 parity): plain opens the owning mod's Mod
   // Info, Ctrl reveals the owning mod's folder. The table only reports the
   // owner id; what to do with it belongs to the controller.
-  table_->owner_of_row = [this](int row) {
-    return owner_mod_at(row);
-  };
+  table_->owner_of_row = [this](int row) { return owner_mod_at(row); };
   table_->on_mod_info = [this](const std::string &owner) {
     emit mod_info_requested(owner);
   };

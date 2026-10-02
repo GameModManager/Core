@@ -131,7 +131,15 @@ public slots:
   void load_meta_for_mods();
   void restore_mod_column_visibility();
   // Plugins tab (Skyrim-style games with plugin support).
-  void refresh_plugins_tab();
+  //
+  // `write_back` says whether this refresh may PERSIST state it derived back
+  // into the profile files: the first-run heal (no profile yet) and the
+  // native/CC band repair both do, because a normal load must leave a coherent
+  // profile on disk. false makes the refresh a pure read-and-push, for the
+  // post-restore reload in BackupActions - there, "the profile on disk cannot
+  // be applied" is exactly the state the restore left behind, and writing would
+  // silently undo the "left unchanged" the report just promised about it.
+  void refresh_plugins_tab(bool write_back = true);
   // Push the current mod selection's conflicts to the ConflictsTab.
   // No-op while the tab is still a lazy placeholder (Workspace-j6ty); the
   // tab_materialized handler re-runs it once the tab is built.

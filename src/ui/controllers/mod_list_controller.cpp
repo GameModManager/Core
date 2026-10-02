@@ -97,22 +97,22 @@ namespace ui {
 
 namespace {
 
-  // Mod row for `id` when it names a real folder-backed mod, else nullptr.
-  // Shared by the plugins-tab double-click handlers (Workspace-aon) so Mod
-  // Info and folder reveal agree on what an owner id may open: a phantom row
-  // (Overwrite / MERGED / game-native, Workspace-pmrh) and a separator have no
-  // mod folder, so a plugin owned by one does nothing. The returned pointer
-  // stays valid only until the model is reshaped - use it before any call that
-  // can rebuild the list.
-  const ModEntry *openable_mod_row(const ModList *model, const QString &id) {
-    if (!model || id.isEmpty())
-      return nullptr;
-    for (const auto &mod : model->mods()) {
-      if (mod.id == id)
-        return (is_phantom_row(mod) || mod.is_separator) ? nullptr : &mod;
-    }
+// Mod row for `id` when it names a real folder-backed mod, else nullptr.
+// Shared by the plugins-tab double-click handlers (Workspace-aon) so Mod
+// Info and folder reveal agree on what an owner id may open: a phantom row
+// (Overwrite / MERGED / game-native, Workspace-pmrh) and a separator have no
+// mod folder, so a plugin owned by one does nothing. The returned pointer
+// stays valid only until the model is reshaped - use it before any call that
+// can rebuild the list.
+const ModEntry *openable_mod_row(const ModList *model, const QString &id) {
+  if (!model || id.isEmpty())
     return nullptr;
+  for (const auto &mod : model->mods()) {
+    if (mod.id == id)
+      return (is_phantom_row(mod) || mod.is_separator) ? nullptr : &mod;
   }
+  return nullptr;
+}
 
   bool write_separator_color_file(const std::filesystem::path &mod_dir,
                                   const QString &color) {
@@ -312,15 +312,13 @@ ModListController::ModListController(MainWindow *w, QObject *parent)
   backup_actions_ = std::make_unique<BackupActions>(w, this);
   backup_actions_->set_reload_load_order([this]() {
     // Re-read the profile from the restored files and repopulate, the same
-    // pair refresh_plugins_tab() runs at load time
-    // (mod_list_controller.cpp:3022-3030).
-    if (!w_->profiles_dir_path().empty()) {
-      bool repaired = false;
-      w_->plugins_db_.load_profile(w_->profiles_dir_path(), w_->current_profile_name_,
-                                   &repaired);
-    }
-    w_->plugins_db_.generate_mod_indexes();
-    refresh_plugins_tab();
+    // path refresh_plugins_tab() runs at load time.
+    //
+    // write_back=false is load-bearing here. After a PARTIAL restore the files
+    // that did not restore are exactly the ones load_profile cannot apply, and
+    // the default path re-derives them and WRITES them back - silently undoing
+    // the "left unchanged" the report just promised about those files.
+    refresh_plugins_tab(false);
   });
   backup_actions_->set_reload_mod_list([this]() {
     if (!w_->active_profile_)
@@ -421,7 +419,7 @@ void ModListController::setup_mod_list(QVBoxLayout *left_layout) {
           // folder name - the content_dir lookup, resolve_mod_folder, the
           // profile modlist and the deferred queue. Feeding the display name
           // in resolved no folder at all and silently dropped the toggle.
-          const int row       = topLeft.row();
+          const int row = topLeft.row();
           const auto &entries = w_->mod_model_->mods();
           if (row < 0 || row >= static_cast<int>(entries.size()))
             return;
@@ -674,8 +672,7 @@ void ModListController::setup_mod_list(QVBoxLayout *left_layout) {
   // look (same as the plugins-tab counter); colors come from the palette.
   w_->mod_count_enabled_ = new QLCDNumber(w_);
   w_->mod_count_enabled_->setObjectName("mo2CounterLabel");
-  w_->mod_count_enabled_->setWhatsThis(
-      tr("The number of mods enabled in this instance."));
+  w_->mod_count_enabled_->setWhatsThis(tr("The number of mods enabled in this instance."));
   w_->mod_count_enabled_->setDigitCount(4);
   w_->mod_count_enabled_->setSegmentStyle(QLCDNumber::Flat);
   // Flat segments using QPalette text color for clear contrast on any theme.
@@ -1099,9 +1096,9 @@ void ModListController::sync_mod_enable_state(const QString &mod_id, bool enable
     if (!engine::ModScanner::enable_mod(*w_->knowledge_, w_->current_game_id_,
                                         mod_folder, &reason)) {
       if (reason.empty())
-        engine::Logger::instance().debug("Toggle: '" + mod_id.toStdString() +
-                                         "' had no sentinel to remove in " +
-                                         mod_folder.string());
+        engine::Logger::instance().debug(
+            "Toggle: '" + mod_id.toStdString() + "' had no sentinel to remove in " +
+            mod_folder.string());
       else
         engine::Logger::instance().warn("Toggle: " + reason);
     }
@@ -1118,13 +1115,14 @@ void ModListController::sync_mod_enable_state(const QString &mod_id, bool enable
       // nothing for the row to contradict - the log keeps the reason, the row
       // does not claim one.
       engine::Logger::instance().warn(
-          "Toggle: " +
-          (reason.empty() ? std::string("could not write the sentinel") : reason) +
+          "Toggle: " + (reason.empty() ? std::string("could not write the sentinel")
+                                       : reason) +
           " for '" + mod_id.toStdString() + "' - the mod is still active on disk");
       w_->mod_model_->set_toggle_error(
-          mod_id, ui::toggle_badge_reason(engine::game_native_disable_for(
-                                              *w_->knowledge_, w_->current_game_id_),
-                                          reason));
+          mod_id, ui::toggle_badge_reason(
+                      engine::game_native_disable_for(*w_->knowledge_,
+                                                      w_->current_game_id_),
+                      reason));
     } else {
       w_->mod_model_->set_toggle_error(mod_id, QString());
     }
@@ -1602,17 +1600,18 @@ void ModListController::on_mod_scan_finished(ui::ModScanResult result,
             // refused write leaves a disabled-looking mod that still deploys.
             // The reason is named instead of logged bare, and the row is
             // flagged so the discrepancy is visible in the list.
-            const std::string reason = "could not write " + disable_file + " into " +
-                                       (backup / disable_file).string() + ": " +
-                                       write_ec.message();
-            engine::Logger::instance().warn("on_mod_scan_finished: " + reason +
-                                            " (source-missing mirror '" +
-                                            mod.folder_name + "')");
+            const std::string reason =
+                "could not write " + disable_file + " into " +
+                (backup / disable_file).string() + ": " + write_ec.message();
+            engine::Logger::instance().warn(
+                "on_mod_scan_finished: " + reason +
+                " (source-missing mirror '" + mod.folder_name + "')");
             // Flagged only where the sentinel is the game's own marker.
             w_->mod_model_->set_toggle_error(
-                id, ui::toggle_badge_reason(engine::game_native_disable_for(
-                                                *w_->knowledge_, w_->current_game_id_),
-                                            reason));
+                id, ui::toggle_badge_reason(
+                        engine::game_native_disable_for(*w_->knowledge_,
+                                                        w_->current_game_id_),
+                        reason));
           }
         }
       }
@@ -3036,7 +3035,7 @@ void ModListController::refresh_conflicts_tab() {
                      w_->mod_model_->is_conflict_order_reversed());
 }
 
-void ModListController::refresh_plugins_tab() {
+void ModListController::refresh_plugins_tab(bool write_back) {
   if (w_->loading_)
     return;
   if (!w_->knowledge_ || w_->current_game_id_.empty() ||
@@ -3087,13 +3086,13 @@ void ModListController::refresh_plugins_tab() {
     bool repaired = false;
     applied = w_->plugins_db_.load_profile(profiles_dir, w_->current_profile_name_,
                                            &repaired);
-    if (repaired)  // core plugins were found below user ones - persist the heal
+    if (repaired && write_back)  // core plugins below user ones - persist the heal
       w_->plugins_db_.save_profile(profiles_dir, w_->current_profile_name_);
   }
   if (!applied) {
     w_->plugins_db_.set_all_enabled();
     w_->plugins_db_.set_missing_masters();
-    if (!profiles_dir.empty())
+    if (!profiles_dir.empty() && write_back)
       w_->plugins_db_.save_profile(profiles_dir, w_->current_profile_name_);
   }
   w_->plugins_db_.generate_mod_indexes();
@@ -3145,24 +3144,25 @@ void ModListController::refresh_plugins_tab() {
                 return;
               on_data_mod_info(id);
             });
-    connect(
-        pt, &ui::PluginsTab::reveal_requested, this, [this](const std::string &owner) {
-          const ModEntry *entry =
-              openable_mod_row(w_->mod_model_, QString::fromStdString(owner));
-          if (!entry)
-            return;
-          // Same resolution as the mod list's Ctrl+Double-Click.
-          const auto mods_subpath =
-              w_->knowledge_
-                  ? w_->knowledge_->get(w_->current_game_id_, "mods_subpath", "")
-                  : "";
-          const std::filesystem::path folder = w_->resolve_mod_folder(
-              entry->id.toStdString(), mods_subpath, entry->content_dir.toStdString());
-          if (folder.empty())
-            return;
-          QDesktopServices::openUrl(
-              QUrl::fromLocalFile(QString::fromStdString(folder.string())));
-        });
+    connect(pt, &ui::PluginsTab::reveal_requested, this,
+            [this](const std::string &owner) {
+              const ModEntry *entry =
+                  openable_mod_row(w_->mod_model_, QString::fromStdString(owner));
+              if (!entry)
+                return;
+              // Same resolution as the mod list's Ctrl+Double-Click.
+              const auto mods_subpath =
+                  w_->knowledge_
+                      ? w_->knowledge_->get(w_->current_game_id_, "mods_subpath", "")
+                      : "";
+              const std::filesystem::path folder = w_->resolve_mod_folder(
+                  entry->id.toStdString(), mods_subpath,
+                  entry->content_dir.toStdString());
+              if (folder.empty())
+                return;
+              QDesktopServices::openUrl(
+                  QUrl::fromLocalFile(QString::fromStdString(folder.string())));
+            });
     w_->plugins_tab_widget_ = pt;
   }
   pt->set_plugins(w_->plugins_db_.plugins());
