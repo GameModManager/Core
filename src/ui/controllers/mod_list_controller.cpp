@@ -5,6 +5,7 @@
 #include "ui/controllers/launch_controller.h"
 #include "ui/controllers/mod_actions.h"
 #include "ui/controllers/mod_context_menu.h"
+#include "ui/controllers/backup_actions.h"
 #include "ui/controllers/overwrite_controller.h"
 #include "ui/controllers/queue_controller.h"
 #include "ui/controllers/settings_controller.h"
@@ -304,6 +305,41 @@ ModListController::ModListController(MainWindow *w, QObject *parent)
              const QString &page_url) -> SourceVisitInfo {
         return source_visit_info(source_type, source_id, page_url);
       });
+
+  // Backup / restore points for the load order and the mod list
+  // The reloads stay here because this controller owns the
+  // plugin database, the mod model and the counter.
+  backup_actions_ = std::make_unique<BackupActions>(w, this);
+  backup_actions_->set_reload_load_order([this]() {
+    // Re-read the profile from the restored files and repopulate, the same
+    // path refresh_plugins_tab() runs at load time.
+    //
+    // write_back=false is load-bearing here. After a PARTIAL restore the files
+    // that did not restore are exactly the ones load_profile cannot apply, and
+    // the default path re-derives them and WRITES them back - silently undoing
+    // the "not written" the report just promised about those files.
+    refresh_plugins_tab(false);
+  });
+  backup_actions_->set_reload_mod_list([this]() {
+    if (!w_->active_profile_)
+      return;
+    // NOT apply_profile_mod_states(): that starts with write_modlist_now(),
+    // which would overwrite the modlist.txt we just restored with the stale
+    // in-memory list. The pending write is already cancelled by BackupActions.
+    std::vector<std::string> known_mods;
+    std::vector<std::string> foreign_mods;
+    for (const auto &m : w_->mod_model_->mods()) {
+      if (m.is_separator || m.is_overwrite || m.is_merged)
+        continue;
+      known_mods.push_back(m.id.toStdString());
+      if (m.is_game_native)
+        foreign_mods.push_back(m.id.toStdString());
+    }
+    w_->active_profile_->refresh_mod_status(known_mods, foreign_mods);
+    for (const auto &pm : w_->active_profile_->mods())
+      w_->mod_model_->set_mod_enabled(QString::fromStdString(pm.mod_id), pm.enabled);
+    update_mod_count_label();
+  });
 }
 
 void ModListController::setup_mod_list(QVBoxLayout *left_layout) {
@@ -647,9 +683,34 @@ void ModListController::setup_mod_list(QVBoxLayout *left_layout) {
   }
   w_->mod_count_enabled_->display(0);
 
+  // MO2 parks its mod-list backup / restore pair immediately left of the
+  // "Active:" counter (mainwindow.ui:326,340); same placement here. Text
+  // buttons because ACTIVE_ICONS.txt has no backup/restore key yet.
+  auto *mod_backup_button = new QPushButton(tr("Backup"), w_);
+  mod_backup_button->setObjectName("modBackupBtn");
+  mod_backup_button->setToolTip(tr("Create a backup of the mod list."));
+  mod_backup_button->setWhatsThis(
+      tr("Write a timestamped copy of modlist.txt next to the live file. The 10 "
+         "newest are kept."));
+  connect(mod_backup_button, &QPushButton::clicked, this, [this]() {
+    backup_actions_->create_mod_list_backup();
+  });
+
+  auto *mod_restore_button = new QPushButton(tr("Restore"), w_);
+  mod_restore_button->setObjectName("modRestoreBtn");
+  mod_restore_button->setToolTip(tr("Restore the mod list from a backup."));
+  mod_restore_button->setWhatsThis(tr("Replace the current mod list with one of "
+                                      "its backups. The state being replaced is "
+                                      "backed up first."));
+  connect(mod_restore_button, &QPushButton::clicked, this, [this]() {
+    backup_actions_->restore_mod_list_backup();
+  });
+
   auto *count_row = new QHBoxLayout;
   count_row->setContentsMargins(4, 2, 4, 2);
   count_row->addStretch(1);  // push the counter to the right edge
+  count_row->addWidget(mod_backup_button);
+  count_row->addWidget(mod_restore_button);
   count_row->addWidget(w_->mod_count_enabled_);
 
   auto *mod_list_pane = new QWidget(w_);
@@ -2974,7 +3035,7 @@ void ModListController::refresh_conflicts_tab() {
                      w_->mod_model_->is_conflict_order_reversed());
 }
 
-void ModListController::refresh_plugins_tab() {
+void ModListController::refresh_plugins_tab(bool write_back) {
   if (w_->loading_)
     return;
   if (!w_->knowledge_ || w_->current_game_id_.empty() ||
@@ -3025,13 +3086,13 @@ void ModListController::refresh_plugins_tab() {
     bool repaired = false;
     applied = w_->plugins_db_.load_profile(profiles_dir, w_->current_profile_name_,
                                            &repaired);
-    if (repaired)  // core plugins were found below user ones - persist the heal
+    if (repaired && write_back)  // core plugins below user ones - persist the heal
       w_->plugins_db_.save_profile(profiles_dir, w_->current_profile_name_);
   }
   if (!applied) {
     w_->plugins_db_.set_all_enabled();
     w_->plugins_db_.set_missing_masters();
-    if (!profiles_dir.empty())
+    if (!profiles_dir.empty() && write_back)
       w_->plugins_db_.save_profile(profiles_dir, w_->current_profile_name_);
   }
   w_->plugins_db_.generate_mod_indexes();
@@ -3058,6 +3119,14 @@ void ModListController::refresh_plugins_tab() {
       // consistent with the filter box.
       if (w_->right_panel_)
         w_->right_panel_->reapply_current_filter();
+    });
+    // Backup / restore points for the load order. Manual
+    // only, exactly like MO2's two toolbar slots (mainwindow.cpp:3841,3897).
+    connect(pt, &ui::PluginsTab::backup_requested, this, [this]() {
+      backup_actions_->create_load_order_backup();
+    });
+    connect(pt, &ui::PluginsTab::restore_requested, this, [this]() {
+      backup_actions_->restore_load_order_backup();
     });
     connect(pt->table(), &QTableWidget::itemSelectionChanged, this,
             &ModListController::on_plugin_selection_changed);

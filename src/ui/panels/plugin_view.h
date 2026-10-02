@@ -79,6 +79,12 @@ signals:
   void reorder_requested(int from_row, int to_row);
   /// Refresh button pressed: re-scan plugins on disk and repopulate.
   void refresh_requested();
+  /// Backup / Restore pressed: write or read a timestamped copy of
+  /// plugins.txt + loadorder.txt + lockedorder.txt beside the live files
+  /// (MO2 mainwindow.ui:840,863). Both are MANUAL only -
+  /// MO2 has no automatic trigger, and neither do we.
+  void backup_requested();
+  void restore_requested();
   /// Double-clicked a plugin row: ask for the Mod Info dialog of the mod
   /// owning it. Never emitted for a game-Data plugin (no owner) - the view
   /// drops those, so an unowned row is simply inert.
@@ -100,6 +106,8 @@ private:
   class PluginTable;
   PluginTable *table_          = nullptr;
   QPushButton *refresh_button_ = nullptr;
+  QPushButton *backup_button_  = nullptr;
+  QPushButton *restore_button_ = nullptr;
   QLCDNumber *counter_display_ = nullptr;
   std::vector<std::string> names_;
   // Mod folder providing each row's plugin ("" = game Data), parallel to
