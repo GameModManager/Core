@@ -276,6 +276,12 @@ void CrashHandler::write_dump(int sig, const siginfo_t *info, const void *ctx) {
   auto now        = system_clock::now();
   auto time_t_now = system_clock::to_time_t(now);
 
+  // Deliberately not async-signal-safe: localtime_r() takes glibc's tzset lock,
+  // so it can deadlock if the handler interrupted the code that holds it. Kept
+  // because an undated dump is much harder to line up against the log, it runs
+  // once, and the process is about to exit either way. The other two unsafe
+  // calls are both backtrace_symbols(), which mallocs on a possibly-corrupt
+  // heap; their arrays are never freed, for the same reason.
   struct tm tm_buf{};
   localtime_r(&time_t_now, &tm_buf);
 
