@@ -74,6 +74,15 @@ endfunction()
 # ---------------------------------------------------------------------------
 gmm_catch2_test(pack_adapter_test engine/pack_adapter_test.cpp)
 gmm_catch2_test(conflict_resolver_test engine/conflict_resolver_test.cpp)
+
+# The crash handler, verified by crashing a forked child on purpose and
+# reading the dump back. dladdr() (inside backtrace_symbols) only sees .dynsym,
+# so the test can only assert on the crashing function's NAME when the
+# executable exports its symbols - the same reason the app links -rdynamic.
+gmm_catch2_test(crash_handler_test engine/crash_handler_test.cpp)
+if(NOT WIN32 AND NOT APPLE)
+    target_link_options(crash_handler_test PRIVATE -rdynamic)
+endif()
 gmm_catch2_test(game_match_validator_test engine/game_match_validator_test.cpp)
 gmm_catch2_test(instance_router_test engine/instance_router_test.cpp)
 gmm_catch2_test(fresh_install_test engine/fresh_install_test.cpp)
