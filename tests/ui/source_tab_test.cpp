@@ -784,14 +784,16 @@ TEST_CASE("source tab icons", "[ui]") {
           "the Git tab carries a real QIcon, not a null one that paints nothing");
   }
 
-  // --- Git only on a non-github host: the generic badge, still an icon. ---
+  // --- Git only on a host with no badge of its own: the generic one, still an
+  //     icon. bitbucket.org is such a host; gitlab.com and a gitea.* host are
+  //     not, and each resolves to a badge of its own. ---
   {
     const std::string id                = "IconGitOnlyMod";
     const std::filesystem::path mod_dir = mods_dir / id;
     std::filesystem::create_directories(mod_dir / ".git");
     {
       std::ofstream cfgout(mod_dir / ".git" / "config");
-      cfgout << "[remote \"origin\"]\n\turl = git@gitlab.com:group/proj.git\n";
+      cfgout << "[remote \"origin\"]\n\turl = git@bitbucket.org:user/repo.git\n";
     }
 
     engine::ModMeta meta;
@@ -802,7 +804,7 @@ TEST_CASE("source tab icons", "[ui]") {
     ui::ModInfoData data = make_manual_data(id, mods_dir);
     data.mod_dir         = QDir(QString::fromStdString(mod_dir.string()));
     data.is_git          = true;
-    data.git_remote_url  = QStringLiteral("git@gitlab.com:group/proj.git");
+    data.git_remote_url  = QStringLiteral("git@bitbucket.org:user/repo.git");
 
     ui::SourceTab tab;
     tab.set_current(data);
