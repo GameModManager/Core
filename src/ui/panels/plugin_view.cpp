@@ -481,8 +481,8 @@ protected:
     // double-click that follows is swallowed. Programmatic toggles
     // (set_plugins / sync_enabled) never pass through here.
     const QModelIndex idx = indexAt(event->pos());
-    const bool watching = event->button() == Qt::LeftButton && idx.isValid() &&
-                          idx.column() == 0;
+    const bool watching =
+        event->button() == Qt::LeftButton && idx.isValid() && idx.column() == 0;
     // Copy the state, never hold the QTableWidgetItem*: the toggle emits
     // toggle_requested, and the controller behind it may rebuild the table
     // and delete the item (use-after-free). Re-looked up after the base call.
@@ -544,7 +544,9 @@ PluginView::PluginView(QWidget *parent) : QWidget(parent) {
   // Double-click routing (MO2 parity): plain opens the owning mod's Mod
   // Info, Ctrl reveals the owning mod's folder. The table only reports the
   // owner id; what to do with it belongs to the controller.
-  table_->owner_of_row = [this](int row) { return owner_mod_at(row); };
+  table_->owner_of_row = [this](int row) {
+    return owner_mod_at(row);
+  };
   table_->on_mod_info = [this](const std::string &owner) {
     emit mod_info_requested(owner);
   };
@@ -561,7 +563,10 @@ PluginView::PluginView(QWidget *parent) : QWidget(parent) {
                           item->checkState() == Qt::Checked);
   });
 
-  // Header row: refresh button + counter.
+  // Header row: refresh button + backup/restore pair + counter. MO2 parks
+  // its save/restore pair immediately left of the "Active:" counter
+  // (mainwindow.ui:840,863); the placement is the same, the buttons carry
+  // text because there is no backup/restore icon key in ACTIVE_ICONS.txt yet.
   auto *header = new QHBoxLayout;
   header->setContentsMargins(4, 2, 4, 2);
   refresh_button_ = new QPushButton(tr("Refresh"), this);
@@ -571,6 +576,29 @@ PluginView::PluginView(QWidget *parent) : QWidget(parent) {
     emit refresh_requested();
   });
   header->addWidget(refresh_button_);
+
+  backup_button_ = new QPushButton(tr("Backup"), this);
+  backup_button_->setObjectName("pluginBackupBtn");
+  backup_button_->setToolTip(tr("Create a backup of the load order."));
+  backup_button_->setWhatsThis(
+      tr("Write a timestamped copy of plugins.txt, loadorder.txt and "
+         "lockedorder.txt next to the live files. The 10 newest are kept."));
+  connect(backup_button_, &QPushButton::clicked, this, [this]() {
+    emit backup_requested();
+  });
+  header->addWidget(backup_button_);
+
+  restore_button_ = new QPushButton(tr("Restore"), this);
+  restore_button_->setObjectName("pluginRestoreBtn");
+  restore_button_->setToolTip(tr("Restore the load order from a backup."));
+  restore_button_->setWhatsThis(tr("Replace the current load order with one of "
+                                   "its backups. The state being replaced is "
+                                   "backed up first."));
+  connect(restore_button_, &QPushButton::clicked, this, [this]() {
+    emit restore_requested();
+  });
+  header->addWidget(restore_button_);
+
   header->addStretch(1);
   counter_display_ = new QLCDNumber(this);
   counter_display_->setObjectName("mo2CounterLabel");

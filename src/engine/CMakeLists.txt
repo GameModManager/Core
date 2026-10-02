@@ -63,6 +63,7 @@ core/instance/mod_state.cpp
     profile/profile_switching.cpp
     profile/delayed_file_writer.cpp
     profile/safe_write_file.cpp
+    backup/backup_service.cpp
     deploy/order_hook.cpp
     deploy/core.cpp
     deploy/strategy_symlink.cpp

@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "ui/controllers/mod_actions.h"
+#include "ui/controllers/backup_actions.h"
 #include "ui/controllers/mod_context_menu.h"
 #include "ui/main_window/main_window.h"
 
@@ -209,6 +210,10 @@ private:
   // Extracted sub-controllers for mod actions and context menu.
   std::unique_ptr<ModActions> mod_actions_;
   std::unique_ptr<ModContextMenu> mod_context_menu_;
+  // Backup / restore points for the load order and the mod list
+  // (Workspace-czc0). Owns the four toolbar actions and their dialogs; the
+  // engine does the file work.
+  std::unique_ptr<BackupActions> backup_actions_;
 };
 
 }  // namespace ui
