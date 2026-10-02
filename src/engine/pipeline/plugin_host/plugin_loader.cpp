@@ -661,9 +661,6 @@ static void cb_register_hook(GmmRegistrationCtx *ctx, const char *tag, const cha
           fn(hook_tag.c_str(), const_cast<char *>(hook_data.c_str()), user_data);
       },
       priority, bridge->current_plugin->path);
-
-  Logger::instance().debug("Plugin registered knowledge: " + hook_tag +
-                           " (game=" + game_id + ", data=" + hook_data + ")");
 }
 
 static void cb_register_order_encoding(GmmRegistrationCtx *ctx, GmmOrderEncodingFn fn) {
@@ -1154,9 +1151,6 @@ static void cb_v2_register_hook(GmmRegistrationCtxV2 *ctx, const char *tag,
   // GmmHookFnV2 contract).
   ::HookRegistry::instance().register_hook(hook_tag.c_str(), fn, priority, user_data,
                                            bridge->current_plugin->path.c_str());
-
-  Logger::instance().debug("Plugin registered knowledge: " + hook_tag +
-                           " (game=" + game_id + ", data=" + hook_data + ")");
 }
 
 static void cb_v2_register_order_encoding(GmmRegistrationCtxV2 *ctx,
@@ -1601,9 +1595,6 @@ static void cb_v2_register_game_variant(GmmRegistrationCtxV2 *ctx, const char *g
   // IPluginGame::setGameVariant in MO2.
   bridge->current_plugin->variants.push_back(
       {std::move(vid), display_name ? display_name : ""});
-  Logger::instance().debug(
-      "Plugin registered v2 game variant: game=" + gid +
-      " variant=" + bridge->current_plugin->variants.back().variant_id);
 }
 
 static void cb_v2_register_save_overlay(GmmRegistrationCtxV2 *ctx, const char *game_id,
@@ -1626,8 +1617,6 @@ static void cb_v2_register_save_overlay(GmmRegistrationCtxV2 *ctx, const char *g
   // so this header doesn't drag the full v2 header in.
   bridge->current_plugin->save_overlay_fn        = reinterpret_cast<void *>(fn);
   bridge->current_plugin->save_overlay_user_data = user_data;
-  Logger::instance().debug("Plugin registered v2 save overlay for game=" + gid +
-                           " priority=" + std::to_string(priority));
 }
 
 static void cb_v2_register_animation_parser(GmmRegistrationCtxV2 *ctx,
