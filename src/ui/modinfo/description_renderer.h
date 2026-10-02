@@ -14,6 +14,20 @@ class DescriptionBrowser;
 // the value (no CSS theming there).
 enum class SourceCSS { Default, Nexus, LoversLab, Steam, ModPub };
 
+// Chromium's GPU process must not pick Vulkan. With a Vulkan overlay
+// interposed - MangoHud does exactly this whenever MANGOHUD=1 is in the
+// environment - the first vkCreateDevice reaches the overlay's shim, which
+// dispatches through a callback it never installed and the process jumps to
+// address 0. The description view only ever renders a static BBCode fragment,
+// which software rasterisation draws perfectly well, so the GPU stack is
+// switched off rather than the crash being left to chance.
+//
+// Must run before any Qt object exists: Chromium reads these when WebEngine
+// starts it, which is the first QWebEngineView construction. Declared here
+// rather than next to the WebEngine backend because this header is the only
+// one every build of the app and its tests can include.
+void configure_chromium_flags();
+
 // Description view shared by the four source panels (Nexus / Steam /
 // LoversLab / mod.pub). Pure interface so the panels don't care which
 // backend renders: the QWebEngineView implementation (default, web-faithful)

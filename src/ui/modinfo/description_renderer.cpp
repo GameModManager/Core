@@ -24,6 +24,10 @@ namespace {
 
 }  // namespace
 
+void configure_chromium_flags() {
+  qputenv("QTWEBENGINE_CHROMIUM_FLAGS", "--disable-gpu --disable-features=Vulkan");
+}
+
 DescriptionRenderer *create_description_renderer(QWidget *parent) {
 #ifdef GMM_HAS_WEBENGINE
   return new WebViewDescriptionRenderer(parent);
