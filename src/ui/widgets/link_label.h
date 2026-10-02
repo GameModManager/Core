@@ -15,7 +15,10 @@ namespace ui {
 //     LinkLabel { qproperty-linkColor: #3399FF; }
 //
 // Writing the property sets QPalette::Link and QPalette::LinkVisited on the
-// application palette, so every widget that renders link text picks it up.
+// application palette. That palette write IS the contract, and it is a narrow
+// one: it is for code that reads QPalette::Link itself. Qt 6 does not draw any
+// widget's link text from those roles - see the note at the bottom of this
+// comment - so setting this property changes no pixels on its own.
 //
 // MO2 parity: MOBase::LinkLabel (uibase/linklabel.h) - the same Q_PROPERTY and
 // the same global-palette side effect, including MO2's limitation that a live
@@ -25,9 +28,16 @@ namespace ui {
 // text, and whether it is clickable, with setTextInteractionFlags() and
 // setOpenExternalLinks().
 //
-// Note: Qt does not use QPalette::Link when rendering rich text (see
-// QPalette::ColorRole), so a label that renders HTML needs its colour in the
-// markup, not here.
+// Two Qt limits worth knowing before building a theme rule on top of this:
+//   - QPalette::Link/LinkVisited are NOT used when Qt renders rich text (Qt
+//     docs, QPalette::ColorRole: "we do not use the Link and LinkVisited roles
+//     when rendering rich text in Qt"), which is the path a clickable QLabel
+//     takes. Colour for a rich-text label has to live in the markup.
+//   - QSS has no qproperty for the palette's Link role, which is the whole
+//     reason this class exists in the first place.
+// So: shipping this primitive creates the role and makes it themeable. Whether
+// any given label visibly changes is a separate question, and Workspace-ylec
+// carries that verification.
 class LinkLabel : public QLabel {
   Q_OBJECT
   Q_PROPERTY(QColor linkColor READ link_color WRITE set_link_color)

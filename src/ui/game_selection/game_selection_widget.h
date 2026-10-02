@@ -9,11 +9,9 @@
 #include <QWidget>
 
 #include "ui/game_selection/game_card.h"
-
-class QLineEdit;
-class QLabel;
-
 #include "ui/widgets/line_edit_clear.h"
+
+class QLabel;
 
 namespace ui {
 

@@ -140,8 +140,13 @@ TaskDialog &TaskDialog::details(const QString &text) {
   const bool has = !text.isEmpty();
   details_toggle_->setVisible(has);
   if (has) {
-    // Respect a collapse the user already made for this dialog: only force
-    // the section open the first time there is something to show.
+    // Force the section open whenever details arrive. The old code read
+    // details_toggle_->isChecked(), which also opened it unconditionally for
+    // the way this is actually called - the dialog is built opened-at-
+    // construction and every call site calls details() once with the full
+    // text. The difference is only reachable if a caller did
+    // details("text") -> user collapsed -> details("text") again, which no
+    // call site does.
     details_expander_->toggle(true);
   } else {
     details_expander_->toggle(false);

@@ -2,6 +2,8 @@
 
 #include <QMimeData>
 
+#include <algorithm>
+
 namespace ui {
 
 SortableTreeWidget::SortableTreeWidget(QWidget *parent) : QTreeWidget(parent) {
@@ -41,13 +43,12 @@ Qt::DropActions SortableTreeWidget::supportedDropActions() const {
   return QTreeWidget::supportedDropActions() & Qt::MoveAction;
 }
 
-bool SortableTreeWidget::drag_stays_in_branch(QTreeWidgetItem *parent) const {
+bool SortableTreeWidget::drag_stays_in_branch(QTreeWidgetItem *const parent) const {
   const QList<QTreeWidgetItem *> selected = selectedItems();
-  for (const QTreeWidgetItem *item : selected) {
-    if (item->parent() != parent)
-      return false;
-  }
-  return true;
+  return std::none_of(selected.cbegin(), selected.cend(),
+                      [parent](const QTreeWidgetItem *item) {
+                        return item->parent() != parent;
+                      });
 }
 
 }  // namespace ui

@@ -7,12 +7,10 @@
 #include <optional>
 
 #include "engine/gmmpack/types.h"
+#include "ui/widgets/line_edit_clear.h"
 
 class QLabel;
-class QLineEdit;
 class QPushButton;
-
-#include "ui/widgets/line_edit_clear.h"
 
 namespace ui {
 

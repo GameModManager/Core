@@ -18,6 +18,10 @@ inline constexpr int kEnabledColumnRole = Qt::UserRole + 1;
 // section's checkbox disabled when the view's model reports false for
 // kEnabledColumnRole. A null `view` is ignored.
 //
+// No labels are passed, so the menu takes each section's text from the model's
+// headerData - this is the one-shot adoption path, and it is usable as shipped
+// rather than needing a label vector first.
+//
 // MO2 parity: MOBase::setCustomizableColumns (uibase/widgetutility.h:17),
 // which MO2 applies to every tree view - see references/modorganizer/src/
 // filetree.cpp:126, modlistview.cpp:142, pluginlistview.cpp:32.
@@ -61,12 +65,18 @@ public:
   void set_section_tooltips(const QStringList &tooltips);
   [[nodiscard]] QString section_tooltip(int section) const;
 
-  // Read each section's kEnabledColumnRole from `model` to decide whether its
+  // Read this section's kEnabledColumnRole from the inherited model() - a
+  // header handed to QAbstractItemView::setHeader is given the view's model
+  // and keeps tracking it across later swaps - to decide whether its
   // context-menu entry can be toggled. A false value disables the entry; no
-  // model, no value for the role, or any other value leaves it enabled. Pass
-  // nullptr (the default) to stop consulting a model.
-  void set_enablement_model(QAbstractItemModel *model);
+  // model, no value for the role, or any other value leaves it enabled.
   [[nodiscard]] bool section_is_enabled(int section) const;
+
+  // Text the context menu shows for `section`: the positional label list first,
+  // then the model's own headerData, then a positional "Column N". Split out of
+  // eventFilter so the fallback chain is testable without opening a menu (which
+  // would block).
+  [[nodiscard]] QString section_label(int section) const;
 
 signals:
   // Emitted ONLY from a user toggle in the context menu (never for
@@ -81,8 +91,7 @@ private:
   QStringList labels_;
   QStringList tooltips_;
   QList<int> locked_sections_;
-  QAbstractItemModel *enablement_model_ = nullptr;
-  bool user_visibility_choice_          = false;
+  bool user_visibility_choice_ = false;
 };
 
 }  // namespace ui

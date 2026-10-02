@@ -12,7 +12,11 @@ namespace ui {
 //
 // MO2 parity: MOBase::SortableTreeWidget (uibase/sortabletreewidget.h) -
 // internal-move drag and drop, setLocalMoveOnly() to confine a move to the
-// item's own branch, and itemsMoved() once a drop has happened.
+// item's own branch, and itemsMoved() once a drop has happened ("minimal atm",
+// MO2's own wording). MO2 emits from its dropEvent override; this emits from
+// dropMimeData instead, because that is where the MODEL's accept/refuse verdict
+// is and the only one of the two a headless test can drive. Both sit inside
+// QAbstractItemView::dropEvent, so the timing a slot sees is the same.
 //
 // No feature logic here: the caller owns the items and reads the signal.
 class SortableTreeWidget : public QTreeWidget {
@@ -29,6 +33,13 @@ public:
 signals:
   // Emitted after an accepted drop. Never for a refused drop, so a caller can
   // use it as "something moved" rather than "a drag was attempted".
+  //
+  // Timing, because it is not free: this fires from inside
+  // QAbstractItemView::dropEvent, before Qt finishes its own post-drop
+  // bookkeeping. A slot that clears or repopulates the tree mutates the model
+  // mid-drop. MO2 had the same window (it emitted from inside its own
+  // dropEvent override), so this is parity rather than a new hazard - but a
+  // slot that wants to rebuild should defer rather than mutate in place.
   void items_moved();
 
 protected:
@@ -37,9 +48,9 @@ protected:
   Qt::DropActions supportedDropActions() const override;
 
 private:
-  // True when every selected item would stay in `parent` if dropped there.
-  // An empty selection counts as staying put: there is nothing to refuse.
-  [[nodiscard]] bool drag_stays_in_branch(QTreeWidgetItem *parent) const;
+  // True when every selected item would stay in `parent` if dropped there. An
+  // empty selection counts as staying put: there is nothing to refuse.
+  [[nodiscard]] bool drag_stays_in_branch(QTreeWidgetItem *const parent) const;
 
   bool local_move_only_ = false;
 };
