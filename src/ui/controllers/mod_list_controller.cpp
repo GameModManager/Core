@@ -307,7 +307,7 @@ ModListController::ModListController(MainWindow *w, QObject *parent)
       });
 
   // Backup / restore points for the load order and the mod list
-  // (Workspace-czc0). The reloads stay here because this controller owns the
+  // The reloads stay here because this controller owns the
   // plugin database, the mod model and the counter.
   backup_actions_ = std::make_unique<BackupActions>(w, this);
   backup_actions_->set_reload_load_order([this]() {
@@ -317,7 +317,7 @@ ModListController::ModListController(MainWindow *w, QObject *parent)
     // write_back=false is load-bearing here. After a PARTIAL restore the files
     // that did not restore are exactly the ones load_profile cannot apply, and
     // the default path re-derives them and WRITES them back - silently undoing
-    // the "left unchanged" the report just promised about those files.
+    // the "not written" the report just promised about those files.
     refresh_plugins_tab(false);
   });
   backup_actions_->set_reload_mod_list([this]() {
@@ -3120,7 +3120,7 @@ void ModListController::refresh_plugins_tab(bool write_back) {
       if (w_->right_panel_)
         w_->right_panel_->reapply_current_filter();
     });
-    // Backup / restore points for the load order (Workspace-czc0). Manual
+    // Backup / restore points for the load order. Manual
     // only, exactly like MO2's two toolbar slots (mainwindow.cpp:3841,3897).
     connect(pt, &ui::PluginsTab::backup_requested, this, [this]() {
       backup_actions_->create_load_order_backup();
