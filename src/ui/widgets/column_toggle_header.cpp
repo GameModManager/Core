@@ -14,10 +14,11 @@ namespace ui {
 void set_customizable_columns(QTreeView *view) {
   if (!view)
     return;
-  // Parented to the view, like every other hand-built header in the app, so it
-  // dies with it (setHeader does not take ownership).
+  // setHeader takes ownership and reparents the header to the view, so the
+  // explicit parent argument is belt-and-braces only. No label list is passed:
+  // the menu falls back to the model's headerData for each section, which is
+  // what makes this usable without a hand-built label vector.
   auto *header = new ColumnToggleHeaderView(Qt::Horizontal, view);
-  header->set_enablement_model(view->model());
   view->setHeader(header);
 }
 
@@ -43,20 +44,38 @@ QString ColumnToggleHeaderView::section_tooltip(int section) const {
   return tooltips_.value(section);
 }
 
-void ColumnToggleHeaderView::set_enablement_model(QAbstractItemModel *model) {
-  enablement_model_ = model;
-}
-
 bool ColumnToggleHeaderView::section_is_enabled(int section) const {
-  if (!enablement_model_)
+  // QHeaderView is a QAbstractItemView, and a header handed to
+  // QAbstractItemView::setHeader is given the view's model and keeps tracking
+  // it across later model swaps - so the inherited model() is always the right
+  // one, and unlike a stored raw pointer it cannot go stale or dangle.
+  const QAbstractItemModel *model = this->model();
+  if (!model)
     return true;
-  const QVariant value =
-      enablement_model_->headerData(section, Qt::Horizontal, kEnabledColumnRole);
+  const QVariant value = model->headerData(section, Qt::Horizontal, kEnabledColumnRole);
   // No value for the role means the model has no opinion, which MO2 reads as
   // "enabled" (uibase/widgetutility.h:11-14).
   if (!value.isValid())
     return true;
   return value.toBool();
+}
+
+// Text the context menu shows for `section`. Positional label list first, then
+// the model's own header text, then the positional "Column N" fallback. The
+// model is the step that matters for a caller that never passed labels at all
+// (set_customizable_columns), so only a genuinely nameless section warns.
+QString ColumnToggleHeaderView::section_label(int section) const {
+  if (section < labels_.size())
+    return labels_[section];
+  if (model()) {
+    const QString from_model =
+        model()->headerData(section, Qt::Horizontal, Qt::DisplayRole).toString();
+    if (!from_model.isEmpty())
+      return from_model;
+  }
+  qWarning("ColumnToggleHeaderView: no label for section %d of %d sections", section,
+           count());
+  return tr("Column %1").arg(section + 1);
 }
 
 void ColumnToggleHeaderView::set_locked_section(int section) {
@@ -89,13 +108,7 @@ bool ColumnToggleHeaderView::eventFilter(QObject *obj, QEvent *event) {
       QMenu menu(this);
 
       for (int i = 0; i < count(); ++i) {
-        if (i >= labels_.size())
-          // Positional list, and a short one ships a nameless entry: the
-          // caller has to supply a label for every section the view has.
-          qWarning("ColumnToggleHeaderView: no label for section %d of %d sections", i,
-                   count());
-        QString label = (i < labels_.size()) ? labels_[i] : tr("Column %1").arg(i + 1);
-        QAction *action = menu.addAction(label);
+        QAction *action = menu.addAction(section_label(i));
         action->setCheckable(true);
         if (is_locked(i)) {
           // Locked sections are always visible: the entry renders

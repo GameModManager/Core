@@ -15,7 +15,6 @@
 #include <QClipboard>
 #include <QComboBox>
 #include <QCompleter>
-#include <QCoreApplication>
 #include <QCursor>
 #include <QEvent>
 #include <QGroupBox>
@@ -76,20 +75,20 @@ namespace {
       const auto description = QString::fromStdString(plugin->getDescription());
       const auto groupName   = QString::fromStdString(group->getName());
       const auto stepName    = QString::fromStdString(step->getName());
-      // Free function now, so no enclosing QObject to give tr() a context.
-      const auto copy = [](const char *text) {
-        return QCoreApplication::translate("FomodWizardDialog", text);
-      };
-      menu.addAction(copy("Copy Option Name"), [pluginName] {
+      // FomodWizardDialog::tr, not a bare tr(): this is a free function now, so
+      // an unqualified tr() would resolve to QObject's and request the context
+      // "QObject", which matches nothing in projects/i18n. The static call keeps
+      // the context this dialog's other strings already use.
+      menu.addAction(FomodWizardDialog::tr("Copy Option Name"), [pluginName] {
         QApplication::clipboard()->setText(pluginName);
       });
-      menu.addAction(copy("Copy Description"), [description] {
+      menu.addAction(FomodWizardDialog::tr("Copy Description"), [description] {
         QApplication::clipboard()->setText(description);
       });
-      menu.addAction(copy("Copy Group Name"), [groupName] {
+      menu.addAction(FomodWizardDialog::tr("Copy Group Name"), [groupName] {
         QApplication::clipboard()->setText(groupName);
       });
-      menu.addAction(copy("Copy Step Name"), [stepName] {
+      menu.addAction(FomodWizardDialog::tr("Copy Step Name"), [stepName] {
         QApplication::clipboard()->setText(stepName);
       });
       menu.exec(QCursor::pos());

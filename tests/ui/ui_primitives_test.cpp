@@ -33,6 +33,7 @@
 #include <QLineEdit>
 #include <QMimeData>
 #include <QPalette>
+#include <QPointer>
 #include <QSignalSpy>
 #include <QStandardItemModel>
 #include <QToolButton>
@@ -93,16 +94,26 @@ public:
 class ExposedHeader : public ui::ColumnToggleHeaderView {
 public:
   using ui::ColumnToggleHeaderView::section_is_enabled;
+  using ui::ColumnToggleHeaderView::section_label;
 };
 
 // A model that answers kEnabledColumnRole per column, which is the whole point
-// of set_customizable_columns.
+// of set_customizable_columns, and gives each column a display name so the
+// label fallback has something to find.
 class EnablementModel : public QStandardItemModel {
 public:
   explicit EnablementModel(QList<bool> enabled, QObject *parent = nullptr)
       : QStandardItemModel(parent), enabled_(std::move(enabled)) {
     setColumnCount(enabled_.size());
     setRowCount(1);
+    QStringList names;
+    for (int c = 0; c < enabled_.size(); ++c) {
+      names << QStringLiteral("Model column %1").arg(c);
+    }
+    // headerData(Qt::DisplayRole, Qt::Horizontal) reads the horizontal header
+    // item, NOT the cell at (0, c): setting cell data would leave the header
+    // empty and the label fallback would have nothing to find.
+    setHorizontalHeaderLabels(names);
   }
 
   QVariant headerData(int section, Qt::Orientation orientation,
@@ -152,10 +163,15 @@ TEST_CASE("U264 SortableTreeWidget moves items and reports an accepted drop",
     std::unique_ptr<QMimeData> mime(tree.mimeData(QList<QTreeWidgetItem *>{child}));
     REQUIRE(mime != nullptr);
 
-    // Driving dropMimeData directly exercises the primitive's own decision
-    // (refuse or accept, then emit). Qt removes the dragged source rows in
-    // QAbstractItemView's drag path, keyed off the QDrag that started it, so
-    // that half cannot run here - what is observable is the insert under b.
+    // Qt's InternalMove path is gated on dragDropMode()==InternalMove AND
+    // event->source()==this. Qt 6 removed QDropEvent::setSource() and the
+    // offscreen platform has no drag, so that gate cannot be synthesised
+    // headlessly: forcing dropEvent with a foreign source calls dropMimeData
+    // never. So what is observable here is the primitive's own refuse/accept
+    // decision - dropMimeData's return value is the model's verdict (measured:
+    // a false return leaves the QDropEvent unaccepted), and by the time it is
+    // true the move has happened. The source-row removal is Qt's side of that
+    // same call and needs the real drag.
     const bool ok = tree.dropMimeData(b, 0, mime.get(), Qt::MoveAction);
     check(ok, "the cross-branch drop was accepted");
     check(b->childCount() == 1, "the child was inserted under b");
@@ -248,6 +264,10 @@ TEST_CASE("U264 set_customizable_columns drives the enable role from the model",
 
   auto *header = qobject_cast<ui::ColumnToggleHeaderView *>(view.header());
   REQUIRE(header != nullptr);
+  // The premise of reading model() instead of caching one: setHeader hands the
+  // header the view's model. If that ever stopped being true, this goes red.
+  check(header->model() == &model,
+        "setHeader gave the header the view's model, so model() is safe to read");
   // The role is what MO2's setCustomizableColumns keys off
   // (uibase/widgetutility.h:12).
   check(ui::kEnabledColumnRole == Qt::UserRole + 1, "the role is UserRole + 1");
@@ -259,12 +279,30 @@ TEST_CASE("U264 set_customizable_columns drives the enable role from the model",
   // Out of range and a model with no opinion both read as enabled.
   check(exposed->section_is_enabled(9), "an unknown section reads as enabled");
 
-  header->set_enablement_model(nullptr);
-  check(exposed->section_is_enabled(1), "dropping the model re-enables everything");
+  // Swapping the view's model must not leave a stale pointer behind: the
+  // header follows the view, so the role answer changes with it.
+  EnablementModel second({false, false, false});
+  view.setModel(&second);
+  check(header->model() == &second, "the header followed the view's model swap");
+  check(!exposed->section_is_enabled(0),
+        "the new model's false value is what the header now reads");
 
   // A null view is ignored rather than dereferenced.
   ui::set_customizable_columns(nullptr);
-  SUCCEED("a null view is a no-op");
+  check(view.header() == header, "a null view left the existing header alone");
+
+  // MINOR 3: set_customizable_columns passes no labels, so the menu text has to
+  // come from the model. Before this the menu read "Column N" and warned once
+  // per section on every open.
+  check(exposed->section_label(0) == "Model column 0",
+        "with no label list the model's header text is used");
+  check(exposed->section_label(2) == "Model column 2",
+        "for every section, not just the first");
+
+  // And the fallback chain still terminates: an explicit label wins, and a
+  // section the model has no name for gets the positional form.
+  header->set_column_labels({"Explicit A", "Explicit B", "Explicit C"});
+  check(exposed->section_label(0) == "Explicit A", "an explicit label wins");
 }
 
 // The host widget is never shown, so isVisible() is false for every child
@@ -479,27 +517,29 @@ TEST_CASE("U265 LineEditClear ships the clear affordance already on",
 TEST_CASE("U269 EventFilter turns a callable into a filter",
           "[ui][primitives][event_filter]") {
   ensure_app();
-  QWidget watched;
+  // Heap-allocated so one case can destroy it and prove the filter goes with
+  // it; a stack widget would end the whole case when it died.
+  auto watched           = std::make_unique<QWidget>();
   int seen               = 0;
   int consumed           = 0;
   QEvent::Type last_type = QEvent::None;
 
-  auto *filter = new ui::EventFilter(&watched, [&](QObject *obj, QEvent *event) {
+  auto *filter = new ui::EventFilter(watched.get(), [&](QObject *obj, QEvent *event) {
     ++seen;
     last_type = event->type();
-    if (obj != &watched)
+    if (obj != watched.get())
       return false;
     if (event->type() != QEvent::FocusIn)
       return false;
     ++consumed;
     return true;
   });
-  watched.installEventFilter(filter);
+  watched->installEventFilter(filter);
   check(filter->has_handler(), "a handler was supplied");
 
   SECTION("a matching event is consumed") {
     QFocusEvent focus_in(QEvent::FocusIn);
-    QApplication::sendEvent(&watched, &focus_in);
+    QApplication::sendEvent(watched.get(), &focus_in);
     check(seen == 1, "the handler ran");
     check(consumed == 1, "and consumed the event");
     check(last_type == QEvent::FocusIn, "it saw the right type");
@@ -507,26 +547,68 @@ TEST_CASE("U269 EventFilter turns a callable into a filter",
 
   SECTION("a non-matching event passes through untouched") {
     QFocusEvent focus_out(QEvent::FocusOut);
-    QApplication::sendEvent(&watched, &focus_out);
+    QApplication::sendEvent(watched.get(), &focus_out);
     check(seen == 1, "the handler ran");
     check(consumed == 0, "but consumed nothing");
   }
 
   SECTION("the filter dies with the object it was parented to") {
-    check(filter->parent() == &watched, "parented to the watcher");
-    SUCCEED("Qt removes the filter when the watcher is destroyed");
+    // Drive the claim: destroy the watcher and prove the filter went with it,
+    // rather than asserting the parent pointer it already had above.
+    QPointer<QObject> filter_alive(filter);
+    REQUIRE(filter_alive != nullptr);
+    watched.reset();
+    check(filter_alive == nullptr,
+          "destroying the watcher took the parented filter with it");
   }
 }
+
+// Counts what its target actually received, so "the event passed through" is a
+// measurement rather than an assumption.
+class CountingWidget : public QWidget {
+public:
+  using QWidget::QWidget;
+
+  int focus_in_count() const { return focus_in_count_; }
+
+protected:
+  bool event(QEvent *event) override {
+    if (event->type() == QEvent::FocusIn)
+      ++focus_in_count_;
+    return QWidget::event(event);
+  }
+
+private:
+  int focus_in_count_ = 0;
+};
 
 TEST_CASE("U269 EventFilter without a handler passes everything through",
           "[ui][primitives][event_filter]") {
   ensure_app();
-  QWidget watched;
+  CountingWidget watched;
   auto *filter = new ui::EventFilter(&watched, nullptr);
   check(!filter->has_handler(), "a null handler is not a handler");
   watched.installEventFilter(filter);
 
   QFocusEvent focus_in(QEvent::FocusIn);
   QApplication::sendEvent(&watched, &focus_in);
-  SUCCEED("an inert filter is a no-op, not a crash");
+
+  // The point of the inert case: the event was NOT swallowed, so the target
+  // really saw it.
+  check(watched.focus_in_count() == 1,
+        "the target received the FocusIn the inert filter did not consume");
+
+  // Negative control, or the assertion above proves nothing: the same counting
+  // target with a consuming filter must NOT see the event. If this ever reads
+  // 1, the counter is not measuring delivery and the case above is vacuous.
+  CountingWidget blocked;
+  auto *consuming = new ui::EventFilter(&blocked, [](QObject *, QEvent *event) {
+    return event->type() == QEvent::FocusIn;
+  });
+  blocked.installEventFilter(consuming);
+
+  QFocusEvent blocked_focus_in(QEvent::FocusIn);
+  QApplication::sendEvent(&blocked, &blocked_focus_in);
+  check(blocked.focus_in_count() == 0,
+        "a consuming filter stops the target seeing the event");
 }

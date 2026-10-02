@@ -22,10 +22,13 @@ namespace ui {
 //
 // Drop-in replacement for QLineEdit: the full QLineEdit API works unchanged,
 // including set_clear_button_enabled(false) to switch the affordance off again.
+//
+// No Q_PROPERTY here on purpose: QLineEdit has exposed `clearButtonEnabled`
+// itself since Qt 6.4, so re-declaring it would put two properties with one
+// name into one metaobject chain. QSS keeps working through the inherited
+// property; the two methods below are the house-style snake_case layer over it.
 class LineEditClear : public QLineEdit {
   Q_OBJECT
-  Q_PROPERTY(bool clearButtonEnabled READ is_clear_button_enabled WRITE
-                 set_clear_button_enabled)
 
 public:
   explicit LineEditClear(QWidget *parent = nullptr);
