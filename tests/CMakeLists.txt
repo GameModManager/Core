@@ -454,6 +454,11 @@ gmm_catch2_test(double_click_previews_test ui/double_click_previews_test.cpp
 gmm_catch2_test(bbcode_test ui/bbcode_test.cpp
     LIBS gmm_ui)
 
+# Tray close/restore decisions (ui/system_tray/tray_decision.h). Pure logic
+# over a facts struct - no QApplication, no tray, no window, and no link
+# against gmm_ui either, since the decision is a header-only inline function.
+gmm_catch2_test(tray_decision_test ui/tray_decision_test.cpp)
+
 # DescriptionBrowser (ui/modinfo/description_browser.cpp) - the QTextBrowser
 # subclass that loads remote [img] URLs via QNetworkAccessManager. Needs a
 # QApplication for the loadResource override to be exercisable, so this is

@@ -218,6 +218,14 @@ void Settings::set_confirm_close_with_downloads(bool on) {
   settings_.setValue("close/confirm_downloads", on);
 }
 
+bool Settings::minimize_to_tray() const {
+  return settings_.value("close/minimize_to_tray", false).toBool();
+}
+
+void Settings::set_minimize_to_tray(bool on) {
+  settings_.setValue("close/minimize_to_tray", on);
+}
+
 QString Settings::default_profile() const {
   return settings_.value("profiles/default").toString();
 }

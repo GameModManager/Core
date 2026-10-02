@@ -32,6 +32,8 @@
 #include "ui/controllers/tab_mode_controller.h"
 #include "ui/panels/tab_panels.h"
 #include "ui/settings/settings.h"
+#include "ui/system_tray/system_tray_manager.h"
+#include "ui/system_tray/tray_decision.h"
 #include "ui/theme/icon_manager.h"
 #include "ui/widgets/console_panel.h"
 #include "ui/widgets/debug_window.h"
@@ -48,6 +50,8 @@
 #include "ui/widgets/smooth_scroll.h"
 #include "ui/widgets/status_bar.h"
 #include "ui/workers/pipeline_worker.h"
+
+#include "engine/core/events/event_bus.h"
 
 namespace ui {
 
@@ -234,6 +238,28 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
   QApplication::instance()->installEventFilter(this);
   setFocusPolicy(Qt::StrongFocus);
 
+  // --- System tray ---
+  // Tray click or the menu's Show brings the window back. Quit runs the real
+  // close path rather than qApp->quit() so the download manifest, app state
+  // and mod order are still saved.
+  tray_ = new SystemTrayManager(this);
+  tray_->show();
+  connect(tray_, &SystemTrayManager::activate_requested, this, [this] {
+    restore_window();
+  });
+  connect(tray_, &SystemTrayManager::quit_requested, this, [this] {
+    quitting_ = true;
+    close();
+  });
+
+  // A game finishing while we are in the tray brings the window back
+  // (MO2 mainwindow.cpp:488-492). kGameFinished is our onFinishedRun.
+  game_finished_sub_ = engine::EventBus::instance().subscribe(
+      engine::events::kGameFinished, [this](const std::string &, const std::string &) {
+        if (isHidden())
+          restore_window();
+      });
+
   // --- Pipeline thread, source providers, download/install signals ---
   downloads_->setup_pipeline();
 
@@ -339,7 +365,13 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
 // Out-of-line so the unique_ptr controller members (ModListController,
 // SettingsController, LaunchController, ...) are destroyed here, where every
 // controller header is included (complete types are available).
-MainWindow::~MainWindow() = default;
+MainWindow::~MainWindow() {
+  // The EventBus is a process-wide singleton, so this subscription would
+  // outlive the window and fire into freed memory if a game-finished event
+  // landed during shutdown.
+  if (game_finished_sub_ != 0)
+    engine::EventBus::instance().unsubscribe(game_finished_sub_);
+}
 
 void MainWindow::setup_filter_shortcuts() {
   // MO2 parity (G15). Nothing else in the UI claims Ctrl+F or Escape - the
@@ -426,6 +458,9 @@ void MainWindow::handle_modl_download(const engine::Source::ModlLink &link) {
 
 void MainWindow::on_notification(const QString &title, const QString &message) {
   status_bar_->set_status(title + ": " + message);
+  // MO2 also raises a tray balloon for these (downloadmanager.cpp:1826, :2406).
+  // QSystemTrayIcon::showMessage is already a no-op without a tray.
+  tray_->show_notification(title, message);
 }
 
 void MainWindow::update_title() {
@@ -540,11 +575,32 @@ void MainWindow::set_ui_enabled(bool enabled) {
   locker_->set_enabled(enabled);
 }
 
+void MainWindow::restore_window() {
+  showNormal();
+  raise();
+  activateWindow();
+}
+
 void MainWindow::closeEvent(QCloseEvent *event) {
+  // Minimize-to-tray is decided before anything destructive runs: the app
+  // keeps running, so the manifest, settings and mod order must not be written
+  // and the pipeline must not be stopped.
+  const auto action = ui::tray::decide_tray_action(
+      {tray_->is_available(), Settings::instance().minimize_to_tray(), quitting_},
+      ui::tray::TrayIntent::CloseWindow);
+  if (action == ui::tray::TrayAction::HideToTray) {
+    event->ignore();
+    hide();
+    return;
+  }
+
   // Ask before closing with active downloads (downloads_->confirm_close);
   // Cancel aborts the close, everything else falls through.
   if (!downloads_->confirm_close()) {
     event->ignore();
+    // A tray Quit the user then declined must not latch: the next window close
+    // has to ask again rather than sail straight through.
+    quitting_ = false;
     return;
   }
 
