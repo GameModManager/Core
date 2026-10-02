@@ -717,11 +717,13 @@ int Application::run() {
           main_window->set_platform(platform_.get());
           main_window->set_native_style_name(native_style_name_);
 
-          // Forward focus requests from other instances to this window
+          // Forward focus requests from other instances to this window.
+          // restore_window() also unhides, so relaunching GMM while it sits in
+          // the tray brings the window back instead of doing nothing to a
+          // hidden one.
           QObject::connect(&instance_guard, &engine::MultiProcess::focusRequested,
                            main_window, [main_window]() {
-                             main_window->raise();
-                             main_window->activateWindow();
+                             main_window->restore_window();
                            });
 
           main_window->set_game_info(detected.game_id, detected.name, "Default",
@@ -765,11 +767,12 @@ int Application::run() {
   window.set_platform(platform_.get());
   window.set_native_style_name(native_style_name_);
 
-  // Forward focus requests from other instances to this window
+  // Forward focus requests from other instances to this window. restore_window()
+  // also unhides, so relaunching GMM while it sits in the tray brings the
+  // window back instead of doing nothing to a hidden one.
   QObject::connect(&instance_guard, &engine::MultiProcess::focusRequested, &window,
                    [&window]() {
-                     window.raise();
-                     window.activateWindow();
+                     window.restore_window();
                    });
 
   // Resolve which instance to load

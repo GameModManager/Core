@@ -87,6 +87,13 @@ public:
   bool confirm_close_with_downloads() const;  // key: close/confirm_downloads
   void set_confirm_close_with_downloads(bool on);
 
+  // Hide to the system tray instead of quitting when the window is closed.
+  // Defaults OFF, so the titlebar X quits exactly as it does everywhere else.
+  // Only takes effect on a system that actually has a tray; without one the
+  // close quits regardless, so the app can never end up unreachable.
+  bool minimize_to_tray() const;  // key: close/minimize_to_tray
+  void set_minimize_to_tray(bool on);
+
   // Default (startup) profile name for the current instance. Empty when no
   // default was chosen - the app then falls back to the first profile.
   QString default_profile() const;  // key: profiles/default
