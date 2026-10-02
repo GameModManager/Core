@@ -26,6 +26,12 @@ public:
   void set_show_download_notifications(bool on);
   bool hide_installed_downloads() const;  // key: downloads/hide_installed
   void set_hide_installed_downloads(bool on);
+  // List downloads the user marked hidden (MO2's "Hidden files" checkbox,
+  // mainwindow.ui:1426 showHiddenBox -> DownloadManager::setShowHidden).
+  // A VIEW preference: the per-entry hidden flag itself is persisted in the
+  // downloads manifest, not here.
+  bool show_hidden_downloads() const;  // key: downloads/show_hidden
+  void set_show_hidden_downloads(bool on);
   // Double-click opens previews (MO2 doubleClicksOpenPreviews): the persisted
   // default for file double-clicks in the file trees. ON = plain double-click
   // previews a file built-in when a preview handler exists (else OS-open).

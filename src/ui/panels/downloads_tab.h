@@ -47,6 +47,26 @@ enum class DownloadState {
 // dialog; tests inject a stub.
 enum class DropConflictAction { Overwrite, Rename, Ignore };
 
+// Which rows a batch hide/delete covers. MO2 encodes this as one method with an
+// index triple - -1 all, -2 installed, -3 uninstalled
+// (downloadmanager.cpp:954-996) - and DownloadListView offers all three for
+// both the hide and the delete family (downloadlistview.cpp:299-325). An enum
+// says the same thing without the magic numbers.
+enum class DownloadBatchScope {
+  // Every row whose state is ready-or-beyond, i.e. MO2's `removeAll` test
+  // `downloadState >= STATE_READY`. Downloading, Paused and Failed all sit
+  // BELOW that threshold in MO2 and are deliberately not covered: a batch
+  // delete must never take the archive out from under a transfer in flight,
+  // and a paused or failed row is still a row the user can act on.
+  All,
+  // Rows the user has installed from (MO2 STATE_INSTALLED).
+  Installed,
+  // Rows sitting on disk waiting to be installed. MO2 has a distinct
+  // STATE_UNINSTALLED for this; this build reports it as DownloadState::Complete
+  // (see mark_uninstalled), so that is what the scope resolves to.
+  Uninstalled
+};
+
 class DownloadsTab : public QWidget {
   Q_OBJECT
 public:
@@ -92,15 +112,7 @@ public:
   // skips it when the saved flags are the user's own (a saved blob records
   // visibility, not the choice behind it, so the header separately flags
   // whether its toggle menu was ever used).
-  enum Column {
-    Name,
-    Source,
-    Status,
-    Size,
-    Filetime,
-    NexusId,
-    ColumnCount
-  };
+  enum Column { Name, Source, Status, Size, Filetime, NexusId, ColumnCount };
 
   // Per-column header label, empty for an out-of-range index.
   [[nodiscard]] static QString column_name(int column);
@@ -187,6 +199,48 @@ public:
   // Re-apply the "hide installed" filter on top of any other row filter.
   void reapply_installed_filter();
 
+  // --- Hidden state (MO2 DownloadManager m_Hidden) ------------------------
+  //
+  // Real per-entry state, not a view toggle: MO2 persists it alongside every
+  // other download property (downloadmanager.cpp:1798 writes the sidecar key
+  // "removed" when a row is hidden, :101 reads it back), so a hidden download
+  // stays hidden across restarts. Here it rides in the JSON manifest that
+  // DownloadsTab::serialize already writes, under the key "hidden".
+  [[nodiscard]] bool is_hidden(const std::string &id) const;
+  void set_hidden(const std::string &id, bool hidden);
+  // True when any entry carries the hidden flag, whatever its state - the
+  // condition for offering "Un-Hide All" rather than the hide family.
+  [[nodiscard]] bool has_hidden_entry() const;
+
+  // MO2's "Hidden files" checkbox (mainwindow.ui:1426 showHiddenBox), which
+  // toggles DownloadManager::setShowHidden (mainwindow.cpp:3818-3820) - i.e.
+  // whether hidden entries are listed at all. Like "hide installed" this is a
+  // view preference, so it is a Settings key rather than manifest state.
+  [[nodiscard]] bool show_hidden() const;
+  void set_show_hidden(bool on);
+
+  // --- Batch operations (MO2 downloadlistview.cpp:299-325) ----------------
+  //
+  // Each returns how many entries it changed, so a caller can tell "nothing
+  // matched the scope" from "everything did" without asking the table.
+  int unhide_all();
+  int delete_downloads(DownloadBatchScope scope);
+
+  // Seam for the batch confirmations. Returns true when the user agrees.
+  // The default asks through the MO2-style warning box; tests inject a stub.
+  // (Same pattern as ConflictResolver below.)
+  using BatchConfirm =
+      std::function<bool(const QString &title, const QString &message)>;
+  void set_batch_confirmer(BatchConfirm confirm);
+
+  // Seam for the PER-ROW delete confirmation, shared by the Delete key and the
+  // context menu's Remove. Takes the archive's file name, returns true when the
+  // user agrees. Unset means the Remove Download question
+  // (configure_remove_download_dialog); tests inject a stub so the Delete
+  // shortcut's own path is drivable without a modal.
+  using RowDeleteConfirm = std::function<bool(const QString &file_name)>;
+  void set_row_delete_confirm(RowDeleteConfirm confirm);
+
   // Re-read the compact-downloads setting and set explicit row heights
   // (MO2 standard/compact) so the look does not depend on any stylesheet.
   void apply_compact_style();
@@ -238,11 +292,15 @@ private:
     // ?do=download query). Persisted in the manifest so the "Open on ..."
     // context action and install provenance survive restarts.
     std::string page_url;
-    QTableWidgetItem *name_item   = nullptr;
-    QTableWidgetItem *source_item = nullptr;
-    QTableWidgetItem *size_item   = nullptr;
+    // Hidden from the list (MO2 m_Hidden). Persisted in the manifest and
+    // independent of the "Hide installed" filter, which is a view
+    // preference rather than a fact about the entry.
+    bool hidden                     = false;
+    QTableWidgetItem *name_item     = nullptr;
+    QTableWidgetItem *source_item   = nullptr;
+    QTableWidgetItem *size_item     = nullptr;
     QTableWidgetItem *filetime_item = nullptr;
-    QProgressBar *progress_bar    = nullptr;
+    QProgressBar *progress_bar      = nullptr;
   };
 
   DownloadEntry &entry_for(const std::string &id);
@@ -253,7 +311,20 @@ private:
                               const QColor &bg, const QColor &fg);
   void on_cell_double_clicked(int row, int column);
   void remove_entry(const std::string &id);
-  void apply_installed_filter();
+  // Confirm and remove one entry, then its archive. The single path behind both
+  // the Delete key and the context menu's Remove.
+  bool delete_one(const std::string &id);
+  // The one row-visibility pass: hidden entries, then "hide installed", then
+  // the shared text filter - in that order, so the first two always win.
+  void apply_row_filter();
+
+  // Which states a batch operation covers, per DownloadBatchScope's
+  // documented scope. A batch delete must never take the archive out from
+  // under a transfer in flight, so Downloading and Paused are never in scope.
+  [[nodiscard]] static bool in_batch_scope(DownloadState state,
+                                           DownloadBatchScope scope);
+  // How many entries `scope` covers right now, for the confirmation text.
+  [[nodiscard]] int batch_scope_count(DownloadBatchScope scope) const;
 
   // Derive the origin metadata for an install from a download entry:
   // source_type ("nexus"/"loverslab"/""), source_id, file_id, and the
@@ -270,10 +341,31 @@ private:
 
 protected:
   // Fills `menu` with the actions for the download entry at `id` (install,
-  // pause/resume, show in folder, source-aware "Open on ...", remove).
+  // pause/resume, show in folder, source-aware "Open on ...", hide/un-hide,
+  // remove).
   // Split out of on_custom_context_menu so tests can drive it without
   // exec()-ing a modal menu (DataTab/PluginsTab pattern).
   void add_context_menu_actions(QMenu &menu, const std::string &id);
+
+  // The per-row Hide / Un-Hide action, kept separate so the state gating
+  // (a hidden row offers Un-Hide, a listed one offers Hide) is one line.
+  void add_hide_action(QMenu &menu, const std::string &id);
+
+  // MO2 DownloadListView::keyPressEvent (downloadlistview.cpp:330-359): drive
+  // the current row by key, gated on what its state allows. Returns true when
+  // the key was consumed and must not reach the view.
+  //
+  // Exposed (and the event filter below is its only caller in the app) so
+  // tests can drive the whole gating table without synthesizing key events at
+  // whatever widget happens to hold focus.
+  bool handle_download_key(int key);
+
+  // Confirm the batch `scope` with the user and apply it. Split out of the
+  // menu builders so tests drive the whole action, confirmation included,
+  // without exec()-ing a modal box (same pattern as
+  // add_context_menu_actions). Returns false when the user declined or the
+  // scope matched nothing.
+  bool run_batch_delete(DownloadBatchScope scope);
 
 private:
   void on_custom_context_menu(const QPoint &pos);
@@ -306,15 +398,29 @@ protected:
   void dragMoveEvent(QDragMoveEvent *event) override;
   void dropEvent(QDropEvent *event) override;
 
+  // Scoped to table_ and its viewport ONLY. That is what makes the keyboard
+  // shortcuts safe: an Enter / Delete / Space meant for a text field, a
+  // checkbox or a dialog elsewhere on the tab never reaches the filter,
+  // because those widgets are not being watched. A QShortcut on the tab or
+  // the table would fire for those instead (SavesTab filters for Delete;
+  // DataTab uses shortcuts and has to scope them by hand).
+  bool eventFilter(QObject *watched, QEvent *event) override;
+
   QTableWidget *table_       = nullptr;
   QCheckBox *hide_installed_ = nullptr;
+  // MO2's showHiddenBox (mainwindow.ui:1426). Kept as a member so
+  // set_show_hidden() drives the same path the checkbox does and
+  // apply_row_filter() reads one source of truth for the view preference.
+  QCheckBox *show_hidden_ = nullptr;
   std::unordered_map<std::string, DownloadEntry> downloads_;
   // Last filter text passed by RightPanel::apply_filter (trimmed, lowered),
-  // re-applied by apply_installed_filter so it never unhides rows the text
+  // re-applied by apply_row_filter so it never unhides rows the text
   // filter hid. Empty when no text filter is active.
   QString current_filter_text_;
   std::filesystem::path downloads_dir_;
   ConflictResolver conflict_resolver_;
+  BatchConfirm batch_confirm_;
+  RowDeleteConfirm row_delete_confirm_;
   QFileSystemWatcher *dir_watcher_ = nullptr;
   QTimer *scan_timer_              = nullptr;
 };

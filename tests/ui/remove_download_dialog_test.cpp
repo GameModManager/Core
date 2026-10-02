@@ -4,16 +4,17 @@
 //     void ui::configure_remove_download_dialog(TaskDialog& dlg,
 //                                               const QString& file_name);
 //
-// declared in ui/panels/downloads_tab.h and called by the Remove context-menu
-// action in DownloadsTab::add_context_menu_actions (downloads_tab.cpp). The
-// dialog must carry title "Remove Download", the archive file name in the
-// main text, a trash-restore note as content, a Question icon, and exactly
-// Yes/No command links; closing it must never confirm (default No).
+// declared in ui/panels/downloads_tab.h and called by delete_one, the shared
+// body behind both the Remove context-menu action and the Delete key in
+// DownloadsTab::handle_download_key (downloads_tab.cpp). The dialog must carry
+// title "Remove Download", the archive file name in the main text, a
+// trash-restore note as content, a Question icon, and exactly Yes/No command
+// links; closing it must never confirm (default No).
 //
-// The source scans below pin the wiring: the menu action routes through the
-// seam, while DownloadsTab::remove_entry (the workhorse, also called by the
-// rescan vanished-file cleanup in scan_downloads_dir where the file is
-// already gone) stays confirm-free.
+// The source scans below pin the wiring: both interactive entry points route
+// through the seam, while DownloadsTab::remove_entry (the workhorse, also
+// called by the rescan vanished-file cleanup in scan_downloads_dir where the
+// file is already gone) stays confirm-free.
 //
 // Hermetic: XDG_CONFIG_HOME under /tmp; no network, no user config access.
 // QT_QPA_PLATFORM=offscreen via the test property.
@@ -158,6 +159,13 @@ TEST_CASE("remove download confirmation routes through TaskDialog", "[ui]") {
   }
 
   // ---- the Remove menu action is actually wired to the seam --------------
+  //
+  // The confirmation body moved out of add_context_menu_actions and into
+  // delete_one when the Delete key was added (Workspace-9085), because the key
+  // and the menu item must not be able to drift apart on whether the archive is
+  // trashed. The invariants this pins are unchanged: the interactive path
+  // confirms through the TaskDialog seam, the menu action routes into it, and
+  // the two confirm-free callers stay silent.
   {
     std::ifstream f(std::string(PROJECT_SOURCE_DIR) +
                     "/src/ui/panels/downloads_tab.cpp");
@@ -166,15 +174,29 @@ TEST_CASE("remove download confirmation routes through TaskDialog", "[ui]") {
     const std::string src = ss.str();
     check(!src.empty(), "downloads_tab.cpp is readable");
 
+    const std::string delete_one_region =
+        function_region(src, "bool DownloadsTab::delete_one", "\nvoid DownloadsTab::");
+    check(!delete_one_region.empty(), "delete_one exists in downloads_tab.cpp");
+    check(delete_one_region.find("TaskDialog") != std::string::npos,
+          "the confirmation builds a ui::TaskDialog (not an ad-hoc box)");
+    check(delete_one_region.find("configure_remove_download_dialog") !=
+              std::string::npos,
+          "the confirmation routes through the shared configure seam");
+    check(delete_one_region.find("remove_entry(id)") != std::string::npos,
+          "confirming still drops the row via remove_entry");
+
+    // Both interactive entry points route through that one body, so neither can
+    // grow its own question box.
     const std::string menu_region = function_region(
         src, "void DownloadsTab::add_context_menu_actions", "\nvoid DownloadsTab::");
     check(!menu_region.empty(), "add_context_menu_actions exists in downloads_tab.cpp");
-    check(menu_region.find("TaskDialog") != std::string::npos,
-          "the Remove action builds a ui::TaskDialog (not an ad-hoc box)");
-    check(menu_region.find("configure_remove_download_dialog") != std::string::npos,
-          "the Remove action routes through the shared configure seam");
-    check(menu_region.find("remove_entry(id)") != std::string::npos,
-          "confirming still drops the row via remove_entry");
+    check(menu_region.find("delete_one(id)") != std::string::npos,
+          "the Remove action routes through delete_one");
+    const std::string key_region = function_region(
+        src, "bool DownloadsTab::handle_download_key", "\nvoid DownloadsTab::");
+    check(!key_region.empty(), "handle_download_key exists in downloads_tab.cpp");
+    check(key_region.find("delete_one(id)") != std::string::npos,
+          "the Delete key routes through the same delete_one");
 
     // The workhorse stays confirm-free: the rescan vanished-file cleanup
     // calls remove_entry() for files that are already gone from disk, so a
@@ -189,6 +211,6 @@ TEST_CASE("remove download confirmation routes through TaskDialog", "[ui]") {
         src, "void DownloadsTab::remove_entry", "\nvoid DownloadsTab::");
     check(!remove_region.empty(), "remove_entry exists in downloads_tab.cpp");
     check(remove_region.find("TaskDialog") == std::string::npos,
-          "remove_entry itself stays confirm-free (confirm lives in the menu)");
+          "remove_entry itself stays confirm-free (confirm lives in delete_one)");
   }
 }

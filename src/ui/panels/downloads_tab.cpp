@@ -20,9 +20,11 @@
 #include <QFileInfo>
 #include <QHBoxLayout>
 #include <QInputDialog>
+#include <QItemSelectionModel>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QKeyEvent>
 #include <QLineEdit>
 #include <QLocale>
 #include <QMenu>
@@ -63,6 +65,57 @@ static QString state_label(DownloadState s) {
     return QCoreApplication::translate("DownloadsTab", "Removed");
   }
   return QCoreApplication::translate("DownloadsTab", "Unknown");
+}
+
+// MO2's batch scope test (downloadmanager.cpp:970-983). `All` reproduces the
+// `downloadState >= STATE_READY` half of removeDownload's condition, so
+// Downloading, Paused and Failed are left alone - a batch delete must never
+// take the archive out from under a transfer in flight, and MO2's own Delete
+// All does not take the failed rows either.
+bool DownloadsTab::in_batch_scope(DownloadState state, DownloadBatchScope scope) {
+  switch (scope) {
+  case DownloadBatchScope::All:
+    // Complete covers MO2's STATE_READY and STATE_UNINSTALLED (this build
+    // reports a replaced mod's download as Complete again - see
+    // mark_uninstalled), Installed covers STATE_INSTALLED, and Removed is
+    // terminal by definition.
+    return state == DownloadState::Complete || state == DownloadState::Installed ||
+           state == DownloadState::Removed;
+  case DownloadBatchScope::Installed:
+    return state == DownloadState::Installed;
+  case DownloadBatchScope::Uninstalled:
+    return state == DownloadState::Complete || state == DownloadState::Removed;
+  }
+  return false;
+}
+
+// How many entries `scope` covers right now. Shown in the confirmation text so
+// the user knows what they are agreeing to (MO2 does not bother - its warning
+// box is a flat "Are you absolutely sure you want to proceed?").
+int DownloadsTab::batch_scope_count(DownloadBatchScope scope) const {
+  int count = 0;
+  for (const auto &[id, entry] : downloads_) {
+    (void)id;
+    if (in_batch_scope(entry.state, scope))
+      ++count;
+  }
+  return count;
+}
+
+// The subject of a batch confirmation, so the wording names what is about to
+// happen instead of a flat "are you sure" (MO2's box does not bother - see
+// downloadlistview.cpp:450-481 - because each of its scopes has its own literal
+// message; here one message serves three).
+static QString batch_subject(DownloadBatchScope scope) {
+  switch (scope) {
+  case DownloadBatchScope::Installed:
+    return QCoreApplication::translate("DownloadsTab", "installed downloads");
+  case DownloadBatchScope::Uninstalled:
+    return QCoreApplication::translate("DownloadsTab", "uninstalled downloads");
+  case DownloadBatchScope::All:
+    break;
+  }
+  return QCoreApplication::translate("DownloadsTab", "finished downloads");
 }
 
 // Archive extensions the Downloads tab treats as installable: the untracked
@@ -208,6 +261,12 @@ DownloadsTab::DownloadsTab(QWidget *parent) : QWidget(parent) {
   top->setContentsMargins(4, 2, 4, 2);
   hide_installed_ = new QCheckBox(tr("Hide installed"), this);
   top->addWidget(hide_installed_);
+  // MO2's showHiddenBox (mainwindow.ui:1426), label and hint copied from it.
+  show_hidden_ = new QCheckBox(tr("Hidden files"), this);
+  show_hidden_->setObjectName("showHiddenDownloadsBox");
+  show_hidden_->setToolTip(tr("Show downloads marked as hidden."));
+  show_hidden_->setWhatsThis(tr("Show downloads marked as hidden."));
+  top->addWidget(show_hidden_);
   top->addStretch(1);
   auto *add_url_btn = new QPushButton(tr("Add from URL…"), this);
   add_url_btn->setObjectName("addUrlBtn");
@@ -240,12 +299,26 @@ DownloadsTab::DownloadsTab(QWidget *parent) : QWidget(parent) {
   table_->setContextMenuPolicy(Qt::CustomContextMenu);
   connect(table_, &QTableWidget::customContextMenuRequested, this,
           &DownloadsTab::on_custom_context_menu);
+
+  // Keyboard shortcuts, scoped to the table alone (see eventFilter). The
+  // viewport is watched too because that is where QAbstractItemView installs
+  // its own handlers, so key events are delivered there rather than to the
+  // QTableWidget itself.
+  table_->installEventFilter(this);
+  table_->viewport()->installEventFilter(this);
   connect(hide_installed_, &QCheckBox::toggled, this, [this](bool checked) {
     Settings::instance().set_hide_installed_downloads(checked);
-    apply_installed_filter();
+    apply_row_filter();
   });
 
   hide_installed_->setChecked(Settings::instance().hide_installed_downloads());
+
+  connect(show_hidden_, &QCheckBox::toggled, this, [this](bool checked) {
+    Settings::instance().set_show_hidden_downloads(checked);
+    apply_row_filter();
+  });
+
+  show_hidden_->setChecked(Settings::instance().show_hidden_downloads());
 
   connect(add_url_btn, &QPushButton::clicked, this, [this]() {
     bool ok           = false;
@@ -285,6 +358,15 @@ DownloadsTab::DownloadsTab(QWidget *parent) : QWidget(parent) {
     case QMessageBox::YesRole:
       return DropConflictAction::Rename;
     }
+  };
+
+  // Default batch confirmer: the MO2-style warning box. downloadlistview.cpp
+  // asks the same Yes/No question for each of the three delete scopes and for
+  // each of the three hide scopes, all under the same title.
+  batch_confirm_ = [this](const QString &title, const QString &message) {
+    return QMessageBox::warning(this, title, message,
+                                QMessageBox::Yes | QMessageBox::No,
+                                QMessageBox::No) == QMessageBox::Yes;
   };
 
   // Watch the downloads dir so external changes (file-manager copies,
@@ -555,7 +637,7 @@ void DownloadsTab::mark_installed(const std::string &id) {
   }
 
   // If "hide installed" is on, the row disappears immediately
-  apply_installed_filter();
+  apply_row_filter();
 }
 
 void DownloadsTab::mark_uninstalled(const std::string &archive_filename) {
@@ -581,7 +663,7 @@ void DownloadsTab::mark_uninstalled(const std::string &archive_filename) {
     replace_bar_with_label(id, state_label(entry.state), QColor(), QColor("#4CAF50"));
     if (entry.total_size > 0)
       entry.size_item->setText(format_size(entry.total_size));
-    apply_installed_filter();
+    apply_row_filter();
     return;
   }
 }
@@ -739,7 +821,7 @@ void DownloadsTab::scan_downloads_dir() {
   for (const auto &id : vanished)
     remove_entry(id);
 
-  apply_installed_filter();
+  apply_row_filter();
 }
 
 bool DownloadsTab::add_downloads_dir_file(const std::filesystem::path &path) {
@@ -896,18 +978,28 @@ void DownloadsTab::dropEvent(QDropEvent *event) {
   // accepts_url_drop already guarantees every URL is a local archive file.
   for (const auto &url : event->mimeData()->urls())
     import_dropped_file(url.toLocalFile().toStdString(), move);
-  apply_installed_filter();
+  apply_row_filter();
   event->accept();
 }
 
-void DownloadsTab::apply_installed_filter() {
+void DownloadsTab::apply_row_filter() {
   if (!hide_installed_ || !table_)
     return;
-  const bool hide    = hide_installed_->isChecked();
-  const QString text = current_filter_text_;
+  const bool hide_installed_rows = hide_installed_->isChecked();
+  const bool list_hidden         = show_hidden_ && show_hidden_->isChecked();
+  const QString text             = current_filter_text_;
   for (const auto &[id, entry] : downloads_) {
+    // "Hidden files" off means a hidden entry is out of the list entirely -
+    // this is the one filter the user cannot override from the text box, for
+    // the same reason "Hide installed" wins: both record a decision made on
+    // purpose, and a substring match must not drag a hidden row back into
+    // view.
+    if (entry.hidden && !list_hidden) {
+      table_->setRowHidden(entry.row, true);
+      continue;
+    }
     // "Hide installed" always wins over the text filter.
-    if (hide && entry.state == DownloadState::Installed) {
+    if (hide_installed_rows && entry.state == DownloadState::Installed) {
       table_->setRowHidden(entry.row, true);
       continue;
     }
@@ -935,7 +1027,252 @@ void DownloadsTab::set_filter_text(const QString &text) {
 }
 
 void DownloadsTab::reapply_installed_filter() {
-  apply_installed_filter();
+  apply_row_filter();
+}
+
+// --- Hidden state ---------------------------------------------------------
+
+bool DownloadsTab::is_hidden(const std::string &id) const {
+  auto it = downloads_.find(id);
+  return it != downloads_.end() && it->second.hidden;
+}
+
+void DownloadsTab::set_hidden(const std::string &id, bool hidden) {
+  auto it = downloads_.find(id);
+  if (it == downloads_.end() || it->second.hidden == hidden)
+    return;
+  it->second.hidden = hidden;
+  // The flag only shows through the row filter, so re-run it: clearing the flag
+  // on a listed row is a no-op, but setting it has to take the row out.
+  //
+  // No save is triggered here, and none is needed: serialize() carries the
+  // flag and MainWindow::closeEvent already calls save_download_manifest() on
+  // every quit, plus each download event rewrites the manifest. That is
+  // exactly the durability the rest of the manifest has - a hidden flag
+  // survives a restart on the same terms as a renamed download does.
+  apply_row_filter();
+}
+
+bool DownloadsTab::show_hidden() const {
+  return show_hidden_ && show_hidden_->isChecked();
+}
+
+void DownloadsTab::set_show_hidden(bool on) {
+  if (show_hidden_)
+    show_hidden_->setChecked(on);
+}
+
+// --- Batch operations -----------------------------------------------------
+
+int DownloadsTab::unhide_all() {
+  int changed = 0;
+  for (const auto &[id, entry] : downloads_) {
+    (void)id;
+    if (entry.hidden)
+      ++changed;
+  }
+  if (changed == 0)
+    return 0;
+  for (auto &[id, entry] : downloads_) {
+    (void)id;
+    entry.hidden = false;
+  }
+  apply_row_filter();
+  return changed;
+}
+
+int DownloadsTab::delete_downloads(DownloadBatchScope scope) {
+  // Gather the ids first: remove_entry() erases from downloads_ and renumbers
+  // the survivors' rows, so it cannot be called while iterating the map.
+  std::vector<std::string> targets;
+  for (const auto &[id, entry] : downloads_) {
+    if (in_batch_scope(entry.state, scope))
+      targets.push_back(id);
+  }
+  for (const auto &id : targets)
+    remove_entry(id);
+  // Count what actually went: remove_entry() keeps the entry and warns when the
+  // archive could not be trashed, so the target count is not the removed one.
+  // remove_entry() also emits entry_removed per entry, which is what persists
+  // the manifest and forgets the download's link maps.
+  int removed = 0;
+  for (const auto &id : targets) {
+    if (downloads_.find(id) == downloads_.end())
+      ++removed;
+  }
+  apply_row_filter();
+  return removed;
+}
+
+void DownloadsTab::set_batch_confirmer(BatchConfirm confirm) {
+  batch_confirm_ = std::move(confirm);
+}
+
+bool DownloadsTab::run_batch_delete(DownloadBatchScope scope) {
+  const int count = batch_scope_count(scope);
+  if (count == 0 || !batch_confirm_)
+    return false;
+
+  // MO2's three delete confirmations (downloadlistview.cpp:450-481) all carry
+  // the same shape and the same weight, because all three look irreversible to
+  // the user. This build trashes the archive rather than unlinking it (the same
+  // thing its per-row Remove does), which is why the wording says so.
+  if (!batch_confirm_(tr("Delete Files?"),
+                      tr("This will remove %1 (%2) from this list and move their "
+                         "archives to the trash bin.")
+                          .arg(batch_subject(scope))
+                          .arg(count)))
+    return false;
+  return delete_downloads(scope) > 0;
+}
+
+// --- Keyboard -------------------------------------------------------------
+
+bool DownloadsTab::handle_download_key(int key) {
+  auto *selection = table_ ? table_->selectionModel() : nullptr;
+  if (!selection || selection->selectedRows().isEmpty())
+    return false;
+
+  // MO2 acts on the CURRENT row, not on every selected row
+  // (downloadlistview.cpp:331-336), so this reads currentIndex() and nothing
+  // else.
+  const QModelIndex current = table_->currentIndex();
+  if (!current.isValid())
+    return false;
+
+  const std::string *found = nullptr;
+  for (const auto &[id, entry] : downloads_) {
+    if (entry.row == current.row()) {
+      found = &id;
+      break;
+    }
+  }
+  if (!found)
+    return false;
+  const std::string id = *found;
+  auto &entry          = downloads_.at(id);
+
+  switch (entry.state) {
+  case DownloadState::Complete:
+  case DownloadState::Installed:
+  case DownloadState::Failed:
+    // MO2's `state >= STATE_READY` branch (downloadlistview.cpp:337-342).
+    //
+    // Failed is in this branch although MO2's STATE_ERROR sits below STATE_READY
+    // there: this build keeps a failed download's archive on disk and treats the
+    // row as installable (see on_cell_double_clicked, which has done so since
+    // the row states were defined), and MO2 has no errored archive to install.
+    // The archive-exists check inside on_cell_double_clicked is what stops a
+    // failed fetch from installing, so Enter is gated exactly as strictly as a
+    // double-click on the same row.
+    if (key == Qt::Key_Enter || key == Qt::Key_Return) {
+      on_cell_double_clicked(entry.row, Name);
+      return true;
+    }
+    if (key == Qt::Key_Delete)
+      return delete_one(id);
+    return false;
+  case DownloadState::Downloading:
+    // downloadlistview.cpp:343-346: cancel or pause, never install.
+    if (key == Qt::Key_Space) {
+      emit pause_requested(id);
+      return true;
+    }
+    if (key == Qt::Key_Delete) {
+      // MO2 cancels the transfer. There is no cancel in this build's row
+      // vocabulary, and the honest equivalent - removing the entry - would
+      // trash a file that is still being written, so Delete does NOT do it.
+      // Say why in the log rather than leaving a key that appears to work and
+      // does nothing (the same reasoning as the resume refusal in
+      // DownloadsController::wire_downloads_tab).
+      engine::Logger::instance().warn("downloads: Delete ignored for in-flight '" + id +
+                                      "' (no cancel action on a downloading row)");
+      return true;
+    }
+    return false;
+  case DownloadState::Paused:
+    // downloadlistview.cpp:347-356 gives a paused row Space (resume) and
+    // Delete only.
+    //
+    // Enter additionally resumes, which MO2 does not do. Deliberate: MO2
+    // leaves Enter dead on a paused row, but this tab's DOUBLE-CLICK already
+    // resumes one (on_cell_double_clicked), and having the two activation
+    // gestures of the same widget disagree would be worse than the divergence.
+    // Enter means "do this row's primary action", whatever state it is in -
+    // which is also why it is gated so hard above that it can never install
+    // anything unfinished.
+    if (key == Qt::Key_Space || key == Qt::Key_Enter || key == Qt::Key_Return) {
+      emit resume_requested(id);
+      return true;
+    }
+    if (key == Qt::Key_Delete)
+      return delete_one(id);
+    return false;
+  case DownloadState::Removed:
+    return false;
+  }
+  return false;
+}
+
+// Single-row delete, shared by the Delete key and the context menu's Remove so
+// the two paths cannot drift on whether the archive is trashed or the manifest
+// is rewritten. The confirmation is behind a seam for the same reason
+// ConflictResolver is: a modal exec() cannot be driven by a test, and a key
+// handler that is untestable is exactly the handler that ends up wrong.
+bool DownloadsTab::delete_one(const std::string &id) {
+  auto it = downloads_.find(id);
+  if (it == downloads_.end())
+    return false;
+  const QString file_name =
+      it->second.file_path.empty()
+          ? QString::fromStdString(id)
+          : QString::fromStdString(it->second.file_path.filename().string());
+  if (row_delete_confirm_) {
+    if (!row_delete_confirm_(file_name))
+      return false;
+  } else {
+    TaskDialog dlg(this, {});
+    configure_remove_download_dialog(dlg, file_name);
+    if (dlg.exec() != QMessageBox::Yes)
+      return false;
+  }
+  remove_entry(id);
+  return true;
+}
+
+void DownloadsTab::set_row_delete_confirm(RowDeleteConfirm confirm) {
+  row_delete_confirm_ = std::move(confirm);
+}
+
+bool DownloadsTab::eventFilter(QObject *watched, QEvent *event) {
+  // Only the table and its viewport are watched (installed in the ctor), so
+  // reaching here at all already means the keystroke was meant for the
+  // download list. Checking the identity anyway keeps that guarantee local to
+  // this function rather than spread across the install sites.
+  if (watched != table_ && watched != table_->viewport())
+    return QWidget::eventFilter(watched, event);
+  if (event->type() != QEvent::KeyPress)
+    return QWidget::eventFilter(watched, event);
+
+  auto *key = static_cast<QKeyEvent *>(event);
+  if (key->isAutoRepeat())
+    return QWidget::eventFilter(watched, event);
+  // Swallow the key only when it did something, so the view keeps every key
+  // this tab does not bind (arrows, F2, type-to-find).
+  if (handle_download_key(key->key())) {
+    key->accept();
+    return true;
+  }
+  return QWidget::eventFilter(watched, event);
+}
+
+bool DownloadsTab::has_hidden_entry() const {
+  for (const auto &[id, entry] : downloads_) {
+    (void)id;
+    if (entry.hidden)
+      return true;
+  }
+  return false;
 }
 
 void DownloadsTab::on_cell_double_clicked(int row, int column) {
@@ -1127,18 +1464,63 @@ void DownloadsTab::add_context_menu_actions(QMenu &menu, const std::string &id) 
   }
 
   menu.addSeparator();
+  // Hide / Un-Hide for this one row (MO2 downloadlistview.cpp:263-268: a
+  // hidden row offers Un-Hide, a listed one offers Hide).
+  add_hide_action(menu, id);
   menu.addAction(icon_for("edit-delete", QStyle::SP_TrashIcon), tr("Remove"), this,
-                 [this, id, entry]() {
-                   const QString file_name =
-                       entry.file_path.empty()
-                           ? QString::fromStdString(id)
-                           : QString::fromStdString(
-                                 entry.file_path.filename().string());
-                   TaskDialog dlg(this, {});
-                   configure_remove_download_dialog(dlg, file_name);
-                   if (dlg.exec() != QMessageBox::Yes)
-                     return;
-                   remove_entry(id);
+                 [this, id]() {
+                   delete_one(id);
+                 });
+
+  // The batch delete family (MO2 downloadlistview.cpp:299-308). MO2 also offers
+  // a three-scope hide family in the same block; that one is deferred with the
+  // rest of the parity rows, and "Un-Hide All" below is the restore path that
+  // the hidden state needs in order to be usable at all.
+  menu.addSeparator();
+  menu.addAction(icon_for("edit-delete", QStyle::SP_TrashIcon),
+                 tr("Delete Installed Downloads..."), this, [this]() {
+                   run_batch_delete(DownloadBatchScope::Installed);
+                 });
+  menu.addAction(icon_for("edit-delete", QStyle::SP_TrashIcon),
+                 tr("Delete Uninstalled Downloads..."), this, [this]() {
+                   run_batch_delete(DownloadBatchScope::Uninstalled);
+                 });
+  menu.addAction(icon_for("edit-delete", QStyle::SP_TrashIcon),
+                 tr("Delete All Downloads..."), this, [this]() {
+                   run_batch_delete(DownloadBatchScope::All);
+                 });
+
+  // MO2's restore path (restoreDownload(-1),
+  // downloadmanager.cpp:917-946). Offered only when something is actually
+  // hidden, so the menu never lists an action with nothing to restore.
+  if (has_hidden_entry()) {
+    menu.addSeparator();
+    menu.addAction(icon_for("edit-undo", QStyle::SP_DialogResetButton),
+                   tr("Un-Hide All"), this, [this]() {
+                     unhide_all();
+                   });
+  }
+}
+
+void DownloadsTab::add_hide_action(QMenu &menu, const std::string &id) {
+  auto it = downloads_.find(id);
+  if (it == downloads_.end())
+    return;
+  const bool hidden = it->second.hidden;
+  // Only on a finished row: hiding a transfer that is still writing its archive
+  // would be a lie about where that file is, and MO2 does not offer it either
+  // (downloadlistview.cpp:263 sits inside the `state >= STATE_READY` branch).
+  if (!in_batch_scope(it->second.state, DownloadBatchScope::All) &&
+      it->second.state != DownloadState::Failed)
+    return;
+
+  auto icon_for = [](const QString &theme, QStyle::StandardPixmap fallback) -> QIcon {
+    return engine::IconManager::instance().resolve_icon(theme, fallback);
+  };
+  menu.addAction(hidden ? icon_for("edit-undo", QStyle::SP_DialogResetButton)
+                        : icon_for("view-conceal", QStyle::SP_DialogResetButton),
+                 hidden ? tr("Un-Hide") : tr("Hide"), this, [this, id, hidden]() {
+                   set_hidden(id, !hidden);
                  });
 }
 
@@ -1202,6 +1584,10 @@ std::string DownloadsTab::serialize() const {
     obj["domain"]        = QString::fromStdString(entry.nexus_domain);
     obj["category"]      = QString::fromStdString(entry.category);
     obj["page_url"]      = QString::fromStdString(entry.page_url);
+    // Real state, not a view toggle: a download the user hid stays hidden
+    // after a restart, exactly as MO2 writes its sidecar's "removed" key
+    // (downloadmanager.cpp:1798) and reads it back (:101).
+    obj["hidden"] = entry.hidden;
     arr.append(obj);
   }
   QJsonDocument doc(arr);
@@ -1227,6 +1613,10 @@ void DownloadsTab::deserialize(const std::string &json,
     const auto parent_mod_id = obj["parent_mod_id"].toString().toStdString();
     const auto nexus_domain  = obj["domain"].toString().toStdString();
     const auto page_url      = obj["page_url"].toString().toStdString();
+    // Hidden state. Optional in an older manifest, and an absent key has to
+    // mean "not hidden" rather than a silent zero-value surprise -
+    // QJsonObject::toBool() on an absent key is already false.
+    const bool hidden = obj["hidden"].toBool();
 
     // Manifest repair for Workspace-rvld: older builds persisted
     // "Nexus Mods" as the source string even for LoversLab / Steam /
@@ -1281,9 +1671,8 @@ void DownloadsTab::deserialize(const std::string &json,
     // ("this did not finish") and that the row can still act on.
     if (state == DownloadState::Downloading || state == DownloadState::Paused) {
       engine::Logger::instance().warn(
-          "downloads: '" + id + "' was " + (state == DownloadState::Downloading
-                                                 ? "downloading"
-                                                 : "paused") +
+          "downloads: '" + id + "' was " +
+          (state == DownloadState::Downloading ? "downloading" : "paused") +
           " at shutdown and did not survive the restart; marked failed");
       state = DownloadState::Failed;
     }
@@ -1311,6 +1700,7 @@ void DownloadsTab::deserialize(const std::string &json,
     entry.nexus_domain  = nexus_domain;
     entry.category      = obj["category"].toString().toStdString();
     entry.page_url      = page_url;
+    entry.hidden        = hidden;
 
     table_->insertRow(entry.row);
 
@@ -1391,7 +1781,9 @@ void DownloadsTab::deserialize(const std::string &json,
     table_->setRowHeight(entry.row, row_height());
   }
 
-  apply_installed_filter();
+  // Hidden entries are restored hidden (deserialize set the flag per entry);
+  // this pass is what takes them out of the list.
+  apply_row_filter();
 }
 
 }  // namespace ui
