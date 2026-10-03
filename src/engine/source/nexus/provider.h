@@ -4,6 +4,8 @@
 #include "engine/source/router.h"
 
 #include <string>
+#include <string_view>
+#include <vector>
 
 namespace engine::Source::Nexus {
 
@@ -43,7 +45,34 @@ public:
   // so the mapping is unit-testable without the network).
   static ModInfoResult parse_mod_info(const std::string &body);
 
+  // The downloadable files of one mod, from
+  // mods/{game}/mods/{id}/files.json. Nexus lists a file as available only
+  // while it is neither archived nor deleted, so a pin that is missing from
+  // here is a pin that can no longer be honoured.
+  struct FileList {
+    bool ok = false;
+    std::vector<long long> available;
+  };
+
+  // Pure parser for the response above. Never throws; ok=false on anything
+  // unparseable or empty.
+  static FileList parse_file_list(const std::string &body);
+
+  // Which file to ask Nexus for, given the pack's declared policy. "exact"
+  // takes the pin or nothing - it has no fallback to offer. "prefer" takes the
+  // pin while it is still available and the mod's newest file once it is not,
+  // which is the whole point of that state. "latest" always takes the newest.
+  // An unknown policy is treated as exact. Returns 0 when nothing is available,
+  // and the caller reports the failure rather than downloading a wrong file.
+  static long long select_file_id(std::string_view policy, long long pinned,
+                                  const FileList &list);
+
 private:
+  // Live mods/{game}/mods/{id}/files.json for one mod. ok=false on any
+  // failure, which callers surface instead of guessing a file.
+  FileList fetch_file_list(const std::string &nexus_domain,
+                           const std::string &mod_id) const;
+
   // Shared download routine for a resolved URL (used by both the API-auth
   // paths and the direct-URL path). server_name is the Nexus mirror that
   // served the URL (from the download_link.json entry); when non-empty a

@@ -39,4 +39,18 @@ Manifest parse(std::string_view json);
 // Convenience overload: parse from a file path.
 Manifest parse_file(const std::string &path);
 
+// ---------------------------------------------------------------------------
+// Update policy
+// ---------------------------------------------------------------------------
+
+// Map Nexus's updatePolicy ("exact" | "prefer" | "latest") to our three
+// states. Never yields Exact: Nexus publishes an md5 of the archive and never a
+// sha256, and an exact pin is a claim about a digest we would have to invent
+// to make it true. So "exact" keeps its fileId pin but degrades to Prefer -
+// same file while it is still there, the mod's newest file once it is not -
+// and an absent or unrecognised value is treated the same way, since nothing
+// was actually declared. Shared by the collection.json parser and the live
+// revision adapter so both read Nexus's enum the same way.
+UpdatePolicy map_update_policy(std::string_view nexus_policy);
+
 }  // namespace engine::Collection::Nexus

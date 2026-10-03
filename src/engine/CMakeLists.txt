@@ -141,6 +141,7 @@ install/conflict_resolver.cpp
     game/saves/local_saves.cpp
     collection/resolver.cpp
 collection/batch_installer.cpp
+    collection/manifest.cpp
     collection/sync.cpp
     source/registry.cpp
     source/update_policy.cpp

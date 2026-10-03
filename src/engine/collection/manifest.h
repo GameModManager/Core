@@ -12,6 +12,7 @@
 
 #include <cstdint>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <variant>
 #include <vector>
@@ -33,6 +34,8 @@ enum class RuleType {
   After,
   Requires,
   Conflicts,
+  Recommends,  // Vortex emits it; a soft hint, not an install gate
+  Provides,    // Vortex emits it; one mod stands in for another
 };
 
 enum class ChoiceMode {
@@ -40,10 +43,21 @@ enum class ChoiceMode {
   AtMostOne,
 };
 
+// Three states, matching Nexus's UpdatePolicy enum: keep the pinned file
+// (Exact), keep the pinned file but accept the mod's newest one when the
+// pinned file was archived or deleted upstream (Prefer), or always take
+// whatever the source currently reports as newest (Latest).
 enum class UpdatePolicy {
   Exact,
+  Prefer,
   Latest,
 };
+
+std::string_view to_string(UpdatePolicy policy);
+
+// Inverse of to_string: "exact" / "prefer" / "latest". Anything else -
+// including an absent value - is Exact, the most restrictive state.
+UpdatePolicy parse_update_policy(std::string_view text);
 
 enum class SourceResolution {
   Api,
@@ -63,6 +77,9 @@ struct PackInfo {
   std::string homepage;
   std::string created_at;  // ISO 8601
   std::string updated_at;  // ISO 8601
+  // Free-form notes a collection author ships alongside the mod list.
+  std::string install_instructions;
+  std::vector<std::string> game_versions;
 };
 
 // ---------------------------------------------------------------------------
@@ -150,7 +167,13 @@ struct SourceNexus {
   std::string version;
   std::string file_name;
   int64_t file_size = 0;
+  // Nexus publishes MD5, not SHA-256. The digest lives in the field named
+  // for its algorithm so a 32-hex MD5 never passes as a 64-hex SHA-256.
+  std::string md5;
   std::string sha256;
+  // Nexus's per-mod opaque identifier, carried through so a re-export points
+  // at the same mod entry.
+  std::string tag;
   UpdatePolicy update_policy = UpdatePolicy::Exact;
 };
 
@@ -190,12 +213,25 @@ struct SourceDirect {
   std::string url;
   std::string version;
   std::string file_name;
+  std::string md5;
   std::string sha256;
   UpdatePolicy update_policy = UpdatePolicy::Exact;
 };
 
 using ModSource = std::variant<SourceNexus, SourceLoversLab, SourceModPub,
                                SourceSteamWorkshop, SourceDirect>;
+
+// ---------------------------------------------------------------------------
+// Per-file install instructions (Nexus `hashes[]`)
+// ---------------------------------------------------------------------------
+
+// One installed file and the digest it must carry, as `path` + `md5`. This is
+// the only per-file identity Nexus publishes for a collection mod, so it is
+// what a replicate-style install has to check against.
+struct FileHash {
+  std::string path;
+  std::string md5;
+};
 
 // ---------------------------------------------------------------------------
 // Mod entry (one per mod in the collection)
@@ -208,6 +244,20 @@ struct ModEntry {
   ModCategory category = ModCategory::Optional;
   ModSource source;
   InstallerChoices installer_choices;  // may be empty (no FOMOD)
+  std::vector<FileHash> hashes;        // per-file (path, md5); often empty
+  std::string instructions;            // author note for this mod
+};
+
+// ---------------------------------------------------------------------------
+// Unresolvable input, surfaced rather than dropped
+// ---------------------------------------------------------------------------
+
+// A rule (or any other declaration) the parser could not bind to a mod in the
+// manifest. Kept so the UI can say what was ignored instead of silently
+// importing a collection with fewer rules than it declared.
+struct Unresolved {
+  std::string what;    // "modRules[3]", "mods[7]"
+  std::string reason;  // why it could not be resolved
 };
 
 // ---------------------------------------------------------------------------
@@ -245,6 +295,10 @@ struct Manifest {
 
   // Archive integrity
   ArchiveIntegrity archive;
+
+  // Everything the format declared that we could not bind. Empty on a clean
+  // parse. Never fatal: the import continues, and the UI reports these.
+  std::vector<Unresolved> unresolved;
 };
 
 }  // namespace engine::Collection

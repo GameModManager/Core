@@ -47,6 +47,10 @@ struct Mod {
     int64_t expire  = 0;
     int64_t user_id = 0;
     std::string nexus_domain;  // e.g. "skyrimspecialedition"
+    // "exact" | "prefer" | "latest", as the pack declared it. Decides WHICH
+    // file id fetch() asks Nexus for: the pin, the pin-or-newest, or the
+    // newest. Absent means exact.
+    std::string update_policy;
   } download_nxm;
 
   // Pre-resolved direct download URL. When set, providers download from this
