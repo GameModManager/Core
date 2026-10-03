@@ -483,12 +483,14 @@ QWidget *ExportWizard::build_mods_page() {
     }
     mods_table_->setItem(row, 2, source_item);
     // Category: drives the pack's mod.category and the install phase (required
-    // mods install before optional ones). Vanilla masters are never exported.
+    // mods install before optional ones). Required is the first item and so
+    // the untouched default - a pack exists to reproduce this instance, so a
+    // mod the author never demoted is one the importer has to install. Vanilla
+    // masters are never exported.
     auto *category = new QComboBox(mods_table_);
     category->addItem(tr("Required"));
     category->addItem(tr("Recommended"));
     category->addItem(tr("Optional"));
-    category->setCurrentIndex(2);
     category->setProperty("row", row);
     if (mod.is_vanilla) {
       category->setEnabled(false);
@@ -994,7 +996,7 @@ void ExportWizard::on_category_changed() {
   static const char *kCategories[] = {"required", "recommended", "optional"};
   const int index                  = combo->currentIndex();
   mods_[static_cast<size_t>(row)].category =
-      (index >= 0 && index < 3) ? kCategories[index] : "optional";
+      (index >= 0 && index < 3) ? kCategories[index] : "required";
 }
 
 void ExportWizard::on_exe_include_toggled() {

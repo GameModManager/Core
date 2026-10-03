@@ -463,10 +463,19 @@ TEST_CASE("packer mod entries: skips manual, deterministic order",
   REQUIRE(mods[0].id == "alpha");
   REQUIRE(mods[1].id == "zeta");
   REQUIRE(mods[0].name == "Alpha");
-  // Optional is the default category, and phase follows it: required mods
-  // install first, optional ones last (see phase_for in packer.cpp).
-  REQUIRE(mods[0].category == gmmpack::ModCategory::Optional);
-  REQUIRE(mods[0].phase == 2);
+  // A mod nobody labelled is required: every mod in an exported pack was put
+  // there deliberately, and phase follows (see phase_for in packer.cpp).
+  REQUIRE(mods[0].category == gmmpack::ModCategory::Required);
+  REQUIRE(mods[0].phase == 0);
+
+  // Bundling the manual mod does not change that - embed_folders only decides
+  // where the bytes come from, never what the importer has to install.
+  opts.embed_folders.insert("Local");
+  auto embedded = gmmpack::build_mod_entries(snap, td.root, opts);
+  REQUIRE(embedded.size() == 3);
+  REQUIRE(embedded[2].id == "local");
+  REQUIRE(embedded[2].category == gmmpack::ModCategory::Required);
+  REQUIRE(embedded[2].phase == 0);
 }
 
 TEST_CASE("packer categories: category drives phase and ships in the pack",
@@ -477,15 +486,15 @@ TEST_CASE("packer categories: category drives phase and ships in the pack",
   track(snap, "SkyUI", 0);
 
   gmmpack::PackOptions opts;
-  opts.categories["SkyUI"] = "required";
+  opts.categories["SkyUI"] = "optional";
   auto mods                = gmmpack::build_mod_entries(snap, td.root, opts);
   REQUIRE(mods.size() == 1);
-  REQUIRE(mods[0].category == gmmpack::ModCategory::Required);
-  REQUIRE(mods[0].phase == 0);
+  REQUIRE(mods[0].category == gmmpack::ModCategory::Optional);
+  REQUIRE(mods[0].phase == 2);
 
   const auto json = gmmpack::serialize_mod_entry(mods[0]);
-  REQUIRE(json["category"] == "required");
-  REQUIRE(json["phase"] == 0);
+  REQUIRE(json["category"] == "optional");
+  REQUIRE(json["phase"] == 2);
 }
 
 TEST_CASE("packer policies: default is latest", "[gmmpack][packer]") {
