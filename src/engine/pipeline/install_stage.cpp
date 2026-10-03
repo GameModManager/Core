@@ -5,6 +5,7 @@
 #include "engine/mod/model/mod.h"
 #include "engine/pipeline/pipeline.h"
 #include "engine/source/modpub/provider.h"
+#include "engine/source/update_policy.h"
 
 #include <algorithm>
 #include <fstream>
@@ -322,6 +323,24 @@ namespace Source {
         meta.set("General", "newestVersion", mod.version);
       if (!mod.archive_filename.empty())
         meta.set("General", "installationFile", mod.archive_filename);
+      // The download's own identity, recorded once at install time. An exported
+      // modpack pinning this mod with updatePolicy "exact" has to declare the
+      // archive's size and sha256, and neither is recoverable from the
+      // installed folder afterwards (that is exactly the state this used to
+      // be in, which is why every exported pack came out "latest").
+      if (!mod.files.empty()) {
+        const std::string archive = mod.files.front().relative_path;
+        std::error_code size_ec;
+        const auto size = std::filesystem::file_size(archive, size_ec);
+        if (!size_ec && size > 0) {
+          const std::string hash = Source::compute_file_sha256(archive);
+          if (!hash.empty()) {
+            meta.set("GameModManager", "download_size", std::to_string(size));
+            meta.set("GameModManager", "download_sha256", hash);
+          }
+        }
+      }
+
       if (existing_priority >= 0)
         meta.set_priority(existing_priority);
 

@@ -1,7 +1,7 @@
 #pragma once
 
 // INI tweak engine for .gmmpack modpacks (ini/<targetFile>.json, see
-// input/ini.schema.json in the Workspace repo).
+// schemas/ini.schema.json).
 //
 // Each edit file carries {targetFile, tweaks[]} where every tweak has
 // {id, name, status, enabled, sourceModId, content}. content is plain INI

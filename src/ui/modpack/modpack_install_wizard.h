@@ -122,6 +122,8 @@ private slots:
   void on_download_open_browser();
   void on_download_mark_done();
   void on_download_skip_optional();
+  void on_download_extract();
+  void extract_bundled_mod(const QString &mod_id);
   void on_fetch_progress(const QString &mod_id, int64_t downloaded, int64_t total);
   void on_fetch_meta(const QString &mod_id, const QString &archive_name,
                      const QString &display_name);

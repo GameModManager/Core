@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "engine/core/instance/instance_snapshot.h"
+#include "engine/gmmpack/packer.h"
 
 class QListWidget;
 class QListWidgetItem;
@@ -26,15 +27,14 @@ namespace ui {
 // Modpack export wizard: left sidebar (step list, ~30%) + right
 // QStackedWidget content + Cancel/Back/Next navigation.
 //
-// Steps: Info (pack metadata), Mods (include/category review),
+// Steps: Info (pack metadata), Mods (include/category/policy review),
 // Executables (include selection), Tree (layout preview), Review
 // (summary + output path + Export).
 //
-// The packer engine (engine::gmmpack) only exports what is in the
-// snapshot it is given, so include choices are applied by handing
-// create_gmmpack() a filtered snapshot copy. Per-row categories are
-// stored for reference (the engine currently exports all mods as
-// Optional).
+// The packer engine (engine::gmmpack) only exports what is in the snapshot it
+// is given, so include choices are applied by handing create_gmmpack() a
+// filtered snapshot copy. Per-row category, update policy and "bundle this
+// manual mod" all travel through PackOptions and end up in the pack.
 class ExportWizard : public QDialog {
   Q_OBJECT
 public:
@@ -47,7 +47,8 @@ public:
   };
 
   ExportWizard(const engine::InstanceSnapshot &snapshot, std::filesystem::path mods_dir,
-               QWidget *parent = nullptr);
+               std::filesystem::path downloads_dir = {},
+               std::filesystem::path schema_dir = {}, QWidget *parent = nullptr);
   ~ExportWizard() override = default;
 
 private:
@@ -64,9 +65,10 @@ private:
     bool disabled             = false;
     bool resolvable           = true;
     bool included             = true;
-    bool is_vanilla           = false;  // unmanaged game master (Skyrim.esm etc.)
-    bool is_manual            = false;  // manual/unknown source - shippable but opt-in
-    std::string update_policy = "latest";  // "latest" or "exact"
+    bool is_vanilla           = false;       // unmanaged game master (Skyrim.esm etc.)
+    bool is_manual            = false;       // manual/unknown source - bundled, opt-in
+    std::string update_policy = "latest";    // "latest" or "exact"
+    std::string category      = "optional";  // required | recommended | optional
   };
 
   struct ExeRow {
@@ -102,6 +104,9 @@ private:
   void refresh_mods_count();
   void refresh_tree();
   void refresh_review();
+  [[nodiscard]] engine::gmmpack::PackOptions pack_options() const;
+  // What the engine will actually write, so every page counts the same mods.
+  [[nodiscard]] engine::gmmpack::Gmmpack preview_pack() const;
   [[nodiscard]] engine::InstanceSnapshot filtered_snapshot() const;
   [[nodiscard]] int separator_count() const;
 
@@ -109,6 +114,7 @@ private slots:
   void on_exclude_disabled();
   void on_mod_include_toggled();
   void on_policy_changed();
+  void on_category_changed();
   void on_exe_include_toggled();
   void on_browse_output();
   void on_export();
@@ -116,6 +122,8 @@ private slots:
 private:
   engine::InstanceSnapshot snapshot_;
   std::filesystem::path mods_dir_;
+  std::filesystem::path downloads_dir_;
+  std::filesystem::path schema_dir_;
   std::unordered_set<std::string> foreign_mods_;  // unmanaged vanilla masters
   std::vector<StepState> steps_;
   int current_ = 0;

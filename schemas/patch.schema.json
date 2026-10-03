@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://gamemodmanager.org/schemas/gmmpack/1.0.0/patch.schema.json",
+  "title": "GMM Modpack Patch Entry (patches/<id>[-N].json)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["modId", "targetPath", "baseFileSha256", "algorithm", "payloadBase64"],
+  "properties": {
+    "modId": {
+      "type": "string",
+      "description": "Must match both the corresponding mods/<id>.json id AND the id encoded in this file's own filename. A loader MUST cross-check filename vs this field and reject the archive on mismatch -- cheap insurance against a mis-extracted or hand-edited archive applying the wrong patch to the wrong mod."
+    },
+    "sequence": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Absent/null for a single non-chained patch. Present for a chain (filename suffix -1, -2, -3...), applied in ascending numeric order."
+    },
+    "targetPath": {
+      "type": "string",
+      "description": "Path within the installed mod this patch applies to. Matched via NFC-normalized, case-folded comparison -- same normalization GMM's OverlayFS case-insensitivity layer already uses, reused here rather than reimplemented."
+    },
+    "baseFileSha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$",
+      "description": "Hash of the file this patch expects to apply to. A mismatch at apply time means the upstream mod file changed since the pack was authored -- surface as a diagnostic, do not apply blindly."
+    },
+    "algorithm": { "const": "bsdiff" },
+    "payloadBase64": {
+      "type": "string",
+      "contentEncoding": "base64",
+      "description": "The diff itself. Patches are embedded by default and gated behind a single runtime Allow/Do Not Allow consent dialog listing every patched mod -- this is a deliberate product decision, not a technical constraint, see the accompanying spec doc."
+    }
+  }
+}
