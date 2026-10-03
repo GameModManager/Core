@@ -13,6 +13,7 @@
 #include <curl/curl.h>
 #include <nlohmann/json.hpp>
 
+#include <algorithm>
 #include <chrono>
 #include <cctype>
 #include <sstream>
@@ -26,6 +27,95 @@ static bool contains_ci(const std::string &haystack, const std::string &needle) 
   for (auto &c : n)
     c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
   return h.find(n) != std::string::npos;
+}
+
+// ---------------------------------------------------------------------------
+// Update policy: which file to ask Nexus for
+// ---------------------------------------------------------------------------
+
+// A mod's downloadable files, from mods/{game}/mods/{id}/files.json.
+Provider::FileList Provider::parse_file_list(const std::string &body) {
+  FileList list;
+  try {
+    auto j = nlohmann::json::parse(body);
+    if (!j.contains("data") || !j["data"].is_object())
+      return list;
+    const auto &data = j["data"];
+
+    // The ids Nexus still serves. Preferred over "files" because it is exactly
+    // the downloadable set: archived and deleted files are left out of it.
+    if (data.contains("available_mod_files") &&
+        data["available_mod_files"].is_array()) {
+      for (const auto &id : data["available_mod_files"]) {
+        if (id.is_number_integer())
+          list.available.push_back(id.get<long long>());
+      }
+    } else if (data.contains("files") && data["files"].is_array()) {
+      for (const auto &f : data["files"]) {
+        if (f.is_object() && f.value("id", 0LL) > 0)
+          list.available.push_back(f["id"].get<long long>());
+      }
+    }
+    list.ok = !list.available.empty();
+  } catch (const std::exception &e) {
+    Logger::instance().error(
+        std::string("[NexusProvider] Failed to parse file list: ") + e.what());
+    list.ok = false;
+  }
+  return list;
+}
+
+long long Provider::select_file_id(std::string_view policy, long long pinned,
+                                   const FileList &list) {
+  // Nexus file ids increase with upload order, so the highest id is the
+  // newest file the mod has.
+  const auto newest = [&list]() -> long long {
+    return list.available.empty()
+               ? 0LL
+               : *std::max_element(list.available.begin(), list.available.end());
+  };
+
+  if (policy == "latest")
+    return newest();
+  if (policy == "prefer" && pinned > 0 &&
+      std::find(list.available.begin(), list.available.end(), pinned) !=
+          list.available.end())
+    return pinned;
+  if (policy == "prefer")
+    return newest();
+  return pinned > 0 ? pinned : 0;  // exact, and anything we do not recognise
+}
+
+// Live file list for one mod. Empty on any failure - the caller then reports
+// it rather than silently downloading a different file than the pack pinned.
+Provider::FileList Provider::fetch_file_list(const std::string &nexus_domain,
+                                             const std::string &mod_id) const {
+  FileList list;
+  const std::string api_key = Auth::instance().get_api_key();
+  if (api_key.empty())
+    return list;
+
+  const std::string url = "https://api.nexusmods.com/v1/games/" + nexus_domain +
+                          "/mods/" + mod_id + "/files.json";
+  curl_slist *headers   = nullptr;
+  headers               = curl_slist_append(headers, ("apikey: " + api_key).c_str());
+  headers               = curl_slist_append(headers, "Accept: application/json");
+
+  std::string response;
+  std::string resp_headers;
+  long http_code = 0;
+  const bool ok =
+      Http::nexus_http_request(url, "", response, http_code, headers, &resp_headers);
+  curl_slist_free_all(headers);
+
+  if (resp_headers.size() > 20)  // sanity check - don't parse empty/trivial
+    Account::parse_rate_limits(resp_headers);
+  if (!ok || http_code != 200) {
+    Logger::instance().error("[NexusProvider] File list request failed for mod=" +
+                             mod_id + " (HTTP " + std::to_string(http_code) + ")");
+    return list;
+  }
+  return parse_file_list(response);
 }
 
 // ---------------------------------------------------------------------------
@@ -55,10 +145,37 @@ bool Provider::fetch(const Mod &mod, PipelineContext &ctx,
     return download_from_url(mod.download_url, ctx, dest_path);
   }
 
-  if (nxm.file_id <= 0) {
+  // ---- Step 0: decide WHICH file this policy asks for ----
+  //
+  // exact  - the pinned fileId or a failure; no fallback to offer.
+  // prefer - the pinned fileId while Nexus still serves it, the mod's newest
+  //          file once it was archived or deleted upstream.
+  // latest - whatever Nexus currently reports as newest.
+  // The file list is only fetched when the answer can differ from the pin, so
+  // an exact pin costs no extra request.
+  const std::string policy = nxm.update_policy.empty() ? "exact" : nxm.update_policy;
+  int64_t file_id          = nxm.file_id;
+  if (file_id <= 0 && policy == "exact") {
+    // An exact pin with no pin at all is a pack that cannot be honoured; say so
+    // instead of quietly installing whatever happens to be newest.
     Logger::instance().error("[NexusProvider] Invalid file_id: " +
                              std::to_string(nxm.file_id));
     return false;
+  }
+  if (policy != "exact") {
+    const FileList list    = fetch_file_list(nxm.nexus_domain, mod.download_source_id);
+    const long long picked = select_file_id(policy, nxm.file_id, list);
+    if (picked <= 0) {
+      Logger::instance().error("[NexusProvider] No downloadable file for mod " +
+                               mod.download_source_id + " under policy '" + policy +
+                               "'" + (list.ok ? "" : " (file list unavailable)"));
+      return false;
+    }
+    if (picked != file_id)
+      Logger::instance().warn("[NexusProvider] updatePolicy=" + policy +
+                              ": pinned file " + std::to_string(nxm.file_id) +
+                              " is unavailable, using file " + std::to_string(picked));
+    file_id = picked;
   }
 
   bool use_api_key  = nxm.key.empty() && Auth::instance().has_api_key();
@@ -156,11 +273,11 @@ bool Provider::fetch(const Mod &mod, PipelineContext &ctx,
     // -- API-key path ----------------------------------------------
     std::string api_url = "https://api.nexusmods.com/v1/games/" + nxm.nexus_domain +
                           "/mods/" + mod.download_source_id + "/files/" +
-                          std::to_string(nxm.file_id) + "/download_link.json";
+                          std::to_string(file_id) + "/download_link.json";
 
     Logger::instance().debug(
         "[NexusProvider] API-key path: requesting download_link.json for mod=" +
-        mod.download_source_id + " file=" + std::to_string(nxm.file_id));
+        mod.download_source_id + " file=" + std::to_string(file_id));
 
     std::string api_key = Auth::instance().get_api_key();
     if (api_key.empty()) {
@@ -214,11 +331,11 @@ bool Provider::fetch(const Mod &mod, PipelineContext &ctx,
     // returned an anti-bot page instead of a URL.
     std::string api_url = "https://api.nexusmods.com/v1/games/" + nxm.nexus_domain +
                           "/mods/" + mod.download_source_id + "/files/" +
-                          std::to_string(nxm.file_id) + "/download_link";
+                          std::to_string(file_id) + "/download_link";
 
     Logger::instance().debug(
         "[NexusProvider] NXM-auth path: requesting download_link for mod=" +
-        mod.download_source_id + " file=" + std::to_string(nxm.file_id));
+        mod.download_source_id + " file=" + std::to_string(file_id));
 
     api_url += "?key=" + nxm.key;
     if (nxm.expire > 0)

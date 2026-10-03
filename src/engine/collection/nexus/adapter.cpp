@@ -132,21 +132,21 @@ std::optional<SourceNexus> mod_file_to_source(const nexus_v2::CollectionModFile 
   if (mod.mod_id == 0)
     return std::nullopt;
   SourceNexus src;
-  src.resolution  = SourceResolution::Api;
-  src.game_domain = game_domain;
-  src.mod_id      = mod.mod_id;
-  src.file_id     = mod.file_id;
-  src.version     = mod.version;
-  src.file_name   = mod.file_name;
-  src.update_policy =
-      mod.update_policy == "latest" ? UpdatePolicy::Latest : UpdatePolicy::Exact;
+  src.resolution    = SourceResolution::Api;
+  src.game_domain   = game_domain;
+  src.mod_id        = mod.mod_id;
+  src.file_id       = mod.file_id;
+  src.version       = mod.version;
+  src.file_name     = mod.file_name;
+  src.update_policy = map_update_policy(mod.update_policy);
   return src;
 }
 
 RevisionManifest revision_to_manifest(const nexus_v2::CollectionRevision &rev) {
   RevisionManifest out;
-  Manifest &m      = out.manifest;
-  m.schema_version = "nexus/2";
+  Manifest &m         = out.manifest;
+  m.schema_version    = "nexus/2";
+  out.revision_status = rev.revision_status;
   m.id = rev.slug.empty() ? "nexus-collection-" + std::to_string(rev.collection_id)
                           : "nexus-" + rev.slug;
   m.revision     = rev.revision_number;
@@ -215,6 +215,7 @@ Adapter::Adapter() : Adapter(default_fetcher()) {}
 
 FetchOutcome Adapter::fetch(const std::string &source_id) {
   last_skipped_.clear();
+  last_revision_status_.clear();
 
   const CollectionRef ref = parse_source_id(source_id);
   if (ref.is_file) {
@@ -237,6 +238,7 @@ FetchOutcome Adapter::fetch(const std::string &source_id) {
 
   RevisionManifest converted = revision_to_manifest(fetched.revision);
   last_skipped_              = std::move(converted.skipped);
+  last_revision_status_      = converted.revision_status;
   FetchResult result;
   result.source_id = source_id;
   result.manifest  = std::move(converted.manifest);

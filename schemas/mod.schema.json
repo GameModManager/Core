@@ -46,9 +46,9 @@
       ]
     },
     "updatePolicy": {
-      "enum": ["exact", "latest"],
+      "enum": ["exact", "prefer", "latest"],
       "default": "exact",
-      "description": "exact pins to a specific fileId/version/hash captured at authoring time -- those fields are REQUIRED when this is exact. latest deliberately omits them: the resolver fetches whatever the source currently reports as newest at install/update time, independent of the pack's own `revision`, and there is no pack-declared identity to require or verify against. Not every provider can honor `exact` for every mod (a mod author may not keep old files available at all), so `exact` is a request the resolver attempts, not a structural guarantee this schema can enforce on its own."
+      "description": "exact pins to a specific fileId/version/hash captured at authoring time -- those fields are REQUIRED when this is exact. prefer keeps that same pin but permits the fallback the author asked for: if the pinned file was archived or deleted upstream, install takes the mod's newest file instead. latest deliberately omits the pin: the resolver fetches whatever the source currently reports as newest at install/update time, independent of the pack's own `revision`, and there is no pack-declared identity to require or verify against. Not every provider can honor `exact` for every mod (a mod author may not keep old files available at all), so `exact` is a request the resolver attempts, not a structural guarantee this schema can enforce on its own."
     },
     "sourceNexus": {
       "type": "object",
@@ -62,15 +62,20 @@
         },
         "gameDomain": { "type": "string" },
         "modId": { "type": "integer" },
-        "fileId": { "type": "integer", "description": "Required when updatePolicy=exact. Omit entirely for latest -- there is no fixed fileId to pin." },
-        "version": { "type": "string", "description": "Required when updatePolicy=exact." },
+        "fileId": { "type": "integer", "description": "Required when updatePolicy is exact or prefer. Omit entirely for latest -- there is no fixed fileId to pin." },
+        "version": { "type": "string", "description": "Required when updatePolicy is exact or prefer." },
         "fileName": { "type": "string" },
         "fileSize": { "type": "integer", "minimum": 0, "description": "Required when updatePolicy=exact." },
         "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$", "description": "Required when updatePolicy=exact. Compared against the actually-resolved file at install/update time -- see the parent spec doc for mismatch handling." },
+        "md5": { "type": "string", "pattern": "^[a-f0-9]{32}$", "description": "Nexus publishes an md5 of the archive and never a sha256, so an imported Nexus source carries its digest here. It is what the server SUPPLIED about the archive -- never a claim about the installed folder, which we hash ourselves and which would attest nothing the collector did not already have. Informational only: an md5 does not satisfy the sha256 requirement of an exact pin, so a source with only md5 is exported as prefer." },
         "updatePolicy": { "$ref": "#/$defs/updatePolicy" }
       },
       "if": { "properties": { "updatePolicy": { "const": "exact" } } },
-      "then": { "required": ["fileId", "version", "fileSize", "sha256"] }
+      "then": { "required": ["fileId", "version", "fileSize", "sha256"] },
+      "else": {
+        "if": { "properties": { "updatePolicy": { "const": "prefer" } } },
+        "then": { "required": ["fileId", "version"] }
+      }
     },
     "sourceLoversLab": {
       "type": "object",

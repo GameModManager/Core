@@ -66,13 +66,6 @@ namespace {
     return def;
   }
 
-  // Map a Nexus updatePolicy string to UpdatePolicy enum.
-  UpdatePolicy parse_update_policy(const std::string &s) {
-    if (s == "latest")
-      return UpdatePolicy::Latest;
-    return UpdatePolicy::Exact;  // default / "exact"
-  }
-
   // Map the Nexus optional flag to ModCategory.
   ModCategory parse_category(bool optional) {
     return optional ? ModCategory::Optional : ModCategory::Required;
@@ -133,9 +126,12 @@ namespace {
       if (nx.file_name.empty())
         nx.file_name = opt_string(src, "fileExpression");
       nx.file_size = opt_int64(src, "fileSize");
-      nx.sha256    = opt_string(src, "md5");  // Nexus uses md5, mapped to sha256 field
+      // Nexus publishes md5 of the archive, never a sha256. It stays in the
+      // md5 field so a 32-hex digest can never be read back as the 64-hex
+      // sha256 an exact pin is defined by.
+      nx.md5                 = opt_string(src, "md5");
       std::string policy_str = opt_string(src, "updatePolicy");
-      nx.update_policy       = parse_update_policy(policy_str);
+      nx.update_policy       = map_update_policy(policy_str);
       entry.source           = nx;
     } else if (src_type == "browse" || src_type == "manual") {
       SourceDirect d;
@@ -146,7 +142,7 @@ namespace {
       if (d.file_name.empty())
         d.file_name = opt_string(src, "fileExpression");
       std::string policy_str = opt_string(src, "updatePolicy");
-      d.update_policy        = parse_update_policy(policy_str);
+      d.update_policy        = map_update_policy(policy_str);
       entry.source           = d;
     } else if (src_type == "bundle") {
       // Bundled mods ship inside the collection archive; treat as direct
@@ -190,6 +186,14 @@ namespace {
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
+
+UpdatePolicy map_update_policy(std::string_view nexus_policy) {
+  if (nexus_policy == "latest")
+    return UpdatePolicy::Latest;
+  // "prefer", "exact", absent, and anything unrecognised: keep the pin, allow
+  // the fallback. See parser.h for why nothing maps to Exact.
+  return UpdatePolicy::Prefer;
+}
 
 Manifest parse(std::string_view json_str) {
   json root;

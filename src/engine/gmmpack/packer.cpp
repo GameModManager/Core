@@ -1200,6 +1200,8 @@ nlohmann::json serialize_mod_source(const ModSource &source) {
             j["fileSize"] = *s.file_size;
           if (s.sha256)
             j["sha256"] = *s.sha256;
+          if (s.md5)
+            j["md5"] = *s.md5;
           j["updatePolicy"] = s.update_policy;
         } else if constexpr (std::is_same_v<T, ModSourceLoversLab>) {
           std::visit(

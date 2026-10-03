@@ -632,6 +632,8 @@ static ModSource parse_mod_source(const nlohmann::json &j) {
       s.file_size = j["fileSize"].get<int64_t>();
     if (j.contains("sha256"))
       s.sha256 = j["sha256"].get<std::string>();
+    if (j.contains("md5"))
+      s.md5 = j["md5"].get<std::string>();
     s.update_policy = j.value("updatePolicy", "exact");
     return s;
   }
