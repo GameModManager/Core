@@ -33,7 +33,8 @@ struct PackOptions {
   // source whose download identity cannot be resolved degrades to "latest"
   // rather than emitting a pin it cannot back up.
   std::unordered_map<std::string, std::string> update_policies;
-  // Mod FOLDER -> "required" | "recommended" | "optional". Absent = optional.
+  // Mod FOLDER -> "required" | "recommended" | "optional". Absent = required:
+  // a mod nobody labelled is a mod the author deliberately put in the pack.
   std::unordered_map<std::string, std::string> categories;
   // Mod FOLDERS whose own files are bundled into the archive (files/<id>/).
   // Only meaningful for sources with no download identity: a manual or

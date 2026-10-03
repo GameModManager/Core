@@ -149,11 +149,15 @@ namespace {
   }
 
   ModCategory category_for(const std::string &name) {
-    if (name == "required")
-      return ModCategory::Required;
+    if (name == "optional")
+      return ModCategory::Optional;
     if (name == "recommended")
       return ModCategory::Recommended;
-    return ModCategory::Optional;
+    // Unlabelled or unrecognised = required. An exported pack exists to
+    // reproduce the instance it was made from, and every mod in it was put
+    // there on purpose, so "the author never said" cannot mean "the importer
+    // may drop it".
+    return ModCategory::Required;
   }
 
   // A path relative to a mod folder, always with forward slashes (the pack
