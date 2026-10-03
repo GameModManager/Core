@@ -74,6 +74,27 @@ SchemaSet load_schema_set(const std::filesystem::path &schema_dir) {
   return schemas;
 }
 
+std::filesystem::path find_schema_dir(const std::filesystem::path &app_dir) {
+  // Installed layout first, then the source tree (a dev run under
+  // projects/Core/build finds projects/Core/schemas by walking up).
+  std::vector<std::filesystem::path> candidates = {
+      app_dir / "schemas",
+      app_dir / ".." / "share" / "gamemodmanager" / "schemas",
+  };
+  std::error_code ec;
+  for (std::filesystem::path dir = app_dir; !dir.empty(); dir = dir.parent_path()) {
+    candidates.push_back(dir / "schemas");
+    if (dir == dir.root_path())
+      break;
+  }
+  for (const auto &dir : candidates) {
+    ec.clear();
+    if (std::filesystem::exists(dir / "manifest.schema.json", ec))
+      return dir;
+  }
+  return {};
+}
+
 // ---------------------------------------------------------------------------
 // Stage 1: Extract archive into memory
 // ---------------------------------------------------------------------------
@@ -670,6 +691,21 @@ static ModSource parse_mod_source(const nlohmann::json &j) {
     s.update_policy = j.value("updatePolicy", "exact");
     return s;
   }
+  if (provider == "embedded") {
+    ModSourceEmbedded s;
+    s.resolution = j.value("resolution", "archive");
+    s.root       = j.value("root", "");
+    if (j.contains("files")) {
+      for (const auto &fj : j["files"]) {
+        ModSourceEmbedded::File f;
+        f.path   = fj.value("path", "");
+        f.size   = fj.value("size", int64_t(0));
+        f.sha256 = fj.value("sha256", "");
+        s.files.push_back(std::move(f));
+      }
+    }
+    return s;
+  }
 
   // Unknown provider - return default nexus with empty fields
   return ModSourceNexus{};
@@ -769,6 +805,83 @@ PatchEntry parse_patch_entry(const nlohmann::json &j) {
   p.algorithm        = j.value("algorithm", "");
   p.payload_base64   = j.value("payloadBase64", "");
   return p;
+}
+
+// ---------------------------------------------------------------------------
+// Embedded mod payload (files/<root>/)
+// ---------------------------------------------------------------------------
+
+const ModEntry *find_mod(const Gmmpack &pack, const std::string &mod_id) {
+  for (const auto &m : pack.mods) {
+    if (m.id == mod_id)
+      return &m;
+  }
+  return nullptr;
+}
+
+bool extract_embedded_mod(const Gmmpack &pack, const std::string &mod_id,
+                          const std::filesystem::path &dest_dir, std::string &error) {
+  const ModEntry *entry = find_mod(pack, mod_id);
+  if (entry == nullptr) {
+    error = "no mod entry '" + mod_id + "' in pack";
+    return false;
+  }
+  const auto *src = std::get_if<ModSourceEmbedded>(&entry->source);
+  if (src == nullptr) {
+    error = "mod '" + mod_id + "' is not an embedded source";
+    return false;
+  }
+
+  if (src->root.empty()) {
+    error = "mod '" + mod_id + "' has no payload root";
+    return false;
+  }
+  const std::string root = "files/" + src->root + "/";
+  // Verify every file before writing anything: a half-written mod folder is
+  // worse than no mod folder.
+  std::vector<std::pair<std::string, const ArchiveFile *>> resolved;
+  for (const auto &f : src->files) {
+    // Reject a payload path that would escape dest_dir.
+    if (f.path.empty() || f.path.front() == '/' ||
+        f.path.find("..") != std::string::npos) {
+      error = "mod '" + mod_id + "' has an unsafe payload path: " + f.path;
+      return false;
+    }
+    auto it = std::find_if(pack.payload.begin(), pack.payload.end(),
+                           [&](const ArchiveFile &af) {
+                             return af.path == root + f.path;
+                           });
+    if (it == pack.payload.end()) {
+      error = "mod '" + mod_id + "' payload is missing " + root + f.path;
+      return false;
+    }
+    if (static_cast<int64_t>(it->content.size()) != f.size) {
+      error = "mod '" + mod_id + "' payload size mismatch for " + f.path;
+      return false;
+    }
+    if (!f.sha256.empty() && sha256_hex(it->content) != f.sha256) {
+      error = "mod '" + mod_id + "' payload sha256 mismatch for " + f.path;
+      return false;
+    }
+    resolved.emplace_back(f.path, &*it);
+  }
+
+  std::error_code ec;
+  for (const auto &[rel, af] : resolved) {
+    const std::filesystem::path out = dest_dir / rel;
+    std::filesystem::create_directories(out.parent_path(), ec);
+    if (ec) {
+      error = "cannot create " + out.parent_path().string() + ": " + ec.message();
+      return false;
+    }
+    std::ofstream os(out, std::ios::binary | std::ios::trunc);
+    if (!os.is_open()) {
+      error = "cannot write " + out.string();
+      return false;
+    }
+    os.write(af->content.data(), static_cast<std::streamsize>(af->content.size()));
+  }
+  return true;
 }
 
 // ---------------------------------------------------------------------------
@@ -968,6 +1081,13 @@ UnpackResult unpack_gmmpack(const std::filesystem::path &archive_path,
       if (f.path == "instructions.md") {
         result.pack.instructions = f.content;
       }
+      continue;
+    }
+
+    // Embedded mod payload: raw bytes, carried as-is (per-file integrity is
+    // checked by extract_embedded_mod against the hashes in the mod entry).
+    if (f.path.rfind("files/", 0) == 0) {
+      result.pack.payload.push_back(f);
       continue;
     }
 

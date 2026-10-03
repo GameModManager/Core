@@ -6,7 +6,7 @@
 // UpdatePlan for the install widget. Pure function over (new pack, state,
 // current INI text): never touches disk, network, or Qt.
 //
-// Per-mod rules (gmmpack-format-v1.md, update step 2):
+// Per-mod rules (docs/gmmpack-format-v1.md, update step 2):
 // - id not tracked in state -> fresh install (installed, conforming)
 // - id tracked but absent from the new revision -> removal, but only when
 //   presence is still installed (user-removed mods are already gone)

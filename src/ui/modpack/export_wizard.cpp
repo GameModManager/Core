@@ -49,8 +49,11 @@ namespace {
 }  // namespace
 
 ExportWizard::ExportWizard(const engine::InstanceSnapshot &snapshot,
-                           std::filesystem::path mods_dir, QWidget *parent)
-    : QDialog(parent), snapshot_(snapshot), mods_dir_(std::move(mods_dir)) {
+                           std::filesystem::path mods_dir,
+                           std::filesystem::path downloads_dir,
+                           std::filesystem::path schema_dir, QWidget *parent)
+    : QDialog(parent), snapshot_(snapshot), mods_dir_(std::move(mods_dir)),
+      downloads_dir_(std::move(downloads_dir)), schema_dir_(std::move(schema_dir)) {
   const QString pack_name = QString::fromStdString(snapshot_.display_name);
   setWindowTitle(pack_name.isEmpty() ? tr("Export Modpack")
                                      : tr("Export Modpack: %1").arg(pack_name));
@@ -211,13 +214,17 @@ void ExportWizard::build_mod_rows() {
       meta = engine::ModMeta::load(mods_dir_, row.folder);
     out.source = QString::fromStdString(
         meta.source_type().empty() ? "manual" : meta.source_type());
-    out.resolvable = engine::gmmpack::resolve_mod_source(meta, snapshot_.game_id,
+    out.is_manual = out.source == QStringLiteral("manual") ||
+                    !engine::gmmpack::resolve_mod_source(meta, snapshot_.game_id,
                                                          snapshot_.steam_appid)
                          .has_value();
-    out.is_manual  = !out.resolvable && !out.is_vanilla;
+    // A manual/unknown mod has no download identity, so exporting it means
+    // bundling its folder: that is only possible when the folder has files.
+    const bool bundleable = engine::gmmpack::can_embed_folder(mods_dir_, row.folder);
+    out.resolvable        = !out.is_manual || bundleable;
     // Vanilla masters can never be exported; manual/unknown sources are
-    // opt-in (unchecked but selectable - they bundle as-is); disabled
-    // mods are unchecked but still exportable if re-checked.
+    // opt-in (unchecked but selectable - they bundle as-is); disabled mods are
+    // unchecked but still exportable if re-checked.
     if (out.is_vanilla) {
       out.included = false;
     } else if (out.is_manual) {
@@ -408,9 +415,9 @@ QWidget *ExportWizard::build_mods_page() {
   layout->addLayout(actions);
 
   mods_table_ = new QTableWidget(page);
-  mods_table_->setColumnCount(4);
+  mods_table_->setColumnCount(5);
   mods_table_->setHorizontalHeaderLabels(
-      {tr("Include"), tr("Name"), tr("Source"), tr("Update Policy")});
+      {tr("Include"), tr("Name"), tr("Source"), tr("Category"), tr("Update Policy")});
   mods_table_->horizontalHeader()->setStretchLastSection(false);
   mods_table_->horizontalHeader()->setSectionResizeMode(0,
                                                         QHeaderView::ResizeToContents);
@@ -418,6 +425,8 @@ QWidget *ExportWizard::build_mods_page() {
   mods_table_->horizontalHeader()->setSectionResizeMode(2,
                                                         QHeaderView::ResizeToContents);
   mods_table_->horizontalHeader()->setSectionResizeMode(3,
+                                                        QHeaderView::ResizeToContents);
+  mods_table_->horizontalHeader()->setSectionResizeMode(4,
                                                         QHeaderView::ResizeToContents);
   mods_table_->setSelectionBehavior(QAbstractItemView::SelectRows);
   mods_table_->setEditTriggers(QAbstractItemView::NoEditTriggers);
@@ -436,9 +445,14 @@ QWidget *ExportWizard::build_mods_page() {
       check->setToolTip(tr("Vanilla game master - cannot be exported."));
     } else if (mod.is_manual) {
       check->setChecked(false);
-      check->setEnabled(true);
-      check->setToolTip(tr("Manual/unknown source. Checking this will bundle the "
-                           "mod folder into the archive as-is."));
+      check->setEnabled(mod.resolvable);
+      if (mod.resolvable) {
+        check->setToolTip(tr("Manual/unknown source. Checking this will bundle the "
+                             "mod folder into the archive as-is."));
+      } else {
+        check->setToolTip(tr("Manual/unknown source and its folder is missing or "
+                             "empty - there is nothing to bundle."));
+      }
     } else if (mod.disabled) {
       check->setToolTip(tr("This mod is disabled in the instance."));
     }
@@ -468,9 +482,24 @@ QWidget *ExportWizard::build_mods_page() {
       source_item->setForeground(dim);
     }
     mods_table_->setItem(row, 2, source_item);
-    // Per-mod update policy. Vanilla masters and manual mods have no
-    // provider to resolve against; steam workshop resolution is
-    // client-subscription based, so those rows stay "latest".
+    // Category: drives the pack's mod.category and the install phase (required
+    // mods install before optional ones). Vanilla masters are never exported.
+    auto *category = new QComboBox(mods_table_);
+    category->addItem(tr("Required"));
+    category->addItem(tr("Recommended"));
+    category->addItem(tr("Optional"));
+    category->setCurrentIndex(2);
+    category->setProperty("row", row);
+    if (mod.is_vanilla) {
+      category->setEnabled(false);
+    }
+    connect(category, &QComboBox::currentIndexChanged, this,
+            &ExportWizard::on_category_changed);
+    mods_table_->setCellWidget(row, 3, category);
+    // Per-mod update policy. Vanilla masters and manual mods have no provider
+    // to pin against (a manual mod's bytes ship in the pack itself); steam
+    // workshop resolution is client-subscription based, so those rows stay
+    // "latest".
     auto *policy = new QComboBox(mods_table_);
     policy->addItem(tr("Latest"));
     policy->addItem(tr("Exact Version"));
@@ -479,12 +508,15 @@ QWidget *ExportWizard::build_mods_page() {
                        mod.source == QStringLiteral("steam_workshop");
     if (mod.is_vanilla || mod.is_manual || steam) {
       policy->setEnabled(false);
-      policy->setToolTip(
-          tr("This mod can only be exported with update policy Latest."));
+      policy->setToolTip(mod.is_manual
+                             ? tr("A bundled mod carries its own files - there is "
+                                  "no separate version to pin.")
+                             : tr("This mod can only be exported with update policy "
+                                  "Latest."));
     }
     connect(policy, &QComboBox::currentIndexChanged, this,
             &ExportWizard::on_policy_changed);
-    mods_table_->setCellWidget(row, 3, policy);
+    mods_table_->setCellWidget(row, 4, policy);
   }
   layout->addWidget(mods_table_, 1);
 
@@ -621,31 +653,13 @@ void ExportWizard::refresh_tree() {
   const QIcon folder_icon = style()->standardIcon(QStyle::SP_DirIcon);
   const QIcon file_icon   = style()->standardIcon(QStyle::SP_FileIcon);
 
-  const engine::InstanceSnapshot filtered = filtered_snapshot();
-  engine::gmmpack::PackOptions options;
-  if (author_edit_ != nullptr)
-    options.author = author_edit_->text().toStdString();
-  if (desc_edit_ != nullptr)
-    options.description = desc_edit_->toPlainText().toStdString();
-  if (homepage_edit_ != nullptr)
-    options.homepage = homepage_edit_->text().toStdString();
-  if (instructions_edit_ != nullptr)
-    options.instructions = instructions_edit_->toPlainText().toStdString();
-  // Per-mod update policies from the mods table (only included rows
-  // matter - the rest are erased from the filtered snapshot).
-  for (const auto &mod : mods_) {
-    if (mod.included)
-      options.update_policies[mod.folder] = mod.update_policy;
-  }
-
-  const engine::gmmpack::Manifest manifest =
-      engine::gmmpack::build_manifest(filtered, options);
-  const std::vector<engine::gmmpack::ModEntry> mod_entries =
-      engine::gmmpack::build_mod_entries(filtered, mods_dir_, options);
-  const std::vector<engine::gmmpack::ExecutableEntry> exe_entries =
-      engine::gmmpack::build_executables(filtered, mods_dir_);
-  const engine::gmmpack::TreeRoot layout =
-      engine::gmmpack::build_tree(filtered, mods_dir_);
+  const engine::gmmpack::PackOptions options = pack_options();
+  const engine::gmmpack::Gmmpack pack =
+      engine::gmmpack::build_gmmpack(filtered_snapshot(), mods_dir_, options);
+  const engine::gmmpack::Manifest manifest                         = pack.manifest;
+  const std::vector<engine::gmmpack::ModEntry> &mod_entries        = pack.mods;
+  const std::vector<engine::gmmpack::ExecutableEntry> &exe_entries = pack.executables;
+  const engine::gmmpack::TreeRoot layout                           = pack.tree;
 
   QString archive_name;
   if (output_edit_ != nullptr) {
@@ -655,7 +669,7 @@ void ExportWizard::refresh_tree() {
           std::filesystem::path(out.toStdString()).filename().string());
   }
   if (archive_name.isEmpty()) {
-    QString name = QString::fromStdString(filtered.display_name).trimmed();
+    QString name = QString::fromStdString(manifest.info.name).trimmed();
     if (name.isEmpty())
       name = tr("modpack");
     archive_name = name + QStringLiteral(".gmmpack");
@@ -725,7 +739,7 @@ void ExportWizard::refresh_tree() {
         }
       };
   std::unordered_map<std::string, std::string> exe_titles;
-  for (const auto &exe : filtered.executables) {
+  for (const auto &exe : snapshot_.executables) {
     if (!exe.title.empty())
       exe_titles[exe.path] = exe.title;
   }
@@ -747,6 +761,56 @@ void ExportWizard::refresh_tree() {
   }
   root->addChild(exes_folder);
 
+  // files/ - the payload of bundled manual mods, one subdirectory per mod.
+  size_t embedded_mods  = 0;
+  size_t embedded_files = 0;
+  for (const auto &mod : mod_entries) {
+    const auto *src = std::get_if<engine::gmmpack::ModSourceEmbedded>(&mod.source);
+    if (src == nullptr)
+      continue;
+    ++embedded_mods;
+    embedded_files += src->files.size();
+    auto *mod_files =
+        new QTreeWidgetItem({tr("files/%1/ - %2 (%3 files)")
+                                 .arg(QString::fromStdString(src->root))
+                                 .arg(QString::fromStdString(mod.name))
+                                 .arg(static_cast<int>(src->files.size()))});
+    mod_files->setIcon(0, folder_icon);
+    mod_files->setToolTip(0, tr("Bundled mod payload - import verifies every file's "
+                                "size and sha256 before writing it."));
+    mods_folder->addChild(mod_files);
+  }
+
+  if (!pack.ini_edits.empty()) {
+    auto *ini_folder = new QTreeWidgetItem({QStringLiteral("ini/")});
+    ini_folder->setIcon(0, folder_icon);
+    for (const auto &entry : pack.ini_edits) {
+      auto *item =
+          new QTreeWidgetItem({QStringLiteral("ini/%1.json - %2 tweaks")
+                                   .arg(QString::fromStdString(entry.target_file))
+                                   .arg(static_cast<int>(entry.tweaks.size()))});
+      item->setIcon(0, file_icon);
+      ini_folder->addChild(item);
+    }
+    root->addChild(ini_folder);
+  }
+
+  if (!pack.patches.empty()) {
+    auto *patch_folder = new QTreeWidgetItem({QStringLiteral("patches/")});
+    patch_folder->setIcon(0, folder_icon);
+    patch_folder->setToolTip(0, tr("Files several mods ship at the same path. Import "
+                                   "asks before applying any of them."));
+    for (const auto &patch : pack.patches) {
+      auto *item = new QTreeWidgetItem(
+          {QStringLiteral("%1 - %2")
+               .arg(QString::fromStdString(engine::gmmpack::patch_archive_path(patch)))
+               .arg(QString::fromStdString(patch.target_path))});
+      item->setIcon(0, file_icon);
+      patch_folder->addChild(item);
+    }
+    root->addChild(patch_folder);
+  }
+
   auto *tree_file = new QTreeWidgetItem({QStringLiteral("tree.json")});
   tree_file->setIcon(0, file_icon);
   root->addChild(tree_file);
@@ -759,9 +823,21 @@ void ExportWizard::refresh_tree() {
   }
 
   if (tree_summary_ != nullptr) {
-    tree_summary_->setText(tr("Archive will contain: %1 mods, %2 executables")
-                               .arg(static_cast<int>(mod_entries.size()))
-                               .arg(static_cast<int>(exe_entries.size())));
+    QString summary = tr("Archive will contain: %1 mods, %2 executables")
+                          .arg(static_cast<int>(mod_entries.size()))
+                          .arg(static_cast<int>(exe_entries.size()));
+    if (embedded_mods > 0) {
+      summary += tr(", %1 bundled mods (%2 files)")
+                     .arg(static_cast<int>(embedded_mods))
+                     .arg(static_cast<int>(embedded_files));
+    }
+    if (!pack.ini_edits.empty()) {
+      summary += tr(", %1 INI files").arg(static_cast<int>(pack.ini_edits.size()));
+    }
+    if (!pack.patches.empty()) {
+      summary += tr(", %1 patches").arg(static_cast<int>(pack.patches.size()));
+    }
+    tree_summary_->setText(summary);
   }
   tree_->expandAll();
 }
@@ -769,30 +845,79 @@ void ExportWizard::refresh_tree() {
 void ExportWizard::refresh_review() {
   if (review_summary_ == nullptr)
     return;
-  int mods = 0;
+  // Count what the engine will actually write, not the checkboxes: a row can
+  // be checked and still be unexportable (a manual mod with no folder), and
+  // these numbers have to agree with the Tree page.
+  const engine::gmmpack::Gmmpack pack = preview_pack();
+  int embedded                        = 0;
+  for (const auto &mod : pack.mods) {
+    if (std::holds_alternative<engine::gmmpack::ModSourceEmbedded>(mod.source))
+      ++embedded;
+  }
+  int dropped = 0;
   for (const auto &mod : mods_) {
-    if (!mod.included)
-      continue;
-    ++mods;
+    if (mod.included && !mod.is_vanilla)
+      ++dropped;
   }
-  int exes = 0;
-  for (const auto &exe : exes_) {
-    if (exe.included)
-      ++exes;
-  }
+  dropped -= static_cast<int>(pack.mods.size());
+  if (dropped < 0)
+    dropped = 0;
+
   const QString name = name_edit_ ? name_edit_->text().trimmed()
                                   : QString::fromStdString(snapshot_.display_name);
   QString author     = author_edit_ ? author_edit_->text().trimmed() : QString();
   if (author.isEmpty())
     author = tr("Unknown");
-  review_summary_->setText(
-      tr("%1 by %2\nGame: %3\n%4 mods, %5 executables, %6 separators")
-          .arg(name.isEmpty() ? tr("modpack") : name)
-          .arg(author)
-          .arg(QString::fromStdString(snapshot_.game_id))
-          .arg(mods)
-          .arg(exes)
-          .arg(separator_count()));
+  QString summary = tr("%1 by %2\nGame: %3\n%4 mods, %5 executables, %6 separators")
+                        .arg(name.isEmpty() ? tr("modpack") : name)
+                        .arg(author)
+                        .arg(QString::fromStdString(snapshot_.game_id))
+                        .arg(static_cast<int>(pack.mods.size()))
+                        .arg(static_cast<int>(pack.executables.size()))
+                        .arg(separator_count());
+  if (embedded > 0) {
+    summary += tr("\n%1 of them bundled into the archive").arg(embedded);
+  }
+  if (!pack.ini_edits.empty()) {
+    summary += tr("\n%1 INI files, %2 patches")
+                   .arg(static_cast<int>(pack.ini_edits.size()))
+                   .arg(static_cast<int>(pack.patches.size()));
+  }
+  if (dropped > 0) {
+    summary += tr("\n%1 selected mods cannot be exported (missing folder or "
+                  "vanilla game master) and will be left out")
+                   .arg(dropped);
+  }
+  review_summary_->setText(summary);
+}
+
+engine::gmmpack::PackOptions ExportWizard::pack_options() const {
+  engine::gmmpack::PackOptions options;
+  options.schema_dir    = schema_dir_;
+  options.downloads_dir = downloads_dir_;
+  if (author_edit_ != nullptr)
+    options.author = author_edit_->text().toStdString();
+  if (desc_edit_ != nullptr)
+    options.description = desc_edit_->toPlainText().toStdString();
+  if (homepage_edit_ != nullptr)
+    options.homepage = homepage_edit_->text().toStdString();
+  if (instructions_edit_ != nullptr)
+    options.instructions = instructions_edit_->toPlainText().toStdString();
+  // Per-mod choices from the mods table (only included rows matter - the rest
+  // are erased from the filtered snapshot).
+  for (const auto &mod : mods_) {
+    if (!mod.included)
+      continue;
+    options.update_policies[mod.folder] = mod.update_policy;
+    options.categories[mod.folder]      = mod.category;
+    if (mod.is_manual && mod.resolvable)
+      options.embed_folders.insert(mod.folder);
+  }
+  return options;
+}
+
+engine::gmmpack::Gmmpack ExportWizard::preview_pack() const {
+  return engine::gmmpack::build_gmmpack(filtered_snapshot(), mods_dir_, pack_options());
 }
 
 engine::InstanceSnapshot ExportWizard::filtered_snapshot() const {
@@ -859,6 +984,19 @@ void ExportWizard::on_policy_changed() {
       combo->currentIndex() == 1 ? "exact" : "latest";
 }
 
+void ExportWizard::on_category_changed() {
+  const auto *combo = qobject_cast<const QComboBox *>(sender());
+  if (combo == nullptr)
+    return;
+  const int row = combo->property("row").toInt();
+  if (row < 0 || row >= static_cast<int>(mods_.size()))
+    return;
+  static const char *kCategories[] = {"required", "recommended", "optional"};
+  const int index                  = combo->currentIndex();
+  mods_[static_cast<size_t>(row)].category =
+      (index >= 0 && index < 3) ? kCategories[index] : "optional";
+}
+
 void ExportWizard::on_exe_include_toggled() {
   const auto *check = qobject_cast<const QCheckBox *>(sender());
   if (check == nullptr)
@@ -883,17 +1021,7 @@ void ExportWizard::on_export() {
     QMessageBox::information(this, tr("Review"), tr("Please choose an output file."));
     return;
   }
-  engine::gmmpack::PackOptions options;
-  options.author       = author_edit_->text().toStdString();
-  options.description  = desc_edit_->toPlainText().toStdString();
-  options.homepage     = homepage_edit_->text().toStdString();
-  options.instructions = instructions_edit_->toPlainText().toStdString();
-  // Per-mod update policies from the mods table (only included rows
-  // matter - the rest are erased from the filtered snapshot).
-  for (const auto &mod : mods_) {
-    if (mod.included)
-      options.update_policies[mod.folder] = mod.update_policy;
-  }
+  const engine::gmmpack::PackOptions options = pack_options();
 
   status_label_->setText(tr("Exporting..."));
   progress_->setRange(0, 0);  // busy; the packer runs synchronously
@@ -903,9 +1031,14 @@ void ExportWizard::on_export() {
   progress_->setRange(0, 1);
   progress_->setValue(result.ok ? 1 : 0);
   if (result.ok) {
-    status_label_->setText(tr("Exported to %1").arg(output));
-    QMessageBox::information(this, tr("Export Modpack"),
-                             tr("Modpack exported to %1").arg(output));
+    QString summary = tr("Exported to %1").arg(output);
+    if (result.embedded_mod_count > 0) {
+      summary += tr("\n%1 mods bundled into the archive (%2 files)")
+                     .arg(static_cast<int>(result.embedded_mod_count))
+                     .arg(static_cast<int>(result.embedded_file_count));
+    }
+    status_label_->setText(summary);
+    QMessageBox::information(this, tr("Export Modpack"), summary);
     accept();
   } else {
     status_label_->setText(

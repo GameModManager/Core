@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://gamemodmanager.org/schemas/gmmpack/1.0.0/tree.schema.json",
+  "title": "GMM Modpack Mod List Tree (tree.json)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["nodes"],
+  "properties": {
+    "nodes": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/node" },
+      "description": "The flattened top-to-bottom sequence of mod nodes IS the file-conflict-resolution priority order (MO2-style), not merely cosmetic. Separator nodes are the purely cosmetic part -- grouping/nesting containers around that sequence."
+    }
+  },
+  "$defs": {
+    "node": {
+      "oneOf": [
+        { "$ref": "#/$defs/separatorNode" },
+        { "$ref": "#/$defs/modNode" }
+      ]
+    },
+    "separatorNode": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "name", "collapsed", "children"],
+      "properties": {
+        "type": { "const": "separator" },
+        "name": { "type": "string", "minLength": 1 },
+        "collapsed": { "type": "boolean" },
+        "color": { "type": "string", "description": "Hex separator color (e.g. \"#ff0000\"). Omitted when the separator has no color." },
+        "children": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/node" },
+          "description": "Separators nest -- children may themselves contain separator nodes."
+        }
+      }
+    },
+    "modNode": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "id", "enabled"],
+      "properties": {
+        "type": { "const": "mod" },
+        "id": {
+          "type": "string",
+          "description": "Must resolve to a mods/<id>.json id, OR an executables/<id>.json entry's output.syntheticModId. Referential integrity, not schema-expressible -- validate as a separate pass."
+        },
+        "enabled": { "type": "boolean" }
+      }
+    }
+  }
+}

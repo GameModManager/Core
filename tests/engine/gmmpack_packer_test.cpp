@@ -25,6 +25,8 @@
 #include <fstream>
 #include <unistd.h>
 
+#include "engine/gmmpack/bsdiff.h"
+#include "engine/gmmpack/codec.h"
 #include "engine/gmmpack/schema_validator.h"
 #include "engine/gmmpack/tree_parser.h"
 #include "engine/gmmpack/unpacker.h"
@@ -461,8 +463,29 @@ TEST_CASE("packer mod entries: skips manual, deterministic order",
   REQUIRE(mods[0].id == "alpha");
   REQUIRE(mods[1].id == "zeta");
   REQUIRE(mods[0].name == "Alpha");
+  // Optional is the default category, and phase follows it: required mods
+  // install first, optional ones last (see phase_for in packer.cpp).
   REQUIRE(mods[0].category == gmmpack::ModCategory::Optional);
+  REQUIRE(mods[0].phase == 2);
+}
+
+TEST_CASE("packer categories: category drives phase and ships in the pack",
+          "[gmmpack][packer]") {
+  TempDir td;
+  nexus_mod(td.root, "SkyUI");
+  auto snap = make_snapshot();
+  track(snap, "SkyUI", 0);
+
+  gmmpack::PackOptions opts;
+  opts.categories["SkyUI"] = "required";
+  auto mods                = gmmpack::build_mod_entries(snap, td.root, opts);
+  REQUIRE(mods.size() == 1);
+  REQUIRE(mods[0].category == gmmpack::ModCategory::Required);
   REQUIRE(mods[0].phase == 0);
+
+  const auto json = gmmpack::serialize_mod_entry(mods[0]);
+  REQUIRE(json["category"] == "required");
+  REQUIRE(json["phase"] == 0);
 }
 
 TEST_CASE("packer policies: default is latest", "[gmmpack][packer]") {
@@ -477,30 +500,6 @@ TEST_CASE("packer policies: default is latest", "[gmmpack][packer]") {
   auto *n = std::get_if<gmmpack::ModSourceNexus>(&mods[0].source);
   REQUIRE(n != nullptr);
   REQUIRE(n->update_policy == "latest");
-}
-
-TEST_CASE("packer policies: exact override propagates and round-trips",
-          "[gmmpack][packer]") {
-  TempDir td;
-  nexus_mod(td.root, "SkyUI");
-  auto snap = make_snapshot();
-  track(snap, "SkyUI", 0);
-
-  gmmpack::PackOptions opts;
-  opts.update_policies["SkyUI"] = "exact";
-  auto pack                     = gmmpack::build_gmmpack(snap, td.root, opts);
-  REQUIRE(pack.mods.size() == 1);
-  auto *n = std::get_if<gmmpack::ModSourceNexus>(&pack.mods[0].source);
-  REQUIRE(n != nullptr);
-  REQUIRE(n->update_policy == "exact");
-
-  // Exact survives serialize -> parse.
-  auto modj = gmmpack::serialize_mod_entry(pack.mods[0]);
-  REQUIRE(modj["source"]["updatePolicy"] == "exact");
-  auto back = gmmpack::parse_mod_entry(modj);
-  auto *bn  = std::get_if<gmmpack::ModSourceNexus>(&back.source);
-  REQUIRE(bn != nullptr);
-  REQUIRE(bn->update_policy == "exact");
 }
 
 TEST_CASE("packer policies: steam stays latest when exact requested",
@@ -663,10 +662,7 @@ TEST_CASE("packer create: writes archive passing integrity check",
 
 static fs::path schema_dir() {
   auto project_root = fs::path(PROJECT_SOURCE_DIR);
-  auto candidate    = project_root / ".." / ".." / "input";
-  if (fs::is_directory(candidate))
-    return fs::canonical(candidate);
-  candidate = project_root / ".." / "input";
+  auto candidate    = project_root / "schemas";
   if (fs::is_directory(candidate))
     return fs::canonical(candidate);
   FAIL("schema dir not found from " + project_root.string());
@@ -744,4 +740,320 @@ TEST_CASE("packer schema: generated files validate", "[gmmpack][packer]") {
   check_source(*gmmpack::resolve_mod_source(direct, "x", 0));
   auto nx = engine::ModMeta::from_default("N", "nexus", "1");
   check_source(*gmmpack::resolve_mod_source(nx, "skyrim", 0));
+}
+
+// ---------------------------------------------------------------------------
+// Bundled (embedded) mods: a manual mod must survive a round-trip through
+// the importer instead of being dropped on export.
+// ---------------------------------------------------------------------------
+
+TEST_CASE("packer embedded: a bundled manual mod round-trips through import",
+          "[gmmpack][packer]") {
+  TempDir td;
+  manual_mod(td.root, "LocalMod");
+  fs::create_directories(td.root / "LocalMod" / "scripts");
+  {
+    std::ofstream esp(td.root / "LocalMod" / "main.esp", std::ios::binary);
+    esp << "ESP DATA";
+  }
+  {
+    std::ofstream pex(td.root / "LocalMod" / "scripts" / "foo.pex", std::ios::binary);
+    pex << "PEX DATA";
+  }
+
+  auto snap = make_snapshot();
+  track(snap, "LocalMod", 0);
+
+  gmmpack::PackOptions opts;
+  opts.author     = "Author";
+  opts.schema_dir = schema_dir();
+  opts.embed_folders.insert("LocalMod");
+
+  const auto out = td.root / "embedded.gmmpack";
+  const auto res = gmmpack::create_gmmpack(snap, td.root, opts, out);
+  REQUIRE(res.ok);
+  REQUIRE(res.error.empty());
+  REQUIRE(res.embedded_mod_count == 1);
+  REQUIRE(res.embedded_file_count == 3);  // meta.ini + main.esp + scripts/foo.pex
+  REQUIRE(fs::exists(out));
+
+  // The payload and its per-file hashes are in the archive.
+  auto extract = gmmpack::extract_archive(out);
+  REQUIRE(extract.ok);
+  REQUIRE(extract.archive.path_index.count("files/localmod/main.esp"));
+  REQUIRE(extract.archive.path_index.count("files/localmod/scripts/foo.pex"));
+  REQUIRE(gmmpack::verify_archive_integrity(extract.archive, extract.manifest_json)
+              .empty());
+
+  // Import accepts it, and the mod entry points at the payload.
+  auto unpacked = gmmpack::unpack_gmmpack(out, schema_dir());
+  INFO([&] {
+    std::string joined;
+    for (const auto &d : unpacked.diagnostics)
+      joined += d.path + ": " + d.message + "\n";
+    return joined;
+  }());
+  REQUIRE(unpacked.ok);
+  REQUIRE(unpacked.pack.mods.size() == 1);
+  const auto *mod = gmmpack::find_mod(unpacked.pack, "localmod");
+  REQUIRE(mod != nullptr);
+  const auto *source = std::get_if<gmmpack::ModSourceEmbedded>(&mod->source);
+  REQUIRE(source != nullptr);
+  REQUIRE(source->root == "localmod");
+  REQUIRE(source->files.size() == 3);
+  const auto esp = std::find_if(source->files.begin(), source->files.end(),
+                                [](const gmmpack::ModSourceEmbedded::File &f) {
+                                  return f.path == "main.esp";
+                                });
+  REQUIRE(esp != source->files.end());
+  REQUIRE(esp->size == 8);
+  REQUIRE(esp->sha256.size() == 64);
+
+  // Installing it writes the exact bytes back out.
+  const auto dest = td.root / "installed" / "localmod";
+  std::string error;
+  REQUIRE(gmmpack::extract_embedded_mod(unpacked.pack, "localmod", dest, error));
+  REQUIRE(error.empty());
+  std::ifstream esp_in(dest / "main.esp", std::ios::binary);
+  const std::string content((std::istreambuf_iterator<char>(esp_in)),
+                            std::istreambuf_iterator<char>());
+  REQUIRE(content == "ESP DATA");
+  std::ifstream pex_in(dest / "scripts" / "foo.pex", std::ios::binary);
+  const std::string pex_content((std::istreambuf_iterator<char>(pex_in)),
+                                std::istreambuf_iterator<char>());
+  REQUIRE(pex_content == "PEX DATA");
+
+  // A tampered payload is refused instead of installed.
+  auto tampered = unpacked.pack;
+  for (auto &af : tampered.payload) {
+    if (af.path == "files/localmod/main.esp")
+      af.content = "TAMPERED";
+  }
+  const auto tampered_dest = td.root / "tampered" / "localmod";
+  REQUIRE_FALSE(
+      gmmpack::extract_embedded_mod(tampered, "localmod", tampered_dest, error));
+  REQUIRE(!error.empty());
+  REQUIRE_FALSE(fs::exists(tampered_dest / "main.esp"));
+}
+
+// ---------------------------------------------------------------------------
+// Exact version pinning: a pack GMM cannot reopen is not an option, so the
+// pin is only claimed when its download identity resolves.
+// ---------------------------------------------------------------------------
+
+TEST_CASE("packer policies: exact pin imports when the download identity is known",
+          "[gmmpack][packer]") {
+  TempDir td;
+  // What InstallStage stamps at download time: the archive's own size + hash.
+  auto meta = engine::ModMeta::from_default("SkyUI", "nexus", "12345", "SkyUI-1.4.2.7z",
+                                            "1.4.2");
+  meta.set("Nexusmods", "modid", "12345");
+  meta.set("Nexusmods", "fileid", "67890");
+  meta.set("GameModManager", "download_size", "12345");
+  meta.set("GameModManager", "download_sha256", std::string(64, 'a'));
+  write_meta(td.root, "SkyUI", meta);
+
+  auto snap = make_snapshot();
+  track(snap, "SkyUI", 0);
+
+  gmmpack::PackOptions opts;
+  opts.author                   = "Author";
+  opts.schema_dir               = schema_dir();
+  opts.update_policies["SkyUI"] = "exact";
+
+  const auto out = td.root / "exact.gmmpack";
+  const auto res = gmmpack::create_gmmpack(snap, td.root, opts, out);
+  REQUIRE(res.ok);
+  REQUIRE(res.error.empty());
+
+  // The whole point: GMM opens its own pack.
+  auto unpacked = gmmpack::unpack_gmmpack(out, schema_dir());
+  INFO([&] {
+    std::string joined;
+    for (const auto &d : unpacked.diagnostics)
+      joined += d.path + ": " + d.message + "\n";
+    return joined;
+  }());
+  REQUIRE(unpacked.ok);
+
+  const auto *source =
+      std::get_if<gmmpack::ModSourceNexus>(&unpacked.pack.mods[0].source);
+  REQUIRE(source != nullptr);
+  REQUIRE(source->update_policy == "exact");
+  REQUIRE(source->file_size.has_value());
+  REQUIRE(*source->file_size == 12345);
+  REQUIRE(source->sha256.has_value());
+  REQUIRE(*source->sha256 == std::string(64, 'a'));
+
+  // Installed before that stamp existed: the same identity is recovered by
+  // hashing the archive still sitting in the instance's downloads folder.
+  auto legacy = engine::ModMeta::from_default("SkyUI", "nexus", "12345",
+                                              "SkyUI-1.4.2.7z", "1.4.2");
+  legacy.set("Nexusmods", "modid", "12345");
+  legacy.set("Nexusmods", "fileid", "67890");
+  write_meta(td.root, "SkyUI", legacy);
+  const auto downloads = td.root / "downloads";
+  fs::create_directories(downloads);
+  {
+    std::ofstream archive(downloads / "SkyUI-1.4.2.7z", std::ios::binary);
+    archive << "ARCHIVE BYTES";
+  }
+  gmmpack::PackOptions backfill;
+  backfill.author                   = "Author";
+  backfill.schema_dir               = schema_dir();
+  backfill.downloads_dir            = downloads;
+  backfill.update_policies["SkyUI"] = "exact";
+  const auto backfilled_out         = td.root / "backfilled.gmmpack";
+  const auto backfilled =
+      gmmpack::create_gmmpack(snap, td.root, backfill, backfilled_out);
+  REQUIRE(backfilled.ok);
+  auto backfilled_pack = gmmpack::unpack_gmmpack(backfilled_out, schema_dir());
+  REQUIRE(backfilled_pack.ok);
+  const auto *recovered =
+      std::get_if<gmmpack::ModSourceNexus>(&backfilled_pack.pack.mods[0].source);
+  REQUIRE(recovered != nullptr);
+  REQUIRE(recovered->update_policy == "exact");
+  REQUIRE(recovered->file_size.has_value());
+  REQUIRE(*recovered->file_size == 13);
+  REQUIRE(recovered->sha256.has_value());
+}
+
+TEST_CASE("packer policies: unresolvable identity degrades to latest, not a broken pin",
+          "[gmmpack][packer]") {
+  TempDir td;
+  nexus_mod(td.root, "SkyUI");  // no download_size / download_sha256
+  auto snap = make_snapshot();
+  track(snap, "SkyUI", 0);
+
+  gmmpack::PackOptions opts;
+  opts.author                   = "Author";
+  opts.schema_dir               = schema_dir();
+  opts.update_policies["SkyUI"] = "exact";
+
+  const auto out = td.root / "degraded.gmmpack";
+  const auto res = gmmpack::create_gmmpack(snap, td.root, opts, out);
+  REQUIRE(res.ok);
+  REQUIRE(res.error.empty());
+
+  auto unpacked = gmmpack::unpack_gmmpack(out, schema_dir());
+  REQUIRE(unpacked.ok);
+  const auto *source =
+      std::get_if<gmmpack::ModSourceNexus>(&unpacked.pack.mods[0].source);
+  REQUIRE(source != nullptr);
+  REQUIRE(source->update_policy == "latest");
+  REQUIRE_FALSE(source->sha256.has_value());
+}
+
+// ---------------------------------------------------------------------------
+// create_gmmpack runs the importer's own validation on what it built.
+// ---------------------------------------------------------------------------
+
+TEST_CASE("packer create: an invalid pack is refused, not written",
+          "[gmmpack][packer]") {
+  TempDir td;
+  nexus_mod(td.root, "SkyUI");
+  auto snap = make_snapshot();
+  track(snap, "SkyUI", 0);
+
+  gmmpack::PackOptions opts;
+  opts.author     = "Author";
+  opts.schema_dir = schema_dir();
+  // A choice group naming a mod that is not in the pack: exactly the kind of
+  // author error the export must not ship.
+  gmmpack::ChoiceGroup group;
+  group.id             = "textures";
+  group.name           = "Textures";
+  group.mode           = "at-most-one";
+  group.member_mod_ids = {"does-not-exist", "skyui"};
+  opts.choice_groups.push_back(group);
+
+  const auto out = td.root / "invalid.gmmpack";
+  const auto res = gmmpack::create_gmmpack(snap, td.root, opts, out);
+  INFO("create_gmmpack error: " << res.error);
+  REQUIRE_FALSE(res.ok);
+  REQUIRE(res.error.find("did not validate") != std::string::npos);
+  REQUIRE(res.error.find("does-not-exist") != std::string::npos);
+  REQUIRE_FALSE(fs::exists(out));
+}
+
+// ---------------------------------------------------------------------------
+// ini/ and patches/ producers: a mod's shipped INI settings and the files
+// several mods collide on both have to reach the archive.
+// ---------------------------------------------------------------------------
+
+TEST_CASE("packer ini+patches: shipped INI and colliding files become payload",
+          "[gmmpack][packer]") {
+  TempDir td;
+  nexus_mod(td.root, "Clothes");
+  nexus_mod(td.root, "ENB");
+  // Both mods ship textures/example.dds; ENB is lower in the list, so it
+  // becomes an opt-in patch against Clothes' copy.
+  fs::create_directories(td.root / "Clothes" / "textures");
+  fs::create_directories(td.root / "ENB" / "textures");
+  {
+    std::ofstream winner(td.root / "Clothes" / "textures" / "example.dds",
+                         std::ios::binary);
+    winner << std::string(4096, 'A');
+  }
+  {
+    std::ofstream loser(td.root / "ENB" / "textures" / "example.dds", std::ios::binary);
+    loser << std::string(4096, 'A');
+    loser << std::string(4096, 'B');
+  }
+  // A mod's own INI file becomes one toggleable tweak.
+  {
+    std::ofstream ini(td.root / "ENB" / "ENB.ini", std::ios::binary);
+    ini << "[ENB]\niAA=8\n";
+  }
+
+  auto snap = make_snapshot();
+  track(snap, "Clothes", 0);
+  track(snap, "ENB", 1);
+
+  gmmpack::PackOptions opts;
+  opts.author     = "Author";
+  opts.schema_dir = schema_dir();
+
+  const auto out = td.root / "payload.gmmpack";
+  const auto res = gmmpack::create_gmmpack(snap, td.root, opts, out);
+  INFO("create_gmmpack error: " << res.error);
+  REQUIRE(res.ok);
+
+  auto extract = gmmpack::extract_archive(out);
+  REQUIRE(extract.ok);
+  REQUIRE(extract.archive.path_index.count("ini/ENB.ini.json"));
+  REQUIRE(extract.archive.path_index.count("patches/enb.json"));
+
+  // Both are schema-valid and referentially sound, and import accepts them.
+  auto unpacked = gmmpack::unpack_gmmpack(out, schema_dir());
+  INFO([&] {
+    std::string joined;
+    for (const auto &d : unpacked.diagnostics)
+      joined += d.path + ": " + d.message + "\n";
+    return joined;
+  }());
+  REQUIRE(unpacked.ok);
+  REQUIRE(unpacked.pack.ini_edits.size() == 1);
+  REQUIRE(unpacked.pack.ini_edits[0].target_file == "ENB.ini");
+  REQUIRE(unpacked.pack.ini_edits[0].tweaks.size() == 1);
+  REQUIRE(unpacked.pack.ini_edits[0].tweaks[0].source_mod_id == "enb");
+  REQUIRE(unpacked.pack.ini_edits[0].tweaks[0].content.find("iAA=8") !=
+          std::string::npos);
+  REQUIRE(unpacked.pack.patches.size() == 1);
+  REQUIRE(unpacked.pack.patches[0].mod_id == "enb");
+  REQUIRE(unpacked.pack.patches[0].target_path == "textures/example.dds");
+  REQUIRE(unpacked.pack.patches[0].archive_path == "patches/enb.json");
+
+  // The patch really turns Clothes' file into ENB's.
+  const auto patch = unpacked.pack.patches[0];
+  std::vector<uint8_t> payload;
+  REQUIRE(gmmpack::base64_decode(patch.payload_base64, payload));
+  const std::string winner_bytes(4096, 'A');
+  std::vector<uint8_t> patched;
+  std::string error;
+  REQUIRE(gmmpack::bsdiff_apply(reinterpret_cast<const uint8_t *>(winner_bytes.data()),
+                                winner_bytes.size(), payload.data(), payload.size(),
+                                patched, error));
+  REQUIRE(std::string(patched.begin(), patched.end()) ==
+          std::string(4096, 'A') + std::string(4096, 'B'));
 }

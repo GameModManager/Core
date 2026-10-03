@@ -11,6 +11,7 @@
 #include <optional>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include <nlohmann/json.hpp>
@@ -28,23 +29,78 @@ struct PackOptions {
   std::string instructions;
   // Per-mod update policy keyed by mod FOLDER ("latest" or "exact").
   // Absent = "latest". Applied by build_mod_entries after
-  // resolve_mod_source; steam_workshop sources always stay "latest".
+  // resolve_mod_source; steam_workshop sources always stay "latest", and a
+  // source whose download identity cannot be resolved degrades to "latest"
+  // rather than emitting a pin it cannot back up.
   std::unordered_map<std::string, std::string> update_policies;
+  // Mod FOLDER -> "required" | "recommended" | "optional". Absent = optional.
+  std::unordered_map<std::string, std::string> categories;
+  // Mod FOLDERS whose own files are bundled into the archive (files/<id>/).
+  // Only meaningful for sources with no download identity: a manual or
+  // unknown-source mod has nothing else to point at.
+  std::unordered_set<std::string> embed_folders;
+  // Author-declared mutually exclusive mod groups, shipped as-is.
+  std::vector<ChoiceGroup> choice_groups;
+  // Where the instance's downloaded archives live. Used to derive the
+  // download identity (size + sha256) an exact pin needs, for mods installed
+  // before that identity was recorded in their meta.ini.
+  std::filesystem::path downloads_dir;
+  // Schema directory for the validation create_gmmpack runs on its own output.
+  // Empty = referential integrity only (no schemas to validate against).
+  std::filesystem::path schema_dir;
 };
 
 struct PackResult {
   bool ok = false;
   std::string error;
   std::filesystem::path output_path;
+  // Files written under files/<mod-id>/, and the mods carrying them.
+  size_t embedded_mod_count  = 0;
+  size_t embedded_file_count = 0;
 };
 
 // Map a mod's meta.ini to its pack source. Nullopt for manual/unknown
-// sources (those mods are skipped on export - the pack format has no
-// manual provider). game_id is the GMM game id (nexus gameDomain fallback);
-// steam_appid feeds the steam_workshop appId field.
+// sources (the pack format has no manual provider - use
+// resolve_embedded_source for those). game_id is the GMM game id (nexus
+// gameDomain fallback); steam_appid feeds the steam_workshop appId field.
 std::optional<ModSource> resolve_mod_source(const ModMeta &meta,
                                             const std::string &game_id,
                                             uint32_t steam_appid = 0);
+
+// Bundle a mod folder's own files: an embedded source listing every file
+// under mods_dir/folder with its size and sha256. Nullopt when the folder is
+// missing or holds no regular files (nothing to bundle).
+std::optional<ModSource> resolve_embedded_source(const std::filesystem::path &mods_dir,
+                                                 const std::string &folder);
+
+// Can this folder be bundled at all? Cheap directory walk, no hashing - the
+// UI asks this once per row.
+bool can_embed_folder(const std::filesystem::path &mods_dir, const std::string &folder);
+
+// Source resolution shared by every pack builder: the mod's own source when
+// it has one, otherwise its embedded payload when options.embed_folders names
+// the folder. Nullopt = the mod cannot be represented in a pack at all.
+std::optional<ModSource>
+resolve_for_export(const ModMeta &meta, const std::filesystem::path &mods_dir,
+                   const std::string &folder, const std::string &game_id,
+                   uint32_t steam_appid, const PackOptions &options);
+
+// The download identity an "exact" pin needs, taken from the mod's own
+// recorded install metadata. Empty fields mean "not recorded", which is what
+// makes an unresolvable pin degrade to "latest" instead of fabricating one.
+struct DownloadIdentity {
+  int64_t file_size = 0;
+  std::string sha256;
+  std::string version;
+  std::string file_name;
+};
+DownloadIdentity read_download_identity(const ModMeta &meta);
+
+// Same, but falls back to hashing the archive in downloads_dir named by the
+// mod's recorded installation file. Returns a zero identity when neither
+// source can supply one.
+DownloadIdentity resolve_download_identity(const ModMeta &meta,
+                                           const std::filesystem::path &downloads_dir);
 
 // Folder name -> schema-valid mod id slug. Lowercase alnum runs joined by
 // single hyphens; collisions get -2/-3 suffixes. Deterministic for a given
@@ -53,38 +109,83 @@ std::string mod_slug(const std::string &folder_name);
 
 // Build the display tree from mod-state nesting. Separators are entries
 // whose folder name appears as another entry's parent_separator; children
-// sort by list_position. ModNode enabled = !hidden && !disabled. Manual/
-// unresolvable mods are omitted (they have no mods/<id>.json to point at).
+// sort by list_position. ModNode enabled = !hidden && !disabled. Mods with
+// no representable source are omitted (they have no mods/<id>.json to point
+// at).
 TreeRoot build_tree(const InstanceSnapshot &snapshot,
                     const std::filesystem::path &mods_dir);
+
+// Same, for an export that bundles embedded mod folders: a manual/unknown
+// mod named in options.embed_folders appears in the tree too.
+TreeRoot build_tree(const InstanceSnapshot &snapshot,
+                    const std::filesystem::path &mods_dir, const PackOptions &options);
 
 // Manifest with stable pack identity: reuses snapshot.modpack_id when set
 // (fresh UUID v4 otherwise), revision = snapshot.modpack_revision + 1,
 // schema "1.0.0", info from snapshot + options, current UTC timestamps.
-// archive.fileHashes is left empty - write_gmmpack_archive fills it after
-// serializing every file.
+// Also populated from real instance state: loadOrder.pluginHint from the
+// default profile's plugin list (with LOOT declared as a required tool when
+// there is one), platform.linux.protonVersionPin from the instance's Proton
+// runner, one "requires" rule per executable (an exe needs its mod), and
+// options.choice_groups. archive.fileHashes is left empty - create_gmmpack
+// fills it after serializing every file.
 Manifest build_manifest(const InstanceSnapshot &snapshot, const PackOptions &options);
 
-// One ModEntry per snapshot mod with a resolvable source. Manual/unknown
-// sources are skipped. Order is deterministic (list_position, then folder).
-// options.update_policies (folder -> "latest"|"exact", absent = "latest")
-// overrides the resolved source's update_policy; steam_workshop sources
-// always stay "latest".
+// One ModEntry per snapshot mod with a representable source: its own, or an
+// embedded payload when options.embed_folders names it. Order is
+// deterministic (list_position, then folder). category/phase come from
+// options.categories; options.update_policies (folder -> "latest"|"exact",
+// absent = "latest") overrides the resolved source's update_policy -
+// steam_workshop sources always stay "latest", and so does any source whose
+// download identity cannot be resolved.
 std::vector<ModEntry> build_mod_entries(const InstanceSnapshot &snapshot,
                                         const std::filesystem::path &mods_dir,
                                         const PackOptions &options);
 
 // Snapshot executables -> pack executables. Entries whose mod does not
-// resolve to an exported mod (game-root exes, manual mods) are skipped:
-// sourceModId must pass referential integrity.
+// resolve to an exported mod (game-root exes) are skipped: sourceModId must
+// pass referential integrity. role is "setup" for a recognized generator
+// (Nemesis/FNIS/BodySlide/xEdit/... - see is_setup_executable) and "launcher"
+// otherwise, with autoRun/rerunOnModsetChange set on the former.
 std::vector<ExecutableEntry> build_executables(const InstanceSnapshot &snapshot,
                                                const std::filesystem::path &mods_dir);
+
+// Same, for an export that bundles embedded mod folders: an executable owned
+// by a bundled manual mod is kept (its mod id is in the pack).
+std::vector<ExecutableEntry> build_executables(const InstanceSnapshot &snapshot,
+                                               const std::filesystem::path &mods_dir,
+                                               const PackOptions &options);
+
+// True for an executable GMM recognizes as a one-shot setup generator
+// (reads the deployed mod set and writes output), false for a launcher.
+bool is_setup_executable(const std::string &relative_path);
+
+// One ini/<targetFile>.json entry per INI file shipped by the exported mods,
+// one tweak per (mod, file) carrying that file's settings. Empty when no
+// exported mod ships an INI file.
+std::vector<IniEntry> build_ini_entries(const std::filesystem::path &mods_dir,
+                                        const std::vector<ModEntry> &mods);
+
+// One bsdiff patch per file that 2+ exported mods ship at the same relative
+// path: the higher-priority mod's copy is the base, each lower-priority mod's
+// copy becomes a patch against it (this is the pack format's consent-gated
+// alternative to silent file-priority conflict resolution). Files above
+// ~8 MB are skipped - a base64 diff of a game-sized asset is not something a
+// pack should carry. Empty when no exported mods collide.
+std::vector<PatchEntry> build_patches(const InstanceSnapshot &snapshot,
+                                      const std::filesystem::path &mods_dir,
+                                      const std::vector<ModEntry> &mods);
 
 // JSON serializers (reverse of unpacker.cpp parse_*).
 nlohmann::json serialize_manifest(const Manifest &m);
 nlohmann::json serialize_mod_source(const ModSource &source);
 nlohmann::json serialize_mod_entry(const ModEntry &m);
 nlohmann::json serialize_executable_entry(const ExecutableEntry &e);
+nlohmann::json serialize_ini_entry(const IniEntry &entry);
+nlohmann::json serialize_patch_entry(const PatchEntry &p);
+// Archive path of a patch entry: patches/<mod-id>.json for a single patch,
+// patches/<mod-id>-<N>.json for chain step N.
+std::string patch_archive_path(const PatchEntry &p);
 
 // Assemble the full pack in memory.
 Gmmpack build_gmmpack(const InstanceSnapshot &snapshot,
@@ -92,9 +193,16 @@ Gmmpack build_gmmpack(const InstanceSnapshot &snapshot,
                       const PackOptions &options);
 
 // Serialize + write a .gmmpack (zip) archive: manifest.json, tree.json,
-// mods/*.json, executables/*.json, instructions.md when present.
-// fileHashes are computed over the serialized payloads and baked into the
-// manifest before writing, so the archive passes verify_archive_integrity.
+// mods/*.json, executables/*.json, files/** for embedded mods,
+// patches/*.json, ini/*.json, instructions.md when present. fileHashes are
+// computed over the serialized payloads and baked into the manifest before
+// writing, so the archive passes verify_archive_integrity.
+//
+// Everything the packer just built is validated before the archive is
+// written: validate_schemas (when options.schema_dir is set) and
+// check_referential_integrity always. A failure sets result.error and writes
+// no file, so the exporter cannot report success on a pack its own importer
+// would refuse.
 PackResult create_gmmpack(const InstanceSnapshot &snapshot,
                           const std::filesystem::path &mods_dir,
                           const PackOptions &options,

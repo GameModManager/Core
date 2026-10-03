@@ -1,0 +1,166 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://gamemodmanager.org/schemas/gmmpack/1.0.0/manifest.schema.json",
+  "title": "GMM Modpack Manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["gmmpackSchema", "id", "revision", "info", "archive"],
+  "properties": {
+    "gmmpackSchema": {
+      "type": "string",
+      "pattern": "^1\\.\\d+\\.\\d+$",
+      "description": "Full semver. Major MUST be 1 for this schema document. A loader encountering any other major must refuse the archive outright, not attempt to validate against this schema."
+    },
+    "id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Immutable pack identity, assigned once at first export, unchanged across every future revision."
+    },
+    "revision": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Strictly increasing per pack id. The installer treats revision <= its own installed revision as a no-op/refusal, not a downgrade."
+    },
+    "info": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "author", "gmmGameId", "createdAt", "updatedAt"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "author": { "type": "string", "minLength": 1 },
+        "description": { "type": "string" },
+        "gmmGameId": {
+          "type": "string",
+          "minLength": 1,
+          "description": "GMM's own canonical game id, NOT a per-provider slug/appid. Resolver looks up provider-specific ids from this via GMM's internal game catalog."
+        },
+        "homepage": { "type": "string", "format": "uri" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "tools": {
+      "type": "array",
+      "description": "External prerequisite software the pack expects to exist (e.g. LOOT). Advisory only, never bundled or auto-installed.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "name"],
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": "string" },
+          "homepage": { "type": "string", "format": "uri" }
+        }
+      }
+    },
+    "platform": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Pack-wide platform defaults. Per-mod/per-executable overrides live in those items' own files, not here.",
+      "properties": {
+        "linux": { "$ref": "#/$defs/platformOverride" },
+        "macos": { "$ref": "#/$defs/platformOverride" },
+        "windows": { "$ref": "#/$defs/platformOverride" }
+      }
+    },
+    "rules": {
+      "type": "array",
+      "description": "Install-sequencing and dependency graph. References stable mod/executable ids only, never filenames or regex expressions -- this is what keeps rule matching case-sensitivity-agnostic across platforms.",
+      "items": { "$ref": "#/$defs/ruleEntry" }
+    },
+    "loadOrder": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "pluginHint": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Weak tiebreak only. LOOT's own masterlist-derived constraints always take precedence; this only resolves ties LOOT leaves open."
+        }
+      }
+    },
+    "choiceGroups": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "name", "mode", "memberModIds"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$" },
+          "name": { "type": "string", "minLength": 1 },
+          "mode": { "enum": ["exactly-one", "at-most-one"] },
+          "memberModIds": {
+            "type": "array",
+            "minItems": 2,
+            "items": { "type": "string" },
+            "uniqueItems": true
+          }
+        }
+      }
+    },
+    "instanceSettings": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Default-profile instance settings captured at export (profiles[0] flags + snapshot deploy strategy). Optional for backward compatibility with packs exported before per-instance settings existed.",
+      "properties": {
+        "localSaves": { "type": "boolean" },
+        "localSettings": { "type": "boolean" },
+        "automaticArchiveInvalidation": { "type": "boolean" },
+        "deployStrategy": { "type": "string" }
+      }
+    },
+    "archive": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["fileHashes"],
+      "properties": {
+        "fileHashes": {
+          "type": "object",
+          "description": "Every other file in the archive (mods/*.json, executables/*.json, patches/*.json, ini/*.json, tree.json, instructions.md if present), keyed by archive-relative path. Validated FIRST, before any JSON in those files is even parsed.",
+          "additionalProperties": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+          "minProperties": 1
+        }
+      }
+    }
+  },
+  "$defs": {
+    "platformOverride": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "protonVersionPin": {
+          "type": "string",
+          "description": "Advisory. Missing build on the target system is a diagnostic warning, never a hard install failure."
+        },
+        "steamOverlay": {
+          "type": "boolean",
+          "description": "Maps directly onto GMM's existing LaunchParams.inject_steam_overlay -- do not introduce a parallel mechanism."
+        },
+        "launchOptions": { "type": "string" },
+        "prefixFiles": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["path", "sourceModId"],
+            "properties": {
+              "path": { "type": "string" },
+              "sourceModId": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "ruleEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "from", "to"],
+      "properties": {
+        "type": { "enum": ["before", "after", "requires", "conflicts"] },
+        "from": { "type": "string" },
+        "to": { "type": "string" },
+        "note": { "type": "string" }
+      }
+    }
+  }
+}

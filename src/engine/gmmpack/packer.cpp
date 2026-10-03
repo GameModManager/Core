@@ -7,15 +7,21 @@
 #include <cctype>
 #include <chrono>
 #include <ctime>
+#include <fstream>
 #include <functional>
 #include <map>
 #include <sstream>
 #include <type_traits>
 #include <unordered_set>
 
+#include "engine/gmmpack/bsdiff.h"
+#include "engine/gmmpack/codec.h"
+#include "engine/gmmpack/ini_edit_parser.h"
 #include "engine/gmmpack/sha256.h"
 #include "engine/gmmpack/tree_parser.h"
+#include "engine/gmmpack/unpacker.h"
 #include "engine/gmmpack/uuid.h"
+#include "engine/modpack/ini_edits.h"
 
 namespace engine::gmmpack {
 
@@ -125,6 +131,127 @@ namespace {
     return p < 0 ? INT32_MAX : p;
   }
 
+  // Coarse install-sequencing bucket. Deliberately NOT the mod's list
+  // position - tree.json already carries display order, and the schema calls
+  // phase "NOT display order". A required mod has to be on disk before an
+  // optional add-on that depends on it, which is exactly the sequencing the
+  // install widget walks phase by phase.
+  int phase_for(ModCategory category) {
+    switch (category) {
+    case ModCategory::Required:
+      return 0;
+    case ModCategory::Recommended:
+      return 1;
+    case ModCategory::Optional:
+    default:
+      return 2;
+    }
+  }
+
+  ModCategory category_for(const std::string &name) {
+    if (name == "required")
+      return ModCategory::Required;
+    if (name == "recommended")
+      return ModCategory::Recommended;
+    return ModCategory::Optional;
+  }
+
+  // A path relative to a mod folder, always with forward slashes (the pack
+  // format's own separator, whatever the exporting platform uses).
+  std::string relative_path(const std::filesystem::path &base,
+                            const std::filesystem::path &file) {
+    std::error_code ec;
+    auto rel = std::filesystem::relative(file, base, ec);
+    if (ec)
+      return {};
+    std::string out = rel.generic_string();
+    if (out.empty() || out.front() == '.')
+      return {};
+    return out;
+  }
+
+  // Archive path of a payload file: files/<root>/<rel>.
+  std::string root_prefix(const ModSourceEmbedded &src) {
+    return "files/" + src.root + "/";
+  }
+
+  // Every regular file under root, relative and sorted for a deterministic
+  // archive (and a deterministic hash list).
+  std::vector<std::string> scan_files(const std::filesystem::path &root) {
+    std::vector<std::string> out;
+    if (root.empty() || !std::filesystem::is_directory(root))
+      return out;
+    std::error_code ec;
+    for (auto it = std::filesystem::recursive_directory_iterator(
+             root, std::filesystem::directory_options::skip_permission_denied, ec);
+         it != std::filesystem::recursive_directory_iterator(); it.increment(ec)) {
+      if (ec)
+        break;
+      if (!it->is_regular_file(ec))
+        continue;
+      auto rel = relative_path(root, it->path());
+      if (!rel.empty())
+        out.push_back(std::move(rel));
+    }
+    std::sort(out.begin(), out.end());
+    return out;
+  }
+
+  bool read_file(const std::filesystem::path &path, std::string &out) {
+    std::ifstream f(path, std::ios::binary);
+    if (!f.is_open())
+      return false;
+    out.assign(std::istreambuf_iterator<char>(f), std::istreambuf_iterator<char>());
+    return true;
+  }
+
+  // GMM's own bookkeeping at a mod's root (meta.ini, metadata.xml) is manager
+  // state, never mod content: it must not become a patch target or an INI
+  // tweak. The same file name deeper in the tree (data/foo/meta.ini) is real
+  // content and stays.
+  bool is_manager_metadata(const std::string &relative) {
+    if (relative.find('/') != std::string::npos)
+      return false;
+    return relative == "meta.ini" || relative == "metadata.xml";
+  }
+
+  bool is_hex64(const std::string &s) {
+    if (s.size() != 64)
+      return false;
+    for (char c : s) {
+      if (!std::isxdigit(static_cast<unsigned char>(c)))
+        return false;
+    }
+    return true;
+  }
+
+  std::string lower(std::string s) {
+    for (char &c : s)
+      c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    return s;
+  }
+
+  // One-shot setup generators: they read the deployed mod set and write
+  // output, which is what role=setup exists for. Matched on the file name so
+  // a mod folder can ship the tool under any path.
+  // ponytail: a name list, not content sniffing. A mod shipping a tool GMM
+  // does not know stays a launcher - add the name here when it shows up.
+  bool setup_executable_name(const std::string &basename_lower) {
+    static const char *kSetupNames[] = {
+        "nemesis.exe", "nemesis",          "fnisis.exe", "fnisis",
+        "fnispatch",   "pandora.exe",      "pandora",    "bodyslide.exe",
+        "bodyslide",   "synthesis.exe",    "synthesis",  "zedit.exe",
+        "zedit",       "ssedit.exe",       "ssedit",     "mutagen.exe",
+        "mutagen",     "dyndolved.exe",    "dyndolved",  "addresslibrary.exe",
+        "mo2.exe",     "modorganizer.exe",
+    };
+    for (const char *name : kSetupNames) {
+      if (basename_lower == name)
+        return true;
+    }
+    return false;
+  }
+
 }  // namespace
 
 std::string mod_slug(const std::string &folder_name) {
@@ -150,12 +277,13 @@ std::string mod_slug(const std::string &folder_name) {
 // ---------------------------------------------------------------------------
 // resolve_mod_source
 // ---------------------------------------------------------------------------
-// resolve_mod_source always yields updatePolicy "latest": exact pinning
-// needs the download archive's fileSize/sha256, which the installed
-// instance does not retain. build_mod_entries upgrades to "exact" only when
-// explicitly requested via PackOptions::update_policies (per-folder user
-// choice from the export wizard); latest keeps the output schema-valid
-// without fabricating hashes.
+// resolve_mod_source itself always yields updatePolicy "latest"; it only maps
+// a meta.ini to a provider. Upgrading a mod to "exact" is
+// build_mod_entries' job, and it does so only when the download's identity
+// (fileSize/sha256, plus fileId/version on Nexus) can actually be resolved -
+// from the mod's recorded install metadata or from the archive in the
+// instance's downloads folder. A pin the pack cannot back up is a pack GMM
+// refuses to import, so an unresolved one degrades to "latest" instead.
 
 std::optional<ModSource> resolve_mod_source(const ModMeta &meta,
                                             const std::string &game_id,
@@ -263,11 +391,120 @@ std::optional<ModSource> resolve_mod_source(const ModMeta &meta,
 }
 
 // ---------------------------------------------------------------------------
+// Embedded sources
+// ---------------------------------------------------------------------------
+
+bool can_embed_folder(const std::filesystem::path &mods_dir,
+                      const std::string &folder) {
+  if (mods_dir.empty() || folder.empty())
+    return false;
+  // Directory walk only: resolve_embedded_source hashes every file, which is
+  // not something to do once per row while the Mods page is being built.
+  return !scan_files(mods_dir / folder).empty();
+}
+
+std::optional<ModSource> resolve_embedded_source(const std::filesystem::path &mods_dir,
+                                                 const std::string &folder) {
+  if (!can_embed_folder(mods_dir, folder))
+    return std::nullopt;
+  const std::filesystem::path root = mods_dir / folder;
+  const auto files                 = scan_files(root);
+  if (files.empty())
+    return std::nullopt;
+
+  ModSourceEmbedded s;
+  s.root = mod_slug(folder);
+  std::string content;
+  for (const auto &rel : files) {
+    if (!read_file(root / rel, content))
+      continue;
+    ModSourceEmbedded::File f;
+    f.path   = rel;
+    f.size   = static_cast<int64_t>(content.size());
+    f.sha256 = sha256_hex(content);
+    s.files.push_back(std::move(f));
+  }
+  if (s.files.empty())
+    return std::nullopt;
+  return ModSource{s};
+}
+
+std::optional<ModSource>
+resolve_for_export(const ModMeta &meta, const std::filesystem::path &mods_dir,
+                   const std::string &folder, const std::string &game_id,
+                   uint32_t steam_appid, const PackOptions &options) {
+  if (options.embed_folders.count(folder)) {
+    if (auto embedded = resolve_embedded_source(mods_dir, folder))
+      return embedded;
+  }
+  return resolve_mod_source(meta, game_id, steam_appid);
+}
+
+// ---------------------------------------------------------------------------
+// Download identity (what an "exact" pin needs)
+// ---------------------------------------------------------------------------
+
+DownloadIdentity read_download_identity(const ModMeta &meta) {
+  DownloadIdentity id;
+  // InstallStage stamps these under the provider's own section on every
+  // download install, so an exact pin is backed by the bytes that were
+  // actually fetched.
+  static const char *kSections[] = {"GameModManager", "Nexusmods", "General"};
+  id.version                     = meta.version();
+  id.file_name                   = first_of(
+      meta, {{"General", "installationFile"}, {"General", "installationfile"}});
+  for (const char *section : kSections) {
+    if (id.file_size == 0) {
+      const std::string size = first_of(
+          meta,
+          {{section, "download_size"}, {section, "filesize"}, {section, "fileSize"}});
+      if (!size.empty()) {
+        bool ok        = false;
+        int64_t parsed = parse_int64(size, ok);
+        if (ok)
+          id.file_size = parsed;
+      }
+    }
+    if (id.sha256.empty()) {
+      const std::string hash =
+          first_of(meta, {{section, "download_sha256"}, {section, "sha256"}});
+      if (is_hex64(hash))
+        id.sha256 = lower(hash);
+    }
+  }
+  return id;
+}
+
+DownloadIdentity resolve_download_identity(const ModMeta &meta,
+                                           const std::filesystem::path &downloads_dir) {
+  DownloadIdentity id = read_download_identity(meta);
+  if (id.file_size > 0 && !id.sha256.empty())
+    return id;
+  // Installed before the identity was recorded: the archive is usually still
+  // in the instance's downloads folder, so hash it now.
+  if (!id.file_name.empty() && !downloads_dir.empty()) {
+    std::string content;
+    const std::filesystem::path archive = downloads_dir / id.file_name;
+    if (read_file(archive, content) && !content.empty()) {
+      id.file_size = static_cast<int64_t>(content.size());
+      id.sha256    = sha256_hex(content);
+    }
+  }
+  return id;
+}
+
+// ---------------------------------------------------------------------------
 // build_tree
 // ---------------------------------------------------------------------------
 
 TreeRoot build_tree(const InstanceSnapshot &snapshot,
                     const std::filesystem::path &mods_dir) {
+  PackOptions options;
+  return build_tree(snapshot, mods_dir, options);
+}
+
+TreeRoot build_tree(const InstanceSnapshot &snapshot,
+                    const std::filesystem::path &mods_dir, const PackOptions &options) {
   // Separators: folder names referenced as someone's parent_separator.
   std::unordered_set<std::string> separators;
   for (const auto &[folder, entry] : snapshot.mod_entries) {
@@ -287,7 +524,8 @@ TreeRoot build_tree(const InstanceSnapshot &snapshot,
       if (separators.count(folder))
         continue;
       ModMeta meta = ModMeta::load(mods_dir, folder);
-      if (resolve_mod_source(meta, snapshot.game_id, snapshot.steam_appid))
+      if (resolve_for_export(meta, mods_dir, folder, snapshot.game_id,
+                             snapshot.steam_appid, options))
         exported.insert(folder);
     }
   }
@@ -437,6 +675,30 @@ Manifest build_manifest(const InstanceSnapshot &snapshot, const PackOptions &opt
   m.instance_settings.auto_archive_invalidation =
       !prof.empty() && prof[0].auto_archive_invalidation;
   m.instance_settings.deploy_strategy = snapshot.deploy_strategy;
+
+  // Load-order hint: the default profile's resolved plugin list. LOOT is what
+  // turns it into a final order, so declare it as a tool the pack needs.
+  if (!snapshot.profiles.empty()) {
+    m.load_order.plugin_hint = snapshot.profiles.front().load_order;
+  }
+  if (!m.load_order.plugin_hint.empty()) {
+    ManifestTool loot;
+    loot.id       = "loot";
+    loot.name     = "LOOT";
+    loot.homepage = "https://loot.github.io";
+    m.tools.push_back(std::move(loot));
+  }
+
+  // Platform: the instance's Proton runner is the one per-OS setting an
+  // instance actually knows. GMM tries the pin and falls back when that
+  // build is not installed locally (the pin is advisory).
+  if (!snapshot.proton_runner.empty()) {
+    PlatformOverride linux;
+    linux.proton_version_pin = snapshot.proton_runner;
+    m.platform.linux_plat    = std::move(linux);
+  }
+
+  m.choice_groups = options.choice_groups;
   return m;
 }
 
@@ -469,30 +731,77 @@ std::vector<ModEntry> build_mod_entries(const InstanceSnapshot &snapshot,
     return a.pos != b.pos ? a.pos < b.pos : a.folder < b.folder;
   });
 
+  // Does this source have everything updatePolicy "exact" requires? Providers
+  // differ: Nexus pins fileId + version + size + hash, the browser-only ones
+  // version + hash.
+  auto pin_is_complete = [](const ModSource &source) {
+    return std::visit(
+        [](const auto &s) {
+          using T = std::decay_t<decltype(s)>;
+          if constexpr (std::is_same_v<T, ModSourceEmbedded> ||
+                        std::is_same_v<T, ModSourceSteamWorkshop>) {
+            return false;
+          } else if constexpr (std::is_same_v<T, ModSourceNexus>) {
+            return s.file_id.has_value() && s.version.has_value() &&
+                   s.file_size.has_value() && s.sha256.has_value();
+          } else {
+            return s.version.has_value() && s.sha256.has_value();
+          }
+        },
+        source);
+  };
+
   std::vector<ModEntry> out;
   for (const auto &row : rows) {
     ModMeta meta = ModMeta::load(mods_dir, row.folder);
-    auto source  = resolve_mod_source(meta, snapshot.game_id, snapshot.steam_appid);
+    auto source  = resolve_for_export(meta, mods_dir, row.folder, snapshot.game_id,
+                                      snapshot.steam_appid, options);
     if (!source)
-      continue;  // manual/unknown: not representable, skip
+      continue;  // nothing to point at: no source, and not bundled
     const auto policy = options.update_policies.find(row.folder);
-    if (policy != options.update_policies.end() && policy->second == "exact") {
+    if (policy != options.update_policies.end() && policy->second == "exact" &&
+        !pin_is_complete(*source)) {
       // User asked to pin this mod. Steam workshop resolution is
-      // client-subscription based, so exact is meaningless there: those
-      // sources always stay "latest".
+      // client-subscription based and an embedded mod carries its bytes in the
+      // pack, so exact is meaningless for both - they keep "latest". For the
+      // rest, fill the pin from the download's recorded identity and claim
+      // "exact" only once every field the schema requires under it is there: an
+      // unbacked pin is a pack GMM refuses to reopen.
+      const DownloadIdentity id =
+          resolve_download_identity(meta, options.downloads_dir);
       std::visit(
-          [](auto &s) {
+          [&](auto &s) {
             using T = std::decay_t<decltype(s)>;
-            if constexpr (!std::is_same_v<T, ModSourceSteamWorkshop>)
-              s.update_policy = "exact";
+            if constexpr (std::is_same_v<T, ModSourceNexus>) {
+              s.file_size = id.file_size;
+              if (!id.sha256.empty())
+                s.sha256 = id.sha256;
+              if (!id.version.empty())
+                s.version = id.version;
+            } else if constexpr (!std::is_same_v<T, ModSourceSteamWorkshop> &&
+                                 !std::is_same_v<T, ModSourceEmbedded>) {
+              if (!id.sha256.empty())
+                s.sha256 = id.sha256;
+              if (!id.version.empty())
+                s.version = id.version;
+            }
           },
           *source);
+      if (pin_is_complete(*source)) {
+        std::visit(
+            [](auto &s) {
+              s.update_policy = "exact";
+            },
+            *source);
+      }
     }
     ModEntry e;
     e.id       = slugs.at(row.folder);
     e.name     = row.folder;
-    e.phase    = 0;
-    e.category = ModCategory::Optional;
+    e.category = category_for(options.categories.count(row.folder)
+                                  ? options.categories.at(row.folder)
+                                  : std::string{});
+    e.phase    = phase_for(e.category);
     e.source   = std::move(*source);
     out.push_back(std::move(e));
   }
@@ -503,8 +812,21 @@ std::vector<ModEntry> build_mod_entries(const InstanceSnapshot &snapshot,
 // build_executables
 // ---------------------------------------------------------------------------
 
+bool is_setup_executable(const std::string &relative_path) {
+  const std::string base =
+      lower(std::filesystem::path(relative_path).filename().string());
+  return setup_executable_name(base);
+}
+
 std::vector<ExecutableEntry> build_executables(const InstanceSnapshot &snapshot,
                                                const std::filesystem::path &mods_dir) {
+  PackOptions options;
+  return build_executables(snapshot, mods_dir, options);
+}
+
+std::vector<ExecutableEntry> build_executables(const InstanceSnapshot &snapshot,
+                                               const std::filesystem::path &mods_dir,
+                                               const PackOptions &options) {
   // Exported mod ids, to validate sourceModId references.
   std::unordered_set<std::string> exported_ids;
   {
@@ -522,7 +844,8 @@ std::vector<ExecutableEntry> build_executables(const InstanceSnapshot &snapshot,
         continue;
       }
       ModMeta meta = ModMeta::load(mods_dir, folder);
-      if (resolve_mod_source(meta, snapshot.game_id, snapshot.steam_appid))
+      if (resolve_for_export(meta, mods_dir, folder, snapshot.game_id,
+                             snapshot.steam_appid, options))
         exported_ids.insert(slugs.at(folder));
     }
   }
@@ -556,8 +879,189 @@ std::vector<ExecutableEntry> build_executables(const InstanceSnapshot &snapshot,
       e.env_vars[kv.substr(0, eq)] = kv.substr(eq + 1);
     }
     e.working_dir = exec.cwd;
-    e.role        = "launcher";
+    // A recognized generator (Nemesis, FNIS, BodySlide, xEdit, ...) runs
+    // during install and again whenever its inputs change; anything else is
+    // the pack's "Play" launcher and never auto-runs.
+    e.role                   = is_setup_executable(exec.path) ? "setup" : "launcher";
+    e.auto_run               = e.role == "setup";
+    e.rerun_on_modset_change = e.role == "setup";
     out.push_back(std::move(e));
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------------------
+// build_ini_entries
+// ---------------------------------------------------------------------------
+
+std::vector<IniEntry> build_ini_entries(const std::filesystem::path &mods_dir,
+                                        const std::vector<ModEntry> &mods) {
+  if (mods_dir.empty())
+    return {};
+
+  // INI files are consolidated per target file: every mod's recommended
+  // settings for Skyrim.ini land in one ini/Skyrim.ini.json, each as its own
+  // named tweak, so a mod can be removed later without touching the others.
+  struct Pending {
+    std::string tweak_id;
+    std::string name;
+    std::string content;
+    std::string source_mod_id;
+  };
+  std::map<std::string, std::vector<Pending>> by_target;  // lowercased target
+  std::map<std::string, std::string> target_display;      // first-seen casing
+
+  for (const auto &mod : mods) {
+    if (mod.id.empty())
+      continue;
+    // Only the exported mods have a folder on disk under a known name; the
+    // mod entry's name is the folder name.
+    const std::filesystem::path mod_root = mods_dir / mod.name;
+    for (const auto &rel : scan_files(mod_root)) {
+      if (is_manager_metadata(rel))
+        continue;
+      if (lower(std::filesystem::path(rel).extension().string()) != ".ini")
+        continue;
+      std::string text;
+      if (!read_file(mod_root / rel, text))
+        continue;
+      // Round-trip through the one INI grammar: the tweak content is re-emitted
+      // canonical, so what import parses back is what export validated.
+      std::string error;
+      const auto edits = modpack::parse_ini_content(text, &error);
+      if (!edits || edits->empty())
+        continue;
+      std::string canonical;
+      std::string section;
+      for (const auto &edit : *edits) {
+        if (edit.section != section) {
+          section = edit.section;
+          canonical += "\n[" + section + "]\n";
+        }
+        canonical += edit.key + "=" + edit.value + "\n";
+      }
+      std::string id =
+          mod.id + "-" + mod_slug(std::filesystem::path(rel).stem().string());
+      by_target[lower(rel)].push_back(Pending{std::move(id),
+                                              mod.name + " settings (" + rel + ")",
+                                              std::move(canonical), mod.id});
+      target_display.emplace(lower(rel), rel);
+    }
+  }
+
+  std::vector<IniEntry> out;
+  for (auto &[target, tweaks] : by_target) {
+    IniEntry entry;
+    entry.target_file = target_display.at(target);
+    for (auto &tweak : tweaks) {
+      IniTweak t;
+      t.id                = tweak.tweak_id;
+      t.name              = tweak.name;
+      t.status            = "recommended";  // the user's pick, not pack-critical
+      t.enabled           = true;
+      t.content           = std::move(tweak.content);
+      t.source_mod_id     = tweak.source_mod_id;
+      t.has_source_mod_id = true;
+      entry.tweaks.push_back(std::move(t));
+    }
+    out.push_back(std::move(entry));
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------------------
+// build_patches
+// ---------------------------------------------------------------------------
+
+// A pack should not carry a base64 diff of a game-sized asset.
+static constexpr int64_t kMaxPatchFileBytes = 8 * 1024 * 1024;
+
+std::vector<PatchEntry> build_patches(const InstanceSnapshot &snapshot,
+                                      const std::filesystem::path &mods_dir,
+                                      const std::vector<ModEntry> &mods) {
+  if (mods_dir.empty() || mods.size() < 2)
+    return {};
+
+  // Mods in list order: the earlier one wins the conflict, every later one
+  // becomes an opt-in patch against it. mods[] is already list-ordered.
+  struct Owner {
+    std::string mod_id;
+    std::string name;
+    int32_t pos = 0;
+  };
+  std::unordered_map<std::string, std::vector<Owner>> by_path;  // relative path
+  for (const auto &mod : mods) {
+    const auto it     = snapshot.mod_entries.find(mod.name);
+    const int32_t pos = it == snapshot.mod_entries.end()
+                            ? INT32_MAX
+                            : sort_pos(it->second.list_position);
+    for (const auto &rel : scan_files(mods_dir / mod.name)) {
+      if (is_manager_metadata(rel))
+        continue;
+      by_path[rel].push_back(Owner{mod.id, mod.name, pos});
+    }
+  }
+
+  // Per mod, its patches in discovery order become a contiguous chain
+  // (patches/<mod-id>-<N>.json); a single patch keeps the plain filename.
+  std::unordered_map<std::string, std::vector<PatchEntry>> by_mod;
+  std::vector<std::string> mod_order;
+  for (const auto &[rel, owners] : by_path) {
+    if (owners.size() < 2)
+      continue;
+    auto sorted = owners;
+    std::sort(sorted.begin(), sorted.end(), [](const Owner &a, const Owner &b) {
+      return a.pos != b.pos ? a.pos < b.pos : a.mod_id < b.mod_id;
+    });
+    std::string base;
+    std::string base_hash;
+    for (size_t i = 0; i < sorted.size(); ++i) {
+      const std::filesystem::path file = mods_dir / sorted[i].name / rel;
+      std::error_code ec;
+      const auto size = std::filesystem::file_size(file, ec);
+      if (ec || size == 0 || size > static_cast<uintmax_t>(kMaxPatchFileBytes))
+        continue;
+      std::string content;
+      if (!read_file(file, content))
+        continue;
+      if (i == 0) {
+        base      = content;
+        base_hash = sha256_hex(content);
+        continue;
+      }
+      if (base == content)
+        continue;  // identical bytes: nothing to patch
+      std::vector<uint8_t> payload;
+      std::string error;
+      if (!bsdiff_create(reinterpret_cast<const uint8_t *>(base.data()), base.size(),
+                         reinterpret_cast<const uint8_t *>(content.data()),
+                         content.size(), payload, error)) {
+        continue;
+      }
+      PatchEntry p;
+      p.mod_id           = sorted[i].mod_id;
+      p.target_path      = rel;
+      p.base_file_sha256 = base_hash;
+      p.algorithm        = "bsdiff";
+      p.payload_base64   = base64_encode(payload);
+      if (!by_mod.contains(p.mod_id))
+        mod_order.push_back(p.mod_id);
+      by_mod[p.mod_id].push_back(std::move(p));
+    }
+  }
+  std::sort(mod_order.begin(), mod_order.end());
+
+  std::vector<PatchEntry> out;
+  for (const auto &mod_id : mod_order) {
+    auto &entries = by_mod[mod_id];
+    if (entries.size() == 1) {
+      out.push_back(std::move(entries.front()));
+      continue;
+    }
+    for (size_t i = 0; i < entries.size(); ++i) {
+      entries[i].sequence = static_cast<int>(i + 1);
+      out.push_back(std::move(entries[i]));
+    }
   }
   return out;
 }
@@ -629,6 +1133,15 @@ nlohmann::json serialize_mod_source(const ModSource &source) {
           if (s.sha256)
             j["sha256"] = *s.sha256;
           j["updatePolicy"] = s.update_policy;
+        } else if constexpr (std::is_same_v<T, ModSourceEmbedded>) {
+          j["root"]      = s.root;
+          j["fileCount"] = s.files.size();
+          j["files"]     = nlohmann::json::array();
+          for (const auto &f : s.files) {
+            j["files"].push_back(
+                {{"path", f.path}, {"size", f.size}, {"sha256", f.sha256}});
+          }
+          j["updatePolicy"] = s.update_policy;
         }
         return j;
       },
@@ -664,6 +1177,45 @@ nlohmann::json serialize_mod_entry(const ModEntry &m) {
     j["installerChoices"] = std::move(ic);
   }
   return j;
+}
+
+// ini/<targetFile>.json - reverse of parse_ini_entry (ini_edit_parser.cpp).
+nlohmann::json serialize_ini_entry(const IniEntry &entry) {
+  nlohmann::json j;
+  j["targetFile"] = entry.target_file;
+  j["tweaks"]     = nlohmann::json::array();
+  for (const auto &tweak : entry.tweaks) {
+    j["tweaks"].push_back(
+        {{"id", tweak.id},
+         {"name", tweak.name},
+         {"status", tweak.status},
+         {"enabled", tweak.enabled},
+         {"sourceModId", tweak.has_source_mod_id ? nlohmann::json(tweak.source_mod_id)
+                                                 : nlohmann::json(nullptr)},
+         {"content", tweak.content}});
+  }
+  return j;
+}
+
+// patches/<id>[-N].json - reverse of parse_patch_entry. The filename carries
+// the same mod id and sequence, which import cross-checks.
+nlohmann::json serialize_patch_entry(const PatchEntry &p) {
+  nlohmann::json j;
+  j["modId"] = p.mod_id;
+  if (p.sequence)
+    j["sequence"] = *p.sequence;
+  j["targetPath"]     = p.target_path;
+  j["baseFileSha256"] = p.base_file_sha256;
+  j["algorithm"]      = p.algorithm;
+  j["payloadBase64"]  = p.payload_base64;
+  return j;
+}
+
+std::string patch_archive_path(const PatchEntry &p) {
+  std::string name = "patches/" + p.mod_id;
+  if (p.sequence)
+    name += "-" + std::to_string(*p.sequence);
+  return name + ".json";
 }
 
 nlohmann::json serialize_executable_entry(const ExecutableEntry &e) {
@@ -792,10 +1344,39 @@ Gmmpack build_gmmpack(const InstanceSnapshot &snapshot,
   Gmmpack pack;
   pack.manifest    = build_manifest(snapshot, options);
   pack.mods        = build_mod_entries(snapshot, mods_dir, options);
-  pack.executables = build_executables(snapshot, mods_dir);
-  pack.tree        = build_tree(snapshot, mods_dir);
+  pack.executables = build_executables(snapshot, mods_dir, options);
+  pack.ini_edits   = build_ini_entries(mods_dir, pack.mods);
+  pack.patches     = build_patches(snapshot, mods_dir, pack.mods);
+  pack.tree        = build_tree(snapshot, mods_dir, options);
+  // Rules need both sides built: an executable needs its source mod on disk
+  // before it can run, and executable ids share the mod id-space for
+  // before/after/requires (see the format spec's Executables section).
+  for (const auto &exe : pack.executables) {
+    ManifestRule rule;
+    rule.type = "requires";
+    rule.from = exe.id;
+    rule.to   = exe.source_mod_id;
+    pack.manifest.rules.push_back(std::move(rule));
+  }
   if (!options.instructions.empty())
     pack.instructions = options.instructions;
+
+  // Payload for bundled mods: read once here so create_gmmpack can write the
+  // exact bytes the mod entries' hashes were computed over.
+  if (!mods_dir.empty()) {
+    for (const auto &mod : pack.mods) {
+      const auto *src = std::get_if<ModSourceEmbedded>(&mod.source);
+      if (src == nullptr)
+        continue;
+      const std::filesystem::path root = mods_dir / mod.name;
+      for (const auto &f : src->files) {
+        std::string content;
+        if (!read_file(root / f.path, content))
+          continue;
+        pack.payload.push_back({root_prefix(*src) + f.path, std::move(content)});
+      }
+    }
+  }
   return pack;
 }
 
@@ -838,11 +1419,24 @@ PackResult create_gmmpack(const InstanceSnapshot &snapshot,
   // Serialize every payload first; hash them into the manifest.
   std::vector<std::pair<std::string, std::string>> files;
   for (const auto &mod : pack.mods) {
+    if (std::holds_alternative<ModSourceEmbedded>(mod.source))
+      ++result.embedded_mod_count;
     files.emplace_back("mods/" + mod.id + ".json", serialize_mod_entry(mod).dump(2));
   }
   for (const auto &exec : pack.executables) {
     files.emplace_back("executables/" + exec.id + ".json",
                        serialize_executable_entry(exec).dump(2));
+  }
+  for (const auto &entry : pack.ini_edits) {
+    files.emplace_back("ini/" + entry.target_file + ".json",
+                       serialize_ini_entry(entry).dump(2));
+  }
+  for (const auto &patch : pack.patches) {
+    files.emplace_back(patch_archive_path(patch), serialize_patch_entry(patch).dump(2));
+  }
+  for (const auto &af : pack.payload) {
+    result.embedded_file_count++;
+    files.emplace_back(af.path, af.content);
   }
   files.emplace_back("tree.json", serialize_tree(pack.tree).dump(2));
   if (pack.instructions)
@@ -852,6 +1446,40 @@ PackResult create_gmmpack(const InstanceSnapshot &snapshot,
     pack.manifest.archive.file_hashes[path] = "sha256:" + sha256_hex(content);
   }
   const std::string manifest_json = serialize_manifest(pack.manifest).dump(2);
+
+  // Validate what we just built, with the same two stages the importer runs.
+  // A pack that fails here is a pack GMM cannot reopen: refuse to write it
+  // instead of reporting a success the user's own import will reject.
+  {
+    ArchiveContents archive;
+    archive.path_index["manifest.json"] = 0;
+    archive.files.push_back({"manifest.json", manifest_json});
+    for (const auto &[path, content] : files) {
+      archive.path_index[path] = archive.files.size();
+      archive.files.push_back({path, content});
+    }
+    const nlohmann::json manifest_parsed = nlohmann::json::parse(manifest_json);
+
+    Diagnostics diagnostics;
+    if (!options.schema_dir.empty()) {
+      diagnostics = validate_schemas(archive, manifest_parsed,
+                                     load_schema_set(options.schema_dir));
+    }
+    const Diagnostics refs = check_referential_integrity(pack);
+    diagnostics.insert(diagnostics.end(), refs.begin(), refs.end());
+
+    std::string first_error;
+    for (const auto &d : diagnostics) {
+      if (d.severity != Diagnostic::Severity::Error)
+        continue;
+      first_error = d.path.empty() ? d.message : d.path + ": " + d.message;
+      break;
+    }
+    if (!first_error.empty()) {
+      result.error = "the pack did not validate - " + first_error;
+      return result;
+    }
+  }
 
   struct archive *a = archive_write_new();
   archive_write_set_format_zip(a);

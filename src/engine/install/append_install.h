@@ -3,7 +3,7 @@
 // Append install path (Workspace-pe40) - add a pack's mods to an existing instance.
 //
 // The wizard routes here through instance_router when the pack's game matches
-// the active instance. State rules (gmmpack-format-v1.md):
+// the active instance. State rules (docs/gmmpack-format-v1.md):
 //   - manual mods: untouched, always (InstalledPackState::skip_in_update),
 //   - pack mods with presence removed: never installed,
 //   - pack mods with placement diverged: installed, but keep the user's tree

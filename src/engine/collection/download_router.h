@@ -37,6 +37,7 @@ enum class DownloadPath {
   Auto,            // engine downloads it (API / direct URL / session cookie)
   Browser,         // user interaction required (manual click-through, login, upgrade)
   ExternalClient,  // outside GMM entirely (Steam Workshop subscription)
+  Embedded,        // the files ship inside the pack (files/<id>/)
 };
 
 // What the user's account unlocks on a tiered source.
