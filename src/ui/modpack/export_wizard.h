@@ -21,6 +21,7 @@ class QTextEdit;
 class QTableWidget;
 class QLabel;
 class QProgressBar;
+class QTimer;
 class QTreeWidget;
 
 namespace ui {
@@ -131,6 +132,12 @@ private:
   void build_pack();
   void set_pack_busy(bool busy);
   void mark_pack_dirty();
+  // Timer slot: read the worker's counters and put them on the bars. Polling
+  // rather than signalling keeps the engine Qt-free and keeps a bar that is up
+  // for half an hour from emitting thousands of queued events.
+  void update_pack_progress();
+  [[nodiscard]] QString
+  describe_progress(const engine::gmmpack::PackProgress &progress) const;
 
 private slots:
   void on_exclude_disabled();
@@ -187,6 +194,12 @@ private:
   // Step 4: tree preview.
   QTreeWidget *tree_    = nullptr;
   QLabel *tree_summary_ = nullptr;
+  // Build progress, in the space above the navigation row. Determinate: both
+  // widgets are driven from the worker's own counters, and both go away when
+  // the build lands so the page renders normally again.
+  QProgressBar *tree_progress_ = nullptr;
+  QLabel *tree_progress_label_ = nullptr;
+  QTimer *pack_progress_timer_ = nullptr;
 
   // Step 5: review + export.
   QLabel *review_summary_ = nullptr;

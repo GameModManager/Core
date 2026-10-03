@@ -7,8 +7,11 @@
 // Mirror of unpacker.h: the serialize_* helpers here emit exactly the
 // camelCase field names the parse_* functions in unpacker.cpp read.
 
+#include <algorithm>
 #include <atomic>
 #include <filesystem>
+#include <memory>
+#include <mutex>
 #include <optional>
 #include <string>
 #include <unordered_map>
@@ -23,13 +26,62 @@
 
 namespace engine::gmmpack {
 
-// Cooperative cancellation for the long pack builders. Building a pack walks
-// every mod folder, hashes every bundled byte and diffs every file two mods
-// both ship, so it is unbounded work and cannot run on a GUI thread. A caller
-// that runs a build on a worker thread hands in a flag it can raise, and the
-// build abandons its work at the next file boundary. Absent (the default) =
-// never cancelled. std::atomic, not Qt, so the engine stays Qt-free.
-using PackCancel = std::atomic<bool>;
+// The stages of a pack build, in the order build_gmmpack runs them. A build
+// publishes the one it is in so a UI can say what is happening instead of
+// guessing; there are kPackStageCount of them, so a bar driven by PackProgress
+// gets one part per stage plus the share of the current one.
+enum class PackStage {
+  Sources,      // resolve every exported mod's source; a bundled mod is hashed here
+  Executables,  // resolve sources again, to validate sourceModId references
+  Ini,          // parse every INI the exported mods ship
+  Patches,      // bsdiff every file two mods ship at the same path
+  Tree,         // resolve sources a third time, for the separator/mod layout
+  Payload,      // read the bundled bytes into RAM for the archive
+  Count,
+};
+inline constexpr int kPackStageCount = static_cast<int>(PackStage::Count);
+
+// What a running build publishes for a UI to poll. Every counter is its own
+// atomic and the name has its own lock, so a reader never sees a half-written
+// set and the writer never blocks on the counters. No Qt: the engine stays
+// Qt-free, so the counters are polled, not signalled.
+struct PackProgress {
+  std::atomic<int> stage{static_cast<int>(PackStage::Sources)};
+  std::atomic<int> item{0};          // units of the current stage finished
+  std::atomic<int> total{0};         // units it will do; 0 = not counted
+  std::atomic<int> detail_item{0};   // files finished inside the current item
+  std::atomic<int> detail_total{0};  // files the current item has
+  mutable std::mutex name_mutex;
+  std::string name;  // what is being worked on, e.g. a mod folder or a file
+
+  // 0..1 across the whole build. A stage that reports no unit count sits on its
+  // opening boundary rather than inventing motion inside itself, so a build that
+  // is stopped partway stops short of 1.
+  [[nodiscard]] double fraction() const {
+    const int units   = total.load(std::memory_order_relaxed);
+    const double done = item.load(std::memory_order_relaxed);
+    const double within =
+        units > 0 ? std::clamp(done / static_cast<double>(units), 0.0, 1.0) : 0.0;
+    return (static_cast<double>(stage.load(std::memory_order_relaxed)) + within) /
+           static_cast<double>(kPackStageCount);
+  }
+};
+
+// Cooperative cancellation for the long pack builders. Building a pack hashes
+// every bundled byte and binary-diffs every file two mods ship at the same path,
+// so it is unbounded work and cannot run on a GUI thread. A caller that runs a
+// build on a worker thread hands in one of these to abandon the build at the
+// next file boundary, and - when it wants a progress bar - a shared sink the
+// build publishes into. Absent (the default) = never cancelled, no progress.
+// std::atomic, not Qt, so the engine stays Qt-free.
+struct PackCancel {
+  std::atomic<bool> flag{false};
+  std::shared_ptr<PackProgress> progress;
+
+  [[nodiscard]] bool cancelled() const { return flag.load(std::memory_order_relaxed); }
+  void raise() { flag.store(true, std::memory_order_relaxed); }
+  void clear() { flag.store(false, std::memory_order_relaxed); }
+};
 
 struct PackOptions {
   std::string author;
@@ -213,8 +265,14 @@ std::string patch_archive_path(const PatchEntry &p);
 // times over (once per stage that resolves sources, once for ini/, once for
 // patches/, once to load the bundled payload), so it is as slow as the mod
 // folder it is given - never call it on a GUI thread. `cancel` abandons it at
-// the next file boundary; a cancelled result is incomplete and must be
-// discarded.
+// the next file boundary and receives the progress the build publishes; a
+// cancelled result is incomplete and must be discarded.
+//
+// Measured on a 199-mod / 5.6 GB Skyrim SE instance: every stage except
+// Patches together take about 11 s, while Patches - one bsdiff per file two
+// mods ship at the same path, 1,061 of them - took over 40 minutes. On that
+// instance Patches is ~99% of the build, so a caller that only needs the
+// layout should not be paying for it.
 Gmmpack build_gmmpack(const InstanceSnapshot &snapshot,
                       const std::filesystem::path &mods_dir, const PackOptions &options,
                       const PackCancel *cancel = nullptr);
