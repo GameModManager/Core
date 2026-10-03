@@ -213,7 +213,60 @@ namespace {
   // mod folder tests this per file, so an abandoned build stops at the next
   // boundary instead of running to completion.
   bool pack_cancelled(const PackCancel *cancel) {
-    return cancel != nullptr && cancel->load();
+    return cancel != nullptr && cancel->cancelled();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Progress reporting
+  // ---------------------------------------------------------------------------
+  //
+  // Every call is a no-op without a progress sink, and each one publishes a real
+  // count: the stage's own unit (a mod, a colliding file) for the bar, and the
+  // files inside the current unit for the "what is it doing right now" line.
+  // Nothing here invents motion - a stage that cannot count itself reports
+  // total 0 and the bar holds its boundary until the next stage hands over.
+
+  void report_stage(const PackCancel *cancel, PackStage stage, int total,
+                    const std::string &name = {}) {
+    if (cancel == nullptr || cancel->progress == nullptr)
+      return;
+    PackProgress &p = *cancel->progress;
+    p.stage.store(static_cast<int>(stage), std::memory_order_relaxed);
+    p.total.store(total, std::memory_order_relaxed);
+    p.item.store(0, std::memory_order_relaxed);
+    p.detail_item.store(0, std::memory_order_relaxed);
+    p.detail_total.store(0, std::memory_order_relaxed);
+    const std::lock_guard lock(p.name_mutex);
+    p.name = name;
+  }
+
+  // One unit of the current stage finished. The unit is also what the detail
+  // line names, so switching to it clears the previous unit's file counts.
+  void report_step(const PackCancel *cancel, const std::string &name) {
+    if (cancel == nullptr || cancel->progress == nullptr)
+      return;
+    PackProgress &p = *cancel->progress;
+    p.item.fetch_add(1, std::memory_order_relaxed);
+    p.detail_item.store(0, std::memory_order_relaxed);
+    p.detail_total.store(0, std::memory_order_relaxed);
+    const std::lock_guard lock(p.name_mutex);
+    p.name = name;
+  }
+
+  // The current unit's own file count, then one file at a time. This is what
+  // moves while a single 5 MB texture is being hashed inside one stage unit.
+  void report_detail(const PackCancel *cancel, int files) {
+    if (cancel == nullptr || cancel->progress == nullptr)
+      return;
+    PackProgress &p = *cancel->progress;
+    p.detail_total.store(files, std::memory_order_relaxed);
+    p.detail_item.store(0, std::memory_order_relaxed);
+  }
+
+  void report_detail_step(const PackCancel *cancel) {
+    if (cancel == nullptr || cancel->progress == nullptr)
+      return;
+    cancel->progress->detail_item.fetch_add(1, std::memory_order_relaxed);
   }
 
   // GMM's own bookkeeping at a mod's root (meta.ini, metadata.xml) is manager
@@ -426,10 +479,12 @@ std::optional<ModSource> resolve_embedded_source(const std::filesystem::path &mo
 
   ModSourceEmbedded s;
   s.root = mod_slug(folder);
+  report_detail(cancel, static_cast<int>(files.size()));
   std::string content;
   for (const auto &rel : files) {
     if (pack_cancelled(cancel))
       return std::nullopt;
+    report_detail_step(cancel);
     if (!read_file(root / rel, content))
       continue;
     ModSourceEmbedded::File f;
@@ -530,6 +585,9 @@ TreeRoot build_tree(const InstanceSnapshot &snapshot,
 
   // Which non-separator folders survive export (resolvable source)?
   std::unordered_set<std::string> exported;
+  const int resolvable =
+      static_cast<int>(snapshot.mod_entries.size() - separators.size());
+  report_stage(cancel, PackStage::Tree, resolvable);
   if (mods_dir.empty()) {
     for (const auto &[folder, _] : snapshot.mod_entries) {
       if (!separators.count(folder))
@@ -541,6 +599,7 @@ TreeRoot build_tree(const InstanceSnapshot &snapshot,
         continue;
       if (pack_cancelled(cancel))
         break;
+      report_step(cancel, folder);
       ModMeta meta = ModMeta::load(mods_dir, folder);
       if (resolve_for_export(meta, mods_dir, folder, snapshot.game_id,
                              snapshot.steam_appid, options, cancel))
@@ -771,9 +830,11 @@ std::vector<ModEntry> build_mod_entries(const InstanceSnapshot &snapshot,
   };
 
   std::vector<ModEntry> out;
+  report_stage(cancel, PackStage::Sources, static_cast<int>(rows.size()));
   for (const auto &row : rows) {
     if (pack_cancelled(cancel))
       break;
+    report_step(cancel, row.folder);
     ModMeta meta = ModMeta::load(mods_dir, row.folder);
     auto source  = resolve_for_export(meta, mods_dir, row.folder, snapshot.game_id,
                                       snapshot.steam_appid, options, cancel);
@@ -859,6 +920,8 @@ std::vector<ExecutableEntry> build_executables(const InstanceSnapshot &snapshot,
       if (!entry.parent_separator.empty())
         separators.insert(entry.parent_separator);
     }
+    report_stage(cancel, PackStage::Executables,
+                 static_cast<int>(snapshot.mod_entries.size() - separators.size()));
     for (const auto &[folder, _] : snapshot.mod_entries) {
       if (separators.count(folder))
         continue;
@@ -868,6 +931,7 @@ std::vector<ExecutableEntry> build_executables(const InstanceSnapshot &snapshot,
       }
       if (pack_cancelled(cancel))
         break;
+      report_step(cancel, folder);
       ModMeta meta = ModMeta::load(mods_dir, folder);
       if (resolve_for_export(meta, mods_dir, folder, snapshot.game_id,
                              snapshot.steam_appid, options, cancel))
@@ -942,6 +1006,7 @@ std::vector<IniEntry> build_ini_entries(const std::filesystem::path &mods_dir,
       continue;
     if (pack_cancelled(cancel))
       return {};
+    report_step(cancel, mod.name);
     // Only the exported mods have a folder on disk under a known name; the
     // mod entry's name is the folder name.
     const std::filesystem::path mod_root = mods_dir / mod.name;
@@ -1019,7 +1084,9 @@ std::vector<PatchEntry> build_patches(const InstanceSnapshot &snapshot,
     int32_t pos = 0;
   };
   std::unordered_map<std::string, std::vector<Owner>> by_path;  // relative path
+  report_stage(cancel, PackStage::Patches, static_cast<int>(mods.size()));
   for (const auto &mod : mods) {
+    report_step(cancel, mod.name);
     const auto it     = snapshot.mod_entries.find(mod.name);
     const int32_t pos = it == snapshot.mod_entries.end()
                             ? INT32_MAX
@@ -1035,12 +1102,21 @@ std::vector<PatchEntry> build_patches(const InstanceSnapshot &snapshot,
   // (patches/<mod-id>-<N>.json); a single patch keeps the plain filename.
   std::unordered_map<std::string, std::vector<PatchEntry>> by_mod;
   std::vector<std::string> mod_order;
+  // The walk above is done, so the colliding paths are known: from here the unit
+  // is one file to binary-diff, which is the stage the time goes into.
+  int colliding = 0;
+  for (const auto &entry : by_path) {
+    if (entry.second.size() >= 2)
+      ++colliding;
+  }
+  report_stage(cancel, PackStage::Patches, colliding);
   for (const auto &[rel, owners] : by_path) {
     if (owners.size() < 2)
       continue;
     // One bsdiff per colliding file below: stop before starting the next.
     if (pack_cancelled(cancel))
       break;
+    report_step(cancel, rel);
     auto sorted = owners;
     std::sort(sorted.begin(), sorted.end(), [](const Owner &a, const Owner &b) {
       return a.pos != b.pos ? a.pos < b.pos : a.mod_id < b.mod_id;
@@ -1397,19 +1473,31 @@ Gmmpack build_gmmpack(const InstanceSnapshot &snapshot,
 
   // Payload for bundled mods: read once here so create_gmmpack can write the
   // exact bytes the mod entries' hashes were computed over.
-  if (!mods_dir.empty()) {
+  {
+    int bundled_files = 0;
     for (const auto &mod : pack.mods) {
       const auto *src = std::get_if<ModSourceEmbedded>(&mod.source);
-      if (src == nullptr)
-        continue;
-      const std::filesystem::path root = mods_dir / mod.name;
-      for (const auto &f : src->files) {
-        if (pack_cancelled(cancel))
-          return pack;
-        std::string content;
-        if (!read_file(root / f.path, content))
+      if (src != nullptr)
+        bundled_files += static_cast<int>(src->files.size());
+    }
+    report_stage(cancel, PackStage::Payload, bundled_files);
+    if (!mods_dir.empty()) {
+      for (const auto &mod : pack.mods) {
+        const auto *src = std::get_if<ModSourceEmbedded>(&mod.source);
+        if (src == nullptr)
           continue;
-        pack.payload.push_back({root_prefix(*src) + f.path, std::move(content)});
+        const std::filesystem::path root = mods_dir / mod.name;
+        for (const auto &f : src->files) {
+          if (pack_cancelled(cancel))
+            return pack;
+          // The stage's unit is the file here, so the mod is only the name the
+          // file count is read against.
+          report_step(cancel, root_prefix(*src) + f.path);
+          std::string content;
+          if (!read_file(root / f.path, content))
+            continue;
+          pack.payload.push_back({root_prefix(*src) + f.path, std::move(content)});
+        }
       }
     }
   }
