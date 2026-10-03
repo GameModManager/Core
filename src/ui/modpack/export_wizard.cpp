@@ -7,6 +7,7 @@
 #include <unordered_set>
 
 #include <QCheckBox>
+#include <QCloseEvent>
 #include <QComboBox>
 #include <QFileDialog>
 #include <QFormLayout>
@@ -30,6 +31,7 @@
 
 #include "engine/gmmpack/packer.h"
 #include "engine/mod/meta/mod_meta.h"
+#include "ui/modpack/export_pack_worker.h"
 
 namespace ui {
 namespace {
@@ -104,8 +106,36 @@ ExportWizard::ExportWizard(const engine::InstanceSnapshot &snapshot,
   connect(next_button_, &QPushButton::clicked, this, &ExportWizard::on_next);
   connect(cancel_button, &QPushButton::clicked, this, &ExportWizard::on_cancel);
 
+  // Every control that feeds the pack invalidates the cached build, so the
+  // Tree and Review pages never show a preview of stale choices.
+  connect(name_edit_, &QLineEdit::textChanged, this,
+          &ExportWizard::on_pack_input_changed);
+  connect(author_edit_, &QLineEdit::textChanged, this,
+          &ExportWizard::on_pack_input_changed);
+  connect(homepage_edit_, &QLineEdit::textChanged, this,
+          &ExportWizard::on_pack_input_changed);
+  connect(desc_edit_, &QTextEdit::textChanged, this,
+          &ExportWizard::on_pack_input_changed);
+  connect(instructions_edit_, &QTextEdit::textChanged, this,
+          &ExportWizard::on_pack_input_changed);
+  // output_edit_ is deliberately absent: it names the destination, and reaches
+  // neither pack_options() nor filtered_snapshot(). It only labels the tree
+  // root, which refresh_tree() reads live, so invalidating the cache on a
+  // filename change would pay a full rebuild for an identical pack.
+
   go_to(0);
   refresh_chrome();
+}
+
+ExportWizard::~ExportWizard() {
+  // pack_thread_ is a QObject child, so ~QObject would join it after this
+  // dialog's own members are gone. Join it here instead, so nothing is still
+  // walking the instance's mods folder once the wizard is a corpse.
+  if (pack_thread_ != nullptr) {
+    pack_thread_->cancel();
+    delete pack_thread_;
+    pack_thread_ = nullptr;
+  }
 }
 
 QString ExportWizard::step_title(Step step) {
@@ -306,7 +336,28 @@ void ExportWizard::on_back() {
     go_to(prev);
 }
 
+void ExportWizard::closeEvent(QCloseEvent *event) {
+  if (exporting_) {
+    // create_gmmpack is not cancellable: closing now would leave a truncated
+    // archive at the chosen path. Let it finish.
+    event->ignore();
+    return;
+  }
+  if (pack_building_ && pack_thread_ != nullptr)
+    pack_thread_->cancel();
+  QDialog::closeEvent(event);
+}
+
 void ExportWizard::on_cancel() {
+  if (exporting_) {
+    QMessageBox::information(
+        this, tr("Export Modpack"),
+        tr("The archive is still being written. Wait for it to finish - cancelling "
+           "now would leave a half-written .gmmpack behind."));
+    return;
+  }
+  if (pack_building_ && pack_thread_ != nullptr)
+    pack_thread_->cancel();
   if (current_ > 0) {
     const auto answer = QMessageBox::question(
         this, tr("Export Modpack"),
@@ -364,6 +415,9 @@ void ExportWizard::refresh_chrome() {
   back_button_->setVisible(current_ != 0);
   const bool is_last = current_ == static_cast<int>(steps_.size()) - 1;
   next_button_->setText(is_last ? tr("Export") : tr("Next >"));
+  // Nothing downstream can be trusted while a run is in flight: the Tree and
+  // Review pages are still empty and Export would queue a second run.
+  next_button_->setEnabled(!pack_building_);
 }
 
 // ---------------------------------------------------------------------------
@@ -627,11 +681,113 @@ QWidget *ExportWizard::build_review_page() {
 // ---------------------------------------------------------------------------
 
 void ExportWizard::on_page_entered(int index) {
-  if (steps_[index].id == Step::Tree) {
-    refresh_tree();
-  } else if (steps_[index].id == Step::Review) {
-    refresh_review();
+  if (steps_[index].id != Step::Tree && steps_[index].id != Step::Review)
+    return;
+  // Tree and Review are two views of one build; the first of them to be
+  // reached starts it, the second reuses the cache.
+  if (pack_dirty_ && !pack_building_)
+    build_pack();
+  refresh_tree();
+  refresh_review();
+}
+
+ExportPackThread *ExportWizard::ensure_pack_thread() {
+  if (pack_thread_ == nullptr) {
+    pack_thread_ = new ExportPackThread(this);
+    connect(pack_thread_->worker(), &ExportPackWorker::finished, this,
+            &ExportWizard::on_pack_built);
   }
+  return pack_thread_;
+}
+
+void ExportWizard::build_pack() {
+  // Snapshot the choices here, on the UI thread: the worker never reads a
+  // widget.
+  PackBuildRequest request;
+  request.snapshot = filtered_snapshot();
+  request.mods_dir = mods_dir_;
+  request.options  = pack_options();
+  pack_dirty_      = false;
+  set_pack_busy(true);
+  ensure_pack_thread()->start(std::move(request));
+}
+
+void ExportWizard::set_pack_busy(bool busy) {
+  pack_building_ = busy;
+  if (progress_ != nullptr) {
+    // No per-file progress comes back from the packer, so this is the honest
+    // form: a marquee while a run is out, a normal bar once it is done.
+    if (busy) {
+      progress_->setRange(0, 0);
+    } else {
+      progress_->setRange(0, 1);
+    }
+  }
+  if (status_label_ != nullptr && busy) {
+    status_label_->setText(exporting_ ? tr("Writing the archive...")
+                                      : tr("Reading the instance's mod folders..."));
+  }
+  refresh_chrome();
+}
+
+void ExportWizard::mark_pack_dirty() {
+  pack_dirty_ = true;
+}
+
+void ExportWizard::on_pack_input_changed() {
+  mark_pack_dirty();
+}
+
+void ExportWizard::on_pack_built(PackBuildResult result) {
+  if (exporting_) {
+    exporting_ = false;
+    set_pack_busy(false);
+    if (!result.ok) {
+      status_label_->setText(
+          tr("Export failed: %1").arg(QString::fromStdString(result.error)));
+      QMessageBox::warning(
+          this, tr("Export Modpack"),
+          tr("Export failed: %1").arg(QString::fromStdString(result.error)));
+      return;
+    }
+    QString summary = tr("Exported to %1").arg(output_edit_->text().trimmed());
+    if (result.export_result.embedded_mod_count > 0) {
+      summary += tr("\n%1 mods bundled into the archive (%2 files)")
+                     .arg(static_cast<int>(result.export_result.embedded_mod_count))
+                     .arg(static_cast<int>(result.export_result.embedded_file_count));
+    }
+    status_label_->setText(summary);
+    if (progress_ != nullptr)
+      progress_->setValue(1);
+    QMessageBox::information(this, tr("Export Modpack"), summary);
+    accept();
+    return;
+  }
+
+  if (result.cancelled) {
+    // The wizard is going away (or the user asked to stop); leave the cache
+    // empty and dirty so a re-entered page starts a fresh run.
+    pack_dirty_ = true;
+    pack_ready_ = false;
+    set_pack_busy(false);
+    refresh_tree();
+    refresh_review();
+    return;
+  }
+  if (!result.ok) {
+    pack_ready_ = false;
+    pack_error_ = QString::fromStdString(result.error);
+    set_pack_busy(false);
+    refresh_tree();
+    refresh_review();
+    return;
+  }
+  pack_       = std::move(result.pack);
+  pack_ready_ = true;
+  pack_error_.clear();
+  set_pack_busy(false);
+  refresh_tree();
+  refresh_review();
 }
 
 void ExportWizard::refresh_mods_count() {
@@ -655,9 +811,24 @@ void ExportWizard::refresh_tree() {
   const QIcon folder_icon = style()->standardIcon(QStyle::SP_DirIcon);
   const QIcon file_icon   = style()->standardIcon(QStyle::SP_FileIcon);
 
-  const engine::gmmpack::PackOptions options = pack_options();
-  const engine::gmmpack::Gmmpack pack =
-      engine::gmmpack::build_gmmpack(filtered_snapshot(), mods_dir_, options);
+  if (!pack_ready_) {
+    const QString waiting =
+        pack_error_.isEmpty()
+            ? (pack_building_ ? tr("Reading the instance's mod folders...")
+                              : tr("No preview built yet."))
+            : tr("Preview failed: %1").arg(pack_error_);
+    auto *item = new QTreeWidgetItem({waiting});
+    item->setIcon(0, folder_icon);
+    tree_->addTopLevelItem(item);
+    if (tree_summary_ != nullptr)
+      tree_summary_->setText(
+          tr("Building the pack walks every exported mod's folder, so this can take "
+             "a while on a large instance."));
+    return;
+  }
+
+  const engine::gmmpack::PackOptions options                       = pack_options();
+  const engine::gmmpack::Gmmpack &pack                             = pack_;
   const engine::gmmpack::Manifest manifest                         = pack.manifest;
   const std::vector<engine::gmmpack::ModEntry> &mod_entries        = pack.mods;
   const std::vector<engine::gmmpack::ExecutableEntry> &exe_entries = pack.executables;
@@ -849,9 +1020,17 @@ void ExportWizard::refresh_review() {
     return;
   // Count what the engine will actually write, not the checkboxes: a row can
   // be checked and still be unexportable (a manual mod with no folder), and
-  // these numbers have to agree with the Tree page.
-  const engine::gmmpack::Gmmpack pack = preview_pack();
-  int embedded                        = 0;
+  // these numbers have to agree with the Tree page. Both pages read the one
+  // cached build, so neither re-runs the packer.
+  if (!pack_ready_) {
+    review_summary_->setText(pack_error_.isEmpty()
+                                 ? (pack_building_ ? tr("Building the pack preview...")
+                                                   : tr("No pack preview built yet."))
+                                 : tr("Pack preview failed: %1").arg(pack_error_));
+    return;
+  }
+  const engine::gmmpack::Gmmpack &pack = pack_;
+  int embedded                         = 0;
   for (const auto &mod : pack.mods) {
     if (std::holds_alternative<engine::gmmpack::ModSourceEmbedded>(mod.source))
       ++embedded;
@@ -918,10 +1097,6 @@ engine::gmmpack::PackOptions ExportWizard::pack_options() const {
   return options;
 }
 
-engine::gmmpack::Gmmpack ExportWizard::preview_pack() const {
-  return engine::gmmpack::build_gmmpack(filtered_snapshot(), mods_dir_, pack_options());
-}
-
 engine::InstanceSnapshot ExportWizard::filtered_snapshot() const {
   engine::InstanceSnapshot out = snapshot_;
   const QString name = name_edit_ != nullptr ? name_edit_->text().trimmed() : QString();
@@ -962,6 +1137,7 @@ void ExportWizard::on_exclude_disabled() {
     }
   }
   refresh_mods_count();
+  mark_pack_dirty();
 }
 
 void ExportWizard::on_mod_include_toggled() {
@@ -973,6 +1149,7 @@ void ExportWizard::on_mod_include_toggled() {
     return;
   mods_[static_cast<size_t>(row)].included = check->isChecked();
   refresh_mods_count();
+  mark_pack_dirty();
 }
 
 void ExportWizard::on_policy_changed() {
@@ -984,6 +1161,7 @@ void ExportWizard::on_policy_changed() {
     return;
   mods_[static_cast<size_t>(row)].update_policy =
       combo->currentIndex() == 1 ? "exact" : "latest";
+  mark_pack_dirty();
 }
 
 void ExportWizard::on_category_changed() {
@@ -997,6 +1175,7 @@ void ExportWizard::on_category_changed() {
   const int index                  = combo->currentIndex();
   mods_[static_cast<size_t>(row)].category =
       (index >= 0 && index < 3) ? kCategories[index] : "required";
+  mark_pack_dirty();
 }
 
 void ExportWizard::on_exe_include_toggled() {
@@ -1007,6 +1186,7 @@ void ExportWizard::on_exe_include_toggled() {
   if (row < 0 || row >= static_cast<int>(exes_.size()))
     return;
   exes_[static_cast<size_t>(row)].included = check->isChecked();
+  mark_pack_dirty();
 }
 
 void ExportWizard::on_browse_output() {
@@ -1023,32 +1203,19 @@ void ExportWizard::on_export() {
     QMessageBox::information(this, tr("Review"), tr("Please choose an output file."));
     return;
   }
-  const engine::gmmpack::PackOptions options = pack_options();
+  // Snapshot the choices here, on the UI thread: the worker never reads a
+  // widget. create_gmmpack rebuilds rather than reusing the cached preview, so
+  // the archive's manifest carries this moment's revision and timestamps.
+  PackBuildRequest request;
+  request.snapshot    = filtered_snapshot();
+  request.mods_dir    = mods_dir_;
+  request.options     = pack_options();
+  request.export_pack = true;
+  request.output_path = std::filesystem::path(output.toStdString());
 
-  status_label_->setText(tr("Exporting..."));
-  progress_->setRange(0, 0);  // busy; the packer runs synchronously
-  const engine::gmmpack::PackResult result =
-      engine::gmmpack::create_gmmpack(filtered_snapshot(), mods_dir_, options,
-                                      std::filesystem::path(output.toStdString()));
-  progress_->setRange(0, 1);
-  progress_->setValue(result.ok ? 1 : 0);
-  if (result.ok) {
-    QString summary = tr("Exported to %1").arg(output);
-    if (result.embedded_mod_count > 0) {
-      summary += tr("\n%1 mods bundled into the archive (%2 files)")
-                     .arg(static_cast<int>(result.embedded_mod_count))
-                     .arg(static_cast<int>(result.embedded_file_count));
-    }
-    status_label_->setText(summary);
-    QMessageBox::information(this, tr("Export Modpack"), summary);
-    accept();
-  } else {
-    status_label_->setText(
-        tr("Export failed: %1").arg(QString::fromStdString(result.error)));
-    QMessageBox::warning(
-        this, tr("Export Modpack"),
-        tr("Export failed: %1").arg(QString::fromStdString(result.error)));
-  }
+  exporting_ = true;
+  set_pack_busy(true);
+  ensure_pack_thread()->start(std::move(request));
 }
 
 }  // namespace ui

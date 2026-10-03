@@ -11,6 +11,7 @@
 #include "engine/core/instance/instance_snapshot.h"
 #include "engine/gmmpack/packer.h"
 
+class QCloseEvent;
 class QListWidget;
 class QListWidgetItem;
 class QPushButton;
@@ -24,6 +25,9 @@ class QTreeWidget;
 
 namespace ui {
 
+struct PackBuildResult;
+class ExportPackThread;
+
 // Modpack export wizard: left sidebar (step list, ~30%) + right
 // QStackedWidget content + Cancel/Back/Next navigation.
 //
@@ -35,6 +39,12 @@ namespace ui {
 // is given, so include choices are applied by handing create_gmmpack() a
 // filtered snapshot copy. Per-row category, update policy and "bundle this
 // manual mod" all travel through PackOptions and end up in the pack.
+//
+// Building that pack is not a cheap operation: it walks every exported mod's
+// folder, parses every INI those mods ship and hashes every bundled byte, so
+// it runs on ExportPackThread, never here. The Tree and Review pages are two
+// views of ONE build - build_pack() caches it and rebuilds only after an input
+// changes (mark_pack_dirty).
 class ExportWizard : public QDialog {
   Q_OBJECT
 public:
@@ -49,7 +59,10 @@ public:
   ExportWizard(const engine::InstanceSnapshot &snapshot, std::filesystem::path mods_dir,
                std::filesystem::path downloads_dir = {},
                std::filesystem::path schema_dir = {}, QWidget *parent = nullptr);
-  ~ExportWizard() override = default;
+  ~ExportWizard() override;
+
+protected:
+  void closeEvent(QCloseEvent *event) override;
 
 private:
   struct StepState {
@@ -102,13 +115,22 @@ private:
   // Per-page refresh / enter hooks.
   void on_page_entered(int index);
   void refresh_mods_count();
+  // Render the Tree and Review pages from the cached build. Safe to call at
+  // any time: with no build ready it shows the waiting state instead.
   void refresh_tree();
   void refresh_review();
   [[nodiscard]] engine::gmmpack::PackOptions pack_options() const;
-  // What the engine will actually write, so every page counts the same mods.
-  [[nodiscard]] engine::gmmpack::Gmmpack preview_pack() const;
   [[nodiscard]] engine::InstanceSnapshot filtered_snapshot() const;
   [[nodiscard]] int separator_count() const;
+
+  // Pack building. build_pack() queues a run on pack_thread_ unless one is
+  // already in flight or the cached build still matches the current choices;
+  // on_pack_built() stores it and repaints. mark_pack_dirty() invalidates the
+  // cache and is wired to every control that feeds the pack.
+  ExportPackThread *ensure_pack_thread();
+  void build_pack();
+  void set_pack_busy(bool busy);
+  void mark_pack_dirty();
 
 private slots:
   void on_exclude_disabled();
@@ -118,6 +140,8 @@ private slots:
   void on_exe_include_toggled();
   void on_browse_output();
   void on_export();
+  void on_pack_input_changed();
+  void on_pack_built(PackBuildResult result);
 
 private:
   engine::InstanceSnapshot snapshot_;
@@ -129,6 +153,17 @@ private:
   int current_ = 0;
   std::vector<ModRow> mods_;
   std::vector<ExeRow> exes_;
+
+  // Cached pack build, shared by the Tree and Review pages. pack_dirty_ means
+  // the cache no longer matches the choices; pack_building_ means a run is in
+  // flight; exporting_ means that run is writing the archive (see set_pack_busy).
+  ExportPackThread *pack_thread_ = nullptr;
+  engine::gmmpack::Gmmpack pack_;
+  QString pack_error_;
+  bool pack_dirty_    = true;
+  bool pack_ready_    = false;
+  bool pack_building_ = false;
+  bool exporting_     = false;
 
   QListWidget *sidebar_     = nullptr;
   QStackedWidget *stack_    = nullptr;

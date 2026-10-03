@@ -421,6 +421,11 @@ gmm_catch2_test(plugin_db_load_test ui/plugin_db_load_test.cpp
 gmm_catch2_test(mod_scan_worker_test ui/mod_scan_worker_test.cpp
     LIBS gmm_ui Qt6::Core)
 
+# Export wizard pack building runs on a worker thread (the build walks every
+# mod folder and hashes every bundled byte). Offscreen not needed: QCoreApplication.
+gmm_catch2_test(export_pack_worker_test ui/export_pack_worker_test.cpp
+    LIBS gmm_ui Qt6::Core)
+
 gmm_catch2_test(generic_files_tab_test ui/generic_files_tab_test.cpp
     UI
     LIBS gmm_ui)
