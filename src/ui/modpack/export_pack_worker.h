@@ -37,7 +37,8 @@ struct PackBuildResult {
 // Runs build_gmmpack() (or create_gmmpack()) on the worker thread. Both walk
 // every exported mod's folder and hash every bundled byte, so the cost scales
 // with the instance, not with the dialog - this is what keeps the export
-// wizard's page transitions off the GUI thread.
+// wizard's page transitions off the GUI thread. The build publishes real counts
+// into the PackCancel's progress sink, which the wizard polls for its bar.
 class ExportPackWorker : public QObject {
   Q_OBJECT
 public:
@@ -72,15 +73,23 @@ public:
   void cancel();
 
   // True while cancel() has been raised and the run has not acknowledged it.
-  [[nodiscard]] bool cancelled() const { return cancel_->load(); }
+  [[nodiscard]] bool cancelled() const { return cancel_->cancelled(); }
+
+  // Live progress of the in-flight run, for the GUI thread to poll. A fresh sink
+  // per start(), because the previous run's stage and counters are stale. Never
+  // null: before the first start() it reports a fresh sink with nothing done.
+  [[nodiscard]] std::shared_ptr<engine::gmmpack::PackProgress> progress() const {
+    return cancel_->progress;
+  }
 
 private:
   QThread *thread_          = nullptr;
   ExportPackWorker *worker_ = nullptr;
-  // Shared with the in-flight request, so the flag outlives the wizard even if
-  // the thread is still winding down while the dialog is destroyed.
+  // Shared with the in-flight request, so the flag and the progress sink outlive
+  // the wizard even if the thread is still winding down while the dialog is
+  // destroyed.
   std::shared_ptr<engine::gmmpack::PackCancel> cancel_ =
-      std::make_shared<engine::gmmpack::PackCancel>(false);
+      std::make_shared<engine::gmmpack::PackCancel>();
 };
 
 }  // namespace ui

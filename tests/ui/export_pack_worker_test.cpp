@@ -6,13 +6,15 @@
 // and cannot run on the GUI thread - it goes to ExportPackThread instead
 // (ConflictScanThread shape).
 //
-// This pins the two properties that make the move safe:
+// This pins the three properties that make the move safe:
 //   1. The build runs on the worker thread, not on the caller's. The finished()
 //      signal is connected DirectConnection so its lambda runs on whichever
 //      thread emitted it, and finished() is the last statement of run() - so a
 //      different thread id there means the packer itself ran over there too.
 //   2. The flag the thread raises on cancel() is the flag the packer honours,
 //      so closing the wizard abandons the walk instead of blocking on it.
+//   3. The counters the progress bar is drawn from carry real work, so the bar
+//      cannot be satisfied by an animation that would run either way.
 //
 // Hermetic: temp dir under temp_directory_path(), removed at exit.
 #include "ui/modpack/export_pack_worker.h"
@@ -21,10 +23,12 @@
 #include <QElapsedTimer>
 #include <QThread>
 
+#include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
+#include <memory>
 #include <string>
 #include <thread>
 #include <unistd.h>
@@ -34,6 +38,7 @@
 
 namespace fs      = std::filesystem;
 namespace gmmpack = engine::gmmpack;
+using Catch::Approx;
 
 namespace {
 
@@ -144,9 +149,27 @@ TEST_CASE("export pack worker builds off the caller thread and cancels", "[ui]")
   REQUIRE(thread.cancelled());
 
   gmmpack::PackCancel flag{true};
+  flag.progress = std::make_shared<gmmpack::PackProgress>();
   const gmmpack::Gmmpack abandoned =
       gmmpack::build_gmmpack(make_snapshot(), mods_dir, options, &flag);
   REQUIRE(abandoned.payload.empty());
   // A pre-cancelled build resolves no embedded source, so the mod drops out.
   REQUIRE(abandoned.mods.empty());
+  // ...and it never claimed to have done any of it: a bar reading this sink
+  // stops on the last stage's opening boundary instead of walking to full.
+  // That is the half of the bar that rules out an animation, so it is the half
+  // worth pinning.
+  REQUIRE(flag.progress->item.load() == 0);
+  REQUIRE(flag.progress->fraction() < 1.0);
+
+  // 3. The bar the wizard draws is fed by these counters, so they have to carry
+  // real work: the finished run reached the last stage, counted every bundled
+  // file, and the overall fraction landed on 1 rather than stopping partway.
+  const std::shared_ptr<gmmpack::PackProgress> progress = thread.progress();
+  REQUIRE(progress != nullptr);
+  REQUIRE(static_cast<gmmpack::PackStage>(progress->stage.load()) ==
+          gmmpack::PackStage::Payload);
+  REQUIRE(progress->total.load() == 4);  // main.esp + foo.pex + local.ini + meta.ini
+  REQUIRE(progress->item.load() == 4);
+  REQUIRE(progress->fraction() == Approx(1.0));
 }

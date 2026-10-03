@@ -3,6 +3,7 @@
 #include <QMetaObject>
 #include <QThread>
 
+#include <memory>
 #include <utility>
 
 namespace ui {
@@ -21,11 +22,11 @@ void ExportPackWorker::run(PackBuildRequest request,
     // create_gmmpack is not cancellable, so a raised flag cannot have been
     // observed mid-write; clear it so the wizard does not report a cancelled
     // export it actually finished.
-    cancel->store(false);
+    cancel->clear();
   } else {
     result.pack = engine::gmmpack::build_gmmpack(request.snapshot, request.mods_dir,
                                                  request.options, flag);
-    result.cancelled = flag->load();
+    result.cancelled = flag->cancelled();
     // A cancelled build is a partial pack: never present it as a preview.
     result.ok = !result.cancelled;
   }
@@ -34,7 +35,9 @@ void ExportPackWorker::run(PackBuildRequest request,
 
 ExportPackThread::ExportPackThread(QObject *parent) : QObject(parent) {
   qRegisterMetaType<ui::PackBuildResult>();
-  thread_ = new QThread(this);
+  // A sink exists before the first start() so a caller can poll it unconditionally.
+  cancel_->progress = std::make_shared<engine::gmmpack::PackProgress>();
+  thread_           = new QThread(this);
   thread_->setObjectName(QStringLiteral("gmm-export-pack"));
   worker_ = new ExportPackWorker(nullptr);
   worker_->moveToThread(thread_);
@@ -51,7 +54,10 @@ ExportPackThread::~ExportPackThread() {
 }
 
 void ExportPackThread::start(PackBuildRequest request) {
-  cancel_->store(false);
+  cancel_->clear();
+  // A fresh sink per run: the previous run's stage and counters are stale, and
+  // a bar reading them would show progress that never happened.
+  cancel_->progress        = std::make_shared<engine::gmmpack::PackProgress>();
   ExportPackWorker *worker = worker_;
   QMetaObject::invokeMethod(
       worker,
@@ -62,7 +68,7 @@ void ExportPackThread::start(PackBuildRequest request) {
 }
 
 void ExportPackThread::cancel() {
-  cancel_->store(true);
+  cancel_->raise();
 }
 
 }  // namespace ui
