@@ -68,7 +68,7 @@ private:
     bool is_vanilla           = false;       // unmanaged game master (Skyrim.esm etc.)
     bool is_manual            = false;       // manual/unknown source - bundled, opt-in
     std::string update_policy = "latest";    // "latest" or "exact"
-    std::string category      = "optional";  // required | recommended | optional
+    std::string category      = "required";  // required | recommended | optional
   };
 
   struct ExeRow {
