@@ -21,21 +21,16 @@
 namespace gmmpack = engine::gmmpack;
 
 // ---------------------------------------------------------------------------
-// Helper: load the manifest schema from the input/ directory
+// Helper: load the manifest schema from the repo's schemas/ directory
 // ---------------------------------------------------------------------------
 
 static nlohmann::json load_manifest_schema() {
-  auto project_root = std::filesystem::path(PROJECT_SOURCE_DIR);
-  auto candidate    = project_root / ".." / ".." / "input" / "manifest.schema.json";
+  auto candidate =
+      std::filesystem::path(PROJECT_SOURCE_DIR) / "schemas" / "manifest.schema.json";
   if (std::filesystem::is_regular_file(candidate))
     candidate = std::filesystem::canonical(candidate);
-  else {
-    candidate = project_root / ".." / "input" / "manifest.schema.json";
-    if (std::filesystem::is_regular_file(candidate))
-      candidate = std::filesystem::canonical(candidate);
-    else
-      FAIL("manifest.schema.json not found");
-  }
+  else
+    FAIL("manifest.schema.json not found");
   std::ifstream f(candidate);
   return nlohmann::json::parse(f);
 }

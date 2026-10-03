@@ -21,6 +21,12 @@ using SchemaSet = std::unordered_map<std::string, nlohmann::json>;
 
 SchemaSet load_schema_set(const std::filesystem::path &schema_dir);
 
+// Locate the schema directory for an installed or dev-launched binary:
+// app_dir/schemas, <app_dir>/../share/gamemodmanager/schemas, then the
+// schemas/ dir of any ancestor of app_dir (the source tree). Empty when none
+// of them has manifest.schema.json. Qt-free: callers pass the app dir in.
+std::filesystem::path find_schema_dir(const std::filesystem::path &app_dir);
+
 // Result of unpacking + validating a .gmmpack archive.
 struct UnpackResult {
   bool ok = false;
@@ -70,6 +76,16 @@ ModEntry parse_mod_entry(const nlohmann::json &j);
 ExecutableEntry parse_executable_entry(const nlohmann::json &j);
 PatchEntry parse_patch_entry(const nlohmann::json &j);
 TreeRoot parse_tree(const nlohmann::json &j);
+
+// Mod lookup by id. Null when the pack has no such mod.
+const ModEntry *find_mod(const Gmmpack &pack, const std::string &mod_id);
+
+// Write an embedded mod's files/** payload into dest_dir. Every file's size
+// and sha256 are verified against the mod entry BEFORE anything is written, so
+// a tampered archive fails without leaving a half-extracted mod behind.
+// Fails when the mod is not an embedded source or its payload is missing.
+bool extract_embedded_mod(const Gmmpack &pack, const std::string &mod_id,
+                          const std::filesystem::path &dest_dir, std::string &error);
 
 // ---------------------------------------------------------------------------
 // Patch filename parsing and chain building

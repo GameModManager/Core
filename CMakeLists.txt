@@ -12,7 +12,7 @@ endif()
 # the plugins (GMM_VERSION, visible in the add_subdirectory'd external/plugins
 # scope below).
 project(GameModManager
-    VERSION 0.5.38
+    VERSION 0.5.39
     DESCRIPTION "Cross-platform game mod manager"
     LANGUAGES CXX C
 )
@@ -354,6 +354,23 @@ if(GMM_WITH_LOOT)
     target_include_directories(gmm_lootcli PRIVATE tools/gmm_lootcli/src)
     target_link_libraries(gmm_lootcli PRIVATE libloot)
 endif()
+
+# -- Data files ---------------------------------------------------------------
+# The gmmpack JSON Schemas. The importer validates every archive against them
+# before it will open it (engine/gmmpack/schema_validator.cpp), so a packaged
+# build that does not ship them cannot import anything at all - the schema
+# lookup (engine::gmmpack::find_schema_dir) checks the binary's own schemas/
+# dir first, then this prefix-relative location.
+install(
+    FILES
+        ${CMAKE_CURRENT_SOURCE_DIR}/schemas/manifest.schema.json
+        ${CMAKE_CURRENT_SOURCE_DIR}/schemas/mod.schema.json
+        ${CMAKE_CURRENT_SOURCE_DIR}/schemas/executable.schema.json
+        ${CMAKE_CURRENT_SOURCE_DIR}/schemas/patch.schema.json
+        ${CMAKE_CURRENT_SOURCE_DIR}/schemas/ini.schema.json
+        ${CMAKE_CURRENT_SOURCE_DIR}/schemas/tree.schema.json
+    DESTINATION share/gamemodmanager/schemas
+)
 
 # -- Windows installer -------------------------------------------------------
 # `package_installer` builds the NSIS installer from packaging/windows/installer.nsi

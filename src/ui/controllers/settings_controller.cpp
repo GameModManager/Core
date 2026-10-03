@@ -38,6 +38,7 @@
 #include "engine/deploy/symlink.h"
 #include "engine/game/detect/game_detector.h"
 #include "engine/game/registry/game_knowledge.h"
+#include "engine/gmmpack/unpacker.h"
 #include "engine/mod/meta/category_set_registry.h"
 #include "engine/mod/overwrite/overwrite_utils.h"
 #include "engine/pipeline/extract_stage.h"
@@ -1481,7 +1482,13 @@ void SettingsController::export_modpack() {
   auto inst     = engine::Instance::from_root(w_->current_instance_root_);
   auto snapshot = engine::InstanceSnapshot::capture(inst);
   auto mods_dir = w_->mods_dir_path();
-  ui::ExportWizard wizard(std::move(snapshot), mods_dir, w_);
+  // The packer validates its own output against the shipped schemas, and
+  // derives an exact version pin from the archive that was actually downloaded.
+  const auto schema_dir = engine::gmmpack::find_schema_dir(
+      QCoreApplication::applicationDirPath().toStdString());
+  ui::ExportWizard wizard(std::move(snapshot), mods_dir,
+                          inst.path_for(engine::InstanceKind::Downloads), schema_dir,
+                          w_);
   wizard.exec();
 }
 

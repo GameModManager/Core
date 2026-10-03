@@ -152,8 +152,31 @@ struct ModSourceDirect {
   std::string update_policy = "exact";
 };
 
-using ModSource = std::variant<ModSourceNexus, ModSourceLoversLab, ModSourceModPub,
-                               ModSourceSteamWorkshop, ModSourceDirect>;
+// A mod whose own files ship inside the archive, under files/<root>/. The one
+// source variant that is not a pointer to somewhere else: a manual mod (or one
+// whose provider GMM cannot name) carries no download identity, so exporting it
+// means carrying the bytes. `files` lists every payload file with the size and
+// sha256 import verifies before writing it to the instance's mods folder.
+struct ModSourceEmbedded {
+  std::string provider   = "embedded";
+  std::string resolution = "archive";  // resolved from the archive itself
+
+  struct File {
+    std::string path;  // relative to root
+    int64_t size = 0;
+    std::string sha256;
+  };
+  std::string root;  // directory inside files/, normally the mod id
+  std::vector<File> files;
+  // Always "latest": the content is whatever THIS revision of the pack
+  // carries, so there is no separate version identity to pin. The per-file
+  // sha256 list above is the integrity pin, verified at install time.
+  std::string update_policy = "latest";
+};
+
+using ModSource =
+    std::variant<ModSourceNexus, ModSourceLoversLab, ModSourceModPub,
+                 ModSourceSteamWorkshop, ModSourceDirect, ModSourceEmbedded>;
 
 enum class ModCategory {
   Required,
@@ -237,7 +260,7 @@ struct PatchChain {
 // ---------------------------------------------------------------------------
 // INI types (ini/<targetFile>.json)
 //
-// Mirrors the tweak shape in input/ini.schema.json. status is the raw
+// Mirrors the tweak shape in schemas/ini.schema.json. status is the raw
 // "required"/"recommended" string; the typed enum lives in
 // engine/modpack/ini_edits.h (see to_edit_file() in ini_edit_parser.h).
 // ---------------------------------------------------------------------------
@@ -322,6 +345,9 @@ struct Gmmpack {
   std::vector<IniEntry> ini_edits;
   TreeRoot tree;
   std::optional<std::string> instructions;
+  // files/** entries, kept so an embedded mod can be written out without
+  // re-reading the archive (see extract_embedded_mod).
+  std::vector<ArchiveFile> payload;
 };
 
 // ---------------------------------------------------------------------------

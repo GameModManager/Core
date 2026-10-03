@@ -96,15 +96,12 @@ static fs::path make_zip(const TempDir &td, const std::string &name,
 }
 
 // ---------------------------------------------------------------------------
-// Schema dir - uses the input/ schemas from the workspace
+// Schema dir - the schemas/ dir shipped in the repo
 // ---------------------------------------------------------------------------
 
 static fs::path schema_dir() {
   auto project_root = fs::path(PROJECT_SOURCE_DIR);
-  auto candidate    = project_root / ".." / ".." / "input";
-  if (fs::is_directory(candidate))
-    return fs::canonical(candidate);
-  candidate = project_root / ".." / "input";
+  auto candidate    = project_root / "schemas";
   if (fs::is_directory(candidate))
     return fs::canonical(candidate);
   FAIL("schema dir not found from " + project_root.string());
