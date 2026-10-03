@@ -57,6 +57,11 @@ struct SkipDiagnostic {
 struct RevisionManifest {
   Manifest manifest;
   std::vector<SkipDiagnostic> skipped;
+  // Nexus's own revisionStatus ("published", "retracted", "discarded", ...).
+  // Empty when the gateway reported none. Not fatal either way - a retracted
+  // revision still has a mod list, the user just has to know that is what
+  // they are looking at.
+  std::string revision_status;
 };
 
 // Map one revision mod to a SourceNexus. nullopt when unresolvable
@@ -109,9 +114,14 @@ public:
   // Diagnostics from the last fetch() (empty after file fetches).
   const std::vector<SkipDiagnostic> &last_skipped() const { return last_skipped_; }
 
+  // Nexus's revisionStatus for the last fetched revision, empty for a
+  // collection.json (which has no revision) or when Nexus reported none.
+  const std::string &last_revision_status() const { return last_revision_status_; }
+
 private:
   RevisionFetcher fetcher_;
   std::vector<SkipDiagnostic> last_skipped_;
+  std::string last_revision_status_;
 };
 
 }  // namespace engine::Collection::Nexus

@@ -275,10 +275,11 @@ namespace {
         [&](const auto &src) {
           using T = std::decay_t<decltype(src)>;
           if constexpr (std::is_same_v<T, engine::gmmpack::ModSourceNexus>) {
-            out.download_source_type      = "nexus";
-            out.download_source_id        = std::to_string(src.mod_id);
-            out.download_nxm.file_id      = src.file_id.value_or(0);
-            out.download_nxm.nexus_domain = src.game_domain;
+            out.download_source_type       = "nexus";
+            out.download_source_id         = std::to_string(src.mod_id);
+            out.download_nxm.file_id       = src.file_id.value_or(0);
+            out.download_nxm.nexus_domain  = src.game_domain;
+            out.download_nxm.update_policy = src.update_policy;
             if (src.version)
               out.version = *src.version;
             if (src.file_name && !src.file_name->empty())

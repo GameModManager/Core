@@ -49,6 +49,7 @@ CollectionRevision make_revision() {
   rev.slug            = "test-collection";
   rev.name            = "Test Collection";
   rev.game_domain     = "skyrimspecialedition";
+  rev.revision_status = "published";
 
   CollectionModFile good;
   good.mod_id        = 17464;
@@ -191,7 +192,29 @@ TEST_CASE("mod_file_to_source maps fields", "[collection][nexus][adapter]") {
   REQUIRE(src->version == "0.4.20");
   REQUIRE(src->file_name == "RaceMenu.7z");
   REQUIRE(src->resolution == SourceResolution::Api);
-  REQUIRE(src->update_policy == UpdatePolicy::Exact);
+  // Nexus says "exact"; we keep the pin and allow the fallback, because the
+  // md5 it publishes cannot back a 64-hex sha256 pin.
+  REQUIRE(src->update_policy == UpdatePolicy::Prefer);
+}
+
+TEST_CASE("mod_file_to_source keeps the three states distinct",
+          "[collection][nexus][adapter]") {
+  CollectionModFile mod;
+  mod.mod_id  = 1;
+  mod.file_id = 2;
+
+  mod.update_policy = "prefer";
+  REQUIRE(mod_file_to_source(mod, "fallout4")->update_policy == UpdatePolicy::Prefer);
+
+  mod.update_policy = "latest";
+  REQUIRE(mod_file_to_source(mod, "fallout4")->update_policy == UpdatePolicy::Latest);
+
+  mod.update_policy = "exact";
+  REQUIRE(mod_file_to_source(mod, "fallout4")->update_policy == UpdatePolicy::Prefer);
+
+  // No value ever reads back as the digest-backed pin we cannot produce.
+  mod.update_policy = "";
+  REQUIRE(mod_file_to_source(mod, "fallout4")->update_policy != UpdatePolicy::Exact);
 }
 
 TEST_CASE("mod_file_to_source latest policy", "[collection][nexus][adapter]") {
@@ -255,6 +278,32 @@ TEST_CASE("revision_to_manifest falls back to collection id",
   REQUIRE(out.skipped.empty());
 }
 
+TEST_CASE("revision_to_manifest carries the revision status and every skip",
+          "[collection][nexus][adapter]") {
+  auto rev            = make_revision();
+  rev.revision_status = "retracted";
+
+  const auto out = revision_to_manifest(rev);
+
+  // A retracted revision still has a mod list; the status is what tells the
+  // importer that the list is no longer what the author recommends.
+  REQUIRE(out.revision_status == "retracted");
+  REQUIRE(out.manifest.mods.size() == 2);
+
+  // Both skips, each with a reason the user can act on - not just a count.
+  REQUIRE(out.skipped.size() == 2);
+  bool saw_removed_file = false;
+  for (const auto &s : out.skipped) {
+    REQUIRE_FALSE(s.mod_label.empty());
+    REQUIRE_FALSE(s.reason.empty());
+    if (s.reason.find("removed upstream") != std::string::npos) {
+      saw_removed_file = true;
+      REQUIRE(s.mod_label == "file_id 99");
+    }
+  }
+  REQUIRE(saw_removed_file);
+}
+
 // ---------------------------------------------------------------------------
 // Adapter::fetch - GraphQL path (injected fetcher, no network)
 // ---------------------------------------------------------------------------
@@ -280,8 +329,10 @@ TEST_CASE("Adapter fetch revision success", "[collection][nexus][adapter]") {
   REQUIRE(seen_slug == "test-collection");
   REQUIRE(seen_revision == 3);
 
-  // Per-mod skips land in last_skipped(), fetch still succeeds.
+  // Per-mod skips and the revision status land on the adapter, so the import
+  // dialog can report them instead of importing a quietly shorter list.
   REQUIRE(adapter.last_skipped().size() == 2);
+  REQUIRE(adapter.last_revision_status() == "published");
 }
 
 TEST_CASE("Adapter fetch revision error", "[collection][nexus][adapter]") {

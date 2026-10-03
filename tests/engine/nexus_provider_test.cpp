@@ -54,3 +54,50 @@ TEST_CASE("nexus provider", "[engine]") {
   ModInfoResult arr = NexusProvider::parse_mod_info("[1,2,3]");
   require(!arr.available, "non-object JSON yields empty result");
 }
+
+// updatePolicy decides WHICH file fetch() asks Nexus for. prefer is the state
+// that has a fallback: the pinned fileId while Nexus still serves it, the mod's
+// newest file once that file was archived or deleted upstream.
+TEST_CASE("nexus provider update policy file selection", "[engine]") {
+  using engine::ModInfoResult;
+  using engine::NexusProvider;
+
+  // --- mods/{game}/mods/{id}/files.json. File 20 is archived upstream: it is
+  // still listed in "files" but missing from "available_mod_files". ---
+  const std::string body = R"({
+      "data": {
+        "files": [
+          { "id": 10, "version": "1.0" },
+          { "id": 20, "version": "2.0" },
+          { "id": 30, "version": "3.0" }
+        ],
+        "available_mod_files": [10, 30]
+      }
+    })";
+  const auto list        = NexusProvider::parse_file_list(body);
+  require(list.ok, "file list parsed");
+  require(list.available.size() == 2, "only downloadable files are available");
+
+  // prefer: the pin survives when it is still there.
+  require(NexusProvider::select_file_id("prefer", 10, list) == 10,
+          "prefer keeps a pin that is still available");
+  // prefer: the pin is gone, fall back to the newest file.
+  require(NexusProvider::select_file_id("prefer", 20, list) == 30,
+          "prefer falls back to the newest file when the pin is archived");
+  // latest ignores the pin entirely.
+  require(NexusProvider::select_file_id("latest", 10, list) == 30,
+          "latest always takes the newest file");
+  // exact has no fallback to offer and does not spend a request on the list.
+  require(NexusProvider::select_file_id("exact", 20, list) == 20,
+          "exact keeps its pin whatever the list says");
+  require(NexusProvider::select_file_id("exact", 0, list) == 0,
+          "exact with no pin yields nothing");
+
+  // A failed or empty list never silently resolves to some other file.
+  const NexusProvider::FileList failed = NexusProvider::parse_file_list("not json {");
+  require(!failed.ok, "garbage yields an unusable list");
+  require(NexusProvider::select_file_id("prefer", 10, failed) == 0,
+          "prefer with no list reports failure instead of guessing");
+  require(NexusProvider::select_file_id("latest", 0, failed) == 0,
+          "latest with no list reports failure");
+}
