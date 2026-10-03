@@ -340,16 +340,6 @@ TEST_CASE("Full manifest assembly", "[collection][manifest]") {
   REQUIRE(src1.update_policy == UpdatePolicy::Latest);
 }
 
-TEST_CASE("Enum completeness - all RuleType values", "[collection][manifest]") {
-  std::vector<RuleType> types = {
-      RuleType::Before,
-      RuleType::After,
-      RuleType::Requires,
-      RuleType::Conflicts,
-  };
-  REQUIRE(types.size() == 4);
-}
-
 TEST_CASE("Enum completeness - all ModCategory values", "[collection][manifest]") {
   std::vector<ModCategory> cats = {
       ModCategory::Required,

@@ -374,61 +374,199 @@ TEST_CASE("parse mod with installer choices", "[collection][nexus]") {
 // Mod rules
 // ---------------------------------------------------------------------------
 
+// Both ends of a rule are Vortex references, not names, and each resolves to
+// the id of a mod in the collection. Every type the format emits appears here,
+// and each rule picks a different resolution key. The mod list carries the
+// fields all five keys read: md5, fileSize, version and the archive name.
 TEST_CASE("parse modRules into install rules", "[collection][nexus]") {
   const auto m = parse(R"({
         "info": {},
-        "mods": [],
+        "mods": [
+            { "name": "SKSE64", "version": "2.2.6",
+              "source": { "type": "nexus", "modId": 3018, "fileId": 40160,
+                          "fileSize": 1234567, "logicalFilename": "skse64_2_02_06.7z",
+                          "md5": "3d1a4b1e2c5f60718293a4b5c6d7e8f90",
+                          "updatePolicy": "latest" } },
+            { "name": "SkyUI", "version": "1.4.2",
+              "source": { "type": "nexus", "modId": 3863, "fileId": 10001,
+                          "fileSize": 48213311,
+                          "logicalFilename": "SkyUI_1_2_masterfile.7z",
+                          "md5": "cafebabecafebabecafebabecafebabe" } },
+            { "name": "Engine Fixes", "version": "3.4.1",
+              "source": { "type": "nexus", "modId": 31415, "fileId": 55001,
+                          "fileSize": 999, "logicalFilename": "engine_fixes.7z",
+                          "md5": "11112222333344445555666677778888" } },
+            { "name": "Address Library", "version": "1.9.0",
+              "source": { "type": "nexus", "modId": 96324, "fileId": 62001,
+                          "fileSize": 5242880,
+                          "logicalFilename": "address_library.7z",
+                          "md5": "4b1dd024876fdddfef2a2383492e1c1c" } },
+            { "name": "SSSE", "version": "3.3.3",
+              "source": { "type": "nexus", "modId": 60917, "fileId": 71500,
+                          "fileSize": 2097152, "logicalFilename": "SSSE_3_3_3.7z",
+                          "md5": "add39f916aa4f469b51881fe6b50a9c6" } },
+            { "name": "Bejeweled", "version": "1.0",
+              "source": { "type": "nexus", "modId": 20301, "fileId": 81000,
+                          "fileSize": 1048576, "logicalFilename": "bejeweled.zip",
+                          "md5": "e1a03cf9eeb34288cb2d013f61381f63" } }
+        ],
         "modRules": [
-            { "sourceMod": "skse", "targetMod": "engine-fixes", "type": "requires" },
-            { "sourceMod": "textures", "targetMod": "enb", "type": "after" },
-            { "sourceMod": "conflict-a", "targetMod": "conflict-b", "type": "conflicts" },
-            { "sourceMod": "before-mod", "targetMod": "after-mod", "type": "before" }
+            { "type": "requires",
+              "source": { "fileMD5": "cafebabecafebabecafebabecafebabe" },
+              "reference": { "logicalFileName": "skse64_2_02_06.7z" } },
+            { "type": "after",
+              "source": { "fileSize": 999 },
+              "reference": { "fileMD5": "3d1a4b1e2c5f60718293a4b5c6d7e8f90" } },
+            { "type": "conflicts",
+              "source": { "versionMatch": "1.9.0" },
+              "reference": { "versionMatch": "1.4.2" } },
+            { "type": "before",
+              "source": { "fileExpression": "SSSE_3_3_3" },
+              "reference": { "logicalFileName": "SkyUI_1_2_masterfile.7z" } },
+            { "type": "recommends",
+              "source": { "fileExpression": "Bejeweled" },
+              "reference": { "logicalFileName": "address_library.7z" } },
+            { "type": "provides",
+              "source": { "fileMD5": "4b1dd024876fdddfef2a2383492e1c1c" },
+              "reference": { "fileSize": 48213311 } }
         ]
     })");
 
-  REQUIRE(m.rules.size() == 4);
+  REQUIRE(m.rules.size() == 6);
+  REQUIRE(m.unresolved.empty());
 
   REQUIRE(m.rules[0].type == RuleType::Requires);
-  REQUIRE(m.rules[0].from == "skse");
-  REQUIRE(m.rules[0].to == "engine-fixes");
+  REQUIRE(m.rules[0].from == "skyui");
+  REQUIRE(m.rules[0].to == "skse64");
 
   REQUIRE(m.rules[1].type == RuleType::After);
-  REQUIRE(m.rules[1].from == "textures");
-  REQUIRE(m.rules[1].to == "enb");
+  REQUIRE(m.rules[1].from == "engine-fixes");
+  REQUIRE(m.rules[1].to == "skse64");
 
   REQUIRE(m.rules[2].type == RuleType::Conflicts);
-  REQUIRE(m.rules[2].from == "conflict-a");
-  REQUIRE(m.rules[2].to == "conflict-b");
+  REQUIRE(m.rules[2].from == "address-library");
+  REQUIRE(m.rules[2].to == "skyui");
 
   REQUIRE(m.rules[3].type == RuleType::Before);
-  REQUIRE(m.rules[3].from == "before-mod");
-  REQUIRE(m.rules[3].to == "after-mod");
+  REQUIRE(m.rules[3].from == "ssse");
+  REQUIRE(m.rules[3].to == "skyui");
+
+  REQUIRE(m.rules[4].type == RuleType::Recommends);
+  REQUIRE(m.rules[4].from == "bejeweled");
+  REQUIRE(m.rules[4].to == "address-library");
+
+  REQUIRE(m.rules[5].type == RuleType::Provides);
+  REQUIRE(m.rules[5].from == "address-library");
+  REQUIRE(m.rules[5].to == "skyui");
+}
+
+TEST_CASE("modRules resolve by the first matching key only", "[collection][nexus]") {
+  // A reference carrying two keys must bind on the earlier one. Beta is
+  // declared first so a parser that consulted fileExpression first, or that
+  // kept looking after the md5 hit, would report the wrong mod.
+  const auto m = parse(R"({
+        "info": {},
+        "mods": [
+            { "name": "Beta", "version": "1.0.0",
+              "source": { "type": "nexus", "fileSize": 1,
+                          "logicalFilename": "beta.zip",
+                          "md5": "22222222222222222222222222222222" } },
+            { "name": "Alpha", "version": "1.0.0",
+              "source": { "type": "nexus", "fileSize": 2,
+                          "logicalFilename": "alpha.zip",
+                          "md5": "11111111111111111111111111111111" } }
+        ],
+        "modRules": [
+            { "type": "before",
+              "source": { "fileMD5": "11111111111111111111111111111111",
+                          "fileExpression": "Beta" },
+              "reference": { "logicalFileName": "beta.zip" } }
+        ]
+    })");
+
+  REQUIRE(m.rules.size() == 1);
+  REQUIRE(m.rules[0].from == "alpha");
+  REQUIRE(m.rules[0].to == "beta");
+}
+
+TEST_CASE("modRules versionMatch accepts a caret range", "[collection][nexus]") {
+  // New is declared first on purpose: if "^1.0.0" wrongly admitted 2.0.0 the
+  // first rule would bind to "new" instead of "old".
+  const auto m = parse(R"({
+        "info": {},
+        "mods": [
+            { "name": "New", "version": "2.0.0",
+              "source": { "type": "nexus", "md5": "22222222222222222222222222222222" } },
+            { "name": "Old", "version": "1.2.3",
+              "source": { "type": "nexus", "md5": "11111111111111111111111111111111" } }
+        ],
+        "modRules": [
+            { "type": "before",
+              "source": { "versionMatch": "^1.0.0" },
+              "reference": { "versionMatch": "^2.0.0" } },
+            { "type": "after",
+              "source": { "versionMatch": "^2.0.0" },
+              "reference": { "versionMatch": "^1.0.0" } }
+        ]
+    })");
+
+  REQUIRE(m.rules.size() == 2);
+  REQUIRE(m.rules[0].from == "old");
+  REQUIRE(m.rules[0].to == "new");
+  REQUIRE(m.rules[1].from == "new");
+  REQUIRE(m.rules[1].to == "old");
 }
 
 TEST_CASE("parse modRules defaults to Before for unknown type", "[collection][nexus]") {
   const auto m = parse(R"({
         "info": {},
-        "mods": [],
+        "mods": [
+            { "name": "Alpha", "source": { "type": "nexus",
+                        "logicalFilename": "alpha.zip" } },
+            { "name": "Beta", "source": { "type": "nexus",
+                        "logicalFilename": "beta.zip" } }
+        ],
         "modRules": [
-            { "sourceMod": "a", "targetMod": "b", "type": "something_weird" }
+            { "type": "something_weird",
+              "source": { "logicalFileName": "alpha.zip" },
+              "reference": { "logicalFileName": "beta.zip" } }
         ]
     })");
 
   REQUIRE(m.rules.size() == 1);
   REQUIRE(m.rules[0].type == RuleType::Before);
+  REQUIRE(m.rules[0].from == "alpha");
+  REQUIRE(m.rules[0].to == "beta");
 }
 
-TEST_CASE("modRules with empty source/target are skipped", "[collection][nexus]") {
+TEST_CASE("modRules with an unresolvable end is reported, not dropped",
+          "[collection][nexus]") {
+  // A rule whose ends cannot be bound is surfaced through unresolved with the
+  // key that was asked for, so the import never silently loses a rule.
   const auto m = parse(R"({
         "info": {},
-        "mods": [],
+        "mods": [
+            { "name": "Real Mod", "source": { "type": "nexus",
+                        "logicalFilename": "real.zip" } }
+        ],
         "modRules": [
-            { "sourceMod": "", "targetMod": "b", "type": "before" },
-            { "sourceMod": "a", "targetMod": "", "type": "before" }
+            { "type": "before", "source": {},
+              "reference": { "logicalFileName": "real.zip" } },
+            { "type": "before",
+              "source": { "logicalFileName": "real.zip" },
+              "reference": { "logicalFileName": "missing.zip" } }
         ]
     })");
 
   REQUIRE(m.rules.empty());
+  REQUIRE(m.unresolved.size() == 2);
+
+  REQUIRE(m.unresolved[0].what == "modRules[0].source");
+  REQUIRE(m.unresolved[0].reason.find("empty") != std::string::npos);
+
+  REQUIRE(m.unresolved[1].what == "modRules[1].reference");
+  REQUIRE(m.unresolved[1].reason.find("logicalFileName=missing.zip") !=
+          std::string::npos);
 }
 
 // ---------------------------------------------------------------------------
@@ -502,11 +640,23 @@ TEST_CASE("non-object entries in mods array are skipped", "[collection][nexus]")
 TEST_CASE("non-object entries in modRules are skipped", "[collection][nexus]") {
   const auto m = parse(R"({
         "info": {},
-        "mods": [],
-        "modRules": [null, 42, { "sourceMod": "a", "targetMod": "b", "type": "before" }]
+        "mods": [
+            { "name": "Alpha", "source": { "type": "nexus",
+                        "logicalFilename": "alpha.zip" } },
+            { "name": "Beta", "source": { "type": "nexus",
+                        "logicalFilename": "beta.zip" } }
+        ],
+        "modRules": [
+            null, 42,
+            { "type": "before",
+              "source": { "logicalFileName": "alpha.zip" },
+              "reference": { "logicalFileName": "beta.zip" } }
+        ]
     })");
 
   REQUIRE(m.rules.size() == 1);
+  REQUIRE(m.rules[0].from == "alpha");
+  REQUIRE(m.rules[0].to == "beta");
 }
 
 // ---------------------------------------------------------------------------
@@ -563,129 +713,180 @@ TEST_CASE("parse throws on mod source not an object", "[collection][nexus]") {
 }
 
 // ---------------------------------------------------------------------------
-// Full realistic Nexus collection.json
+// The collection.json documented by Nexus
 // ---------------------------------------------------------------------------
 
-TEST_CASE("parse realistic Nexus collection", "[collection][nexus]") {
-  const auto m = parse(R"({
-        "info": {
-            "name": "Ultimate Skyrim SE Overhaul",
-            "author": "PackAuthor",
-            "description": "A comprehensive modding guide as a collection.",
-            "domainName": "skyrimspecialedition",
-            "authorUrl": "https://next.nexusmods.com/skyrimspecialedition/collections/abc123"
+TEST_CASE("parse the documented Nexus collection.json", "[collection][nexus]") {
+  // Verbatim from the Nexus collections documentation, with one modRule added:
+  // the documented example ships an empty modRules array, and a rule is the
+  // only way to exercise reference resolution against real mods. The delimiter
+  // is named because mod names in the example end in a parenthesis.
+  const auto m = parse(R"JSON({
+  "info": {
+    "author": "Anonymous",
+    "authorUrl": "",
+    "name": "Halgari's Helper",
+    "description": "",
+    "installInstructions": "",
+    "domainName": "cyberpunk2077",
+    "gameVersions": [
+      "3.0.76.64179"
+    ]
+  },
+  "mods": [
+    {
+      "name": "Appearance Menu Mod",
+      "version": "2.7",
+      "optional": false,
+      "domainName": "cyberpunk2077",
+      "source": {
+        "type": "nexus",
+        "modId": 790,
+        "fileId": 66386,
+        "md5": "0a6e3e603ef3bca799436f69510c79b7",
+        "fileSize": 140159937,
+        "logicalFilename": "Appearance Menu Mod",
+        "updatePolicy": "prefer",
+        "tag": "JqF6xzzWA"
+      },
+      "hashes": [
+        {
+          "path": "archive\\pc\\mod\\AMM_Dino_TattooFix.archive",
+          "md5": "add39f916aa4f469b51881fe6b50a9c6"
         },
-        "version": "3.1.0",
-        "mods": [
-            {
-                "name": "SKSE64",
-                "version": "2.2.6",
-                "phase": 0,
-                "optional": false,
-                "source": {
-                    "type": "nexus",
-                    "modId": 3018,
-                    "fileId": 40160,
-                    "fileSize": 1234567,
-                    "logicalFilename": "skse64_2_02_06.7z",
-                    "md5": "deadbeef",
-                    "updatePolicy": "latest"
-                }
-            },
-            {
-                "name": "SkyUI",
-                "version": "1.4.2",
-                "phase": 1,
-                "optional": false,
-                "source": {
-                    "type": "nexus",
-                    "modId": 3863,
-                    "fileId": 10001,
-                    "fileSize": 48213311,
-                    "logicalFilename": "SkyUI_1_2_masterfile.7z",
-                    "md5": "cafebabe"
-                }
-            },
-            {
-                "name": "ENB Preset",
-                "version": "2.0",
-                "phase": 3,
-                "optional": true,
-                "source": {
-                    "type": "browse",
-                    "url": "https://enbdev.com/enbseries/download.html",
-                    "logicalFilename": "enbseries.zip"
-                },
-                "choices": {
-                    "ENB-Color": ["Natural"],
-                    "ENB-Presets": ["Rudy", "Silent"]
-                }
-            }
-        ],
-        "modRules": [
-            { "sourceMod": "SkyUI", "targetMod": "SKSE64", "type": "requires" },
-            { "sourceMod": "ENB Preset", "targetMod": "SkyUI", "type": "after" }
-        ],
-        "pluginLoadOrder": [
-            "skse64_loader.exe",
-            "SkyUI_SE.esp"
+        {
+          "path": "archive\\pc\\mod\\AMM_RitaWheeler_CombatEnabler.archive",
+          "md5": "e1a03cf9eeb34288cb2d013f61381f63"
+        }
+      ],
+      "author": "MaximiliumM and CtrlAltDaz",
+      "details": {
+        "category": "Appearance",
+        "type": ""
+      },
+      "phase": 0
+    },
+    {
+      "name": "Cyber Engine Tweaks - CET 1.32.2",
+      "version": "1.32.2",
+      "optional": false,
+      "domainName": "cyberpunk2077",
+      "source": {
+        "type": "nexus",
+        "modId": 107,
+        "fileId": 73822,
+        "md5": "4b1dd024876fdddfef2a2383492e1c1c",
+        "fileSize": 34849878,
+        "logicalFilename": "CET 1.32.2",
+        "updatePolicy": "prefer",
+        "tag": "x_A_Q2gQ3e"
+      },
+      "author": "yamashi",
+      "details": {
+        "category": "Modders Resources",
+        "type": ""
+      },
+      "phase": 0
+    },
+    {
+      "name": "Load Begone (Intro Splash Load and Checkpoint Removal - FOMOD) - Load Begone - 2.2.1 (FOMOD)",
+      "version": "2.2.1",
+      "optional": false,
+      "domainName": "cyberpunk2077",
+      "source": {
+        "type": "nexus",
+        "modId": 8144,
+        "fileId": 59926,
+        "md5": "f86b6241862c140891771306282abbf9",
+        "fileSize": 3911564,
+        "logicalFilename": "Load Begone - 2.2.1 (FOMOD)",
+        "updatePolicy": "prefer",
+        "tag": "vACbpm9SFd"
+      },
+      "choices": {
+        "type": "fomod",
+        "options": [
+          {
+            "name": "Installation",
+            "groups": [
+              {
+                "name": "Features",
+                "choices": [
+                  { "name": "Skip Intro Logos", "idx": 0 },
+                  { "name": "No Splash Video", "idx": 1 },
+                  { "name": "Faster Checkpoints", "idx": 2 }
+                ]
+              }
+            ]
+          }
         ]
-    })");
+      },
+      "author": "CyanideX",
+      "details": {
+        "category": "User Interface",
+        "type": ""
+      },
+      "phase": 0
+    }
+  ],
+  "modRules": [
+    { "type": "before",
+      "source": { "fileMD5": "0a6e3e603ef3bca799436f69510c79b7" },
+      "reference": { "logicalFileName": "CET 1.32.2" } }
+  ],
+  "loadOrder": [],
+  "tools": [],
+  "collectionConfig": {
+    "recommendNewProfile": false
+  }
+}
+)JSON");
 
   // Info
-  REQUIRE(m.info.name == "Ultimate Skyrim SE Overhaul");
-  REQUIRE(m.info.author == "PackAuthor");
-  REQUIRE(m.info.game_id == "skyrimspecialedition");
-  REQUIRE(m.info.homepage ==
-          "https://next.nexusmods.com/skyrimspecialedition/collections/abc123");
-
-  // Schema version
-  REQUIRE(m.schema_version == "3.1.0");
+  REQUIRE(m.info.name == "Halgari's Helper");
+  REQUIRE(m.info.author == "Anonymous");
+  REQUIRE(m.info.game_id == "cyberpunk2077");
+  REQUIRE(m.info.homepage.empty());
 
   // Mods
   REQUIRE(m.mods.size() == 3);
+  REQUIRE(m.unresolved.empty());
 
-  // Mod 0: SKSE64
-  REQUIRE(m.mods[0].id == "skse64");
+  // Mod 0: Appearance Menu Mod. updatePolicy "prefer", and the md5 lands in the
+  // md5 field only, never in sha256.
+  REQUIRE(m.mods[0].id == "appearance-menu-mod");
   REQUIRE(m.mods[0].phase == 0);
   REQUIRE(m.mods[0].category == ModCategory::Required);
   REQUIRE(std::holds_alternative<SourceNexus>(m.mods[0].source));
-  const auto &skse = std::get<SourceNexus>(m.mods[0].source);
-  REQUIRE(skse.mod_id == 3018);
-  REQUIRE(skse.update_policy == UpdatePolicy::Latest);
+  const auto &amm = std::get<SourceNexus>(m.mods[0].source);
+  REQUIRE(amm.mod_id == 790);
+  REQUIRE(amm.file_id == 66386);
+  REQUIRE(amm.file_size == 140159937);
+  REQUIRE(amm.file_name == "Appearance Menu Mod");
+  REQUIRE(amm.md5 == "0a6e3e603ef3bca799436f69510c79b7");
+  REQUIRE(amm.sha256.empty());
+  REQUIRE(amm.update_policy == UpdatePolicy::Prefer);
 
-  // Mod 1: SkyUI
-  REQUIRE(m.mods[1].id == "skyui");
-  REQUIRE(m.mods[1].phase == 1);
+  // Mod 1: Cyber Engine Tweaks
+  REQUIRE(m.mods[1].id == "cyber-engine-tweaks-cet-1-32-2");
   REQUIRE(std::holds_alternative<SourceNexus>(m.mods[1].source));
-  const auto &skyui = std::get<SourceNexus>(m.mods[1].source);
-  REQUIRE(skyui.mod_id == 3863);
-  REQUIRE(skyui.file_id == 10001);
-  REQUIRE(skyui.update_policy == UpdatePolicy::Prefer);
-  REQUIRE(skyui.md5 == "cafebabe");
-  REQUIRE(skyui.sha256.empty());
+  const auto &cet = std::get<SourceNexus>(m.mods[1].source);
+  REQUIRE(cet.mod_id == 107);
+  REQUIRE(cet.file_id == 73822);
+  REQUIRE(cet.md5 == "4b1dd024876fdddfef2a2383492e1c1c");
+  REQUIRE(cet.file_name == "CET 1.32.2");
 
-  // Mod 2: ENB Preset (browse/manual)
-  REQUIRE(m.mods[2].id == "enb-preset");
-  REQUIRE(m.mods[2].category == ModCategory::Optional);
-  REQUIRE(std::holds_alternative<SourceDirect>(m.mods[2].source));
-  const auto &enb = std::get<SourceDirect>(m.mods[2].source);
-  REQUIRE(enb.url == "https://enbdev.com/enbseries/download.html");
-
-  // Installer choices on ENB
+  // Mod 2: Load Begone, a FOMOD mod with nested choices
+  REQUIRE(m.mods[2].name ==
+          "Load Begone (Intro Splash Load and Checkpoint Removal - FOMOD) - "
+          "Load Begone - 2.2.1 (FOMOD)");
   REQUIRE(m.mods[2].installer_choices.type == "fomod");
-  REQUIRE(m.mods[2].installer_choices.selections.size() == 2);
 
-  // Rules
-  REQUIRE(m.rules.size() == 2);
-  REQUIRE(m.rules[0].type == RuleType::Requires);
-  REQUIRE(m.rules[0].from == "SkyUI");
-  REQUIRE(m.rules[0].to == "SKSE64");
-  REQUIRE(m.rules[1].type == RuleType::After);
-
-  // Plugin load order
-  REQUIRE(m.load_order.plugin_hint.size() == 2);
-  REQUIRE(m.load_order.plugin_hint[0] == "skse64_loader.exe");
+  // The rule binds through source.fileMD5 and reference.logicalFileName.
+  REQUIRE(m.rules.size() == 1);
+  REQUIRE(m.rules[0].type == RuleType::Before);
+  REQUIRE(m.rules[0].from == "appearance-menu-mod");
+  REQUIRE(m.rules[0].to == "cyber-engine-tweaks-cet-1-32-2");
 }
 
 // ---------------------------------------------------------------------------

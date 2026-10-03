@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cctype>
 #include <fstream>
+#include <optional>
 #include <sstream>
 
 #include <nlohmann/json.hpp>
@@ -71,7 +72,8 @@ namespace {
     return optional ? ModCategory::Optional : ModCategory::Required;
   }
 
-  // Map a modRules type string to RuleType.
+  // Map a modRules type string to RuleType. All six values the format emits
+  // are recognised; anything else falls back to Before.
   RuleType parse_rule_type(const std::string &s) {
     if (s == "after")
       return RuleType::After;
@@ -79,7 +81,268 @@ namespace {
       return RuleType::Requires;
     if (s == "conflicts")
       return RuleType::Conflicts;
+    if (s == "recommends")
+      return RuleType::Recommends;
+    if (s == "provides")
+      return RuleType::Provides;
     return RuleType::Before;  // default
+  }
+
+  // ---------------------------------------------------------------------------
+  // Vortex mod reference (modRules[].source / .reference)
+  // ---------------------------------------------------------------------------
+
+  // The keys a reference can be resolved by, in the order the format declares
+  // them. A reference binds to the first key that matches a mod in the
+  // collection; later keys are not consulted once an earlier one has matched.
+  struct VortexModReference {
+    std::string file_md5;
+    int64_t file_size = 0;
+    std::string version_match;
+    std::string logical_file_name;
+    std::string file_expression;
+    // Vortex-internal identifiers. The same value is published as a mod's
+    // source.tag, so it can be read back, but it is not one of the resolution
+    // keys the format defines.
+    std::string id_hint;
+    std::string md5_hint;
+  };
+
+  VortexModReference parse_reference(const json &j) {
+    VortexModReference ref;
+    if (!j.is_object())
+      return ref;
+    ref.file_md5          = opt_string(j, "fileMD5");
+    ref.file_size         = opt_int64(j, "fileSize");
+    ref.version_match     = opt_string(j, "versionMatch");
+    ref.logical_file_name = opt_string(j, "logicalFileName");
+    ref.file_expression   = opt_string(j, "fileExpression");
+    ref.id_hint           = opt_string(j, "idHint");
+    ref.md5_hint          = opt_string(j, "md5Hint");
+    return ref;
+  }
+
+  bool iequals(std::string_view a, std::string_view b) {
+    return a.size() == b.size() &&
+           std::equal(a.begin(), a.end(), b.begin(), [](char x, char y) {
+             return std::tolower(static_cast<unsigned char>(x)) ==
+                    std::tolower(static_cast<unsigned char>(y));
+           });
+  }
+
+  // Wildcard match over '*' (any run) and '?' (one character), case-blind.
+  bool wildcard_match(std::string_view pattern, std::string_view text) {
+    std::size_t p = 0, t = 0, star = std::string_view::npos, mark = 0;
+    while (t < text.size()) {
+      const char pc = p < pattern.size() ? pattern[p] : '\0';
+      if (pc == '?' ||
+          (pc != '\0' && std::tolower(static_cast<unsigned char>(pc)) ==
+                             std::tolower(static_cast<unsigned char>(text[t])))) {
+        ++p;
+        ++t;
+      } else if (pc == '*') {
+        star = p++;
+        mark = t;
+      } else if (star != std::string_view::npos) {
+        p = star + 1;
+        t = ++mark;
+      } else {
+        return false;
+      }
+    }
+    while (p < pattern.size() && pattern[p] == '*')
+      ++p;
+    return p == pattern.size();
+  }
+
+  // "1.2.3" -> {1,2,3}. False for anything else, so a partial version like
+  // "2.7" is never silently widened to "2.7.0" and matched against a range.
+  bool parse_triple(std::string_view v, int out[3]) {
+    std::size_t pos = 0;
+    for (int part = 0; part < 3; ++part) {
+      if (part > 0) {
+        if (pos >= v.size() || v[pos] != '.')
+          return false;
+        ++pos;
+      }
+      if (pos >= v.size() || !std::isdigit(static_cast<unsigned char>(v[pos])))
+        return false;
+      int val = 0;
+      while (pos < v.size() && std::isdigit(static_cast<unsigned char>(v[pos]))) {
+        val = val * 10 + (v[pos] - '0');
+        ++pos;
+      }
+      out[part] = val;
+    }
+    return pos == v.size();
+  }
+
+  int compare_triple(const int a[3], const int b[3]) {
+    for (int i = 0; i < 3; ++i) {
+      if (a[i] != b[i])
+        return a[i] < b[i] ? -1 : 1;
+    }
+    return 0;
+  }
+
+  // A versionMatch is either an exact version ("1.1.12") or a caret range
+  // ("^1.0.0" = >=1.0.0, <2.0.0 - the left-most non-zero part is what may
+  // change). Any other syntax matches nothing rather than guessing.
+  bool version_matches(std::string_view candidate, std::string_view match) {
+    if (match.empty())
+      return false;
+    if (match.front() != '^')
+      return candidate == match;
+    int lo[3];
+    if (!parse_triple(match.substr(1), lo))
+      return false;
+    int hi[3] = {lo[0], lo[1], lo[2]};
+    if (hi[0] != 0) {
+      hi[0] += 1;
+      hi[1] = 0;
+      hi[2] = 0;
+    } else if (hi[1] != 0) {
+      hi[1] += 1;
+      hi[2] = 0;
+    } else {
+      hi[2] += 1;
+    }
+    int got[3];
+    if (!parse_triple(candidate, got))
+      return false;
+    return compare_triple(got, lo) >= 0 && compare_triple(got, hi) < 0;
+  }
+
+  // The mod's version, whichever source variant carries it.
+  std::string mod_version(const ModEntry &m) {
+    return std::visit(
+        [](const auto &src) {
+          return src.version;
+        },
+        m.source);
+  }
+
+  // The archive file name the mod came from, empty for sources that publish
+  // none (the Workshop source has no file name at all).
+  std::string mod_file_name(const ModEntry &m) {
+    return std::visit(
+        [](const auto &src) -> std::string {
+          if constexpr (requires { src.file_name; })
+            return src.file_name;
+          return {};
+        },
+        m.source);
+  }
+
+  // Archive name without its final extension ("skse64_2_02_06.7z" ->
+  // "skse64_2_02_06").
+  std::string file_stem(std::string_view name) {
+    const auto dot = name.rfind('.');
+    if (dot == std::string_view::npos || dot == 0)
+      return std::string(name);
+    return std::string(name.substr(0, dot));
+  }
+
+  // First mod matching `pred`, by declaration order.
+  // ponytail: no ambiguity reporting - a key that matches two mods (equal file
+  // sizes, two mods on one version) binds to the earlier one. Surface the tie
+  // if a real collection ever hits it.
+  template <typename Pred>
+  std::optional<std::string> first_match(const std::vector<ModEntry> &mods, Pred pred) {
+    for (const auto &m : mods) {
+      if (pred(m))
+        return m.id;
+    }
+    return std::nullopt;
+  }
+
+  std::optional<std::string> match_md5(const VortexModReference &ref,
+                                       const std::vector<ModEntry> &mods) {
+    if (ref.file_md5.empty())
+      return std::nullopt;
+    return first_match(mods, [&](const ModEntry &m) {
+      const auto *nx = std::get_if<SourceNexus>(&m.source);
+      return nx && !nx->md5.empty() && iequals(nx->md5, ref.file_md5);
+    });
+  }
+
+  std::optional<std::string> match_file_size(const VortexModReference &ref,
+                                             const std::vector<ModEntry> &mods) {
+    if (ref.file_size <= 0)
+      return std::nullopt;
+    return first_match(mods, [&](const ModEntry &m) {
+      const auto *nx = std::get_if<SourceNexus>(&m.source);
+      return nx && nx->file_size == ref.file_size;
+    });
+  }
+
+  std::optional<std::string> match_version(const VortexModReference &ref,
+                                           const std::vector<ModEntry> &mods) {
+    if (ref.version_match.empty())
+      return std::nullopt;
+    return first_match(mods, [&](const ModEntry &m) {
+      return version_matches(mod_version(m), ref.version_match);
+    });
+  }
+
+  std::optional<std::string>
+  match_logical_file_name(const VortexModReference &ref,
+                          const std::vector<ModEntry> &mods) {
+    if (ref.logical_file_name.empty())
+      return std::nullopt;
+    return first_match(mods, [&](const ModEntry &m) {
+      const auto &name = mod_file_name(m);
+      return !name.empty() && iequals(name, ref.logical_file_name);
+    });
+  }
+
+  // Either an exact hit on the mod's name, or a wildcard against the archive
+  // name without its extension.
+  std::optional<std::string> match_file_expression(const VortexModReference &ref,
+                                                   const std::vector<ModEntry> &mods) {
+    if (ref.file_expression.empty())
+      return std::nullopt;
+    return first_match(mods, [&](const ModEntry &m) {
+      if (iequals(m.name, ref.file_expression))
+        return true;
+      const auto &name = mod_file_name(m);
+      return !name.empty() && wildcard_match(ref.file_expression, file_stem(name));
+    });
+  }
+
+  // Resolve a reference to the id of the mod it names, trying the keys in the
+  // order the format defines and stopping at the first that matches.
+  std::optional<std::string> resolve_reference(const VortexModReference &ref,
+                                               const std::vector<ModEntry> &mods) {
+    if (auto hit = match_md5(ref, mods); hit)
+      return hit;
+    if (auto hit = match_file_size(ref, mods); hit)
+      return hit;
+    if (auto hit = match_version(ref, mods); hit)
+      return hit;
+    if (auto hit = match_logical_file_name(ref, mods); hit)
+      return hit;
+    return match_file_expression(ref, mods);
+  }
+
+  // What the reference asked for, for the unresolved report.
+  std::string describe_reference(const VortexModReference &ref) {
+    std::string out;
+    const auto add = [&out](const char *key, const std::string &value) {
+      if (value.empty())
+        return;
+      if (!out.empty())
+        out += ' ';
+      out += key;
+      out += '=';
+      out += value;
+    };
+    add("fileMD5", ref.file_md5);
+    add("fileSize", ref.file_size > 0 ? std::to_string(ref.file_size) : std::string());
+    add("versionMatch", ref.version_match);
+    add("logicalFileName", ref.logical_file_name);
+    add("fileExpression", ref.file_expression);
+    return out.empty() ? "reference is empty" : out;
   }
 
   // ---------------------------------------------------------------------------
@@ -236,7 +499,10 @@ Manifest parse(std::string_view json_str) {
     }
   }
 
-  // Mod rules -> install rules
+  // Mod rules -> install rules. Both ends of a rule are Vortex references, not
+  // names: each is resolved to a mod id here, because rules reference stable
+  // ids and never file names. A rule whose ends cannot be resolved is reported
+  // rather than dropped.
   if (root.contains("modRules") && root["modRules"].is_array()) {
     const auto &rules_arr = root["modRules"];
     for (std::size_t i = 0; i < rules_arr.size(); ++i) {
@@ -244,19 +510,33 @@ Manifest parse(std::string_view json_str) {
       if (!rj.is_object())
         continue;
 
-      Rule rule;
-      std::string src_mod  = opt_string(rj, "sourceMod");
-      std::string tgt_mod  = opt_string(rj, "targetMod");
-      std::string type_str = opt_string(rj, "type");
+      const VortexModReference src_ref =
+          parse_reference(rj.value("source", json::object()));
+      const VortexModReference oth_ref =
+          parse_reference(rj.value("reference", json::object()));
 
-      // sourceMod/targetMod may be numeric mod IDs or names; keep as
-      // string for the downstream resolver.
-      rule.from = src_mod;
-      rule.to   = tgt_mod;
-      rule.type = parse_rule_type(type_str);
+      const auto from = resolve_reference(src_ref, m.mods);
+      const auto to   = resolve_reference(oth_ref, m.mods);
 
-      if (!rule.from.empty() && !rule.to.empty())
+      if (from && to) {
+        Rule rule;
+        rule.type = parse_rule_type(opt_string(rj, "type"));
+        rule.from = *from;
+        rule.to   = *to;
         m.rules.push_back(std::move(rule));
+        continue;
+      }
+
+      const auto report = [&m, i](const char *end, const VortexModReference &ref) {
+        Unresolved u;
+        u.what   = "modRules[" + std::to_string(i) + "]." + end;
+        u.reason = "no mod in this collection matches " + describe_reference(ref);
+        m.unresolved.push_back(std::move(u));
+      };
+      if (!from)
+        report("source", src_ref);
+      if (!to)
+        report("reference", oth_ref);
     }
   }
 
