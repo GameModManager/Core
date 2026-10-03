@@ -64,6 +64,10 @@ namespace {
           } else if constexpr (std::is_same_v<T, gmmpack::ModSourceSteamWorkshop>) {
             if (s.version.has_value())
               pins.version = *s.version;
+          } else if constexpr (std::is_same_v<T, gmmpack::ModSourceEmbedded>) {
+            // No provider pin to compare: a bundled mod's identity is its
+            // payload, and its policy is "latest", so the latest branch below
+            // decides whether it re-resolves.
           } else {
             if (s.version.has_value())
               pins.version = *s.version;

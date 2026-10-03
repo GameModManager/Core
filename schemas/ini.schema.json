@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://gamemodmanager.org/schemas/gmmpack/1.0.0/ini.schema.json",
+  "title": "GMM Modpack Ini Tweaks (ini/<targetFile>.json)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["targetFile", "tweaks"],
+  "properties": {
+    "targetFile": {
+      "type": "string",
+      "minLength": 1,
+      "description": "e.g. \"Skyrim.ini\". Matched via the same case-insensitive normalization used everywhere else in the format."
+    },
+    "tweaks": {
+      "type": "array",
+      "description": "Every tweak to this ini file from any source -- pack author or any individual mod's recommended tweak -- consolidated here, never scattered across mod entries. Each tweak carries plain INI text; the engine parses content into key/value edits internally. Tweak ids and names must each be unique within the file (enforced by the engine; not expressible in JSON Schema). Disabled tweaks are stored but not applied.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "name", "status", "enabled", "sourceModId", "content"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Stable slug, never changes even if name is edited. The key for update diffing, instance state, and tweak-scoped retract."
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Human-readable label shown in the install widget."
+          },
+          "status": {
+            "type": "string",
+            "enum": ["required", "recommended"],
+            "description": "required = pack needs this to work as tested; recommended = safe to leave disabled."
+          },
+          "enabled": {
+            "type": "boolean",
+            "description": "Author default. Seeds fresh installs; thereafter the instance record owns the toggle."
+          },
+          "sourceModId": {
+            "type": ["string", "null"],
+            "description": "null = pack-author tweak. Non-null = attributed to that mod's own recommended tweak; used to auto-retract the tweak if the owning mod is later removed."
+          },
+          "content": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Plain INI text: [section] headers plus key=value lines. Blank lines and ;/# comments allowed. Every key must sit under a section; every non-blank line must contain '='."
+          }
+        }
+      }
+    }
+  }
+}

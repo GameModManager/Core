@@ -44,6 +44,7 @@
 namespace ui {
 namespace {
 
+  using engine::gmmpack::find_mod;
   using engine::gmmpack::Gmmpack;
   using engine::gmmpack::ModCategory;
   using engine::gmmpack::ModEntry;
@@ -73,6 +74,8 @@ namespace {
                                    T, engine::gmmpack::ModSourceSteamWorkshop>) {
             return QStringLiteral("app ") + QString::number(src.app_id) +
                    QStringLiteral(" item ") + QString::number(src.workshop_item_id);
+          } else if constexpr (std::is_same_v<T, engine::gmmpack::ModSourceEmbedded>) {
+            return QStringLiteral("%1 bundled files").arg(src.files.size());
           } else {
             return QString::fromStdString(src.resolution);
           }
@@ -86,6 +89,11 @@ namespace {
           using T = std::decay_t<decltype(src)>;
           if constexpr (std::is_same_v<T, engine::gmmpack::ModSourceNexus>) {
             return src.file_size;
+          } else if constexpr (std::is_same_v<T, engine::gmmpack::ModSourceEmbedded>) {
+            int64_t total = 0;
+            for (const auto &f : src.files)
+              total += f.size;
+            return total;
           } else {
             return std::nullopt;
           }
@@ -116,14 +124,6 @@ namespace {
       return ModpackInstallWizard::tr("Optional");
     }
     return {};
-  }
-
-  const ModEntry *find_mod(const Gmmpack &pack, const std::string &id) {
-    for (const auto &mod : pack.mods) {
-      if (mod.id == id)
-        return &mod;
-    }
-    return nullptr;
   }
 
   QString status_icon(const QString &status) {
@@ -198,7 +198,12 @@ namespace {
     std::visit(
         [&](const auto &src) {
           using T = std::decay_t<decltype(src)>;
-          if constexpr (std::is_same_v<T, engine::gmmpack::ModSourceNexus>) {
+          if constexpr (std::is_same_v<T, engine::gmmpack::ModSourceEmbedded>) {
+            // Nothing to fetch: the mod's own files are in the pack.
+            route.path = Collection::DownloadPath::Embedded;
+            route.reason =
+                QStringLiteral("bundled in this pack - extracted into the mods folder");
+          } else if constexpr (std::is_same_v<T, engine::gmmpack::ModSourceNexus>) {
             const Collection::RouteOutcome outcome = Collection::route_download(
                 declared_resolution(src.resolution),
                 Collection::Nexus::account_status(),
@@ -1375,6 +1380,27 @@ void ModpackInstallWizard::refresh_downloads_ui() {
     } else if (status == QStringLiteral("downloaded") ||
                status == QStringLiteral("skipped")) {
       cell = new QLabel(status_icon(status), downloads_table_);
+    } else if (route.path == Collection::DownloadPath::Embedded) {
+      // The mod's files are in the pack: write them into the mods folder,
+      // verifying every file's size and hash first.
+      auto *box        = new QWidget(downloads_table_);
+      auto *box_layout = new QHBoxLayout(box);
+      box_layout->setContentsMargins(0, 0, 0, 0);
+      auto *extract = new QPushButton(
+          status == QStringLiteral("failed") ? tr("Retry") : tr("Extract"), box);
+      extract->setToolTip(route.reason);
+      extract->setProperty("mod_id", mid);
+      connect(extract, &QPushButton::clicked, this,
+              &ModpackInstallWizard::on_download_extract);
+      box_layout->addWidget(extract);
+      if (is_optional) {
+        auto *skip = new QPushButton(tr("Skip"), box);
+        skip->setProperty("mod_id", mid);
+        connect(skip, &QPushButton::clicked, this,
+                &ModpackInstallWizard::on_download_skip_optional);
+        box_layout->addWidget(skip);
+      }
+      cell = box;
     } else if (route.path == Collection::DownloadPath::ExternalClient) {
       // Steam Workshop: the subscription lives outside GMM.
       auto *box        = new QWidget(downloads_table_);
@@ -1553,9 +1579,19 @@ void ModpackInstallWizard::on_download_one() {
 void ModpackInstallWizard::on_download_start_all() {
   for (const QString &mid : ordered_download_ids()) {
     const QString status = download_status_.value(mid);
-    if (status == QStringLiteral("pending") || status == QStringLiteral("failed")) {
-      download_queue_.push_back(mid);
+    if (status != QStringLiteral("pending") && status != QStringLiteral("failed")) {
+      continue;
     }
+    const ModEntry *mod = find_mod(pack_, mid.toStdString());
+    if (mod == nullptr)
+      continue;
+    // A bundled mod is local I/O with nothing to wait for: do it now rather
+    // than leaving it pending behind a queue it never enters.
+    if (route_for(*mod).path == Collection::DownloadPath::Embedded) {
+      extract_bundled_mod(mid);
+      continue;
+    }
+    download_queue_.push_back(mid);
   }
   pump_download_queue();
 }
@@ -1644,6 +1680,50 @@ void ModpackInstallWizard::on_download_skip_optional() {
   if (button == nullptr)
     return;
   download_status_[button->property("mod_id").toString()] = QStringLiteral("skipped");
+  refresh_downloads_ui();
+}
+
+void ModpackInstallWizard::on_download_extract() {
+  const auto *button = qobject_cast<const QPushButton *>(sender());
+  if (button == nullptr)
+    return;
+  extract_bundled_mod(button->property("mod_id").toString());
+}
+
+void ModpackInstallWizard::extract_bundled_mod(const QString &mid) {
+  const ModEntry *mod = find_mod(pack_, mid.toStdString());
+  if (mod == nullptr)
+    return;
+  QString base = mods_dir();
+  if (base.isEmpty()) {
+    base = instance_root();
+    if (!base.isEmpty())
+      base += QStringLiteral("/mods");
+  }
+  if (base.isEmpty()) {
+    download_error_[mid]  = tr("no mods folder chosen - set one on the Paths step");
+    download_status_[mid] = QStringLiteral("failed");
+    refresh_downloads_ui();
+    return;
+  }
+  // The pack's own mod id is the folder name: the payload is the mod folder,
+  // exactly as it was at export time.
+  const std::filesystem::path dest =
+      std::filesystem::path(base.toStdString()) / mod->id;
+  std::string error;
+  download_status_[mid] = QStringLiteral("downloading");
+  refresh_downloads_ui();
+  if (engine::gmmpack::extract_embedded_mod(pack_, mod->id, dest, error)) {
+    download_status_[mid] = QStringLiteral("downloaded");
+    download_error_.remove(mid);
+    engine::Logger::instance().debug("[Modpack] extracted bundled mod " + mod->id +
+                                     " to " + dest.string());
+  } else {
+    download_status_[mid] = QStringLiteral("failed");
+    download_error_[mid]  = QString::fromStdString(error);
+    engine::Logger::instance().warn("[Modpack] extracting " + mod->id +
+                                    " failed: " + error);
+  }
   refresh_downloads_ui();
 }
 

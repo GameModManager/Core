@@ -1,0 +1,82 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://gamemodmanager.org/schemas/gmmpack/1.0.0/executable.schema.json",
+  "title": "GMM Modpack Executable Entry (executables/<id>.json)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "sourceModId", "relativePath", "role"],
+  "properties": {
+    "id": { "type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$" },
+    "sourceModId": {
+      "type": "string",
+      "description": "Must resolve to an existing mods/<id>.json id -- this is a referential-integrity check the schema itself cannot express, run it as a separate cross-file validation pass after schema validation passes."
+    },
+    "relativePath": { "type": "string", "description": "Path to the exe, relative to the installed mod's root." },
+    "arguments": { "type": "array", "items": { "type": "string" }, "default": [] },
+    "envVars": {
+      "type": "object",
+      "additionalProperties": { "type": "string" },
+      "description": "Cross-platform baseline, applied on every OS. platform.<os>.envVars ADDS to this set, never replaces it."
+    },
+    "workingDir": { "type": "string" },
+    "role": {
+      "enum": ["setup", "launcher"],
+      "description": "setup = one-shot generator run during install/update (Nemesis, FNIS, Synthesis patchers, etc). launcher = designates the exe GMM's Play button should launch; never auto-run during install."
+    },
+    "autoRun": {
+      "type": "boolean",
+      "default": false,
+      "description": "Only meaningful for role=setup. false registers the exe in GMM's normal exe list for manual invocation -- required default for anything genuinely interactive (e.g. BodySlide without a baked batch preset), since running it non-interactively would silently skip real user choices."
+    },
+    "rerunOnModsetChange": {
+      "type": "boolean",
+      "default": false,
+      "description": "Only meaningful when autoRun=true and role=setup. Re-fires this tool on any incremental update that changes mods it depends on. Skipping this is a correctness bug, not just a convenience gap -- stale generated output otherwise persists silently."
+    },
+    "requiresVirtualFsVisible": {
+      "type": "boolean",
+      "default": false,
+      "description": "True if the tool needs the full merged/deployed mod view before it can run correctly."
+    },
+    "output": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "capture"],
+      "properties": {
+        "path": { "type": "string", "description": "Where the tool writes, relative to its working directory." },
+        "argName": {
+          "type": "string",
+          "description": "If the tool accepts an output-directory flag, GMM injects the instance's actual resolved absolute path here instead of trusting the tool's own default. This is the mechanism behind configurable output location -- it is resolved per-instance at run time, never baked into the pack."
+        },
+        "capture": {
+          "enum": ["syntheticMod", "inPlace"],
+          "description": "syntheticMod turns the output into a proper tracked mod (origin: generated in GMM's own state, fully replaced -- not merged -- on every run). inPlace leaves output wherever it lands, untracked."
+        },
+        "syntheticModId": { "type": "string" }
+      },
+      "if": { "properties": { "capture": { "const": "syntheticMod" } } },
+      "then": { "required": ["syntheticModId"] }
+    },
+    "platform": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "linux": { "$ref": "#/$defs/execPlatformOverride" },
+        "macos": { "$ref": "#/$defs/execPlatformOverride" },
+        "windows": { "$ref": "#/$defs/execPlatformOverride" }
+      }
+    }
+  },
+  "$defs": {
+    "execPlatformOverride": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "envVars": { "type": "object", "additionalProperties": { "type": "string" } },
+        "launchOptions": { "type": "string" },
+        "protonVersionPin": { "type": "string" },
+        "steamOverlay": { "type": "boolean", "description": "Maps onto LaunchParams.inject_steam_overlay, same as the manifest-level field." }
+      }
+    }
+  }
+}

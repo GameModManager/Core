@@ -1,0 +1,174 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://gamemodmanager.org/schemas/gmmpack/1.0.0/mod.schema.json",
+  "title": "GMM Modpack Mod Entry (mods/<id>.json)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "name", "category", "source"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+      "description": "Filesystem-safe slug, matches this file's basename. Assigned once at pack creation and never changed even if `name` is later edited -- everything else (rules, tree.json, patches, ini attribution, update diffing) keys off this."
+    },
+    "name": { "type": "string", "minLength": 1 },
+    "phase": {
+      "type": "integer",
+      "minimum": 0,
+      "default": 0,
+      "description": "Coarse install-SEQUENCING bucket only. NOT display order (see tree.json) and NOT a substitute for `rules`."
+    },
+    "category": { "enum": ["required", "optional", "recommended"] },
+    "source": { "$ref": "#/$defs/source" },
+    "installerChoices": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "selections"],
+      "properties": {
+        "type": { "type": "string", "description": "Installer engine identifier, e.g. \"fomod\"." },
+        "selections": {
+          "type": "object",
+          "description": "Maps installer step/group id to the array of selected option ids, so install can run headless with no interactive prompts.",
+          "additionalProperties": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "source": {
+      "oneOf": [
+        { "$ref": "#/$defs/sourceNexus" },
+        { "$ref": "#/$defs/sourceLoversLab" },
+        { "$ref": "#/$defs/sourceModPub" },
+        { "$ref": "#/$defs/sourceSteamWorkshop" },
+        { "$ref": "#/$defs/sourceDirect" },
+        { "$ref": "#/$defs/sourceEmbedded" }
+      ]
+    },
+    "updatePolicy": {
+      "enum": ["exact", "latest"],
+      "default": "exact",
+      "description": "exact pins to a specific fileId/version/hash captured at authoring time -- those fields are REQUIRED when this is exact. latest deliberately omits them: the resolver fetches whatever the source currently reports as newest at install/update time, independent of the pack's own `revision`, and there is no pack-declared identity to require or verify against. Not every provider can honor `exact` for every mod (a mod author may not keep old files available at all), so `exact` is a request the resolver attempts, not a structural guarantee this schema can enforce on its own."
+    },
+    "sourceNexus": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["provider", "resolution", "gameDomain", "modId"],
+      "properties": {
+        "provider": { "const": "nexus" },
+        "resolution": {
+          "enum": ["api", "browser"],
+          "description": "api = Premium download-link generation available. browser = free-tier manual click-through, matched back to the archive by fileName/size after the fact -- both are equally capable of `exact` or `latest`; the split here is about how the file gets fetched, not which version."
+        },
+        "gameDomain": { "type": "string" },
+        "modId": { "type": "integer" },
+        "fileId": { "type": "integer", "description": "Required when updatePolicy=exact. Omit entirely for latest -- there is no fixed fileId to pin." },
+        "version": { "type": "string", "description": "Required when updatePolicy=exact." },
+        "fileName": { "type": "string" },
+        "fileSize": { "type": "integer", "minimum": 0, "description": "Required when updatePolicy=exact." },
+        "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$", "description": "Required when updatePolicy=exact. Compared against the actually-resolved file at install/update time -- see the parent spec doc for mismatch handling." },
+        "updatePolicy": { "$ref": "#/$defs/updatePolicy" }
+      },
+      "if": { "properties": { "updatePolicy": { "const": "exact" } } },
+      "then": { "required": ["fileId", "version", "fileSize", "sha256"] }
+    },
+    "sourceLoversLab": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["provider", "resolution", "modId", "sectionSlug"],
+      "properties": {
+        "provider": { "const": "loverslab" },
+        "resolution": { "const": "browser", "description": "No public API exists for this provider -- always browser-redirect, for both exact and latest." },
+        "modId": { "type": ["integer", "string"] },
+        "sectionSlug": { "type": "string" },
+        "version": { "type": "string", "description": "Required when updatePolicy=exact. Best-effort even then -- LL mod authors don't reliably keep old file versions attached, unlike Nexus." },
+        "fileName": { "type": "string" },
+        "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$", "description": "Required when updatePolicy=exact." },
+        "updatePolicy": { "$ref": "#/$defs/updatePolicy" }
+      },
+      "if": { "properties": { "updatePolicy": { "const": "exact" } } },
+      "then": { "required": ["version", "sha256"] }
+    },
+    "sourceModPub": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["provider", "resolution", "modId"],
+      "properties": {
+        "provider": { "const": "modpub" },
+        "resolution": {
+          "enum": ["api", "browser"],
+          "description": "Capability unverified as of this schema version -- do not assume `api` is available; treat as `browser` unless GMM's provider-capability table says otherwise."
+        },
+        "modId": { "type": ["integer", "string"] },
+        "version": { "type": "string", "description": "Required when updatePolicy=exact." },
+        "fileName": { "type": "string" },
+        "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$", "description": "Required when updatePolicy=exact." },
+        "updatePolicy": { "$ref": "#/$defs/updatePolicy" }
+      },
+      "if": { "properties": { "updatePolicy": { "const": "exact" } } },
+      "then": { "required": ["version", "sha256"] }
+    },
+    "sourceSteamWorkshop": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["provider", "resolution", "appId", "workshopItemId"],
+      "properties": {
+        "provider": { "const": "steam_workshop" },
+        "resolution": { "const": "client-subscription", "description": "Resolved via Steamworks subscribe / steamcmd, NOT an HTTP fetch." },
+        "appId": { "type": "integer" },
+        "workshopItemId": { "type": "integer" },
+        "version": { "type": ["string", "null"], "description": "Always unknown ahead of time -- Steam has no discrete file-version identity to pin, and no per-file hash exposed the way Nexus/LoversLab/ModPub downloads have. This is a real platform limit, not a gap in this schema: you either get whatever is currently live, or nothing." },
+        "updatePolicy": {
+          "const": "latest",
+          "description": "Always latest -- exact pinning is not offered as an option here because the platform cannot honor it. Do not present this as a curator choice for Steam Workshop mods."
+        }
+      }
+    },
+    "sourceDirect": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["provider", "resolution", "url"],
+      "properties": {
+        "provider": { "const": "direct" },
+        "resolution": { "enum": ["api", "browser"] },
+        "url": { "type": "string", "format": "uri" },
+        "version": { "type": "string", "description": "Required when updatePolicy=exact." },
+        "fileName": { "type": "string" },
+        "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$", "description": "Required when updatePolicy=exact." },
+        "updatePolicy": { "$ref": "#/$defs/updatePolicy" }
+      },
+      "if": { "properties": { "updatePolicy": { "const": "exact" } } },
+      "then": { "required": ["version", "sha256"] }
+    },
+    "sourceEmbedded": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["provider", "resolution", "root", "fileCount", "files"],
+      "description": "A mod whose own files ship inside the archive under files/<root>/. The one provider with no external origin: a manual or unrecognised-source mod has no download identity, so exporting it means carrying the bytes. Every payload file is listed with its size and sha256, and install verifies both before writing anything.",
+      "properties": {
+        "provider": { "const": "embedded" },
+        "resolution": { "const": "archive", "description": "Resolved from the archive itself - there is nothing to fetch." },
+        "root": { "type": "string", "minLength": 1, "description": "Directory inside files/ that holds this mod's payload." },
+        "fileCount": { "type": "integer", "minimum": 1, "description": "Number of entries in files[]; a mismatch means the listing was edited." },
+        "files": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["path", "size", "sha256"],
+            "properties": {
+              "path": { "type": "string", "minLength": 1, "description": "Path relative to root. Never absolute, never containing '..'." },
+              "size": { "type": "integer", "minimum": 0 },
+              "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+            }
+          }
+        },
+        "updatePolicy": {
+          "const": "latest",
+          "description": "Always latest, same reasoning as Steam Workshop: the content is whatever THIS revision of the pack carries, so there is no separate version identity to pin. The per-file sha256 list above is the integrity pin, verified at install time."
+        }
+      }
+    }
+  }
+}

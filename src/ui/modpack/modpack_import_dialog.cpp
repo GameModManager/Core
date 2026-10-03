@@ -295,24 +295,8 @@ void ModpackImportDialog::on_url_edited(const QString &text) {
 }
 
 fs::path ModpackImportDialog::resolve_schema_dir() {
-  const fs::path app_dir = QCoreApplication::applicationDirPath().toStdString();
-  // Installed layout first, then dev runs (walk up to Workspace/input/).
-  std::vector<fs::path> candidates = {
-      app_dir / "schemas",
-      app_dir / ".." / "share" / "gamemodmanager" / "schemas",
-  };
-  std::error_code ec;
-  for (fs::path dir = app_dir; !dir.empty(); dir = dir.parent_path()) {
-    candidates.push_back(dir / "input");
-    if (dir == dir.root_path())
-      break;
-  }
-  for (const auto &dir : candidates) {
-    ec.clear();
-    if (fs::exists(dir / "manifest.schema.json", ec))
-      return dir;
-  }
-  return {};
+  return engine::gmmpack::find_schema_dir(
+      QCoreApplication::applicationDirPath().toStdString());
 }
 
 void ModpackImportDialog::on_import() {
