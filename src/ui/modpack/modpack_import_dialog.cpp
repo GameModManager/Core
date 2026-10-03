@@ -164,6 +164,10 @@ namespace {
       return "requires";
     case Coll::RuleType::Conflicts:
       return "conflicts";
+    case Coll::RuleType::Recommends:
+      return "recommends";
+    case Coll::RuleType::Provides:
+      return "provides";
     }
     return "requires";
   }
