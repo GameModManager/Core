@@ -109,6 +109,10 @@ struct ModSourceNexus {
   std::optional<std::string> file_name;
   std::optional<int64_t> file_size;
   std::optional<std::string> sha256;
+  // Nexus publishes an md5 of the archive and never a sha256, so it travels in
+  // its own field. sha256 keeps its meaning: a 64-hex digest, required by an
+  // exact pin. md5 is informational and never satisfies that requirement.
+  std::optional<std::string> md5;
   std::string update_policy = "exact";
 };
 

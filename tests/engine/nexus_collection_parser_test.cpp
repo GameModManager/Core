@@ -138,8 +138,12 @@ TEST_CASE("parse single nexus mod", "[collection][nexus]") {
   REQUIRE(src.file_id == 10001);
   REQUIRE(src.file_size == 48213311);
   REQUIRE(src.file_name == "SkyUI_1_2_masterfile.7z");
-  REQUIRE(src.sha256 == "abc123");
-  REQUIRE(src.update_policy == UpdatePolicy::Exact);
+  // Nexus publishes an md5, and it stays in the md5 field. Nothing here may
+  // claim a sha256 the source never supplied: an exact pin is defined by that
+  // 64-hex digest, and a 32-hex md5 in a sha256 field satisfies it falsely.
+  REQUIRE(src.md5 == "abc123");
+  REQUIRE(src.sha256.empty());
+  REQUIRE(src.update_policy == UpdatePolicy::Prefer);
   REQUIRE(src.resolution == SourceResolution::Api);
 }
 
@@ -228,7 +232,46 @@ TEST_CASE("updatePolicy=latest on mod", "[collection][nexus]") {
           UpdatePolicy::Latest);
 }
 
-TEST_CASE("updatePolicy defaults to exact", "[collection][nexus]") {
+TEST_CASE("updatePolicy=prefer stays prefer, never collapses to exact",
+          "[collection][nexus]") {
+  const auto m = parse(R"({
+        "info": {},
+        "mods": [{
+            "name": "Pinned Mod",
+            "source": { "type": "nexus", "fileId": 10001, "updatePolicy": "prefer" }
+        }]
+    })");
+
+  const auto &src = std::get<SourceNexus>(m.mods[0].source);
+  REQUIRE(src.update_policy == UpdatePolicy::Prefer);
+  REQUIRE(src.update_policy != UpdatePolicy::Exact);
+  REQUIRE(src.file_id == 10001);  // the pin survives
+}
+
+TEST_CASE("updatePolicy=exact degrades to prefer with no sha256 to back it",
+          "[collection][nexus]") {
+  // Nexus supplies an md5 and never a sha256, so an exact pin it declares
+  // cannot be verified. The pin is kept and the fallback is allowed rather
+  // than emitting a pin backed by a digest we would have to invent.
+  const auto m = parse(R"({
+        "info": {},
+        "mods": [{
+            "name": "Pinned Mod",
+            "source": {
+                "type": "nexus", "fileId": 10001, "fileSize": 4096,
+                "md5": "0123456789abcdef0123456789abcdef",
+                "updatePolicy": "exact"
+            }
+        }]
+    })");
+
+  const auto &src = std::get<SourceNexus>(m.mods[0].source);
+  REQUIRE(src.update_policy == UpdatePolicy::Prefer);
+  REQUIRE(src.md5 == "0123456789abcdef0123456789abcdef");
+  REQUIRE(src.sha256.empty());
+}
+
+TEST_CASE("absent updatePolicy is not an exact pin", "[collection][nexus]") {
   const auto m = parse(R"({
         "info": {},
         "mods": [{
@@ -237,7 +280,19 @@ TEST_CASE("updatePolicy defaults to exact", "[collection][nexus]") {
         }]
     })");
 
-  REQUIRE(std::get<SourceNexus>(m.mods[0].source).update_policy == UpdatePolicy::Exact);
+  REQUIRE(std::get<SourceNexus>(m.mods[0].source).update_policy ==
+          UpdatePolicy::Prefer);
+}
+
+TEST_CASE("update policy round-trips through its own string form",
+          "[collection][nexus]") {
+  REQUIRE(std::string(to_string(UpdatePolicy::Exact)) == "exact");
+  REQUIRE(std::string(to_string(UpdatePolicy::Prefer)) == "prefer");
+  REQUIRE(std::string(to_string(UpdatePolicy::Latest)) == "latest");
+  for (auto policy :
+       {UpdatePolicy::Exact, UpdatePolicy::Prefer, UpdatePolicy::Latest}) {
+    REQUIRE(parse_update_policy(to_string(policy)) == policy);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -606,7 +661,9 @@ TEST_CASE("parse realistic Nexus collection", "[collection][nexus]") {
   const auto &skyui = std::get<SourceNexus>(m.mods[1].source);
   REQUIRE(skyui.mod_id == 3863);
   REQUIRE(skyui.file_id == 10001);
-  REQUIRE(skyui.update_policy == UpdatePolicy::Exact);
+  REQUIRE(skyui.update_policy == UpdatePolicy::Prefer);
+  REQUIRE(skyui.md5 == "cafebabe");
+  REQUIRE(skyui.sha256.empty());
 
   // Mod 2: ENB Preset (browse/manual)
   REQUIRE(m.mods[2].id == "enb-preset");

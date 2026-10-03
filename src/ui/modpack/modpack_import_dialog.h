@@ -5,7 +5,10 @@
 
 #include <filesystem>
 #include <optional>
+#include <string>
+#include <vector>
 
+#include "engine/collection/nexus/adapter.h"
 #include "engine/gmmpack/types.h"
 #include "ui/widgets/line_edit_clear.h"
 
@@ -37,6 +40,13 @@ private:
   void on_pick_file();
   void on_url_edited(const QString &text);
   void on_import();
+
+  // Say what the collection did not give us: a revision Nexus has since
+  // retracted or discarded, and every mod that was skipped with the reason it
+  // was skipped. Silent when there is nothing to say.
+  void report_collection_gaps(
+      const std::string &revision_status,
+      const std::vector<engine::Collection::Nexus::SkipDiagnostic> &skipped);
 
   void dragEnterEvent(QDragEnterEvent *event) override;
   void dropEvent(QDropEvent *event) override;

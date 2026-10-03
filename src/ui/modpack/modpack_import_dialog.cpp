@@ -14,6 +14,7 @@
 #include <QMessageBox>
 #include <QMimeData>
 #include <QPushButton>
+#include <QStringList>
 #include <QUrl>
 #include <QVBoxLayout>
 
@@ -55,7 +56,8 @@ namespace {
   }
 
   std::string update_policy_name(Coll::UpdatePolicy policy) {
-    return policy == Coll::UpdatePolicy::Latest ? "latest" : "exact";
+    // All three states, spelled the way the pack schema spells them.
+    return std::string(Coll::to_string(policy));
   }
 
   Gmm::ModCategory convert_category(Coll::ModCategory category) {
@@ -110,6 +112,7 @@ namespace {
             if (src.file_size > 0)
               out.file_size = src.file_size;
             out.sha256        = non_empty(src.sha256);
+            out.md5           = non_empty(src.md5);
             out.update_policy = update_policy_name(src.update_policy);
             return out;
           } else if constexpr (std::is_same_v<T, Coll::SourceDirect>) {
@@ -359,6 +362,7 @@ void ModpackImportDialog::on_import() {
     }
     pack_ = manifest_to_gmmpack(
         std::get<engine::Collection::FetchResult>(outcome).manifest);
+    report_collection_gaps(adapter.last_revision_status(), adapter.last_skipped());
     accept();
     return;
   }
@@ -390,6 +394,31 @@ void ModpackImportDialog::on_import() {
   }
   pack_ = result.pack;
   accept();
+}
+
+void ModpackImportDialog::report_collection_gaps(
+    const std::string &revision_status,
+    const std::vector<engine::Collection::Nexus::SkipDiagnostic> &skipped) {
+  QStringList lines;
+  // A revision Nexus still calls published needs no comment; anything else -
+  // retracted, discarded, draft - changes what this list means, so say so.
+  if (!revision_status.empty() && revision_status != "published") {
+    lines << tr("This revision is marked \"%1\" by Nexus. It is no longer an "
+                "active list of what the author currently recommends.")
+                 .arg(QString::fromStdString(revision_status));
+  }
+  if (!skipped.empty()) {
+    lines << tr("%n mod(s) from this collection could not be imported:", "",
+                static_cast<int>(skipped.size()));
+    for (const auto &s : skipped) {
+      lines << QStringLiteral("  - %1: %2")
+                   .arg(QString::fromStdString(s.mod_label),
+                        QString::fromStdString(s.reason));
+    }
+  }
+  if (lines.isEmpty())
+    return;
+  QMessageBox::information(this, tr("Import Modpack"), lines.join('\n'));
 }
 
 void ModpackImportDialog::dragEnterEvent(QDragEnterEvent *event) {
