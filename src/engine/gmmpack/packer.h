@@ -7,6 +7,7 @@
 // Mirror of unpacker.h: the serialize_* helpers here emit exactly the
 // camelCase field names the parse_* functions in unpacker.cpp read.
 
+#include <atomic>
 #include <filesystem>
 #include <optional>
 #include <string>
@@ -21,6 +22,14 @@
 #include "engine/mod/meta/mod_meta.h"
 
 namespace engine::gmmpack {
+
+// Cooperative cancellation for the long pack builders. Building a pack walks
+// every mod folder, hashes every bundled byte and diffs every file two mods
+// both ship, so it is unbounded work and cannot run on a GUI thread. A caller
+// that runs a build on a worker thread hands in a flag it can raise, and the
+// build abandons its work at the next file boundary. Absent (the default) =
+// never cancelled. std::atomic, not Qt, so the engine stays Qt-free.
+using PackCancel = std::atomic<bool>;
 
 struct PackOptions {
   std::string author;
@@ -70,9 +79,11 @@ std::optional<ModSource> resolve_mod_source(const ModMeta &meta,
 
 // Bundle a mod folder's own files: an embedded source listing every file
 // under mods_dir/folder with its size and sha256. Nullopt when the folder is
-// missing or holds no regular files (nothing to bundle).
+// missing, holds no regular files (nothing to bundle), or `cancel` was raised
+// before the last file was hashed.
 std::optional<ModSource> resolve_embedded_source(const std::filesystem::path &mods_dir,
-                                                 const std::string &folder);
+                                                 const std::string &folder,
+                                                 const PackCancel *cancel = nullptr);
 
 // Can this folder be bundled at all? Cheap directory walk, no hashing - the
 // UI asks this once per row.
@@ -84,7 +95,8 @@ bool can_embed_folder(const std::filesystem::path &mods_dir, const std::string &
 std::optional<ModSource>
 resolve_for_export(const ModMeta &meta, const std::filesystem::path &mods_dir,
                    const std::string &folder, const std::string &game_id,
-                   uint32_t steam_appid, const PackOptions &options);
+                   uint32_t steam_appid, const PackOptions &options,
+                   const PackCancel *cancel = nullptr);
 
 // The download identity an "exact" pin needs, taken from the mod's own
 // recorded install metadata. Empty fields mean "not recorded", which is what
@@ -112,14 +124,17 @@ std::string mod_slug(const std::string &folder_name);
 // whose folder name appears as another entry's parent_separator; children
 // sort by list_position. ModNode enabled = !hidden && !disabled. Mods with
 // no representable source are omitted (they have no mods/<id>.json to point
-// at).
+// at). Resolves every mod's source, so an embedded mod's files are hashed
+// here too.
 TreeRoot build_tree(const InstanceSnapshot &snapshot,
-                    const std::filesystem::path &mods_dir);
+                    const std::filesystem::path &mods_dir,
+                    const PackCancel *cancel = nullptr);
 
 // Same, for an export that bundles embedded mod folders: a manual/unknown
 // mod named in options.embed_folders appears in the tree too.
 TreeRoot build_tree(const InstanceSnapshot &snapshot,
-                    const std::filesystem::path &mods_dir, const PackOptions &options);
+                    const std::filesystem::path &mods_dir, const PackOptions &options,
+                    const PackCancel *cancel = nullptr);
 
 // Manifest with stable pack identity: reuses snapshot.modpack_id when set
 // (fresh UUID v4 otherwise), revision = snapshot.modpack_revision + 1,
@@ -141,7 +156,8 @@ Manifest build_manifest(const InstanceSnapshot &snapshot, const PackOptions &opt
 // download identity cannot be resolved.
 std::vector<ModEntry> build_mod_entries(const InstanceSnapshot &snapshot,
                                         const std::filesystem::path &mods_dir,
-                                        const PackOptions &options);
+                                        const PackOptions &options,
+                                        const PackCancel *cancel = nullptr);
 
 // Snapshot executables -> pack executables. Entries whose mod does not
 // resolve to an exported mod (game-root exes) are skipped: sourceModId must
@@ -149,13 +165,15 @@ std::vector<ModEntry> build_mod_entries(const InstanceSnapshot &snapshot,
 // (Nemesis/FNIS/BodySlide/xEdit/... - see is_setup_executable) and "launcher"
 // otherwise, with autoRun/rerunOnModsetChange set on the former.
 std::vector<ExecutableEntry> build_executables(const InstanceSnapshot &snapshot,
-                                               const std::filesystem::path &mods_dir);
+                                               const std::filesystem::path &mods_dir,
+                                               const PackCancel *cancel = nullptr);
 
-// Same, for an export that bundles embedded mod folders: an executable owned
+// Same, for an export that bundles embedded manual mods: an executable owned
 // by a bundled manual mod is kept (its mod id is in the pack).
 std::vector<ExecutableEntry> build_executables(const InstanceSnapshot &snapshot,
                                                const std::filesystem::path &mods_dir,
-                                               const PackOptions &options);
+                                               const PackOptions &options,
+                                               const PackCancel *cancel = nullptr);
 
 // True for an executable GMM recognizes as a one-shot setup generator
 // (reads the deployed mod set and writes output), false for a launcher.
@@ -163,19 +181,22 @@ bool is_setup_executable(const std::string &relative_path);
 
 // One ini/<targetFile>.json entry per INI file shipped by the exported mods,
 // one tweak per (mod, file) carrying that file's settings. Empty when no
-// exported mod ships an INI file.
+// exported mod ships an INI file, or when `cancel` was raised first.
 std::vector<IniEntry> build_ini_entries(const std::filesystem::path &mods_dir,
-                                        const std::vector<ModEntry> &mods);
+                                        const std::vector<ModEntry> &mods,
+                                        const PackCancel *cancel = nullptr);
 
 // One bsdiff patch per file that 2+ exported mods ship at the same relative
 // path: the higher-priority mod's copy is the base, each lower-priority mod's
 // copy becomes a patch against it (this is the pack format's consent-gated
 // alternative to silent file-priority conflict resolution). Files above
 // ~8 MB are skipped - a base64 diff of a game-sized asset is not something a
-// pack should carry. Empty when no exported mods collide.
+// pack should carry. Empty when no exported mods collide, or when `cancel` was
+// raised first.
 std::vector<PatchEntry> build_patches(const InstanceSnapshot &snapshot,
                                       const std::filesystem::path &mods_dir,
-                                      const std::vector<ModEntry> &mods);
+                                      const std::vector<ModEntry> &mods,
+                                      const PackCancel *cancel = nullptr);
 
 // JSON serializers (reverse of unpacker.cpp parse_*).
 nlohmann::json serialize_manifest(const Manifest &m);
@@ -188,10 +209,15 @@ nlohmann::json serialize_patch_entry(const PatchEntry &p);
 // patches/<mod-id>-<N>.json for chain step N.
 std::string patch_archive_path(const PatchEntry &p);
 
-// Assemble the full pack in memory.
+// Assemble the full pack in memory. Reads every exported mod's folder several
+// times over (once per stage that resolves sources, once for ini/, once for
+// patches/, once to load the bundled payload), so it is as slow as the mod
+// folder it is given - never call it on a GUI thread. `cancel` abandons it at
+// the next file boundary; a cancelled result is incomplete and must be
+// discarded.
 Gmmpack build_gmmpack(const InstanceSnapshot &snapshot,
-                      const std::filesystem::path &mods_dir,
-                      const PackOptions &options);
+                      const std::filesystem::path &mods_dir, const PackOptions &options,
+                      const PackCancel *cancel = nullptr);
 
 // Serialize + write a .gmmpack (zip) archive: manifest.json, tree.json,
 // mods/*.json, executables/*.json, files/** for embedded mods,
@@ -204,6 +230,10 @@ Gmmpack build_gmmpack(const InstanceSnapshot &snapshot,
 // check_referential_integrity always. A failure sets result.error and writes
 // no file, so the exporter cannot report success on a pack its own importer
 // would refuse.
+//
+// Long-running for the same reason build_gmmpack is: call it on a worker
+// thread. Deliberately NOT cancellable - abandoning it mid-write would leave a
+// truncated archive at output_path, which is worse than letting it finish.
 PackResult create_gmmpack(const InstanceSnapshot &snapshot,
                           const std::filesystem::path &mods_dir,
                           const PackOptions &options,

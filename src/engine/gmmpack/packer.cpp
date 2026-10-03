@@ -209,6 +209,13 @@ namespace {
     return true;
   }
 
+  // True once the caller has raised the cancel flag. Every loop that walks a
+  // mod folder tests this per file, so an abandoned build stops at the next
+  // boundary instead of running to completion.
+  bool pack_cancelled(const PackCancel *cancel) {
+    return cancel != nullptr && cancel->load();
+  }
+
   // GMM's own bookkeeping at a mod's root (meta.ini, metadata.xml) is manager
   // state, never mod content: it must not become a patch target or an INI
   // tweak. The same file name deeper in the tree (data/foo/meta.ini) is real
@@ -408,7 +415,8 @@ bool can_embed_folder(const std::filesystem::path &mods_dir,
 }
 
 std::optional<ModSource> resolve_embedded_source(const std::filesystem::path &mods_dir,
-                                                 const std::string &folder) {
+                                                 const std::string &folder,
+                                                 const PackCancel *cancel) {
   if (!can_embed_folder(mods_dir, folder))
     return std::nullopt;
   const std::filesystem::path root = mods_dir / folder;
@@ -420,6 +428,8 @@ std::optional<ModSource> resolve_embedded_source(const std::filesystem::path &mo
   s.root = mod_slug(folder);
   std::string content;
   for (const auto &rel : files) {
+    if (pack_cancelled(cancel))
+      return std::nullopt;
     if (!read_file(root / rel, content))
       continue;
     ModSourceEmbedded::File f;
@@ -436,9 +446,10 @@ std::optional<ModSource> resolve_embedded_source(const std::filesystem::path &mo
 std::optional<ModSource>
 resolve_for_export(const ModMeta &meta, const std::filesystem::path &mods_dir,
                    const std::string &folder, const std::string &game_id,
-                   uint32_t steam_appid, const PackOptions &options) {
+                   uint32_t steam_appid, const PackOptions &options,
+                   const PackCancel *cancel) {
   if (options.embed_folders.count(folder)) {
-    if (auto embedded = resolve_embedded_source(mods_dir, folder))
+    if (auto embedded = resolve_embedded_source(mods_dir, folder, cancel))
       return embedded;
   }
   return resolve_mod_source(meta, game_id, steam_appid);
@@ -502,13 +513,14 @@ DownloadIdentity resolve_download_identity(const ModMeta &meta,
 // ---------------------------------------------------------------------------
 
 TreeRoot build_tree(const InstanceSnapshot &snapshot,
-                    const std::filesystem::path &mods_dir) {
+                    const std::filesystem::path &mods_dir, const PackCancel *cancel) {
   PackOptions options;
-  return build_tree(snapshot, mods_dir, options);
+  return build_tree(snapshot, mods_dir, options, cancel);
 }
 
 TreeRoot build_tree(const InstanceSnapshot &snapshot,
-                    const std::filesystem::path &mods_dir, const PackOptions &options) {
+                    const std::filesystem::path &mods_dir, const PackOptions &options,
+                    const PackCancel *cancel) {
   // Separators: folder names referenced as someone's parent_separator.
   std::unordered_set<std::string> separators;
   for (const auto &[folder, entry] : snapshot.mod_entries) {
@@ -527,9 +539,11 @@ TreeRoot build_tree(const InstanceSnapshot &snapshot,
     for (const auto &[folder, _] : snapshot.mod_entries) {
       if (separators.count(folder))
         continue;
+      if (pack_cancelled(cancel))
+        break;
       ModMeta meta = ModMeta::load(mods_dir, folder);
       if (resolve_for_export(meta, mods_dir, folder, snapshot.game_id,
-                             snapshot.steam_appid, options))
+                             snapshot.steam_appid, options, cancel))
         exported.insert(folder);
     }
   }
@@ -712,7 +726,8 @@ Manifest build_manifest(const InstanceSnapshot &snapshot, const PackOptions &opt
 
 std::vector<ModEntry> build_mod_entries(const InstanceSnapshot &snapshot,
                                         const std::filesystem::path &mods_dir,
-                                        const PackOptions &options) {
+                                        const PackOptions &options,
+                                        const PackCancel *cancel) {
   auto slugs = slug_all(snapshot.mod_entries);
 
   std::unordered_set<std::string> separators;
@@ -757,9 +772,11 @@ std::vector<ModEntry> build_mod_entries(const InstanceSnapshot &snapshot,
 
   std::vector<ModEntry> out;
   for (const auto &row : rows) {
+    if (pack_cancelled(cancel))
+      break;
     ModMeta meta = ModMeta::load(mods_dir, row.folder);
     auto source  = resolve_for_export(meta, mods_dir, row.folder, snapshot.game_id,
-                                      snapshot.steam_appid, options);
+                                      snapshot.steam_appid, options, cancel);
     if (!source)
       continue;  // nothing to point at: no source, and not bundled
     const auto policy = options.update_policies.find(row.folder);
@@ -823,14 +840,16 @@ bool is_setup_executable(const std::string &relative_path) {
 }
 
 std::vector<ExecutableEntry> build_executables(const InstanceSnapshot &snapshot,
-                                               const std::filesystem::path &mods_dir) {
+                                               const std::filesystem::path &mods_dir,
+                                               const PackCancel *cancel) {
   PackOptions options;
-  return build_executables(snapshot, mods_dir, options);
+  return build_executables(snapshot, mods_dir, options, cancel);
 }
 
 std::vector<ExecutableEntry> build_executables(const InstanceSnapshot &snapshot,
                                                const std::filesystem::path &mods_dir,
-                                               const PackOptions &options) {
+                                               const PackOptions &options,
+                                               const PackCancel *cancel) {
   // Exported mod ids, to validate sourceModId references.
   std::unordered_set<std::string> exported_ids;
   {
@@ -847,9 +866,11 @@ std::vector<ExecutableEntry> build_executables(const InstanceSnapshot &snapshot,
         exported_ids.insert(slugs.at(folder));
         continue;
       }
+      if (pack_cancelled(cancel))
+        break;
       ModMeta meta = ModMeta::load(mods_dir, folder);
       if (resolve_for_export(meta, mods_dir, folder, snapshot.game_id,
-                             snapshot.steam_appid, options))
+                             snapshot.steam_appid, options, cancel))
         exported_ids.insert(slugs.at(folder));
     }
   }
@@ -899,7 +920,8 @@ std::vector<ExecutableEntry> build_executables(const InstanceSnapshot &snapshot,
 // ---------------------------------------------------------------------------
 
 std::vector<IniEntry> build_ini_entries(const std::filesystem::path &mods_dir,
-                                        const std::vector<ModEntry> &mods) {
+                                        const std::vector<ModEntry> &mods,
+                                        const PackCancel *cancel) {
   if (mods_dir.empty())
     return {};
 
@@ -918,6 +940,8 @@ std::vector<IniEntry> build_ini_entries(const std::filesystem::path &mods_dir,
   for (const auto &mod : mods) {
     if (mod.id.empty())
       continue;
+    if (pack_cancelled(cancel))
+      return {};
     // Only the exported mods have a folder on disk under a known name; the
     // mod entry's name is the folder name.
     const std::filesystem::path mod_root = mods_dir / mod.name;
@@ -982,7 +1006,8 @@ static constexpr int64_t kMaxPatchFileBytes = 8 * 1024 * 1024;
 
 std::vector<PatchEntry> build_patches(const InstanceSnapshot &snapshot,
                                       const std::filesystem::path &mods_dir,
-                                      const std::vector<ModEntry> &mods) {
+                                      const std::vector<ModEntry> &mods,
+                                      const PackCancel *cancel) {
   if (mods_dir.empty() || mods.size() < 2)
     return {};
 
@@ -1013,6 +1038,9 @@ std::vector<PatchEntry> build_patches(const InstanceSnapshot &snapshot,
   for (const auto &[rel, owners] : by_path) {
     if (owners.size() < 2)
       continue;
+    // One bsdiff per colliding file below: stop before starting the next.
+    if (pack_cancelled(cancel))
+      break;
     auto sorted = owners;
     std::sort(sorted.begin(), sorted.end(), [](const Owner &a, const Owner &b) {
       return a.pos != b.pos ? a.pos < b.pos : a.mod_id < b.mod_id;
@@ -1020,6 +1048,8 @@ std::vector<PatchEntry> build_patches(const InstanceSnapshot &snapshot,
     std::string base;
     std::string base_hash;
     for (size_t i = 0; i < sorted.size(); ++i) {
+      if (pack_cancelled(cancel))
+        break;
       const std::filesystem::path file = mods_dir / sorted[i].name / rel;
       std::error_code ec;
       const auto size = std::filesystem::file_size(file, ec);
@@ -1343,15 +1373,15 @@ nlohmann::json serialize_manifest(const Manifest &m) {
 // ---------------------------------------------------------------------------
 
 Gmmpack build_gmmpack(const InstanceSnapshot &snapshot,
-                      const std::filesystem::path &mods_dir,
-                      const PackOptions &options) {
+                      const std::filesystem::path &mods_dir, const PackOptions &options,
+                      const PackCancel *cancel) {
   Gmmpack pack;
   pack.manifest    = build_manifest(snapshot, options);
-  pack.mods        = build_mod_entries(snapshot, mods_dir, options);
-  pack.executables = build_executables(snapshot, mods_dir, options);
-  pack.ini_edits   = build_ini_entries(mods_dir, pack.mods);
-  pack.patches     = build_patches(snapshot, mods_dir, pack.mods);
-  pack.tree        = build_tree(snapshot, mods_dir, options);
+  pack.mods        = build_mod_entries(snapshot, mods_dir, options, cancel);
+  pack.executables = build_executables(snapshot, mods_dir, options, cancel);
+  pack.ini_edits   = build_ini_entries(mods_dir, pack.mods, cancel);
+  pack.patches     = build_patches(snapshot, mods_dir, pack.mods, cancel);
+  pack.tree        = build_tree(snapshot, mods_dir, options, cancel);
   // Rules need both sides built: an executable needs its source mod on disk
   // before it can run, and executable ids share the mod id-space for
   // before/after/requires (see the format spec's Executables section).
@@ -1374,6 +1404,8 @@ Gmmpack build_gmmpack(const InstanceSnapshot &snapshot,
         continue;
       const std::filesystem::path root = mods_dir / mod.name;
       for (const auto &f : src->files) {
+        if (pack_cancelled(cancel))
+          return pack;
         std::string content;
         if (!read_file(root / f.path, content))
           continue;
