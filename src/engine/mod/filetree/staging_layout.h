@@ -34,6 +34,13 @@ struct StagingNormalizeResult {
   // True when a lone "<dataFolderName>" wrapper around only data + readme
   // files was merged up into the root (MO2's isDataTextArchiveTopLayer).
   bool merged_data_dir = false;
+  // True when the loop gave up: no level in the chain looked like the game's
+  // data directory, no level was a DataText top layer, and there was no
+  // single-dir wrapper left to descend through. That is MO2's
+  // getSimpleArchiveBase returning nullptr, the one branch that drops an
+  // archive into the manual layout dialog. It says the engine cannot vouch for
+  // the root, NOT that the content is wrong.
+  bool needs_review = false;
   // Name of the first peeled single-dir wrapper ("" when nothing was peeled).
   // Callers may use it as a name hint - never for a data-named wrapper.
   std::string peeled_folder_hint;
@@ -58,6 +65,26 @@ analyze_staging_layout(const std::shared_ptr<const FileTree> &tree,
                        const std::string &data_folder_name,
                        std::shared_ptr<const ModDataCheckerFeature> checker = nullptr);
 
+// Which of the manual layout dialog's three states a subtree is in. MO2 spells
+// the same three out in InstallDialog::testForProblem (installdialog.cpp:86-93)
+// and its rendering (installdialog.cpp:95-122): the subtree matches the game's
+// declaration, it does not, or the game declared nothing to match against.
+enum class LayoutVerdict {
+  Valid,
+  Invalid,
+  Unknown,
+};
+
+// The verdict for ONE subtree - the node the user has designated as the data
+// directory and nothing below it, which is the point: the answer has to describe
+// the tree that will be installed, so it must not descend through a wrapper
+// looking for a better level. checker is the game's declaration; null means the
+// game registered none, which is Unknown rather than Invalid - there is nothing
+// to judge against, so nothing is claimed.
+[[nodiscard]] LayoutVerdict
+layout_verdict(const std::filesystem::path &content_root,
+               std::shared_ptr<const ModDataCheckerFeature> checker);
+
 // Same decision, on an extracted archive's staging root: builds the tree the
 // way normalize_staging_root does and answers without touching disk. Callers
 // that need the verdict but not the peel (ExtractStage, which only asks
@@ -71,9 +98,16 @@ analyze_staging_root(const std::filesystem::path &staging_root,
 // a DirectoryFileTree, then applies the verdict (peels the recorded wrappers,
 // merges a DataText data dir up into the root). FOMOD archives are never
 // reshaped. Returns what happened to the tree on disk.
+//
+// `designated` is the subtree the user picked as the data directory in the
+// manual layout dialog, as a path relative to staging_root. It becomes the root
+// of the peel, so the levels leading to it and its own wrappers are one chain
+// and the single loop below applies all of them - the automatic path and the
+// user-driven path stay one implementation. Empty is the automatic path.
 [[nodiscard]] StagingNormalizeResult
 normalize_staging_root(const std::filesystem::path &staging_root,
                        const std::string &data_folder_name,
-                       std::shared_ptr<const ModDataCheckerFeature> checker = nullptr);
+                       std::shared_ptr<const ModDataCheckerFeature> checker = nullptr,
+                       const std::filesystem::path &designated              = {});
 
 }  // namespace engine

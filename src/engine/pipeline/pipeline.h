@@ -47,6 +47,20 @@ struct FomodDecision {
   bool ignore_missing = false;  // skip sources missing from the archive
 };
 
+// What the user chose when the archive-layout dialog asked where the game's
+// data directory is. Reached only after the silent peel and the silent repair
+// both found nothing (MO2's getSimpleArchiveBase returning nullptr, the one
+// branch that drops an archive into InstallerManual), so neither field is a
+// judgement about the content - it is the user pointing at a subtree.
+struct LayoutDecision {
+  // Subtree of the extracted content root to install as the mod's data
+  // directory, as a path relative to that root. Empty keeps the content root
+  // as-is, which is what accepting a "does not look valid" verdict means.
+  std::filesystem::path data_root;
+  // The user backed out. Nothing is installed and nothing is left behind.
+  bool cancel = false;
+};
+
 // Result of a pipeline run. Canceled is distinct from Failed: the user aborted
 // an interactive stage (FOMOD wizard, overwrite dialog), so callers must NOT
 // mark the download as failed - it keeps whatever state it had.
@@ -123,6 +137,18 @@ struct PipelineContext {
   // stored, not persisted.
   std::function<bool(const std::string &archive_name, std::string &passphrase)>
       passphrase_query_cb;
+
+  // Asks which subtree of an extracted archive maps onto the game's data
+  // directory. Called on the pipeline thread ONLY when the silent peel and the
+  // silent repair both found nothing, so an archive that installs fine on its
+  // own never reaches it. Invoked with the extracted content root (the staging
+  // dir) and the game's deploy prefix, which is the name the dialog shows in
+  // its "<prefix>" pseudo-root and in "Set as <prefix> directory". Must be
+  // thread-safe (the UI wires it to marshal the dialog onto the main thread).
+  // Unset (headless/CLI): the content installs as-is and nobody is asked.
+  std::function<LayoutDecision(const std::filesystem::path &content_root,
+                               const std::string &data_prefix)>
+      layout_query_cb;
 
   // True once FomodStage recognizes the archive as a FOMOD (a fomod/
   // ModuleConfig.xml exists), even when the wizard was skipped via "Manual".
