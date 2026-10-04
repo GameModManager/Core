@@ -4,6 +4,7 @@
 #include <QApplication>
 #include <QColor>
 #include <QDialogButtonBox>
+#include <QFont>
 #include <QMenu>
 #include <QMessageBox>
 #include <QMetaObject>
@@ -123,6 +124,37 @@ namespace {
     std::filesystem::path content_root_;
   };
 
+  // One row's share of the marking walk: the designated row goes bold and
+  // underlined, every other row is rewritten from the view's own font. Rewriting
+  // all of them is what makes a second designation revert the first and an unset
+  // revert everything, with no state to keep track of either.
+  void mark_row(QStandardItemModel *model, const QModelIndex &index, const QFont &base,
+                const std::filesystem::path &absolute) {
+    if (auto *item = model->itemFromIndex(index)) {
+      auto font = base;
+      const auto path =
+          std::filesystem::path(item->data(kPathRole).toString().toStdString());
+      if (path == absolute) {
+        font.setBold(true);
+        font.setUnderline(true);
+      }
+      item->setFont(font);
+    }
+    for (int row = 0; row < model->rowCount(index); ++row)
+      mark_row(model, model->index(row, 0, index), base, absolute);
+  }
+
+  // Marks by PATH, and reads the model rather than what is on screen, because
+  // that is what survives a collapse: QTreeView collapsing a level hides its
+  // rows but keeps them, so a designated row the user collapsed away is still
+  // found - and still marked - when they expand it again. An empty path marks
+  // nothing at all.
+  void mark_data_root(QStandardItemModel *model, const QFont &base,
+                      const std::filesystem::path &absolute) {
+    for (int row = 0; row < model->rowCount(); ++row)
+      mark_row(model, model->index(row, 0), base, absolute);
+  }
+
   // A row's path relative to the content root. The pseudo-root row IS the content
   // root, so it answers empty - that is what "no subtree designated" means, and
   // what makes right-clicking the pseudo-root an unset.
@@ -220,6 +252,13 @@ void LayoutDialog::refresh_verdict() {
   const auto designated =
       data_root_.empty() ? content_root_ : content_root_ / data_root_;
   verdict_ = engine::layout_verdict(designated, checker_);
+
+  // The marked row is the one this verdict is about, so it moves with it. An
+  // empty data root marks nothing: the pseudo-root row stands for the content
+  // root, and marking it would claim the whole archive is the data directory
+  // when no folder has been chosen.
+  mark_data_root(model_, tree_->font(),
+                 data_root_.empty() ? std::filesystem::path{} : designated);
 
   QString text;
   QColor colour;
