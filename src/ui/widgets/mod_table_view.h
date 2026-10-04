@@ -4,7 +4,9 @@
 #include <QElapsedTimer>
 #include <QHelpEvent>
 #include <QIcon>
+#include <QLCDNumber>
 #include <QList>
+#include <QPalette>
 #include <QPoint>
 #include <QRect>
 #include <QScrollBar>
@@ -22,6 +24,22 @@ class QMouseEvent;
 namespace ui {
 
 class ModList;
+
+// MO2-style digital counter, built once here so the mod-list counter and the
+// plugins-tab counter can never drift apart: same object name, digit count and
+// flat segments, and colours read from the widget's own QPalette so the
+// counter follows whatever theme is active.
+inline QLCDNumber *make_lcd_counter(QWidget *parent) {
+  auto *lcd = new QLCDNumber(parent);
+  lcd->setObjectName("mo2CounterLabel");
+  lcd->setDigitCount(4);
+  lcd->setSegmentStyle(QLCDNumber::Flat);
+  // Flat segments using QPalette text color for clear contrast on any theme.
+  QPalette pal = lcd->palette();
+  pal.setColor(QPalette::WindowText, pal.color(QPalette::Text));
+  lcd->setPalette(pal);
+  return lcd;
+}
 
 // Flag-icon wrap math, shared by FlagsDelegate::paint and ::sizeHint so the
 // two can never disagree and the logic is unit-testable without a widget.
