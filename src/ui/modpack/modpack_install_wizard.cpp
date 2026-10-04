@@ -892,6 +892,20 @@ QString ModpackInstallWizard::profile_path() const {
   return profile_path_edit_ ? profile_path_edit_->text() : QString();
 }
 
+void ModpackInstallWizard::set_paths(const QString &instance_root,
+                                     const QString &mods_dir,
+                                     const QString &downloads_dir,
+                                     const QString &profile_path) {
+  if (instance_root_edit_ != nullptr)
+    instance_root_edit_->setText(instance_root);
+  if (mods_dir_edit_ != nullptr)
+    mods_dir_edit_->setText(mods_dir);
+  if (downloads_dir_edit_ != nullptr)
+    downloads_dir_edit_->setText(downloads_dir);
+  if (profile_path_edit_ != nullptr)
+    profile_path_edit_->setText(profile_path);
+}
+
 // ---------------------------------------------------------------------------
 // Page builders
 // ---------------------------------------------------------------------------

@@ -36,6 +36,10 @@ public:
   // when empty; clears any URL text so the file wins.
   void set_picked_file(const QString &path);
 
+  // Pre-fill the collection URL (used by the nxm:// collection link path).
+  // Ignored when empty; clears any selected file so the URL wins.
+  void set_collection_url(const QString &url);
+
 private:
   void on_pick_file();
   void on_url_edited(const QString &text);
