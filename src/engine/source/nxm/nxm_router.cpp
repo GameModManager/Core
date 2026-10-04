@@ -12,6 +12,17 @@
 
 namespace engine::Source {
 
+namespace {
+
+  // Path segment content up to the first '?' or '&' - nxm links carry the query
+  // string on whatever segment the site appended it to.
+  std::string segment_value(const std::string &segment) {
+    const auto cut = segment.find_first_of("?&");
+    return cut == std::string::npos ? segment : segment.substr(0, cut);
+  }
+
+}  // namespace
+
 NxmLink Router::parse(const std::string &url) {
   NxmLink link;
   link.full_url = url;
@@ -20,6 +31,7 @@ NxmLink Router::parse(const std::string &url) {
   // nxm://<domain>/mods/<mod_id>/files/<file_id>?key=...&expire=...&user_id=... Or:
   // nxm://<domain>/mods/<mod_id>/files/<file_id>&key=... The domain is everything after
   // "nxm://" and before the first '/'
+  // Collections instead carry "nxm://<domain>/collections/<id>/revisions/<n>".
 
   const std::string prefix = "nxm://";
   if (url.size() <= prefix.size())
@@ -54,7 +66,7 @@ NxmLink Router::parse(const std::string &url) {
     auto second_end = path.find_first_of("/?");
     if (second_end != std::string::npos) {
       auto second = path.substr(0, second_end);
-      if (second != "mods" && second != "files") {
+      if (second != "mods" && second != "files" && second != "collections") {
         link.nexus_domain = second;
         path              = path.substr(second_end + 1);
       }
@@ -89,16 +101,34 @@ NxmLink Router::parse(const std::string &url) {
   // Look for "files" keyword and extract file_id after it
   for (size_t i = 0; i + 1 < segments.size(); ++i) {
     if (segments[i] == "files") {
-      // file_id may have query params appended - strip at '?' or '&'
-      auto &raw   = segments[i + 1];
-      auto qpos   = raw.find_first_of("?&");
-      auto id_str = (qpos != std::string::npos) ? raw.substr(0, qpos) : raw;
       try {
-        link.file_id = std::stoll(id_str);
+        link.file_id = std::stoll(segment_value(segments[i + 1]));
       } catch (...) {
       }
       break;
     }
+  }
+
+  // Collection links: "collections/<id>/revisions/<n>". The revision is
+  // optional - the Nexus API resolves a missing one to the latest published
+  // revision - so an absent or unparsable number leaves it at 0. A garbage
+  // number stays 0 too: callers that must not guess compare against the
+  // revision segment themselves.
+  for (size_t i = 0; i < segments.size(); ++i) {
+    if (segments[i] != "collections")
+      continue;
+    link.is_collection = true;
+    if (i + 1 < segments.size())
+      link.collection_id = segment_value(segments[i + 1]);
+    if (i + 3 < segments.size() && segments[i + 2] == "revisions") {
+      try {
+        const long long rev = std::stoll(segment_value(segments[i + 3]));
+        if (rev > 0)
+          link.collection_revision = rev;
+      } catch (...) {
+      }
+    }
+    break;
   }
 
   // Parse query parameters: key=..., expire=..., user_id=...

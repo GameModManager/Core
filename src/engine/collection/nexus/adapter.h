@@ -39,9 +39,11 @@ struct CollectionRef {
   std::string file_path;
 };
 
-// Parse "slug[@revision]", a nexusmods.com collections URL, or a .json
-// path. Never throws; unrecognized ids yield an empty slug, non-file ref
-// (can_handle rejects those before fetch).
+// Parse "slug[@revision]", a nexusmods.com collections URL, an
+// "nxm://<game>/collections/<id>[/revisions/<n>]" link, or a .json path.
+// Never throws; an id in none of those shapes - including an nxm:// mod link,
+// which is not a collection - yields an empty slug, non-file ref (can_handle
+// rejects those before fetch, and fetch names the accepted forms).
 CollectionRef parse_source_id(const std::string &source_id);
 
 // ---------------------------------------------------------------------------
@@ -108,7 +110,8 @@ public:
   // client + revision_to_manifest. Per-mod skips land in last_skipped().
   FetchOutcome fetch(const std::string &source_id) override;
 
-  // .json paths, nexusmods.com collection URLs, bare slugs.
+  // .json paths, nexusmods.com collection URLs, nxm:// collection links, bare
+  // slugs. An nxm:// mod link is not a collection and is not handled here.
   bool can_handle(const std::string &source_id) const override;
 
   // Diagnostics from the last fetch() (empty after file fetches).
