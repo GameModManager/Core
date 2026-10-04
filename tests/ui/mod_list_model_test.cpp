@@ -1914,6 +1914,31 @@ TEST_CASE("mod list model", "[ui]") {
     check(row_with_id(mm, "ModA") == 2 && row_with_id(mm, "ModB") == 3,
           "reversed: user mods live below the pinned block");
     check(mm.is_conflict_order_reversed(), "reversed flag observable");
+
+    // A newly installed mod (add_mod, no persisted priority yet) must take the
+    // HIGHEST priority number and sit at the bottom of the list. The pinned
+    // block stays at the top, and no existing row's number moves.
+    mm.clear_dirty_priority_ids();
+    auto prio_of = [&mm](const char *id) {
+      for (const auto &e : mm.mods())
+        if (e.id == QString::fromLatin1(id))
+          return e.priority;
+      return -1;
+    };
+    mm.add_mod("ModC", "ModC", QString());
+    const int last = mm.mods().size() - 1;
+    check(row_with_id(mm, "ModC") == last,
+          "reversed: a fresh add_mod lands at the bottom of the list");
+    check(prio_of("ModC") == last,
+          "reversed: a fresh add_mod takes the highest priority number");
+    check(row_with_id(mm, ui::kOverwriteModId) == 0 &&
+              row_with_id(mm, ui::kMergedModId) == 1,
+          "reversed: adding a mod leaves the pinned block at the top");
+    check(prio_of("ModA") == 2 && prio_of("ModB") == 3,
+          "reversed: an existing mod's priority does not shift when one is added");
+    check(mm.dirty_priority_ids().size() == 1 &&
+              mm.dirty_priority_ids().contains(QStringLiteral("ModC")),
+          "reversed: only the fresh mod is flagged for persistence");
   }
 
   // Dirty-priority set (P8.6): renumber_priorities() flags exactly the rows
@@ -1951,6 +1976,8 @@ TEST_CASE("mod list model", "[ui]") {
     // A fresh add_mod (no persisted priority) flags itself, and the Overwrite
     // row whose index shifted down.
     dm.add_mod("ModD", "ModD", "1.0");  // lands just above Overwrite
+    check(row_with_id(dm, "ModD") == 3,
+          "normal: a fresh add_mod lands at the bottom, just above Overwrite");
     QSet<QString> dirty = dm.dirty_priority_ids();
     check(dirty.contains("ModD"), "fresh add_mod flags the new mod dirty");
     check(dirty.contains(ui::kOverwriteModId),

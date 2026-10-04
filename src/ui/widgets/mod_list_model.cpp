@@ -1094,28 +1094,21 @@ void ModList::add_mod(const QString &id, const QString &name, const QString &ver
                       int priority, bool is_game_native, qint64 install_ts,
                       qint64 changed_ts) {
   int insert_pos = mods_.size();
-  // MO2 rule (Profile::refreshModStatus): a new mod that isn't in the mod
-  // list yet gets the HIGHEST regular priority - placed at the bottom of the
-  // user band, directly above the pinned MERGED/Overwrite block, never past
-  // Overwrite. Game-native mods and explicit-priority adds append at the
-  // end; load_order() is the final arbiter of display order.
-  if (!is_game_native && priority < 0) {
-    // MO2 rule (Profile::refreshModStatus): a new mod that isn't in the mod
-    // list yet gets the HIGHEST regular priority - placed at the bottom of
-    // the user band, directly above the pinned Overwrite/MERGED block. For
-    // reversed games (Isaac) the winner is the LOWEST priority, so the
-    // block sits at the top and the new mod goes just below it.
+  // A new mod with no persisted priority takes the HIGHEST priority number,
+  // which is the bottom of the user band. Under normal order the pinned
+  // MERGED/Overwrite block sits at the bottom too, so the bottom of the user
+  // band is just above it. Under conflict-reversed order (Isaac) the pinned
+  // block sits at the TOP, so the bottom of the user band is the last row -
+  // the plain append position, which is where insert_pos already starts.
+  // Game-native mods and explicit-priority adds append at the end;
+  // load_order() is the final arbiter of display order.
+  if (!is_game_native && priority < 0 && !pinned_at_top()) {
     int mg_row = merged_row();
     int ow_row = overwrite_row();
-    if (pinned_at_top()) {
-      int pin_end = (mg_row >= 0) ? mg_row : ow_row;
-      if (pin_end >= 0)
-        insert_pos = pin_end + 1;
-    } else if (mg_row >= 0) {
+    if (mg_row >= 0)
       insert_pos = mg_row;
-    } else if (ow_row >= 0) {
+    else if (ow_row >= 0)
       insert_pos = ow_row;
-    }
   }
   beginInsertRows({}, insert_pos, insert_pos);
   ModEntry entry;
