@@ -42,11 +42,14 @@ private:
   void on_import();
 
   // Say what the collection did not give us: a revision Nexus has since
-  // retracted or discarded, and every mod that was skipped with the reason it
-  // was skipped. Silent when there is nothing to say.
+  // retracted or discarded, every mod that was skipped with the reason it was
+  // skipped, and everything the collection declared that could not be read -
+  // including the collection archive itself when it could not be fetched.
+  // Silent when there is nothing to say.
   void report_collection_gaps(
       const std::string &revision_status,
-      const std::vector<engine::Collection::Nexus::SkipDiagnostic> &skipped);
+      const std::vector<engine::Collection::Nexus::SkipDiagnostic> &skipped,
+      const std::vector<engine::Collection::Unresolved> &unresolved);
 
   void dragEnterEvent(QDragEnterEvent *event) override;
   void dropEvent(QDropEvent *event) override;

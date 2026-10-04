@@ -172,6 +172,7 @@ collection/batch_installer.cpp
     core/github.cpp
     collection/nexus/parser.cpp
     collection/nexus/adapter.cpp
+    collection/nexus/collection_zip.cpp
     core/module.cpp
     core/directory_refresher.cpp
     deploy/launch/preload_interceptor.cpp

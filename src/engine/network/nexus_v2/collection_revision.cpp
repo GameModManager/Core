@@ -48,7 +48,7 @@ std::string build_collection_revision_query() {
          "Boolean) {"
          " collectionRevision(slug: $slug, revision: $revision, viewAdultContent: "
          "$viewAdultContent) {"
-         " id revisionNumber revisionStatus"
+         " id revisionNumber revisionStatus downloadLink"
          " collection { id name slug game { domainName } }"
          " modFiles { gameId fileId version optional updatePolicy"
          " file { modId fileId name version size } }"
@@ -83,6 +83,7 @@ bool parse_collection_revision_data(const std::string &data_json,
   rev.found           = true;
   rev.revision_number = as_int(node, "revisionNumber");
   rev.revision_status = as_string(node, "revisionStatus");
+  rev.download_link   = as_string(node, "downloadLink");
 
   const auto coll_it = node.find("collection");
   if (coll_it != node.end() && coll_it->is_object()) {

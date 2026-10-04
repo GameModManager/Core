@@ -86,6 +86,28 @@ CollectionRevision make_revision() {
   return rev;
 }
 
+// The collection.json the revision's .zip carries: the per-file hashes, the
+// FOMOD selections, the load order and the tag that the metadata query has no
+// field for at all.
+const char *kArchiveJson = R"({
+  "info": { "installInstructions": "Clean save first.", "gameVersions": ["1.7.2"] },
+  "mods": [
+    { "name": "RaceMenu", "version": "0.4.20",
+      "source": { "type": "nexus", "modId": 17464, "fileId": 19080,
+                  "md5": "0a6e3e603ef3bca799436f69510c79b7",
+                  "fileSize": 4242, "tag": "JqF6xzzWA" },
+      "hashes": [ { "path": "meshes\\actors\\foo.esm",
+                    "md5": "add39f916aa4f469b51881fe6b50a9c6" } ],
+      "instructions": "Do not also install SKSE." }
+  ],
+  "loadOrder": ["RaceMenu.esm"],
+  "modRules": [
+    { "type": "requires",
+      "source": { "tag": "JqF6xzzWA" },
+      "reference": { "tag": "x_A_Q2gQ3e" } }
+  ]
+})";
+
 }  // namespace
 
 // ---------------------------------------------------------------------------
@@ -482,6 +504,153 @@ TEST_CASE("Adapter fetch revision success", "[collection][nexus][adapter]") {
   // dialog can report them instead of importing a quietly shorter list.
   REQUIRE(adapter.last_skipped().size() == 2);
   REQUIRE(adapter.last_revision_status() == "published");
+}
+
+// ---------------------------------------------------------------------------
+// Adapter::fetch - the revision's own archive (collection.json inside the zip)
+// ---------------------------------------------------------------------------
+
+TEST_CASE("Adapter fetch merges collection.json over the metadata",
+          "[collection][nexus][adapter]") {
+  std::string seen_link;
+  auto rev          = make_revision();
+  rev.download_link = "https://cdn.nexusmods.com/collection/42/3.zip";
+  Nexus::Adapter adapter(
+      [rev](const std::string &, long long) -> NexusFetchResult {
+        NexusFetchResult r;
+        r.ok       = true;
+        r.revision = rev;
+        return r;
+      },
+      [&](const std::string &link, std::string &json, std::string &) {
+        seen_link = link;
+        json      = kArchiveJson;
+        return true;
+      });
+
+  const auto outcome = adapter.fetch("test-collection@3");
+  REQUIRE(std::holds_alternative<CollectionFetchResult>(outcome));
+  const auto &result = std::get<CollectionFetchResult>(outcome);
+  const auto &m      = result.manifest;
+
+  // The archive is fetched at the link the metadata reported.
+  REQUIRE(seen_link == "https://cdn.nexusmods.com/collection/42/3.zip");
+
+  // Metadata's own contribution survives: the identity, the revision status,
+  // and the external-resource entry the archive never mentions. The two
+  // unresolvable entries are still skipped with their diagnostics.
+  REQUIRE(m.info.name == "Test Collection");
+  REQUIRE(m.info.game_id == "skyrimspecialedition");
+  REQUIRE(adapter.last_revision_status() == "published");
+  REQUIRE(adapter.last_skipped().size() == 2);
+  REQUIRE(m.mods.size() == 2);
+
+  // The archive's contribution, none of which GraphQL could have supplied.
+  REQUIRE(m.info.install_instructions == "Clean save first.");
+  REQUIRE(m.info.game_versions.size() == 1);
+  REQUIRE(m.load_order.plugin_hint.size() == 1);
+  REQUIRE(m.load_order.plugin_hint[0] == "RaceMenu.esm");
+
+  const auto &racemenu = m.mods[0];
+  REQUIRE(racemenu.id == "nexus-17464");
+  REQUIRE(racemenu.hashes.size() == 1);
+  REQUIRE(racemenu.hashes[0].md5 == "add39f916aa4f469b51881fe6b50a9c6");
+  REQUIRE(racemenu.instructions == "Do not also install SKSE.");
+  const auto &nx = std::get<SourceNexus>(racemenu.source);
+  REQUIRE(nx.tag == "JqF6xzzWA");
+  REQUIRE(nx.md5 == "0a6e3e603ef3bca799436f69510c79b7");
+  REQUIRE(nx.file_size == 4242);
+  REQUIRE(nx.sha256.empty());
+
+  // A rule end the archive itself cannot bind is reported, not kept dangling
+  // and not silently dropped.
+  REQUIRE(m.rules.empty());
+  REQUIRE(adapter.last_unresolved().size() == 1);
+  REQUIRE(adapter.last_unresolved()[0].what == "modRules[0].reference");
+  REQUIRE(adapter.last_unresolved()[0].reason.find("tag=x_A_Q2gQ3e") !=
+          std::string::npos);
+}
+
+TEST_CASE("Adapter fetch reports an unreachable archive and still imports",
+          "[collection][nexus][adapter]") {
+  auto rev          = make_revision();
+  rev.download_link = "https://cdn.nexusmods.com/collection/42/3.zip";
+  Nexus::Adapter adapter(
+      [rev](const std::string &, long long) -> NexusFetchResult {
+        NexusFetchResult r;
+        r.ok       = true;
+        r.revision = rev;
+        return r;
+      },
+      [](const std::string &, std::string &, std::string &error) {
+        error = "could not download the collection archive (HTTP 401)";
+        return false;
+      });
+
+  const auto outcome = adapter.fetch("test-collection@3");
+
+  // Not an error: the import proceeds on metadata alone.
+  REQUIRE(std::holds_alternative<CollectionFetchResult>(outcome));
+  const auto &m = std::get<CollectionFetchResult>(outcome).manifest;
+  REQUIRE(m.info.name == "Test Collection");
+  REQUIRE(m.mods.size() == 2);
+
+  // And it says exactly what it could not read, naming the archive and what it
+  // would have carried.
+  REQUIRE(adapter.last_unresolved().size() == 1);
+  const auto &gap = adapter.last_unresolved()[0];
+  REQUIRE(gap.what == "collection.json");
+  REQUIRE(gap.reason.find("HTTP 401") != std::string::npos);
+  REQUIRE(gap.reason.find("load order") != std::string::npos);
+  REQUIRE(gap.reason.find("per-file hashes") != std::string::npos);
+  REQUIRE(gap.reason.find("mod rules") != std::string::npos);
+}
+
+TEST_CASE("Adapter fetch reports a missing download link",
+          "[collection][nexus][adapter]") {
+  auto rev = make_revision();  // no download_link
+  Nexus::Adapter adapter(
+      [rev](const std::string &, long long) -> NexusFetchResult {
+        NexusFetchResult r;
+        r.ok       = true;
+        r.revision = rev;
+        return r;
+      },
+      [](const std::string &, std::string &, std::string &) {
+        return false;  // must never be asked
+      });
+
+  REQUIRE(
+      std::holds_alternative<CollectionFetchResult>(adapter.fetch("test-collection")));
+  REQUIRE(adapter.last_unresolved().size() == 1);
+  REQUIRE(adapter.last_unresolved()[0].what == "collection.json");
+  REQUIRE(adapter.last_unresolved()[0].reason.find("no download link") !=
+          std::string::npos);
+}
+
+TEST_CASE("Adapter fetch survives an unreadable archive",
+          "[collection][nexus][adapter]") {
+  auto rev          = make_revision();
+  rev.download_link = "https://cdn.nexusmods.com/collection/42/3.zip";
+  Nexus::Adapter adapter(
+      [rev](const std::string &, long long) -> NexusFetchResult {
+        NexusFetchResult r;
+        r.ok       = true;
+        r.revision = rev;
+        return r;
+      },
+      [](const std::string &, std::string &json, std::string &) {
+        json = "{ this is not json";
+        return true;
+      });
+
+  const auto outcome = adapter.fetch("test-collection");
+  REQUIRE(std::holds_alternative<CollectionFetchResult>(outcome));
+  const auto &m = std::get<CollectionFetchResult>(outcome).manifest;
+  REQUIRE(m.mods.size() == 2);
+  REQUIRE(adapter.last_unresolved().size() == 1);
+  REQUIRE(adapter.last_unresolved()[0].reason.find("not readable") !=
+          std::string::npos);
 }
 
 TEST_CASE("Adapter fetch revision error", "[collection][nexus][adapter]") {

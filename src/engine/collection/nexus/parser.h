@@ -39,6 +39,28 @@ Manifest parse(std::string_view json);
 // Convenience overload: parse from a file path.
 Manifest parse_file(const std::string &path);
 
+// Merge a collection.json - the one inside the revision's downloaded .zip - over
+// a Manifest built from metadata, with the archive authoritative for everything
+// it alone carries. Throws ParseError if the JSON is unreadable, so the caller
+// can treat a broken archive the same way it treats an absent one.
+//
+// The archive contributes, and the metadata query cannot:
+//   info.installInstructions, info.gameVersions
+//   loadOrder
+//   mods[].hashes[]     - the per-file {path, md5} identity, the only one Nexus
+//                         publishes for files inside a mod's archive
+//   mods[].instructions - the collection author's per-mod note
+//   mods[].choices      - the nested FOMOD block
+//   source.md5, source.tag, source.fileSize
+//   modRules, re-bound to the manifest's own mod ids
+//
+// A mod is matched across the two by its Nexus mod id, so an id the manifest
+// already published is preserved and existing references to it stay valid; a mod
+// only the archive lists is appended. Nothing already in the manifest is
+// dropped, and nothing the archive declared is dropped silently: what could not
+// be bound lands in Manifest::unresolved.
+void merge_collection_json(Manifest &manifest, std::string_view json);
+
 // ---------------------------------------------------------------------------
 // Update policy
 // ---------------------------------------------------------------------------

@@ -4,10 +4,37 @@
 #include "engine/source/source_provider.h"
 #include "engine/core/instance/instance.h"
 #include "engine/core/log/logger.h"
+#include "engine/source/update_policy.h"
 
 #include <sstream>
 
 namespace engine {
+
+Source::VerifyResult verify_downloaded_archive(const Mod &mod,
+                                               const std::filesystem::path &archive) {
+  // A "latest" policy is the pack saying "whatever the source has now", so
+  // there is deliberately nothing to check against.
+  if (mod.download_nxm.update_policy == "latest") {
+    Source::VerifyResult r;
+    r.verdict = Source::PinVerdict::NoPin;
+    r.message = "latest policy - the pack pinned no digest";
+    return r;
+  }
+
+  Source::SourcePin pin;
+  pin.sha256    = mod.expected_sha256;
+  pin.file_size = mod.expected_file_size;
+  pin.version   = mod.version;
+
+  Source::ResolvedIdentity got;
+  got.sha256 = Source::compute_file_sha256(archive.string());
+  std::error_code ec;
+  const auto size = std::filesystem::file_size(archive, ec);
+  if (!ec)
+    got.file_size = static_cast<int64_t>(size);
+
+  return Source::verify_resolved(pin, got);
+}
 
 bool FetchStage::execute(Mod &mod, PipelineContext &ctx) {
   Logger::instance().debug("[FetchStage] execute: id=" + mod.id +
@@ -98,8 +125,8 @@ bool FetchStage::execute(Mod &mod, PipelineContext &ctx) {
     // what it knows - which provider refused, what it was fetching, and where
     // the file would have landed.
     ctx.error_message = "the download from " + provider->display_name() + " failed (" +
-                        mod.download_source_type + " mod " +
-                        mod.download_source_id + " -> " + dest_path.string() +
+                        mod.download_source_type + " mod " + mod.download_source_id +
+                        " -> " + dest_path.string() +
                         ") - nothing was written there; see the log for the cause";
     return false;
   }
@@ -111,6 +138,23 @@ bool FetchStage::execute(Mod &mod, PipelineContext &ctx) {
     Logger::instance().debug("[FetchStage] Metadata updated, no archive file");
     return true;
   }
+
+  // The bytes are on disk; check them against the digest the pack declared for
+  // them. This is the only point in the install where a pin can be tested -
+  // afterwards the archive is extracted and its identity is gone. A mismatch
+  // stops the install: the file left at dest_path is not the file the pack
+  // named, and installing it would put unverified content in the instance.
+  const Source::VerifyResult verified = verify_downloaded_archive(mod, dest_path);
+  if (verified.verdict == Source::PinVerdict::Mismatch) {
+    Logger::instance().error("[FetchStage] Digest mismatch for " + mod.id + ": " +
+                             verified.message);
+    ctx.error_message = "the downloaded archive is not the file this pack asked for (" +
+                        verified.message +
+                        "). Nothing was installed; the file is still at " +
+                        dest_path.string() + " if you want to look at it";
+    return false;
+  }
+  Logger::instance().debug("[FetchStage] Download verification: " + verified.message);
 
   // Add archive to mod files for subsequent stages
   ModFile mf;
