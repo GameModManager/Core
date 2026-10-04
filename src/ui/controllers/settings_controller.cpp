@@ -63,6 +63,7 @@
 #include "ui/modpack/modpack_install_wizard.h"
 #include "ui/modpack/modpack_instance_dialog.h"
 #include "ui/network/network_options_bridge.h"
+#include "ui/nxm/collection_click.h"
 #include "ui/nxm/nxm_ipc.h"
 #include "ui/overwrite/query_overwrite_dialog.h"
 #include "ui/panels/tab_panels.h"
@@ -1427,6 +1428,28 @@ bool SettingsController::create_new_instance() {
   return true;
 }
 
+namespace {
+
+  // Every instance on disk that is for `game_id`, in scan order. An instance
+  // belongs to exactly one game, so this is also the complete set of places a
+  // pack or a collection for that game may legitimately be installed into - and
+  // therefore the whole of what an instance chooser is allowed to offer.
+  std::vector<ModpackInstanceChoice> instances_for_game(const std::string &game_id) {
+    std::vector<ModpackInstanceChoice> choices;
+    const auto instances_dir = engine::default_instances_dir();
+    for (const auto &name : engine::scan_instances()) {
+      auto inst = engine::Instance::installed(name, instances_dir);
+      if (!inst.read_toml() || inst.info().game_id != game_id)
+        continue;
+      const std::string display =
+          inst.info().display_name.empty() ? name : inst.info().display_name;
+      choices.push_back({name, display, inst.info().game_id});
+    }
+    return choices;
+  }
+
+}  // namespace
+
 void SettingsController::import_modpack(const QString &preset_file) {
   ModpackImportDialog import_dialog(w_);
   if (!preset_file.isEmpty())
@@ -1437,16 +1460,7 @@ void SettingsController::import_modpack(const QString &preset_file) {
   const std::string game_id     = pack.manifest.info.gmm_game_id;
 
   // Instances matching the pack's game.
-  const auto instances_dir = engine::default_instances_dir();
-  std::vector<ModpackInstanceChoice> choices;
-  for (const auto &name : engine::scan_instances()) {
-    auto inst = engine::Instance::installed(name, instances_dir);
-    if (!inst.read_toml() || inst.info().game_id != game_id)
-      continue;
-    const std::string display =
-        inst.info().display_name.empty() ? name : inst.info().display_name;
-    choices.push_back({name, display, inst.info().game_id});
-  }
+  std::vector<ModpackInstanceChoice> choices = instances_for_game(game_id);
   std::string active_folder;
   if (!w_->current_instance_root_.empty())
     active_folder = w_->current_instance_root_.filename().string();
@@ -1470,6 +1484,145 @@ void SettingsController::import_modpack(const QString &preset_file) {
                                ? ModpackInstallWizard::Mode::Append
                                : ModpackInstallWizard::Mode::CreateNew;
   ModpackInstallWizard wizard(std::move(pack), wizard_mode, w_);
+  wizard.exec();
+}
+
+void SettingsController::handle_collection_link(const engine::Source::NxmLink &link,
+                                                const std::string &game_id) {
+  // What the active instance is FOR, read from its own instance.toml rather
+  // than from the game currently selected in the UI, because that is what an
+  // append would actually write into.
+  std::string active_folder;
+  std::string active_game;
+  if (!w_->current_instance_root_.empty()) {
+    active_folder = w_->current_instance_root_.filename().string();
+    auto active   = engine::Instance::from_root(w_->current_instance_root_);
+    if (active.read_toml())
+      active_game = active.info().game_id;
+  }
+
+  QString game_display = QString::fromStdString(game_id);
+  if (w_->plugin_loader_) {
+    const std::string resolved = w_->plugin_loader_->display_name_for(game_id);
+    if (!resolved.empty())
+      game_display = QString::fromStdString(resolved);
+  }
+
+  // The three options, asked BEFORE anything is fetched. A cancel that had
+  // already downloaded the collection would not be a cancel, and the choice of
+  // instance cannot be made from a mod list that does not exist yet anyway.
+  ModpackInstanceDialog select_dialog(game_id, game_display,
+                                      instances_for_game(game_id), active_folder, w_);
+  if (select_dialog.exec() != QDialog::Accepted)
+    return;
+
+  ui::nxm::CollectionChoice choice = ui::nxm::CollectionChoice::Cancel;
+  switch (select_dialog.mode()) {
+  case ModpackInstanceDialog::Mode::Append:
+    choice = ui::nxm::CollectionChoice::Append;
+    break;
+  case ModpackInstanceDialog::Mode::CreateNew:
+    choice = ui::nxm::CollectionChoice::NewInstance;
+    break;
+  case ModpackInstanceDialog::Mode::Cancelled:
+    break;
+  }
+
+  const ui::nxm::CollectionClickAction action =
+      ui::nxm::decide_collection_click({choice, game_id, active_game});
+
+  if (action == ui::nxm::CollectionClickAction::DoNothing)
+    return;
+
+  // Fetched here and not earlier: nothing has left the machine until the user
+  // has said where the collection goes.
+  auto pack = fetch_collection_pack(link.full_url);
+  if (!pack.has_value())
+    return;
+
+  if (action == ui::nxm::CollectionClickAction::CreateInstance) {
+    // The ordinary creation flow - game picker, instance name, create, switch -
+    // and only once the collection is in hand, so a collection we could not
+    // read never leaves an empty instance behind. It switches to the instance
+    // it made, so the install lands in the new one and not in the old.
+    if (!create_new_instance())
+      return;
+    auto created = engine::Instance::from_root(w_->current_instance_root_);
+    if (!created.read_toml()) {
+      QMessageBox::warning(w_, tr("Error"),
+                           tr("The new instance could not be read back."));
+      return;
+    }
+    // The creation flow asks which GAME the instance is for, because usually
+    // there is no answer to assume. A collection knows its own, so an instance
+    // that came out for a different game is not one we may fill.
+    if (created.info().game_id != game_id) {
+      const auto name_of = [this](const std::string &id) {
+        return QString::fromStdString(
+            w_->plugin_loader_ ? w_->plugin_loader_->display_name_for(id) : id);
+      };
+      QMessageBox::warning(
+          w_, tr("Nexus Collection"),
+          tr("The new instance is for %1, but this collection is for %2.\n\n"
+             "Nothing was installed.")
+              .arg(name_of(created.info().game_id), name_of(game_id)));
+      return;
+    }
+    install_pack_into(std::move(*pack), created, /*create_new=*/true);
+    return;
+  }
+
+  // Append. The chooser only ever listed instances of the collection's own
+  // game, so its answer is a legal target by construction; an empty answer
+  // means there was none, and the active instance is not a substitute unless
+  // the decision already said it is the right game.
+  std::string target_folder = select_dialog.selected_folder();
+  if (target_folder.empty() && action == ui::nxm::CollectionClickAction::AppendToActive)
+    target_folder = active_folder;
+  if (target_folder.empty()) {
+    QMessageBox::information(
+        w_, tr("Nexus Collection"),
+        tr("No instance of this game is available to append to.\n\n"
+           "Choose \"Create New\" to make one for the collection."));
+    return;
+  }
+
+  auto target =
+      engine::Instance::installed(target_folder, engine::default_instances_dir());
+  if (!target.read_toml() || target.info().game_id != game_id) {
+    QMessageBox::warning(w_, tr("Nexus Collection"),
+                         tr("\"%1\" is not an instance of this game, so the "
+                            "collection was not installed.")
+                             .arg(QString::fromStdString(target_folder)));
+    return;
+  }
+  install_pack_into(std::move(*pack), target, /*create_new=*/false);
+}
+
+std::optional<engine::gmmpack::Gmmpack>
+SettingsController::fetch_collection_pack(const std::string &url) {
+  ModpackImportDialog import_dialog(w_);
+  import_dialog.set_collection_url(QString::fromStdString(url));
+  if (import_dialog.exec() != QDialog::Accepted || !import_dialog.has_pack())
+    return std::nullopt;
+  return import_dialog.pack();
+}
+
+void SettingsController::install_pack_into(engine::gmmpack::Gmmpack pack,
+                                           const engine::Instance &target,
+                                           bool create_new) {
+  ModpackInstallWizard wizard(std::move(pack),
+                              create_new ? ModpackInstallWizard::Mode::CreateNew
+                                         : ModpackInstallWizard::Mode::Append,
+                              w_);
+  // Seeded from the instance itself. Append mode skips the Paths step, so
+  // without this an append has no instance at all and downloads relative to
+  // the process's working directory.
+  wizard.set_paths(
+      QString::fromStdString(target.info().root.string()),
+      QString::fromStdString(target.path_for(engine::InstanceKind::Mods).string()),
+      QString::fromStdString(target.path_for(engine::InstanceKind::Downloads).string()),
+      QString::fromStdString(target.path_for(engine::InstanceKind::Profiles).string()));
   wizard.exec();
 }
 
