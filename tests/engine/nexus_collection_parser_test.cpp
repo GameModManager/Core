@@ -6,6 +6,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
 #include <cstdio>
 #include <fstream>
 #include <string>
@@ -349,25 +350,234 @@ TEST_CASE("parse mod with unknown source type defaults to Direct",
 // ---------------------------------------------------------------------------
 
 TEST_CASE("parse mod with installer choices", "[collection][nexus]") {
+  // The real nested shape, not a flat key/array map: a FOMOD choices block is
+  // {type, options:[{name, groups:[{name, choices:[{name, idx}]}]}]}.
   const auto m = parse(R"({
         "info": {},
         "mods": [{
-            "name": "FOMOD Mod",
+            "name": "Load Begone",
             "source": { "type": "nexus" },
             "choices": {
-                "Step1-Group1": ["OptionA", "OptionC"],
-                "Step2-Group1": ["OptionB"]
+                "type": "fomod",
+                "options": [{
+                    "name": "Installation",
+                    "groups": [{
+                        "name": "Features",
+                        "choices": [
+                            { "name": "Skip Intro Logos", "idx": 0 },
+                            { "name": "No Splash Video", "idx": 1 },
+                            { "name": "Faster Checkpoints", "idx": 2 }
+                        ]
+                    }]
+                }]
             }
         }]
     })");
 
   const auto &ic = m.mods[0].installer_choices;
   REQUIRE(ic.type == "fomod");
+  REQUIRE(ic.selections.size() == 1);
+  const auto &features = ic.selections.at("Installation/Features");
+  REQUIRE(features.size() == 3);
+  REQUIRE(features[0] == "Skip Intro Logos");
+  REQUIRE(features[1] == "No Splash Video");
+  REQUIRE(features[2] == "Faster Checkpoints");
+}
+
+TEST_CASE("installer choices from several steps stay separate keys",
+          "[collection][nexus]") {
+  const auto m = parse(R"({
+        "info": {},
+        "mods": [{
+            "name": "Two Steps",
+            "source": { "type": "nexus" },
+            "choices": {
+                "type": "fomod",
+                "options": [
+                    { "name": "Step1", "groups": [
+                        { "name": "GroupA", "choices": [ { "name": "A1", "idx": 0 } ] } ] },
+                    { "name": "Step2", "groups": [
+                        { "name": "GroupA", "choices": [ { "name": "B1", "idx": 0 } ] } ] }
+                ]
+            }
+        }]
+    })");
+
+  const auto &ic = m.mods[0].installer_choices;
   REQUIRE(ic.selections.size() == 2);
-  REQUIRE(ic.selections.at("Step1-Group1").size() == 2);
-  REQUIRE(ic.selections.at("Step1-Group1")[0] == "OptionA");
-  REQUIRE(ic.selections.at("Step1-Group1")[1] == "OptionC");
-  REQUIRE(ic.selections.at("Step2-Group1").size() == 1);
+  REQUIRE(ic.selections.at("Step1/GroupA")[0] == "A1");
+  REQUIRE(ic.selections.at("Step2/GroupA")[0] == "B1");
+}
+
+TEST_CASE("an unrecognised choices block sets no installer type",
+          "[collection][nexus]") {
+  // A block with no declared type is not something we can replay. Claiming
+  // "fomod" with nothing selected would be a replay that silently selects
+  // nothing while looking configured, so nothing is claimed at all.
+  const auto m = parse(R"({
+        "info": {},
+        "mods": [{
+            "name": "Mystery",
+            "source": { "type": "nexus" },
+            "choices": { "Step1-Group1": ["OptionA", "OptionC"] }
+        }]
+    })");
+
+  REQUIRE(m.mods[0].installer_choices.type.empty());
+  REQUIRE(m.mods[0].installer_choices.selections.empty());
+}
+
+// ---------------------------------------------------------------------------
+// Per-file identity (hashes[]) and the per-mod tag
+// ---------------------------------------------------------------------------
+
+TEST_CASE("parse mod hashes as per-file path/md5 pairs", "[collection][nexus]") {
+  const auto m = parse(R"({
+        "info": {},
+        "mods": [{
+            "name": "Appearance Menu Mod",
+            "source": { "type": "nexus", "modId": 790 },
+            "hashes": [
+                { "path": "archive\\pc\\mod\\AMM_Dino_TattooFix.archive",
+                  "md5": "add39f916aa4f469b51881fe6b50a9c6" },
+                { "path": "archive\\pc\\mod\\AMM_RitaWheeler_CombatEnabler.archive",
+                  "md5": "e1a03cf9eeb34288cb2d013f61381f63" }
+            ]
+        }]
+    })");
+
+  REQUIRE(m.mods[0].hashes.size() == 2);
+  REQUIRE(m.mods[0].hashes[0].path == "archive\\pc\\mod\\AMM_Dino_TattooFix.archive");
+  REQUIRE(m.mods[0].hashes[0].md5 == "add39f916aa4f469b51881fe6b50a9c6");
+  REQUIRE(m.mods[0].hashes[1].path ==
+          "archive\\pc\\mod\\AMM_RitaWheeler_CombatEnabler.archive");
+  REQUIRE(m.mods[0].hashes[1].md5 == "e1a03cf9eeb34288cb2d013f61381f63");
+}
+
+TEST_CASE("a hashes entry missing its path or md5 is dropped", "[collection][nexus]") {
+  // Half an entry identifies no file, so keeping it would only make "is this
+  // file verified?" answerable with a blank.
+  const auto m = parse(R"({
+        "info": {},
+        "mods": [{
+            "name": "Partial",
+            "source": { "type": "nexus" },
+            "hashes": [
+                { "path": "meshes/a.nif" },
+                { "md5": "add39f916aa4f469b51881fe6b50a9c6" },
+                { "path": "meshes/b.nif", "md5": "e1a03cf9eeb34288cb2d013f61381f63" },
+                "not an object"
+            ]
+        }]
+    })");
+
+  REQUIRE(m.mods[0].hashes.size() == 1);
+  REQUIRE(m.mods[0].hashes[0].path == "meshes/b.nif");
+}
+
+TEST_CASE("parse mod instructions and source tag", "[collection][nexus]") {
+  const auto m = parse(R"({
+        "info": {},
+        "mods": [{
+            "name": "Appearance Menu Mod",
+            "version": "2.7",
+            "source": { "type": "nexus", "modId": 790, "fileId": 66386,
+                        "tag": "JqF6xzzWA" },
+            "instructions": "Requires the body patch slot 2 to be free."
+        }]
+    })");
+
+  REQUIRE(m.mods[0].instructions == "Requires the body patch slot 2 to be free.");
+  const auto &nx = std::get<SourceNexus>(m.mods[0].source);
+  REQUIRE(nx.tag == "JqF6xzzWA");
+}
+
+TEST_CASE("info carries installInstructions and gameVersions", "[collection][nexus]") {
+  const auto m = parse(R"({
+        "info": {
+            "name": "Halgari's Helper",
+            "installInstructions": "Install to a clean save first.",
+            "gameVersions": ["3.0.76.64179", "2.31"]
+        },
+        "mods": []
+    })");
+
+  REQUIRE(m.info.install_instructions == "Install to a clean save first.");
+  REQUIRE(m.info.game_versions.size() == 2);
+  REQUIRE(m.info.game_versions[0] == "3.0.76.64179");
+  REQUIRE(m.info.game_versions[1] == "2.31");
+}
+
+// ---------------------------------------------------------------------------
+// Tag resolution (D1.2)
+// ---------------------------------------------------------------------------
+
+TEST_CASE("modRules resolve on source.tag", "[collection][nexus]") {
+  const auto m = parse(R"({
+        "info": {},
+        "mods": [
+            { "name": "Alpha", "source": { "type": "nexus", "modId": 1,
+                           "tag": "x_A_Q2gQ3e" } },
+            { "name": "Beta",  "source": { "type": "nexus", "modId": 2,
+                           "tag": "JqF6xzzWA" } }
+        ],
+        "modRules": [
+            { "type": "before",
+              "source": { "tag": "JqF6xzzWA" },
+              "reference": { "tag": "x_A_Q2gQ3e" } }
+        ]
+    })");
+
+  REQUIRE(m.rules.size() == 1);
+  REQUIRE(m.rules[0].from == "beta");
+  REQUIRE(m.rules[0].to == "alpha");
+}
+
+TEST_CASE("tag outranks fileSize when both would match", "[collection][nexus]") {
+  // The order is deliberate and matches the official app's
+  // FileMD5 -> Tag -> FileExpression chain. Gamma and Delta are both 4096
+  // bytes, so on the reference a fileSize match is a coin flip between two
+  // unrelated mods while the tag names one of them exactly. A parser that
+  // consulted fileSize first binds the rule's other end to the wrong mod.
+  const auto m = parse(R"({
+        "info": {},
+        "mods": [
+            { "name": "Gamma", "source": { "type": "nexus", "modId": 1,
+                           "fileSize": 4096, "tag": "aaaTag",
+                           "md5": "cafebabecafebabecafebabecafebabe" } },
+            { "name": "Delta", "source": { "type": "nexus", "modId": 2,
+                           "fileSize": 4096, "tag": "bbbTag" } }
+        ],
+        "modRules": [
+            { "type": "requires",
+              "source": { "fileMD5": "cafebabecafebabecafebabecafebabe" },
+              "reference": { "tag": "bbbTag", "fileSize": 4096 } }
+        ]
+    })");
+
+  REQUIRE(m.rules.size() == 1);
+  REQUIRE(m.rules[0].from == "gamma");
+  // fileSize would have bound this to gamma, the mod the rule is already
+  // pointing at - a rule from a mod to itself. The tag binds it to delta.
+  REQUIRE(m.rules[0].to == "delta");
+}
+
+TEST_CASE("a rule end tag that matches nothing is reported", "[collection][nexus]") {
+  const auto m = parse(R"({
+        "info": {},
+        "mods": [ { "name": "Alpha", "source": { "type": "nexus", "modId": 1,
+                     "tag": "x_A_Q2gQ3e" } } ],
+        "modRules": [
+            { "type": "requires",
+              "source": { "tag": "x_A_Q2gQ3e" },
+              "reference": { "tag": "goneTag" } }
+        ]
+    })");
+
+  REQUIRE(m.rules.empty());
+  REQUIRE(m.unresolved.size() == 1);
+  REQUIRE(m.unresolved[0].what == "modRules[0].reference");
+  REQUIRE(m.unresolved[0].reason.find("tag=goneTag") != std::string::npos);
 }
 
 // ---------------------------------------------------------------------------
@@ -573,11 +783,11 @@ TEST_CASE("modRules with an unresolvable end is reported, not dropped",
 // Plugin load order
 // ---------------------------------------------------------------------------
 
-TEST_CASE("parse pluginLoadOrder", "[collection][nexus]") {
+TEST_CASE("parse loadOrder", "[collection][nexus]") {
   const auto m = parse(R"({
         "info": {},
         "mods": [],
-        "pluginLoadOrder": ["Unofficial Patch.esp", "SkyUI.esp", "SMIM.esp"]
+        "loadOrder": ["Unofficial Patch.esp", "SkyUI.esp", "SMIM.esp"]
     })");
 
   REQUIRE(m.load_order.plugin_hint.size() == 3);
@@ -586,15 +796,27 @@ TEST_CASE("parse pluginLoadOrder", "[collection][nexus]") {
   REQUIRE(m.load_order.plugin_hint[2] == "SMIM.esp");
 }
 
-TEST_CASE("pluginLoadOrder ignores non-string entries", "[collection][nexus]") {
+TEST_CASE("loadOrder ignores non-string entries", "[collection][nexus]") {
   const auto m = parse(R"({
         "info": {},
         "mods": [],
-        "pluginLoadOrder": ["valid.esp", 42, null, true]
+        "loadOrder": ["valid.esp", 42, null, true]
     })");
 
   REQUIRE(m.load_order.plugin_hint.size() == 1);
   REQUIRE(m.load_order.plugin_hint[0] == "valid.esp");
+}
+
+TEST_CASE("pluginLoadOrder is not a field Nexus emits", "[collection][nexus]") {
+  // The name we used to read under. A read of it could only ever have produced
+  // an empty hint list, so recognising it now would be worse than not having it.
+  const auto m = parse(R"({
+        "info": {},
+        "mods": [],
+        "pluginLoadOrder": ["Unofficial Patch.esp", "SkyUI.esp"]
+    })");
+
+  REQUIRE(m.load_order.plugin_hint.empty());
 }
 
 // ---------------------------------------------------------------------------
@@ -866,6 +1088,14 @@ TEST_CASE("parse the documented Nexus collection.json", "[collection][nexus]") {
   REQUIRE(amm.md5 == "0a6e3e603ef3bca799436f69510c79b7");
   REQUIRE(amm.sha256.empty());
   REQUIRE(amm.update_policy == UpdatePolicy::Prefer);
+  REQUIRE(amm.tag == "JqF6xzzWA");
+  // The per-file identity Nexus publishes for files inside the archive.
+  REQUIRE(m.mods[0].hashes.size() == 2);
+  REQUIRE(m.mods[0].hashes[0].path == "archive\\pc\\mod\\AMM_Dino_TattooFix.archive");
+  REQUIRE(m.mods[0].hashes[0].md5 == "add39f916aa4f469b51881fe6b50a9c6");
+  REQUIRE(m.mods[0].hashes[1].md5 == "e1a03cf9eeb34288cb2d013f61381f63");
+  REQUIRE(m.info.game_versions.size() == 1);
+  REQUIRE(m.info.game_versions[0] == "3.0.76.64179");
 
   // Mod 1: Cyber Engine Tweaks
   REQUIRE(m.mods[1].id == "cyber-engine-tweaks-cet-1-32-2");
@@ -881,6 +1111,13 @@ TEST_CASE("parse the documented Nexus collection.json", "[collection][nexus]") {
           "Load Begone (Intro Splash Load and Checkpoint Removal - FOMOD) - "
           "Load Begone - 2.2.1 (FOMOD)");
   REQUIRE(m.mods[2].installer_choices.type == "fomod");
+  REQUIRE(m.mods[2].installer_choices.selections.size() == 1);
+  const auto &features =
+      m.mods[2].installer_choices.selections.at("Installation/Features");
+  REQUIRE(features.size() == 3);
+  REQUIRE(features[0] == "Skip Intro Logos");
+  REQUIRE(features[2] == "Faster Checkpoints");
+  REQUIRE(std::get<SourceNexus>(m.mods[2].source).tag == "vACbpm9SFd");
 
   // The rule binds through source.fileMD5 and reference.logicalFileName.
   REQUIRE(m.rules.size() == 1);
@@ -940,4 +1177,167 @@ TEST_CASE("parse_file with valid temp file", "[collection][nexus]") {
 
 TEST_CASE("parse_file throws on nonexistent file", "[collection][nexus]") {
   REQUIRE_THROWS_AS(parse_file("nonexistent_file_abc123.json"), ParseError);
+}
+
+// ---------------------------------------------------------------------------
+// merge_collection_json: the archive over a metadata-built manifest
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// A manifest shaped like the one the v2 metadata query produces: ids of the
+// form "nexus-<modId>", no md5, no tag, no file size, no hashes.
+Manifest metadata_only_manifest() {
+  Manifest m;
+  m.schema_version = "nexus/2";
+  m.id             = "nexus-halgari-helper";
+  m.info.name      = "Halgari's Helper";
+  m.info.game_id   = "cyberpunk2077";
+  m.revision       = 3;
+
+  ModEntry amm;
+  amm.id                                        = "nexus-790";
+  amm.name                                      = "Appearance Menu Mod";
+  std::get<SourceNexus>(amm.source).game_domain = "cyberpunk2077";
+  std::get<SourceNexus>(amm.source).mod_id      = 790;
+  std::get<SourceNexus>(amm.source).file_id     = 66386;
+  m.mods.push_back(amm);
+
+  ModEntry cet;
+  cet.id                                        = "nexus-107";
+  cet.name                                      = "Cyber Engine Tweaks";
+  std::get<SourceNexus>(cet.source).game_domain = "cyberpunk2077";
+  std::get<SourceNexus>(cet.source).mod_id      = 107;
+  std::get<SourceNexus>(cet.source).file_id     = 73822;
+  m.mods.push_back(cet);
+
+  return m;
+}
+
+const char *kArchiveJson = R"({
+  "info": {
+    "name": "Halgari's Helper",
+    "domainName": "cyberpunk2077",
+    "installInstructions": "Install to a clean save first.",
+    "gameVersions": ["3.0.76.64179"]
+  },
+  "mods": [
+    { "name": "Appearance Menu Mod", "version": "2.7",
+      "source": { "type": "nexus", "modId": 790, "fileId": 66386,
+                  "md5": "0a6e3e603ef3bca799436f69510c79b7",
+                  "fileSize": 140159937, "tag": "JqF6xzzWA" },
+      "hashes": [ { "path": "archive\\pc\\mod\\AMM_Dino_TattooFix.archive",
+                    "md5": "add39f916aa4f469b51881fe6b50a9c6" } ],
+      "instructions": "Body patch slot 2 must be free." },
+    { "name": "Cyber Engine Tweaks", "version": "1.32.2",
+      "source": { "type": "nexus", "modId": 107, "fileId": 73822,
+                  "md5": "4b1dd024876fdddfef2a2383492e1c1c", "tag": "x_A_Q2gQ3e" } }
+  ],
+  "modRules": [
+    { "type": "before",
+      "source": { "fileMD5": "4b1dd024876fdddfef2a2383492e1c1c" },
+      "reference": { "fileMD5": "0a6e3e603ef3bca799436f69510c79b7" } }
+  ],
+  "loadOrder": ["Unofficial Patch.esp", "SkyUI.esp"],
+  "collectionConfig": { "recommendNewProfile": true }
+})";
+
+}  // anonymous namespace
+
+TEST_CASE("merge_collection_json contributes what the metadata query cannot",
+          "[collection][nexus]") {
+  auto m = metadata_only_manifest();
+  merge_collection_json(m, kArchiveJson);
+
+  // Identity is untouched: same id, same revision, same two mods, in order.
+  REQUIRE(m.schema_version == "nexus/2");
+  REQUIRE(m.id == "nexus-halgari-helper");
+  REQUIRE(m.revision == 3);
+  REQUIRE(m.mods.size() == 2);
+  REQUIRE(m.mods[0].id == "nexus-790");
+  REQUIRE(m.mods[1].id == "nexus-107");
+
+  // Pack-level: only the archive carries these.
+  REQUIRE(m.info.install_instructions == "Install to a clean save first.");
+  REQUIRE(m.info.game_versions.size() == 1);
+  REQUIRE(m.info.game_versions[0] == "3.0.76.64179");
+  REQUIRE(m.load_order.plugin_hint.size() == 2);
+  REQUIRE(m.load_order.plugin_hint[0] == "Unofficial Patch.esp");
+
+  // Per-mod: hashes, the author's note, the digest, the tag, the file size.
+  REQUIRE(m.mods[0].hashes.size() == 1);
+  REQUIRE(m.mods[0].hashes[0].path == "archive\\pc\\mod\\AMM_Dino_TattooFix.archive");
+  REQUIRE(m.mods[0].hashes[0].md5 == "add39f916aa4f469b51881fe6b50a9c6");
+  REQUIRE(m.mods[0].instructions == "Body patch slot 2 must be free.");
+  const auto &amm = std::get<SourceNexus>(m.mods[0].source);
+  REQUIRE(amm.md5 == "0a6e3e603ef3bca799436f69510c79b7");
+  REQUIRE(amm.tag == "JqF6xzzWA");
+  REQUIRE(amm.file_size == 140159937);
+  // The digest is the archive's; it must never leak into the sha256 field an
+  // exact pin is defined by.
+  REQUIRE(amm.sha256.empty());
+
+  // Rules arrive bound to the archive's own slugs; the merge re-points them at
+  // the manifest's ids, so they resolve against mods that really exist here.
+  REQUIRE(m.rules.size() == 1);
+  REQUIRE(m.rules[0].type == RuleType::Before);
+  REQUIRE(m.rules[0].from == "nexus-107");
+  REQUIRE(m.rules[0].to == "nexus-790");
+  for (const auto &rule : m.rules) {
+    for (const auto *id : {&rule.from, &rule.to}) {
+      const bool known =
+          std::any_of(m.mods.begin(), m.mods.end(), [id](const ModEntry &e) {
+            return e.id == *id;
+          });
+      REQUIRE(known);
+    }
+  }
+}
+
+TEST_CASE("merge_collection_json appends a mod only the archive lists",
+          "[collection][nexus]") {
+  auto m = metadata_only_manifest();
+  merge_collection_json(m, R"({
+        "info": {},
+        "mods": [
+          { "name": "Appearance Menu Mod", "source": { "type": "nexus", "modId": 790 } },
+          { "name": "Load Begone", "source": { "type": "nexus", "modId": 8144,
+                       "tag": "vACbbm9SFd" },
+            "choices": { "type": "fomod", "options": [ { "name": "Installation",
+                "groups": [ { "name": "Features",
+                              "choices": [ { "name": "Skip Intro Logos", "idx": 0 } ] } ] } ] } }
+        ]
+    })");
+
+  REQUIRE(m.mods.size() == 3);
+  // The existing two keep their ids, so nothing already pointing at them moved.
+  REQUIRE(m.mods[0].id == "nexus-790");
+  REQUIRE(m.mods[1].id == "nexus-107");
+  REQUIRE(m.mods[2].name == "Load Begone");
+  REQUIRE(std::get<SourceNexus>(m.mods[2].source).tag == "vACbbm9SFd");
+  REQUIRE(m.mods[2].installer_choices.type == "fomod");
+  REQUIRE(m.mods[2].installer_choices.selections.at("Installation/Features")[0] ==
+          "Skip Intro Logos");
+}
+
+TEST_CASE("merge_collection_json reports what it cannot bind", "[collection][nexus]") {
+  auto m = metadata_only_manifest();
+  merge_collection_json(m, kArchiveJson);
+
+  // recommendNewProfile is declared but has nowhere to go in our manifest, so
+  // it is named rather than quietly dropped. Acting on it is not something we
+  // can do, so it is never acted on either.
+  const bool named =
+      std::any_of(m.unresolved.begin(), m.unresolved.end(), [](const Unresolved &u) {
+        return u.what == "collectionConfig.recommendNewProfile";
+      });
+  REQUIRE(named);
+}
+
+TEST_CASE("merge_collection_json throws on an unreadable archive",
+          "[collection][nexus]") {
+  auto m = metadata_only_manifest();
+  REQUIRE_THROWS_AS(merge_collection_json(m, "{ not json"), ParseError);
+  // The manifest it was handed is the caller's to fall back on.
+  REQUIRE(m.mods.size() == 2);
 }

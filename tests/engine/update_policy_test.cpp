@@ -1,5 +1,8 @@
 #include "engine/source/update_policy.h"
 
+#include "engine/mod/model/mod.h"
+#include "engine/pipeline/fetch_stage.h"
+
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
@@ -460,6 +463,130 @@ TEST_CASE("integration: full file-hash verification", "[update_policy]") {
   std::error_code ec;
   std::filesystem::remove(tmp, ec);
   std::printf("PASS: integration — full file-hash verification round-trip\n");
+}
+
+// ---------------------------------------------------------------------------
+// verify_downloaded_archive - the production caller (FetchStage), i.e. what
+// actually happens to a downloaded archive before it is installed
+// ---------------------------------------------------------------------------
+
+TEST_CASE("verify_downloaded_archive: a matching digest passes", "[update_policy]") {
+  const auto tmp =
+      std::filesystem::temp_directory_path() / "gmm_fetch_verify_match.bin";
+  {
+    std::ofstream f(tmp);
+    f << "the exact bytes the pack recorded";
+  }
+
+  engine::Mod mod;
+  mod.id                   = "example";
+  mod.download_nxm.file_id = 4321;
+  mod.expected_sha256      = compute_file_sha256(tmp.string());
+  std::error_code size_ec;
+  mod.expected_file_size =
+      static_cast<int64_t>(std::filesystem::file_size(tmp, size_ec));
+
+  const auto result = engine::verify_downloaded_archive(mod, tmp);
+  REQUIRE(result.verdict == PinVerdict::Match);
+
+  std::error_code ec;
+  std::filesystem::remove(tmp, ec);
+  std::printf("PASS: verify_downloaded_archive — matching digest\n");
+}
+
+TEST_CASE("verify_downloaded_archive: a wrong digest is a loud Mismatch",
+          "[update_policy]") {
+  // The bytes that arrived are NOT the bytes the pack named. This is the case
+  // FetchStage must refuse to install past - a warning here is what makes every
+  // digest we record decorative.
+  const auto tmp =
+      std::filesystem::temp_directory_path() / "gmm_fetch_verify_mismatch.bin";
+  {
+    std::ofstream f(tmp);
+    f << "somebody else's archive";
+  }
+
+  engine::Mod mod;
+  mod.id                   = "example";
+  mod.download_nxm.file_id = 4321;
+  mod.expected_sha256 =
+      "0000000000000000000000000000000000000000000000000000000000000000";
+  mod.expected_file_size = 21;
+
+  const auto result = engine::verify_downloaded_archive(mod, tmp);
+  REQUIRE(result.verdict == PinVerdict::Mismatch);
+  REQUIRE(result.message.find("SHA-256 mismatch") != std::string::npos);
+  REQUIRE(result.message.find(mod.expected_sha256) != std::string::npos);
+
+  std::error_code ec;
+  std::filesystem::remove(tmp, ec);
+  std::printf("PASS: verify_downloaded_archive — mismatched digest is loud\n");
+}
+
+TEST_CASE("verify_downloaded_archive: a size-only pin still catches a change",
+          "[update_policy]") {
+  const auto tmp = std::filesystem::temp_directory_path() / "gmm_fetch_verify_size.bin";
+  {
+    std::ofstream f(tmp);
+    f << "twelve bytes";
+  }
+
+  engine::Mod mod;
+  mod.id                 = "example";
+  mod.expected_file_size = 999999;
+
+  const auto result = engine::verify_downloaded_archive(mod, tmp);
+  REQUIRE(result.verdict == PinVerdict::Mismatch);
+  REQUIRE(result.message.find("fileSize mismatch") != std::string::npos);
+
+  std::error_code ec;
+  std::filesystem::remove(tmp, ec);
+  std::printf("PASS: verify_downloaded_archive — size-only pin\n");
+}
+
+TEST_CASE("verify_downloaded_archive: a latest policy has nothing to check",
+          "[update_policy]") {
+  // "latest" is the pack saying "whatever the source has now", so a differing
+  // file is the correct answer, not a failure.
+  const auto tmp =
+      std::filesystem::temp_directory_path() / "gmm_fetch_verify_latest.bin";
+  {
+    std::ofstream f(tmp);
+    f << "whatever this is";
+  }
+
+  engine::Mod mod;
+  mod.id                         = "example";
+  mod.download_nxm.update_policy = "latest";
+  mod.expected_sha256 =
+      "0000000000000000000000000000000000000000000000000000000000000000";
+
+  REQUIRE(engine::verify_downloaded_archive(mod, tmp).verdict == PinVerdict::NoPin);
+
+  std::error_code ec;
+  std::filesystem::remove(tmp, ec);
+  std::printf("PASS: verify_downloaded_archive — latest has no pin\n");
+}
+
+TEST_CASE("verify_downloaded_archive: no declared digest is Incomplete, not Match",
+          "[update_policy]") {
+  const auto tmp =
+      std::filesystem::temp_directory_path() / "gmm_fetch_verify_nopin.bin";
+  {
+    std::ofstream f(tmp);
+    f << "unpinned";
+  }
+
+  engine::Mod mod;
+  mod.id = "example";
+
+  const auto result = engine::verify_downloaded_archive(mod, tmp);
+  REQUIRE(result.verdict == PinVerdict::Incomplete);
+  REQUIRE(result.verdict != PinVerdict::Match);
+
+  std::error_code ec;
+  std::filesystem::remove(tmp, ec);
+  std::printf("PASS: verify_downloaded_archive — unpinned is Incomplete\n");
 }
 
 }  // namespace

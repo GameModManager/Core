@@ -43,6 +43,12 @@ struct CollectionRevision {
   std::string slug;
   std::string name;
   std::string game_domain;  // collection.game.domainName
+  // Where the revision's own .zip lives. The .zip is the only carrier of
+  // collection.json, and collection.json is the only carrier of loadOrder,
+  // mods[].hashes[], mods[].instructions, source.tag and info's install
+  // notes - so nothing the revision declares outside GraphQL is reachable
+  // without this. Empty when the gateway reported none.
+  std::string download_link;
   std::vector<CollectionModFile> mods;
   std::vector<ExternalResource> external_resources;
 };
