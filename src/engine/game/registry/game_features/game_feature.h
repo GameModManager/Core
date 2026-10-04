@@ -51,8 +51,8 @@ public:
 // file tree already looks like a game's Data folder. Instance-based - the
 // allow-sets come from whoever registered the feature (the game plugin, or an
 // overriding plugin), so the same class serves the base checker and the
-// override. The engine's own static utility (ModDataChecker) stays untouched
-// for the staging peel.
+// override. The engine's own static utility (ModDataChecker) is only the
+// fallback for a game that declares no allow-lists at all.
 class ModDataCheckerFeature : public GameFeature {
 public:
   // folders/extensions: top-level directory names / file extensions that

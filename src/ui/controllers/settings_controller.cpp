@@ -37,6 +37,7 @@
 #include "engine/deploy/overlay_fs_deploy.h"
 #include "engine/deploy/symlink.h"
 #include "engine/game/detect/game_detector.h"
+#include "engine/game/registry/game_features/game_feature_registry.h"
 #include "engine/game/registry/game_knowledge.h"
 #include "engine/gmmpack/unpacker.h"
 #include "engine/mod/meta/category_set_registry.h"
@@ -325,6 +326,11 @@ void SettingsController::set_game_info(const std::string &game_id,
     // registered the metadata_file hook.
     ctx.metadata_file =
         w_->knowledge_->get(w_->current_game_id_, "metadata_file", "meta.ini");
+    // The game's declared data allow-lists (mod_valid_dirs / mod_valid_exts,
+    // or a registered mod_data_checker feature) - the same resolution the mod
+    // scanner uses, so the install layout decision reads one declaration and
+    // the engine names no game's folders itself.
+    ctx.data_checker = engine::data_checker_for(*w_->knowledge_, w_->current_game_id_);
 
     // When an install targets an existing mod folder, ask the user how to
     // proceed (Merge/Replace/Rename/Cancel) instead of silently replacing.

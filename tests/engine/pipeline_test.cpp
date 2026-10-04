@@ -1,6 +1,8 @@
 #include "engine/pipeline/pipeline.h"
 #include "engine/mod/fomod/fomod_view_model.h"
 #include "engine/mod/filetree/staging_layout.h"
+#include "engine/game/registry/game_features/game_feature_registry.h"
+#include "engine/game/registry/game_knowledge.h"
 #include "engine/pipeline/fetch_stage.h"
 #include "engine/pipeline/extract_stage.h"
 #include "engine/pipeline/fomod_stage.h"
@@ -853,6 +855,64 @@ TEST_CASE("pipeline", "[engine]") {
       REQUIRE(std::filesystem::exists(root / "meshes" / "m.nif"));
       std::printf("PASS: normalize leaves FOMOD archives untouched\n");
     }
+  }
+
+  // A wrapper-less archive whose whole content is one top-level resources/
+  // folder (Isaac) must keep that folder: it IS the game's data dir, so there
+  // is no wrapper, the archive stem names the mod, and nothing moves - the mod
+  // lands in mods/<stem>/resources/, not mods/resources/. Whether the top level
+  // is data or a wrapper is the game's to answer, and the answer is read from
+  // the same data_checker_for() the install context is built from. "resources"
+  // is deliberately absent from the engine's Bethesda fallback set, so the last
+  // block below is what pins that the DECLARATION decides this: drop the
+  // checker from PipelineContext and the first assertion goes red.
+  {
+    engine::Game::Features::Registry::instance().clear();
+    engine::GameKnowledge knowledge;
+    knowledge.set("isaac", "mod_valid_dirs", "resources,resources-dlc3");
+    knowledge.set("isaac", "mod_valid_exts", "");
+    const auto isaac = engine::data_checker_for(knowledge, "isaac");
+    REQUIRE(isaac != nullptr);
+
+    // No wrapper. The predicate ExtractStage reads - simple with an empty peel
+    // chain - holds, so the stem names the mod and the tree is left alone.
+    TempDir flat;
+    const auto flat_root     = flat.root / "staging";
+    const auto flat_greeting = flat_root / "resources" / "greetings" / "isaac.png";
+    std::filesystem::create_directories(flat_greeting.parent_path());
+    std::ofstream(flat_greeting) << "x";
+    const auto flat_verdict = analyze_staging_root(flat_root, "Data", isaac);
+    REQUIRE(flat_verdict.simple);
+    REQUIRE(flat_verdict.peel_chain.empty());
+    REQUIRE(std::filesystem::exists(flat_greeting));
+
+    // A genuine MyMod/ wrapper is still a wrapper: the root holds a folder the
+    // game never declared, so the chain is not empty, the predicate does not
+    // hold, and the mod is named MyMod rather than the archive stem.
+    TempDir wrapped;
+    const auto wrapped_root = wrapped.root / "staging";
+    const auto wrapped_greeting =
+        wrapped_root / "MyMod" / "resources" / "greetings" / "isaac.png";
+    std::filesystem::create_directories(wrapped_greeting.parent_path());
+    std::ofstream(wrapped_greeting) << "x";
+    const auto wrapped_verdict = analyze_staging_root(wrapped_root, "Data", isaac);
+    REQUIRE(wrapped_verdict.simple);
+    REQUIRE(wrapped_verdict.peel_chain == std::vector<std::string>{"MyMod"});
+    REQUIRE(wrapped_verdict.peeled_folder_hint == "MyMod");
+
+    // Negative control: the identical wrapper-less tree with nothing declared
+    // is NOT game data, which is the regression the plumbing exists to stop -
+    // unthread the checker and this is what the first block starts failing on.
+    TempDir undeclared;
+    const auto bare_root     = undeclared.root / "staging";
+    const auto bare_greeting = bare_root / "resources" / "greetings" / "isaac.png";
+    std::filesystem::create_directories(bare_greeting.parent_path());
+    std::ofstream(bare_greeting) << "x";
+    const auto bare_verdict = analyze_staging_root(bare_root, "Data", nullptr);
+    REQUIRE_FALSE((bare_verdict.simple && bare_verdict.peel_chain.empty()));
+    std::printf(
+        "PASS: extract layout - a wrapper-less resources/ archive keeps its stem, "
+        "a MyMod/ wrapper still names the mod\n");
   }
 
   // InstallStage name dialog (MO2 SimpleInstallDialog): cancel aborts the

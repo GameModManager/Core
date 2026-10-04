@@ -344,6 +344,22 @@ namespace {
 
 }  // namespace
 
+std::shared_ptr<const ModDataCheckerFeature>
+data_checker_for(const GameKnowledge &knowledge, const std::string &game_id) {
+  if (auto feature =
+          Game::Features::Registry::instance().resolve_mod_data_checker(game_id)) {
+    return feature;
+  }
+  std::vector<std::string> folders;
+  std::vector<std::string> extensions;
+  split_csv(knowledge.get(game_id, "mod_valid_dirs", ""), folders);
+  split_csv(knowledge.get(game_id, "mod_valid_exts", ""), extensions);
+  if (folders.empty() && extensions.empty())
+    return nullptr;
+  return std::make_shared<const ModDataCheckerFeature>(std::move(folders),
+                                                       std::move(extensions));
+}
+
 bool register_game_feature_data(
     const std::string &game_id, const std::string &feature_type, int priority,
     const std::vector<std::pair<std::string, std::string>> &kv,
