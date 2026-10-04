@@ -2,10 +2,12 @@
 
 // Port of MO2's GamebryoModDataChecker
 // (REFERENCES/modorganizer-game_bethesda/src/gamebryo/gamebryomoddatachecker.cpp):
-// decides whether a file tree already looks like a game's Data folder. This is
-// the P1.2 Game::Features::Registry seed - a static utility today, per-game
-// override hooks (and the feature-registry lookup) arrive with that phase.
-// Qt-free.
+// decides whether a file tree already looks like a game's Data folder. This
+// static utility is the engine's DEFAULT: the staging-layout decision asks the
+// declaring game instead whenever it has a mod_data_checker feature or
+// mod_valid_dirs / mod_valid_exts (ModDataCheckerFeature, resolved by
+// data_checker_for()), and only falls back here when the game declares
+// nothing. Qt-free.
 
 #include <memory>
 #include <string>

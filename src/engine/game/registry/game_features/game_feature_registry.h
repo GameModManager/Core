@@ -118,6 +118,18 @@ using GameFeatureRegistry = Game::Features::Registry;
 [[nodiscard]] std::string native_plugins_csv(const GameKnowledge &knowledge,
                                              const std::string &game_id);
 
+// The game's declared data allow-lists as a checker, resolved registry-first:
+// a registered "mod_data_checker" feature (MO2 IModDataChecker), else the
+// mod_valid_dirs / mod_valid_exts knowledge hooks. nullptr when the game
+// declares neither, so the caller keeps whatever default it uses for a game
+// that says nothing (the scanner treats "no declaration" as "nothing can look
+// invalid"; the staging peel keeps the engine's own Bethesda set). Both the
+// mod scanner and the install layout decision read the declaration through
+// this one function, so a plugin overrides both with one registration and no
+// game folder name has to be hardcoded in the engine.
+[[nodiscard]] std::shared_ptr<const ModDataCheckerFeature>
+data_checker_for(const GameKnowledge &knowledge, const std::string &game_id);
+
 // The registered UnmanagedModsFeature's internal mod names (MO2
 // IUnmanagedMods::mods(false)), empty when none is registered. ModScanWorker
 // merges these into its unmanaged-row synthesis so a plugin can declare mods
