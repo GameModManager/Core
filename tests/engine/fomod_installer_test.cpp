@@ -310,6 +310,106 @@ void test_windows_paths_case_insensitive() {
               "resolution\n");
 }
 
+// A mod must not ship two paths differing only in case: Windows treats them as
+// one file, a case-sensitive filesystem treats them as two that collide at
+// deploy time with no conflict reported. The first destination written for a
+// logical file wins as the spelling; later options overwrite that one path.
+void test_case_variants_collapse_to_first_path() {
+  TestDir dir("casecollapse");
+  const auto &staging = dir.staging;
+  write_file(staging / "fomod/ModuleConfig.xml", "<config/>");
+  write_file(staging / "upper/A.swf", "FROM_UPPER");
+  write_file(staging / "lower/b.swf", "FROM_LOWER");
+  write_file(staging / "mixed/c.swf", "FROM_MIXED");
+
+  const std::string xml = R"(<config>
+  <moduleName>CaseCollapse</moduleName>
+  <requiredInstallFiles>
+    <file source="upper/A.swf" destination="Interface/Tweenmenu.swf" priority="0"/>
+    <file source="lower/b.swf" destination="interface/tweenmenu.swf" priority="1"/>
+    <file source="mixed/c.swf" destination="INTERFACE/TWEENMENU.SWF" priority="2"/>
+  </requiredInstallFiles>
+  <installSteps/>
+</config>)";
+
+  auto vm = view_model(xml);
+  FomodFileInstaller installer(staging, vm);
+  std::vector<std::string> missing;
+  REQUIRE(installer.apply(&missing));
+  REQUIRE(missing.empty());
+
+  // One file, at the first destination written, holding the last option's
+  // content: the later write overwrote the same path rather than adding a
+  // second near-identical file.
+  REQUIRE(fs::exists(staging / "Interface/Tweenmenu.swf"));
+  REQUIRE(!fs::exists(staging / "interface/tweenmenu.swf"));
+  REQUIRE(read_file(staging / "Interface/Tweenmenu.swf") == "FROM_MIXED");
+
+  const auto written = [&](const char *rel) {
+    return fs::exists(staging / rel);
+  };
+  REQUIRE(!(written("interface/tweenmenu.swf") || written("INTERFACE/TWEENMENU.SWF")));
+
+  // Only the one destination exists under Interface/, at the first spelling.
+  size_t interface_files = 0;
+  for (const auto &entry : fs::directory_iterator(staging / "Interface"))
+    if (entry.is_regular_file())
+      ++interface_files;
+  REQUIRE(interface_files == 1);
+
+  // No variant directory was created next to it.
+  REQUIRE(!fs::exists(staging / "interface"));
+  REQUIRE(!fs::exists(staging / "INTERFACE"));
+  std::printf("PASS: fomod_installer — case variants collapse to the first path\n");
+}
+
+// The collapse is scoped to one install. Two mods shipping the same path is a
+// legitimate cross-mod conflict for the conflict engine, so neither install may
+// reach into the other's mod folder.
+void test_case_collapse_is_per_install() {
+  TestDir dirA("perinstall_a");
+  TestDir dirB("perinstall_b");
+
+  const std::string xmlA = R"(<config>
+  <moduleName>ModA</moduleName>
+  <requiredInstallFiles>
+    <file source="a.swf" destination="Interface/Tweenmenu.swf" priority="0"/>
+  </requiredInstallFiles>
+  <installSteps/>
+</config>)";
+  const std::string xmlB = R"(<config>
+  <moduleName>ModB</moduleName>
+  <requiredInstallFiles>
+    <file source="b.swf" destination="Interface/Tweenmenu.swf" priority="0"/>
+  </requiredInstallFiles>
+  <installSteps/>
+</config>)";
+
+  write_file(dirA.staging / "fomod/ModuleConfig.xml", "<config/>");
+  write_file(dirA.staging / "a.swf", "MOD_A");
+  write_file(dirB.staging / "fomod/ModuleConfig.xml", "<config/>");
+  write_file(dirB.staging / "b.swf", "MOD_B");
+
+  auto vmA = view_model(xmlA);
+  FomodFileInstaller installerA(dirA.staging, vmA);
+  std::vector<std::string> missingA;
+  REQUIRE(installerA.apply(&missingA));
+  REQUIRE(missingA.empty());
+
+  auto vmB = view_model(xmlB);
+  FomodFileInstaller installerB(dirB.staging, vmB);
+  std::vector<std::string> missingB;
+  REQUIRE(installerB.apply(&missingB));
+  REQUIRE(missingB.empty());
+
+  // Both mod folders keep their own copy of the colliding path.
+  REQUIRE(fs::exists(dirA.staging / "Interface/Tweenmenu.swf"));
+  REQUIRE(fs::exists(dirB.staging / "Interface/Tweenmenu.swf"));
+  REQUIRE(read_file(dirA.staging / "Interface/Tweenmenu.swf") == "MOD_A");
+  REQUIRE(read_file(dirB.staging / "Interface/Tweenmenu.swf") == "MOD_B");
+  std::printf("PASS: fomod_installer — case collapse is per install\n");
+}
+
 }  // namespace
 
 // Probe for a case-sensitive filesystem. macOS APFS is case-insensitive by
@@ -333,5 +433,7 @@ TEST_CASE("fomod installer", "[engine]") {
   test_folder_empty_destination();
   test_path_traversal_guard();
   test_windows_paths_case_insensitive();
+  test_case_variants_collapse_to_first_path();
+  test_case_collapse_is_per_install();
   test_generate_fomod_json();
 }
