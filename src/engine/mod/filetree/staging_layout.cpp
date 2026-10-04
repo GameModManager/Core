@@ -2,6 +2,7 @@
 
 #include "engine/core/util/fs_utils.h"
 #include "engine/mod/fomod/fomod_utils.h"
+#include "engine/game/registry/game_features/game_feature.h"
 #include "engine/game/registry/game_features/mod_data_checker.h"
 
 #include <unordered_set>
@@ -46,12 +47,16 @@ namespace {
   // nullptr).
   void analyze_rec(const std::shared_ptr<const FileTree> &tree,
                    const std::string &data_folder_name,
+                   const std::shared_ptr<const ModDataCheckerFeature> &checker,
                    StagingNormalizeResult &result) {
     if (find_fomod_dir(tree)) {
       result.fomod = true;
       return;
     }
-    if (ModDataChecker::data_looks_valid(tree)) {
+    // The declaring game's own allow-lists decide this; the engine's static
+    // Bethesda set is only the fallback for a game that declares none.
+    if (checker ? checker->data_looks_valid(tree)
+                : ModDataChecker::data_looks_valid(tree)) {
       result.simple = true;
       return;
     }
@@ -67,7 +72,7 @@ namespace {
           result.peeled_folder_hint = only->name();
         }
         result.peel_chain.push_back(only->name());
-        analyze_rec(only->as_tree(), data_folder_name, result);
+        analyze_rec(only->as_tree(), data_folder_name, checker, result);
         return;
       }
     }
@@ -78,27 +83,37 @@ namespace {
 
 StagingNormalizeResult
 analyze_staging_layout(const std::shared_ptr<const FileTree> &tree,
-                       const std::string &data_folder_name) {
+                       const std::string &data_folder_name,
+                       std::shared_ptr<const ModDataCheckerFeature> checker) {
   StagingNormalizeResult result;
   if (tree)
-    analyze_rec(tree, data_folder_name, result);
+    analyze_rec(tree, data_folder_name, checker, result);
   return result;
 }
 
-StagingNormalizeResult normalize_staging_root(const std::filesystem::path &staging_root,
-                                              const std::string &data_folder_name) {
-  StagingNormalizeResult result;
-  if (data_folder_name.empty())
-    return result;
-
+StagingNormalizeResult
+analyze_staging_root(const std::filesystem::path &staging_root,
+                     const std::string &data_folder_name,
+                     std::shared_ptr<const ModDataCheckerFeature> checker) {
   // Mirror the disk exactly: a meta.ini at the staging root is a real entry
   // (ignore_meta_ini is for mod-folder roots, not extracted archives).
   auto tree =
       FileTree::make_tree_from_directory(staging_root, NameCompare::CaseInsensitive,
                                          /*ignore_meta_ini=*/false);
   if (!tree)
+    return {};
+  return analyze_staging_layout(tree, data_folder_name, std::move(checker));
+}
+
+StagingNormalizeResult
+normalize_staging_root(const std::filesystem::path &staging_root,
+                       const std::string &data_folder_name,
+                       std::shared_ptr<const ModDataCheckerFeature> checker) {
+  StagingNormalizeResult result;
+  if (data_folder_name.empty())
     return result;
-  result = analyze_staging_layout(tree, data_folder_name);
+
+  result = analyze_staging_root(staging_root, data_folder_name, checker);
   if (result.fomod)
     return result;
 
