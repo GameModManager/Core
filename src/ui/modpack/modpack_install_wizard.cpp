@@ -284,6 +284,12 @@ namespace {
               out.version = *src.version;
             if (src.file_name && !src.file_name->empty())
               out.name = *src.file_name;
+            // The pack's own record of these bytes. FetchStage hashes what
+            // arrives and refuses to install anything else.
+            if (src.sha256)
+              out.expected_sha256 = *src.sha256;
+            if (src.file_size)
+              out.expected_file_size = *src.file_size;
             return true;
           } else if constexpr (std::is_same_v<T, engine::gmmpack::ModSourceDirect>) {
             out.download_source_type = "direct";
@@ -292,6 +298,8 @@ namespace {
               out.version = *src.version;
             if (src.file_name && !src.file_name->empty())
               out.name = *src.file_name;
+            if (src.sha256)
+              out.expected_sha256 = *src.sha256;
             return true;
           } else if constexpr (std::is_same_v<T, engine::gmmpack::ModSourceModPub>) {
             out.download_source_type = "modpub";
