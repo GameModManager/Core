@@ -2,12 +2,15 @@
 
 #include "engine/mod/fomod/fomod_utils.h"
 #include "engine/core/log/logger.h"
+#include "engine/core/util/fs_utils.h"
 #include "engine/core/vfs/path_resolver.h"
 
 #include <algorithm>
 #include <filesystem>
 #include <nlohmann/json.hpp>
 #include <optional>
+#include <string>
+#include <unordered_map>
 
 namespace engine {
 
@@ -25,22 +28,40 @@ static bool copy_file_to(const std::filesystem::path &src,
   return !ec;
 }
 
+// Lowercased destination -> the destination actually written the first time.
+// A FOMOD may spell one logical file several ways (Interface/Tweenmenu.swf,
+// interface/tweenmenu.swf, INTERFACE/TWEENMENU.SWF). Windows writes those to a
+// single file; a case-sensitive filesystem writes three, and they then collide
+// at deploy time with the later one silently overwriting the earlier. Keying on
+// the lowercased path makes every later spelling reuse the first destination,
+// so it overwrites that one file. Scoped to a single mod's install: two mods
+// shipping the same path is an ordinary cross-mod conflict and stays one.
+using DestPaths = std::unordered_map<std::string, std::string>;
+
+static std::string first_dest_path(DestPaths &paths, const std::string &rel) {
+  return paths.try_emplace(toLower(rel), rel).first->second;
+}
+
 // FOMOD Plus copies a folder's *children* (not the folder itself) into the
 // target; an empty destination means "at the tree root". Destinations are
 // already validated by the caller (the config-driven path), so the recursion
 // just mirrors relative structure - no root escape check needed here.
+// `dstRel` stays mod-root-relative so each child can be resolved through
+// `paths`, and installTmp is joined in only at the copy.
 static void copy_dir_children(const std::filesystem::path &srcDir,
-                              const std::filesystem::path &dstDir,
-                              std::vector<std::string> &missing) {
+                              const std::filesystem::path &dstRel,
+                              const std::filesystem::path &installTmp,
+                              std::vector<std::string> &missing, DestPaths &paths) {
   std::error_code ec;
   for (const auto &entry : std::filesystem::directory_iterator(srcDir, ec)) {
     if (ec)
       break;
-    const auto childDst = dstDir / entry.path().filename();
+    const auto childRel =
+        first_dest_path(paths, (dstRel / entry.path().filename()).string());
     if (entry.is_directory()) {
-      copy_dir_children(entry.path(), childDst, missing);
+      copy_dir_children(entry.path(), childRel, installTmp, missing, paths);
     } else if (entry.is_regular_file()) {
-      if (!copy_file_to(entry.path(), childDst, ec)) {
+      if (!copy_file_to(entry.path(), installTmp / childRel, ec)) {
         missing.push_back(entry.path().string());
       }
     }
@@ -83,6 +104,7 @@ bool FomodFileInstaller::apply(std::vector<std::string> *missing) {
                           std::to_string(filesToInstall.size()) + " files");
 
   const vfs::PathResolver resolver(mModRoot);
+  DestPaths destPaths;
   for (const auto &file : filesToInstall) {
     // FOMOD sources are Windows-native (backslash separators, arbitrary
     // case). PathResolver normalizes separators and matches each component
@@ -127,20 +149,22 @@ bool FomodFileInstaller::apply(std::vector<std::string> *missing) {
       // Copy the contents of the folder, not the folder itself. An empty
       // destination puts the children at the install root; a non-empty
       // one prefixes them (FOMOD Plus FileInstaller.cpp:58-64).
-      std::filesystem::path dstBase = installTmp;
+      std::filesystem::path dstRel;
       if (file.destination.has_value() && !file.destination->empty()) {
         const auto safeDest =
             safe_join(mModRoot, normalize_separators(*file.destination));
         if (!safeDest) {
           continue;
         }
-        dstBase = installTmp / safeDest->lexically_relative(mModRoot);
+        dstRel = safeDest->lexically_relative(mModRoot);
       }
-      copy_dir_children(sourcePath, dstBase, *missing);
+      copy_dir_children(sourcePath, dstRel, installTmp, *missing, destPaths);
     } else {
       // The destination relative path (from the mod root) is what ends up
-      // inside the install tree.
-      const auto dst = installTmp / targetPath->lexically_relative(mModRoot);
+      // inside the install tree, at the spelling first written for it.
+      const auto dstRel =
+          first_dest_path(destPaths, targetPath->lexically_relative(mModRoot).string());
+      const auto dst = installTmp / dstRel;
       if (!copy_file_to(sourcePath, dst, ec)) {
         Logger::instance().error("FomodFileInstaller: failed to copy " + file.source);
         if (missing != nullptr)
