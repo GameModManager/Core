@@ -7,14 +7,24 @@
 namespace engine::Source {
 
 // Parsed components of an nxm:// URL.
+//
+// Two shapes exist. A mod link is
+// "nxm://<domain>/mods/<mod_id>/files/<file_id>", a collection link is
+// "nxm://<domain>/collections/<id>/revisions/<n>" (the revision may be
+// omitted). MO2's NXMUrl carries the same two extras - isCollection(),
+// collectionId(), collectionRevision() - so the two can be compared field for
+// field.
 struct NxmLink {
-  std::string nexus_domain;  // e.g. "skyrimspecialedition", "isaac"
-  int64_t mod_id  = 0;       // mod ID (0 if not present)
-  int64_t file_id = 0;       // file ID (0 if not present)
-  std::string key;           // download key
-  int64_t expire  = 0;       // key expiry timestamp
-  int64_t user_id = 0;       // Nexus user ID
-  std::string full_url;      // original URL for logging
+  std::string nexus_domain;         // e.g. "skyrimspecialedition", "isaac"
+  int64_t mod_id     = 0;           // mod ID (0 if not present)
+  int64_t file_id    = 0;           // file ID (0 if not present)
+  bool is_collection = false;       // a collections/ link, not a mods/ link
+  std::string collection_id;        // collection slug (Nexus's own name for it)
+  int64_t collection_revision = 0;  // revision number, 0 = not pinned
+  std::string key;                  // download key
+  int64_t expire  = 0;              // key expiry timestamp
+  int64_t user_id = 0;              // Nexus user ID
+  std::string full_url;             // original URL for logging
 
   [[nodiscard]] bool valid() const { return !nexus_domain.empty(); }
 };
