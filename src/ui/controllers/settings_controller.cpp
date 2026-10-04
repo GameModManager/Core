@@ -57,6 +57,7 @@
 #include "ui/fomod/fomod_wizard_dialog.h"
 #include "ui/game_selection/game_selection_widget.h"
 #include "ui/install/install_name_dialog.h"
+#include "ui/install/layout_dialog.h"
 #include "ui/install/password_prompt.h"
 #include "ui/main_window/main_window.h"
 #include "ui/modpack/export_wizard.h"
@@ -403,6 +404,22 @@ void SettingsController::set_game_info(const std::string &game_id,
       passphrase = entered.toStdString();
       entered.clear();
       return true;
+    };
+
+    // A wrong-layout archive asks which subtree maps onto the game's data
+    // directory - MO2's InstallDialog, reached only after the silent peel and
+    // the silent repair both found nothing. The checker is the one resolved
+    // above, so the verdict on screen is the game's own answer rather than the
+    // UI's guess; it is copied because the context outlives this function.
+    // ask_layout marshals the modal onto the main thread like ask_overwrite and
+    // returns cancel when the user backs out, which aborts the install with
+    // nothing installed.
+    auto layout_checker = ctx.data_checker;
+    ctx.layout_query_cb = [this,
+                           layout_checker](const std::filesystem::path &content_root,
+                                           const std::string &data_prefix) {
+      w_->downloads_->hide_install_progress();
+      return ui::ask_layout(content_root, data_prefix, layout_checker, w_);
     };
 
     // Set up deploy strategy. The effective strategy (per-instance
