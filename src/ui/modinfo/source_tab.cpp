@@ -262,6 +262,11 @@ namespace {
       auto *form      = new QFormLayout();
       provider_combo_ = new QComboBox(this);
 
+      // The source the mod is ALREADY attached to, per the same helper the
+      // tab bar uses to decide which panel to build. Asking it instead of
+      // re-deriving "what sources does this mod have" keeps one notion of it.
+      const QString attached = resolve_actual_source(data);
+
       // Build the sorted Entry list from the registry. We normalize
       // "steamworkshop" -> "steam" so the canonical key the rest of the
       // codebase expects (and that SourceInfoPanel guards on) is consistent
@@ -293,6 +298,12 @@ namespace {
         // it is not a user-attributable source (a "Direct" tag carries no
         // useful identity). Skip it in the Add Source combo.
         if (pt == QLatin1String("direct"))
+          continue;
+        // Never offer a source the mod already has. The existing source is
+        // untouched - its panel stays on the tab bar, fully visible and
+        // editable - only the add affordance goes away, so once the source is
+        // detached the entry comes straight back into this combo.
+        if (!attached.isEmpty() && pt == attached)
           continue;
         e.canonical = pt;
         e.priority  = priority_for(pt);
@@ -481,7 +492,9 @@ namespace {
     void refresh_accept_enabled() {
       if (auto *bb = this->findChild<QDialogButtonBox *>()) {
         const QString t = chosen_source_type();
-        bool ok         = true;
+        // Nothing to add (every registered provider is already attached, so
+        // the combo is empty) - OK would have nothing to write.
+        bool ok = !t.isEmpty();
         if (t == QLatin1String("nexus")) {
           const QString v = nexus_mod_id_->text().trimmed();
           ok              = !v.isEmpty() && v.toLongLong() > 0;
