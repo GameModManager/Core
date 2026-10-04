@@ -123,7 +123,10 @@ bool ExtractStage::execute(Mod &mod, PipelineContext &ctx) {
   // the question and the peel read one verdict and walk the tree once.
   auto layout = analyze_staging_root(staging_dir, ctx.deploy_prefix, ctx.data_checker);
   if (layout.needs_review && ctx.layout_query_cb) {
-    auto decision = ctx.layout_query_cb(staging_dir, ctx.deploy_prefix);
+    // The archive's own name, because the staging dir it extracted into is a
+    // scratch path (".gmm_install_tmp") that means nothing to the user.
+    auto decision = ctx.layout_query_cb(staging_dir, ctx.deploy_prefix,
+                                        archive_path.filename().string());
     if (decision.cancel) {
       // A cancel is not a failure and leaves nothing behind: the staging dir
       // was the only thing this stage created.
