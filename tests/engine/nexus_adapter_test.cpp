@@ -144,6 +144,146 @@ TEST_CASE("parse_source_id json path", "[collection][nexus][adapter]") {
   REQUIRE(ref.file_path == "/tmp/export/collection.json");
 }
 
+// nxm://<game>/collections/<id>/revisions/<n> - the shape the Nexus site and
+// the official app emit. Before this was parsed, the whole URL was handed to
+// the collection API as a slug.
+TEST_CASE("parse_source_id nxm collection link", "[collection][nexus][adapter]") {
+  const auto ref = parse_source_id(
+      "nxm://skyrimspecialedition/collections/hygge-for-lore-and-4096/revisions/7");
+  REQUIRE_FALSE(ref.is_file);
+  REQUIRE(ref.slug == "hygge-for-lore-and-4096");
+  REQUIRE(ref.revision == 7);
+}
+
+// A link that pins no revision means "latest", and 0 is what the fetcher
+// turns into the nullable revision argument the query documents as "the latest
+// published revision".
+TEST_CASE("parse_source_id nxm collection link without a revision",
+          "[collection][nexus][adapter]") {
+  const auto ref =
+      parse_source_id("nxm://skyrimspecialedition/collections/hygge-for-lore");
+  REQUIRE(ref.slug == "hygge-for-lore");
+  REQUIRE(ref.revision == 0);
+}
+
+TEST_CASE("parse_source_id nxm collection link past the nexus authority",
+          "[collection][nexus][adapter]") {
+  const auto ref =
+      parse_source_id("nxm://nexus/cyberpunk2077/collections/neon/revisions/2");
+  REQUIRE(ref.slug == "neon");
+  REQUIRE(ref.revision == 2);
+}
+
+TEST_CASE("parse_source_id rejects nxm links that are not collections",
+          "[collection][nexus][adapter]") {
+  // A mod link has no collection for the collection API to look up. An empty
+  // slug is what stops it being sent as one.
+  REQUIRE(parse_source_id("nxm://skyrimspecialedition/mods/184625/files/781833")
+              .slug.empty());
+  // Malformed collection links: no id at all, and a revision that is not a
+  // number (which must not be silently taken for "latest").
+  REQUIRE(parse_source_id("nxm://skyrimspecialedition/collections/").slug.empty());
+  REQUIRE(parse_source_id("nxm://skyrimspecialedition/collections/abcd/revisions/abc")
+              .slug.empty());
+  REQUIRE(parse_source_id("nxm://skyrimspecialedition/collections/abcd/revisions/-1")
+              .slug.empty());
+}
+
+TEST_CASE("Adapter fetch sends an nxm collection link's id, not the whole URL",
+          "[collection][nexus][adapter]") {
+  std::string seen_slug;
+  long long seen_revision = -1;
+  Nexus::Adapter adapter(
+      [&](const std::string &slug, long long revision) -> NexusFetchResult {
+        seen_slug     = slug;
+        seen_revision = revision;
+        NexusFetchResult r;
+        r.ok       = true;
+        r.revision = make_revision();
+        return r;
+      });
+
+  const std::string url =
+      "nxm://skyrimspecialedition/collections/hygge-for-lore/revisions/7";
+  const auto outcome = adapter.fetch(url);
+  REQUIRE(std::holds_alternative<CollectionFetchResult>(outcome));
+  // The regression this replaces: the entire nxm:// URL used to arrive here as
+  // the slug, so GraphQL was asked for a collection named after a URL.
+  REQUIRE(seen_slug == "hygge-for-lore");
+  REQUIRE(seen_slug.find("nxm://") == std::string::npos);
+  REQUIRE(seen_revision == 7);
+}
+
+TEST_CASE("Adapter fetch nxm collection link without a revision asks for latest",
+          "[collection][nexus][adapter]") {
+  std::string seen_slug;
+  long long seen_revision = -1;
+  Nexus::Adapter adapter(
+      [&](const std::string &slug, long long revision) -> NexusFetchResult {
+        seen_slug     = slug;
+        seen_revision = revision;
+        NexusFetchResult r;
+        r.ok       = true;
+        r.revision = make_revision();
+        return r;
+      });
+
+  const auto outcome =
+      adapter.fetch("nxm://skyrimspecialedition/collections/hygge-for-lore");
+  REQUIRE(std::holds_alternative<CollectionFetchResult>(outcome));
+  REQUIRE(seen_slug == "hygge-for-lore");
+  // 0 is the "omit the revision variable, let Nexus pick latest published"
+  // signal - see build_collection_revision_variables.
+  REQUIRE(seen_revision == 0);
+}
+
+TEST_CASE("Adapter fetch refuses a malformed nxm link with a useful error",
+          "[collection][nexus][adapter]") {
+  // The fetcher must never run: a bad link has no id to ask about.
+  bool fetched = false;
+  Nexus::Adapter adapter([&](const std::string &, long long) -> NexusFetchResult {
+    fetched = true;
+    NexusFetchResult r;
+    r.ok    = false;
+    r.error = "must not be called";
+    return r;
+  });
+
+  // Each section pins the DISTINCT diagnosis. One generic message would report a
+  // malformed collection link as a mod link - which it is not, and which hides
+  // the part that is actually broken.
+  SECTION("mod link") {
+    const auto outcome =
+        adapter.fetch("nxm://skyrimspecialedition/mods/184625/files/781833");
+    REQUIRE(std::holds_alternative<FetchError>(outcome));
+    const auto &msg = std::get<FetchError>(outcome).message;
+    REQUIRE(msg.find("link to a mod") != std::string::npos);
+    REQUIRE(msg.find("nxm://<game>/collections/<id>") != std::string::npos);
+    REQUIRE_FALSE(fetched);
+  }
+
+  SECTION("collection link with no id") {
+    const auto outcome = adapter.fetch("nxm://skyrimspecialedition/collections/");
+    REQUIRE(std::holds_alternative<FetchError>(outcome));
+    const auto &msg = std::get<FetchError>(outcome).message;
+    REQUIRE(msg.find("no collection id") != std::string::npos);
+    REQUIRE(msg.find("nxm://<game>/collections/<id>") != std::string::npos);
+    REQUIRE_FALSE(fetched);
+  }
+
+  SECTION("collection link with an unreadable revision") {
+    const auto outcome =
+        adapter.fetch("nxm://skyrimspecialedition/collections/abcd/revisions/abc");
+    REQUIRE(std::holds_alternative<FetchError>(outcome));
+    const auto &msg = std::get<FetchError>(outcome).message;
+    REQUIRE(msg.find("not a positive number") != std::string::npos);
+    // It IS a collection link, so it must not be told it is a mod link, and
+    // the revision must not be silently resolved to "latest".
+    REQUIRE(msg.find("link to a mod") == std::string::npos);
+    REQUIRE_FALSE(fetched);
+  }
+}
+
 TEST_CASE("parse_source_id garbage yields empty slug", "[collection][nexus][adapter]") {
   const auto ref = parse_source_id("not a valid id!!!");
   REQUIRE(ref.slug == "not a valid id!!!");
@@ -161,9 +301,18 @@ TEST_CASE("Adapter can_handle", "[collection][nexus][adapter]") {
       "https://www.nexusmods.com/skyrimspecialedition/collections/abcd"));
   REQUIRE(adapter.can_handle("my-collection"));
   REQUIRE(adapter.can_handle("my-collection@3"));
+  REQUIRE(
+      adapter.can_handle("nxm://skyrimspecialedition/collections/abcd/revisions/3"));
+  REQUIRE(adapter.can_handle("nxm://skyrimspecialedition/collections/abcd"));
   REQUIRE_FALSE(adapter.can_handle(""));
   REQUIRE_FALSE(adapter.can_handle("not a valid id!!!"));
   REQUIRE_FALSE(adapter.can_handle("https://example.com/other"));
+  // An nxm:// mod link is a download, not a collection.
+  REQUIRE_FALSE(
+      adapter.can_handle("nxm://skyrimspecialedition/mods/184625/files/781833"));
+  REQUIRE_FALSE(adapter.can_handle("nxm://skyrimspecialedition/collections/"));
+  REQUIRE_FALSE(
+      adapter.can_handle("nxm://skyrimspecialedition/collections/abcd/revisions/abc"));
 }
 
 TEST_CASE("Adapter identity", "[collection][nexus][adapter]") {
