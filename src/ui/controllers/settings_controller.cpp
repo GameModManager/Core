@@ -417,9 +417,11 @@ void SettingsController::set_game_info(const std::string &game_id,
     auto layout_checker = ctx.data_checker;
     ctx.layout_query_cb = [this,
                            layout_checker](const std::filesystem::path &content_root,
-                                           const std::string &data_prefix) {
+                                           const std::string &data_prefix,
+                                           const std::string &archive_name) {
       w_->downloads_->hide_install_progress();
-      return ui::ask_layout(content_root, data_prefix, layout_checker, w_);
+      return ui::ask_layout(content_root, data_prefix, archive_name, layout_checker,
+                            w_);
     };
 
     // Set up deploy strategy. The effective strategy (per-instance

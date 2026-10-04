@@ -30,10 +30,10 @@ namespace {
   constexpr int kIsDirRole   = Qt::UserRole + 2;
   constexpr int kFetchedRole = Qt::UserRole + 3;
 
-  // One row per entry in the extracted content, with the game's data directory
-  // synthesised as the single top row. Directories list their children only when
-  // the view expands them: an archive can hold tens of thousands of files and
-  // this dialog only ever shows what the user actually opens.
+  // One row per entry in the extracted content, with the archive's own name as
+  // the single top row. Directories list their children only when the view
+  // expands them: an archive can hold tens of thousands of files and this dialog
+  // only ever shows what the user actually opens.
   class ContentModel : public QStandardItemModel {
   public:
     ContentModel(std::filesystem::path root, QString root_label,
@@ -42,14 +42,38 @@ namespace {
       appendRow(make_item(content_root_, root_label, /*is_dir=*/true));
     }
 
-    // The "<prefix>" row. Everything below it is real content on disk. The model
-    // holds exactly that one top row, so its index IS the pseudo-root.
+    // The top row. Everything below it is real content on disk.
+    //
+    // This is the call QTreeView reads to decide whether to draw an expander at
+    // all, and QStandardItemModel::hasChildren answers it from the item alone -
+    // an item has children only once rows have been appended to it. It never
+    // consults canFetchMore, so without this override every directory below the
+    // top row reports itself a leaf: no arrow, no expansion, and an archive
+    // whose game data sits in a nested folder is unreachable. Answering
+    // canFetchMore is necessary but not sufficient.
+    bool hasChildren(const QModelIndex &parent) const override {
+      const auto *item = itemFromIndex(parent);
+      // The top level is asked about with no index at all, which is no item to
+      // reason about - the base class answers it from the top rows.
+      if (!item)
+        return QStandardItemModel::hasChildren(parent);
+      if (item->rowCount() > 0)
+        return true;
+      return canFetchMore(parent);
+    }
+
+    // A directory holding nothing is a leaf, not a folder waiting to be opened,
+    // so whether the arrow is offered is answered by probing the directory rather
+    // than by reading it. is_empty() stops at the first entry, so a level of tens
+    // of thousands of files costs one opendir, not a listing - and the level is
+    // still not populated until the user opens it.
     bool canFetchMore(const QModelIndex &parent) const override {
       const auto *item = itemFromIndex(parent);
       if (!item || !item->data(kIsDirRole).toBool() ||
           item->data(kFetchedRole).toBool())
         return false;
-      return true;
+      std::error_code ec;
+      return !std::filesystem::is_empty(path_of(item), ec);
     }
 
     void fetchMore(const QModelIndex &parent) override {
@@ -57,8 +81,7 @@ namespace {
       if (!item)
         return;
       item->setData(true, kFetchedRole);
-      const auto dir =
-          std::filesystem::path(item->data(kPathRole).toString().toStdString());
+      const auto dir = path_of(item);
 
       std::error_code ec;
       std::vector<std::filesystem::path> dirs;
@@ -82,6 +105,10 @@ namespace {
     }
 
   private:
+    static std::filesystem::path path_of(const QStandardItem *item) {
+      return std::filesystem::path(item->data(kPathRole).toString().toStdString());
+    }
+
     static QStandardItem *make_item(const std::filesystem::path &entry,
                                     const QString &label, bool is_dir) {
       auto *item = new QStandardItem(
@@ -114,27 +141,36 @@ namespace {
 
 LayoutDialog::LayoutDialog(const std::filesystem::path &content_root,
                            const std::string &data_prefix,
+                           const std::string &archive_name,
                            std::shared_ptr<const engine::ModDataCheckerFeature> checker,
                            QWidget *parent)
     : QDialog(parent), content_root_(content_root), checker_(std::move(checker)) {
   // MO2 hands the dialog the lowercased data dir name
-  // (installermanual.cpp:107), and that is the spelling the pseudo-root and
-  // the context menu carry.
+  // (installermanual.cpp:107), and that is the spelling the verdict and the
+  // context menu carry.
   prefix_ = QString::fromStdString(data_prefix).toLower();
+  // The top row stands for the extracted archive, so it is named after the
+  // archive. MO2 labels the same row "<data>" (archivetree.cpp's setup()), which
+  // reads as a placeholder and - worse - looks like the row already holds game
+  // data when it holds the wrapper the peel could not resolve. The data
+  // directory's own name stays in the caption and the verdict, where it means
+  // the thing it actually names.
+  const auto archive_label =
+      QString::fromStdString(archive_name.empty() ? data_prefix : archive_name);
   setWindowTitle(tr("Install Mod"));
   resize(560, 460);
 
   auto *layout = new QVBoxLayout(this);
 
   auto *caption = new QLabel(
-      tr("<b>&lt;%1&gt;</b> is the base directory that will map onto the game's "
-         "data directory. Right-click a folder in the tree to change it.")
-          .arg(prefix_),
+      tr("<b>%1</b> is the archive being installed. Right-click a folder in the "
+         "tree to choose which one maps onto the game's data directory, &lt;%2&gt;.")
+          .arg(archive_label.toHtmlEscaped(), prefix_),
       this);
   caption->setWordWrap(true);
   layout->addWidget(caption);
 
-  model_ = new ContentModel(content_root_, QString("<%1>").arg(prefix_), this);
+  model_ = new ContentModel(content_root_, archive_label, this);
   tree_  = new QTreeView(this);
   tree_->setModel(model_);
   tree_->setHeaderHidden(true);
@@ -165,14 +201,12 @@ LayoutDialog::LayoutDialog(const std::filesystem::path &content_root,
   addAction(unset_action_);
 
   // The first level is where a wrong-layout archive differs from a right one,
-  // and the pseudo-root on its own says nothing - so open it up front.
+  // and the top row on its own says nothing - so open it up front.
   //
-  // Fetched explicitly rather than left to expand(): QTreeView::expand asks
-  // canFetchMore(index.parent()), and for the top row that parent is the
-  // INVALID index, which the model cannot resolve to an item. A live view
-  // papers over it in its next layout pass; anything that reads the model
-  // before then (a test, a paint-free context) sees an expanded row with no
-  // children. Everything below this level stays lazy.
+  // Fetched explicitly rather than left to expand(): the view asks the model for
+  // a top row's PARENT, and the top row's parent is the invalid index, which
+  // resolves to no item and therefore to nothing to fetch. Everything below this
+  // level stays lazy - expanding is the only thing that reads it.
   model_->fetchMore(model_->index(0, 0));
   tree_->expand(model_->index(0, 0));
   refresh_verdict();
@@ -278,10 +312,13 @@ void LayoutDialog::accept() {
 
 namespace {
 
-  engine::LayoutDecision ask_layout_impl(
-      const std::filesystem::path &content_root, const std::string &data_prefix,
-      std::shared_ptr<const engine::ModDataCheckerFeature> checker, QWidget *parent) {
-    LayoutDialog dialog(content_root, data_prefix, std::move(checker), parent);
+  engine::LayoutDecision
+  ask_layout_impl(const std::filesystem::path &content_root,
+                  const std::string &data_prefix, const std::string &archive_name,
+                  std::shared_ptr<const engine::ModDataCheckerFeature> checker,
+                  QWidget *parent) {
+    LayoutDialog dialog(content_root, data_prefix, archive_name, std::move(checker),
+                        parent);
     engine::LayoutDecision decision;
     if (dialog.exec() != QDialog::Accepted)
       decision.cancel = true;
@@ -294,16 +331,19 @@ namespace {
 
 engine::LayoutDecision
 ask_layout(const std::filesystem::path &content_root, const std::string &data_prefix,
+           const std::string &archive_name,
            std::shared_ptr<const engine::ModDataCheckerFeature> checker,
            QWidget *parent) {
   if (QThread::currentThread() == qApp->thread())
-    return ask_layout_impl(content_root, data_prefix, std::move(checker), parent);
+    return ask_layout_impl(content_root, data_prefix, archive_name, std::move(checker),
+                           parent);
   // Marshal onto the main thread and block until the modal dialog is done.
   engine::LayoutDecision result;
   QMetaObject::invokeMethod(
       qApp,
       [&] {
-        result = ask_layout_impl(content_root, data_prefix, std::move(checker), parent);
+        result = ask_layout_impl(content_root, data_prefix, archive_name,
+                                 std::move(checker), parent);
       },
       Qt::BlockingQueuedConnection);
   return result;
