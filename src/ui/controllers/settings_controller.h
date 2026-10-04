@@ -4,9 +4,16 @@
 #include <QObject>
 #include <QString>
 #include <filesystem>
+#include <optional>
 #include <string>
 
+#include "engine/core/instance/instance.h"
+#include "engine/gmmpack/types.h"
 #include "ui/main_window/main_window.h"
+
+namespace engine::Source {
+struct NxmLink;
+}  // namespace engine::Source
 
 namespace ui {
 
@@ -83,6 +90,15 @@ public slots:
   // main-window drag-and-drop handler); empty keeps the dialog untouched.
   void import_modpack(const QString &preset_file = {});
 
+  // An nxm:// COLLECTION link clicked in a browser. A collection names a list
+  // of mods for one game and no file, so it cannot go into the download queue
+  // the way a mod link does - it needs a home first. Asks which: append to the
+  // active instance (only when that instance is for the collection's game), a
+  // named instance of that game, or a brand new one. Nothing is fetched before
+  // that answer, so cancelling costs nothing at all.
+  void handle_collection_link(const engine::Source::NxmLink &link,
+                              const std::string &game_id);
+
   // File > Export Modpack: capture instance snapshot, open export wizard,
   // produce a .gmmpack archive.
   void export_modpack();
@@ -93,6 +109,18 @@ private:
   // has the metadata it needs. Centralized so every DebugWindow creation
   // site gets the same wiring.
   class DebugWindow *create_debug_window();
+
+  // Run the import dialog over a collection URL and hand back the converted
+  // pack. Nothing is fetched until this is called, which is what lets a
+  // cancelled choice cost nothing. Empty when the dialog was dismissed or the
+  // collection could not be read.
+  std::optional<engine::gmmpack::Gmmpack> fetch_collection_pack(const std::string &url);
+
+  // Hand a fetched pack to the install wizard, seeded with the target
+  // instance's own directories so an append has somewhere real to land.
+  // create_new keeps the wizard's Paths step; an append skips it.
+  void install_pack_into(engine::gmmpack::Gmmpack pack, const engine::Instance &target,
+                         bool create_new);
 
   MainWindow *w_ = nullptr;
 };
