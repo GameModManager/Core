@@ -398,6 +398,15 @@ void PreviewWindow::show_file(const QString &file_path,
   names_.clear();
   paths_ << file_path;
   names_ << QString();
+  // The primary copy is one of the providers, so its mod id is already in the
+  // provider lists - recover it here, otherwise the first variant (the one
+  // shown on open) is the one variant with no name in the label.
+  for (int i = 0; i < provider_paths.size() && i < provider_names.size(); ++i) {
+    if (provider_paths[i] == file_path) {
+      names_[0] = provider_names[i];
+      break;
+    }
+  }
 
   // Append any provider variants (skipping the primary, already first, and
   // entries without a resolvable on-disk copy).
@@ -412,6 +421,9 @@ void PreviewWindow::show_file(const QString &file_path,
   variant_ = 0;
   zoom_    = 1.0;
   fit_     = true;
+  // One preview session, one reference side: cleared here so the first
+  // animation loaded fixes it for every variant (see parse_anm2_data).
+  anm2_ref_side_ = 0;
   reload();
   show();
   raise();
@@ -425,9 +437,12 @@ void PreviewWindow::reload() {
 
   const QString &path = paths_[variant_];
   name_label_->setText(QFileInfo(path).fileName());
-  if (variant_ > 0 && variant_ < names_.size() && !names_[variant_].isEmpty()) {
+  // Every variant carries a mod name, the first one included, so the guard is
+  // on an unknown name only - never on the variant index.
+  const QString mod_name = variant_ < names_.size() ? names_[variant_] : QString();
+  if (count > 1 && !mod_name.isEmpty()) {
     source_label_->setText(
-        tr("Variant %1/%2 - %3").arg(variant_ + 1).arg(count).arg(names_[variant_]));
+        tr("Variant %1/%2 - %3").arg(variant_ + 1).arg(count).arg(mod_name));
     source_label_->setEnabled(true);
   } else if (count > 1) {
     source_label_->setText(tr("Variant %1/%2").arg(variant_ + 1).arg(count));
@@ -506,6 +521,7 @@ bool PreviewWindow::load_image(const QString &path) {
   anm2_index_ = 0;
   anm2_states_.clear();
   anm2_state_renders_.clear();
+  anm2_ref_side_      = 0;
   anm2_current_state_ = 0;
   anm2_playing_       = false;
   if (anm2_play_btn_)
@@ -590,6 +606,21 @@ bool PreviewWindow::parse_anm2_data(const QString &path) {
   // instead of pre-baked frames.
   bool has_on_demand =
       data->raw_animation && data->render_frame && data->on_demand_frame_count > 0;
+
+  // Reference side for the preview box: the largest frame in the file, across
+  // every state, so the locked box cannot follow the frame on screen. Taken
+  // from the first animation of the preview session and then held, because a
+  // variant switch reloads a different file whose largest frame may differ -
+  // recomputing per variant resizes the box on every switch, which is the
+  // jitter this removes. Held for the session, not per file: the loaders for
+  // everything that is not an animation (image, text, plugin, unsupported) zero
+  // it again, and show_file() zeroes it for a new preview.
+  if (anm2_ref_side_ == 0) {
+    for (const auto &s : anm2_states_) {
+      for (const auto &f : s.frames)
+        anm2_ref_side_ = std::max(anm2_ref_side_, std::max(f.width(), f.height()));
+    }
+  }
 
   // Set the debug overlay canvas size from the first state's dimensions.
   if (image_label_ && !anm2_states_.empty()) {
@@ -763,6 +794,7 @@ bool PreviewWindow::load_text(const QString &path) {
   // Hide ANM2 controls; show the stack for the text page.
   if (anm2_controls_)
     anm2_controls_->setVisible(false);
+  anm2_ref_side_   = 0;
   image_has_alpha_ = false;
   update_checkerboard_background();
   stack_->setVisible(true);
@@ -797,8 +829,10 @@ bool PreviewWindow::load_plugin_preview(const QString &path) {
 
   plugin_widget_ = reinterpret_cast<QWidget *>(w);
   plugin_layout_->addWidget(plugin_widget_);
+  anm2_ref_side_   = 0;
   image_has_alpha_ = false;
   update_checkerboard_background();
+  stack_->setVisible(true);
   stack_->setCurrentWidget(plugin_page_);
   return true;
 }
@@ -812,6 +846,7 @@ void PreviewWindow::show_unsupported() {
   anm2_index_ = 0;
   anm2_states_.clear();
   anm2_state_renders_.clear();
+  anm2_ref_side_      = 0;
   anm2_current_state_ = 0;
   anm2_playing_       = false;
   if (anm2_play_btn_)
@@ -849,6 +884,18 @@ void PreviewWindow::zoom_by(double factor) {
   apply_zoom();
 }
 
+void PreviewWindow::set_preview_box(int side) {
+  if (preview_box_side_ == side)
+    return;
+  preview_box_side_ = side;
+  if (side > 0) {
+    image_label_->setFixedSize(side, side);
+    return;
+  }
+  image_label_->setMinimumSize(0, 0);
+  image_label_->setMaximumSize(QWIDGETSIZE_MAX, QWIDGETSIZE_MAX);
+}
+
 void PreviewWindow::apply_zoom() {
   if (current_pixmap_.isNull()) {
     image_label_->clear();
@@ -870,16 +917,37 @@ void PreviewWindow::apply_zoom() {
       zoom_label_->setText(QStringLiteral("100%"));
       return;
     }
-    const qreal scale = qMin(vp.width() / static_cast<qreal>(img.width()),
-                             vp.height() / static_cast<qreal>(img.height()));
-    target            = QSize(static_cast<int>(img.width() * scale),
-                              static_cast<int>(img.height() * scale));
+    if (anm2_ref_side_ > 0) {
+      // Animation: the box is a fixed square. Its side is the shorter
+      // viewport edge, so it follows the window but not the frame, and
+      // being no larger than the viewport it can never bring a scrollbar
+      // into existence (which would shrink the viewport and feed back into
+      // the next frame - the jitter this replaces).
+      const int side = std::min(vp.width(), vp.height());
+      set_preview_box(side);
+      target = QSize(side, side);
+    } else {
+      set_preview_box(0);
+      const qreal scale = qMin(vp.width() / static_cast<qreal>(img.width()),
+                               vp.height() / static_cast<qreal>(img.height()));
+      target            = QSize(static_cast<int>(img.width() * scale),
+                                static_cast<int>(img.height() * scale));
+    }
+  } else if (anm2_ref_side_ > 0) {
+    // Zoom scales the square box itself; frames scale into it, so the box
+    // stays 1:1 at every zoom level.
+    const int side = std::max(1, static_cast<int>(std::lround(anm2_ref_side_ * zoom_)));
+    set_preview_box(side);
+    target = QSize(side, side);
   } else {
+    set_preview_box(0);
     target = current_pixmap_.size() * zoom_;
   }
   target = target.expandedTo(QSize(1, 1));
+  // Nearest-neighbour: the frames are pixel art. Re-run on every frame (see
+  // on_anm2_frame_timeout), so no frame escapes the flag.
   image_label_->setPixmap(
-      current_pixmap_.scaled(target, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+      current_pixmap_.scaled(target, Qt::KeepAspectRatio, Qt::FastTransformation));
   if (!fit_)
     zoom_label_->setText(QString::number(qRound(zoom_ * 100.0)) + "%");
   else

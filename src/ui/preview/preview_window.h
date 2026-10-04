@@ -103,6 +103,10 @@ private:
   bool load_plugin_preview(const QString &path);
   void show_unsupported();
   void apply_zoom();
+  // Lock the image label to a square side x side (the 1:1 preview box) so a
+  // frame whose size differs from the previous one cannot resize the widget
+  // and jitter the window. side <= 0 releases the lock.
+  void set_preview_box(int side);
   void set_fit();
   void zoom_by(double factor);
   // Re-applies the checkerboard background from checkerboard_style_ and
@@ -150,6 +154,16 @@ private:
   std::size_t anm2_index_ = 0;
   QTimer anm2_timer_;
   std::string game_id_;
+  // Natural reference side of an animation: the largest frame across every
+  // state in the file. The preview box is locked to this side (scaled by the
+  // window in fit mode) so its size never depends on the frame being shown.
+  // Taken from the first animation of the preview and then held for the whole
+  // session, so switching to a variant whose frames differ cannot resize the
+  // box. 0 when the loaded file is not an animation (still images keep
+  // tracking the pixmap).
+  int anm2_ref_side_ = 0;
+  // Side the image label is currently locked to, 0 when unlocked.
+  int preview_box_side_ = 0;
 
   // ANM2 playback controls (two-column layout)
   QWidget *anm2_controls_         = nullptr;
