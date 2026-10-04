@@ -366,7 +366,8 @@ void ModpackImportDialog::on_import() {
     }
     pack_ = manifest_to_gmmpack(
         std::get<engine::Collection::FetchResult>(outcome).manifest);
-    report_collection_gaps(adapter.last_revision_status(), adapter.last_skipped());
+    report_collection_gaps(adapter.last_revision_status(), adapter.last_skipped(),
+                           adapter.last_unresolved());
     accept();
     return;
   }
@@ -402,7 +403,8 @@ void ModpackImportDialog::on_import() {
 
 void ModpackImportDialog::report_collection_gaps(
     const std::string &revision_status,
-    const std::vector<engine::Collection::Nexus::SkipDiagnostic> &skipped) {
+    const std::vector<engine::Collection::Nexus::SkipDiagnostic> &skipped,
+    const std::vector<engine::Collection::Unresolved> &unresolved) {
   QStringList lines;
   // A revision Nexus still calls published needs no comment; anything else -
   // retracted, discarded, draft - changes what this list means, so say so.
@@ -418,6 +420,18 @@ void ModpackImportDialog::report_collection_gaps(
       lines << QStringLiteral("  - %1: %2")
                    .arg(QString::fromStdString(s.mod_label),
                         QString::fromStdString(s.reason));
+    }
+  }
+  // Everything the collection declared that we could not bind. This is where an
+  // unreachable collection archive names itself and its consequences, so a
+  // thinner pack never arrives without an explanation.
+  if (!unresolved.empty()) {
+    lines << tr("%n part(s) of this collection could not be read:", "",
+                static_cast<int>(unresolved.size()));
+    for (const auto &u : unresolved) {
+      lines << QStringLiteral("  - %1: %2")
+                   .arg(QString::fromStdString(u.what),
+                        QString::fromStdString(u.reason));
     }
   }
   if (lines.isEmpty())

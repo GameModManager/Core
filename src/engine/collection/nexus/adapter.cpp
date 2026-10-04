@@ -1,6 +1,8 @@
 #include "engine/collection/nexus/adapter.h"
 
+#include "engine/collection/nexus/collection_zip.h"
 #include "engine/collection/nexus/parser.h"
+#include "engine/core/log/logger.h"
 #include "engine/network/network_manager.h"
 #include "engine/network/nexus_v2/client.h"
 #include "engine/network/nexus_v2/premium.h"
@@ -98,6 +100,13 @@ namespace {
     return [](const std::string &slug, long long revision) {
       nexus_v2::Client client(network::instance());
       return nexus_v2::fetch_collection_revision(client, slug, revision);
+    };
+  }
+
+  Adapter::JsonFetcher default_json_fetcher() {
+    return [](const std::string &download_link, std::string &out_json,
+              std::string &out_error) {
+      return fetch_collection_json(download_link, out_json, out_error);
     };
   }
 
@@ -265,11 +274,15 @@ RouteOutcome route_download(const ModSource &source) {
 
 Adapter::Adapter(RevisionFetcher fetcher) : fetcher_(std::move(fetcher)) {}
 
-Adapter::Adapter() : Adapter(default_fetcher()) {}
+Adapter::Adapter(RevisionFetcher fetcher, JsonFetcher json_fetcher)
+    : fetcher_(std::move(fetcher)), json_fetcher_(std::move(json_fetcher)) {}
+
+Adapter::Adapter() : Adapter(default_fetcher(), default_json_fetcher()) {}
 
 FetchOutcome Adapter::fetch(const std::string &source_id) {
   last_skipped_.clear();
   last_revision_status_.clear();
+  last_unresolved_.clear();
 
   const CollectionRef ref = parse_source_id(source_id);
   if (ref.is_file) {
@@ -293,9 +306,46 @@ FetchOutcome Adapter::fetch(const std::string &source_id) {
   RevisionManifest converted = revision_to_manifest(fetched.revision);
   last_skipped_              = std::move(converted.skipped);
   last_revision_status_      = converted.revision_status;
+
+  // Now the half GraphQL cannot serve: the revision's own archive, which is
+  // the only carrier of the per-file hashes, the FOMOD selections, the load
+  // order, the author's notes and the tag rules resolve on. It enriches what
+  // was just built - it never gates the import. An archive we cannot get is
+  // reported by name, so the user is told the collection imported without those
+  // parts rather than being handed a quietly thinner pack.
+  Manifest &manifest = converted.manifest;
+  std::string json;
+  std::string zip_error;
+  if (fetched.revision.download_link.empty()) {
+    zip_error = "Nexus reported no download link for this revision";
+  } else if (!json_fetcher_) {
+    // A metadata-only adapter (the RevisionFetcher-only test seam) never had an
+    // archive reader, so there is nothing to have failed and nothing to report.
+  } else if (!json_fetcher_(fetched.revision.download_link, json, zip_error)) {
+    Logger::instance().debug("[NexusCollection] collection archive unavailable: " +
+                             zip_error);
+  } else {
+    try {
+      merge_collection_json(manifest, json);
+    } catch (const ParseError &e) {
+      zip_error =
+          std::string("collection.json in the archive is not readable: ") + e.what();
+    }
+  }
+  if (!zip_error.empty()) {
+    Unresolved u;
+    u.what   = "collection.json";
+    u.reason = zip_error +
+               " - the collection imported from metadata alone, without the load "
+               "order, per-file hashes, mod notes, FOMOD selections or mod rules "
+               "the archive carries";
+    manifest.unresolved.push_back(std::move(u));
+  }
+
+  last_unresolved_ = manifest.unresolved;
   FetchResult result;
   result.source_id = source_id;
-  result.manifest  = std::move(converted.manifest);
+  result.manifest  = std::move(manifest);
   return result;
 }
 

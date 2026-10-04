@@ -64,6 +64,15 @@ struct Mod {
   // Archive filename determined during fetch (e.g. "mod-12345-1-0.zip")
   std::string archive_filename;
 
+  // What the pack said this download must be: the sha256 and byte length the
+  // pack recorded when it was authored. Empty when the pack pinned nothing (a
+  // "latest" policy, or a provider that publishes no digest), in which case
+  // FetchStage has nothing to check and says so. When set, FetchStage hashes
+  // the bytes that actually arrived and fails the install on a mismatch rather
+  // than installing a file that is not the one the pack named.
+  std::string expected_sha256;
+  int64_t expected_file_size = 0;
+
   // Collection tracking (Workspace-5wmu). Source-agnostic: set for any mod
   // installed as part of a collection, regardless of provider (Nexus,
   // .gmmpack, manual import). Empty collection_id + in_collection=false

@@ -97,8 +97,15 @@ public:
   using RevisionFetcher =
       std::function<nexus_v2::FetchResult(const std::string &slug, long long revision)>;
 
-  // Test seam: inject a fake fetcher (no network).
+  // Test seam: inject a fake fetcher (no network). Reads metadata only - no
+  // collection.json reader is attached, so the archive is never requested and
+  // nothing is reported about it.
   explicit Adapter(RevisionFetcher fetcher);
+
+  // Test seam: inject a fake collection.json reader (no network).
+  using JsonFetcher = std::function<bool(
+      const std::string &download_link, std::string &out_json, std::string &out_error)>;
+  Adapter(RevisionFetcher fetcher, JsonFetcher json_fetcher);
 
   // Production wiring: fetcher over network::instance() + stored API key.
   Adapter();
@@ -107,7 +114,8 @@ public:
   std::string display_name() const override { return "Nexus Collections"; }
 
   // File ids go through Nexus::parse_file; slugs/URLs through the v2
-  // client + revision_to_manifest. Per-mod skips land in last_skipped().
+  // client + revision_to_manifest, then the revision's own .zip is read and
+  // merged over that. Per-mod skips land in last_skipped().
   FetchOutcome fetch(const std::string &source_id) override;
 
   // .json paths, nexusmods.com collection URLs, nxm:// collection links, bare
@@ -121,10 +129,17 @@ public:
   // collection.json (which has no revision) or when Nexus reported none.
   const std::string &last_revision_status() const { return last_revision_status_; }
 
+  // Everything the last fetch() could not read, including the archive itself
+  // when it could not be fetched. Never fatal: the import proceeds on metadata
+  // alone and the caller reports these.
+  const std::vector<Unresolved> &last_unresolved() const { return last_unresolved_; }
+
 private:
   RevisionFetcher fetcher_;
+  JsonFetcher json_fetcher_;
   std::vector<SkipDiagnostic> last_skipped_;
   std::string last_revision_status_;
+  std::vector<Unresolved> last_unresolved_;
 };
 
 }  // namespace engine::Collection::Nexus
