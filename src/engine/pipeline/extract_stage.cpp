@@ -116,6 +116,28 @@ bool ExtractStage::execute(Mod &mod, PipelineContext &ctx) {
                            std::to_string(extracted.size()) + " files to " +
                            staging_dir.string());
 
+  // MO2's order (installerquick.cpp:93-141, then installermanual.cpp:103-121):
+  // the silent peel and the silent repair run first and the layout dialog is
+  // the LAST resort, asked only when neither produced a data directory. This is
+  // the read-only half of the decision normalize_staging_root applies below, so
+  // the question and the peel read one verdict and walk the tree once.
+  auto layout = analyze_staging_root(staging_dir, ctx.deploy_prefix, ctx.data_checker);
+  if (layout.needs_review && ctx.layout_query_cb) {
+    auto decision = ctx.layout_query_cb(staging_dir, ctx.deploy_prefix);
+    if (decision.cancel) {
+      // A cancel is not a failure and leaves nothing behind: the staging dir
+      // was the only thing this stage created.
+      ctx.canceled = true;
+      Logger::instance().debug("ExtractStage: install canceled at the layout dialog");
+      std::filesystem::remove_all(staging_dir, ec);
+      return false;
+    }
+    // The subtree the user pointed at becomes the content root, peeled by the
+    // same call the automatic path uses.
+    layout = normalize_staging_root(staging_dir, ctx.deploy_prefix, ctx.data_checker,
+                                    decision.data_root);
+  }
+
   // Determine mod folder name and metadata
   // First try: if archive contains a top-level folder with metadata.xml, use that name
   // Second try: the game's declared data dir at the root means there is no
@@ -151,9 +173,8 @@ bool ExtractStage::execute(Mod &mod, PipelineContext &ctx) {
       // to answer, and the shared staging-layout decision answers it from the
       // declared allow-lists in ctx.data_checker. simple with an empty
       // peel_chain means the root itself looks like game data: no wrapper, so
-      // the archive stem names the mod and nothing is moved.
-      const auto layout =
-          analyze_staging_root(staging_dir, ctx.deploy_prefix, ctx.data_checker);
+      // the archive stem names the mod and nothing is moved. That is the same
+      // verdict the layout dialog was decided on, above.
       if (layout.simple && layout.peel_chain.empty()) {
         mod_name = archive_path.stem().string();
         mod.id   = mod_name;

@@ -14,6 +14,10 @@
 //      matches MO2 InstallerQuick::getSimpleArchiveBase semantics (incl. the
 //      DataText top layer and the never-touch-FOMOD guard).
 //   7. normalize_staging_root still applies the verdict physically.
+//   8. needs_review - the ONE branch that opens the manual layout dialog - is
+//      raised only when the peel and the repair both found nothing, layout_verdict
+//      answers per subtree, and ExtractStage asks through layout_query_cb (or not,
+//      and a cancel leaves no staging dir behind).
 //
 // Uses a check() counter that returns a real non-zero exit code (Release
 // builds compile asserts out under -DNDEBUG, so a bare assert() suite cannot
@@ -23,6 +27,11 @@
 #include "engine/mod/filetree/archive_file_tree.h"
 #include "engine/mod/filetree/staging_layout.h"
 #include "engine/game/registry/game_features/mod_data_checker.h"
+#include "engine/game/registry/game_features/game_feature_registry.h"
+#include "engine/game/registry/game_knowledge.h"
+#include "engine/mod/model/mod.h"
+#include "engine/pipeline/extract_stage.h"
+#include "engine/pipeline/pipeline.h"
 
 #include <archive.h>
 #include <archive_entry.h>
@@ -154,7 +163,7 @@ static void assert_same_shape(const std::shared_ptr<const engine::FileTree> &a,
 static bool same_verdict(const engine::StagingNormalizeResult &a,
                          const engine::StagingNormalizeResult &b) {
   return a.fomod == b.fomod && a.simple == b.simple &&
-         a.merged_data_dir == b.merged_data_dir &&
+         a.merged_data_dir == b.merged_data_dir && a.needs_review == b.needs_review &&
          a.peeled_folder_hint == b.peeled_folder_hint && a.peel_chain == b.peel_chain;
 }
 
@@ -167,6 +176,21 @@ static bool is_case_sensitive_fs() {
   const bool result = !fs::exists(base / "a", ec);  // CI fs -> "a" exists
   fs::remove_all(base, ec);
   return result;
+}
+
+// A Mod pointing at a real zip, with the staging dir deterministically under
+// the temp root (mods_dir's parent) so a test can assert on what is left.
+static engine::Mod make_layout_mod(const fs::path &zip, const fs::path &mods_dir,
+                                   engine::PipelineContext &ctx) {
+  engine::Mod mod;
+  mod.id    = "layout-mod";
+  mod.state = engine::ModState::Downloaded;
+  engine::ModFile entry;
+  entry.relative_path = zip.string();
+  mod.files.push_back(entry);
+  ctx.mods_dir      = mods_dir;
+  ctx.deploy_prefix = "Data";
+  return mod;
 }
 
 TEST_CASE("filetree", "[engine]") {
@@ -425,5 +449,122 @@ TEST_CASE("filetree", "[engine]") {
     auto r = normalize_staging_root(root, "Data");
     check(r.fomod && fs::exists(root / "fomod" / "ModuleConfig.xml"),
           "physical driver leaves FOMOD untouched");
+  }
+
+  // --- 8. the manual-layout gate ------------------------------------------
+  // needs_review is the one branch that opens the dialog (MO2's
+  // getSimpleArchiveBase returning nullptr), so it must stay false for every
+  // archive the silent peel or the silent repair already resolved.
+  {
+    TempDir env;
+    auto root = env.root / "staging";
+    make_dir_tree(root, {{"Wrapper/SKSE/Plugins/x.dll", "x"}});
+    auto peeled = analyze_staging_root(root, "Data");
+    check(peeled.simple && peeled.peel_chain == std::vector<std::string>{"Wrapper"},
+          "the peel found game data one level down");
+    check(!peeled.needs_review, "a resolved peel never opens the dialog");
+
+    TempDir flat;
+    auto flat_root = flat.root / "staging";
+    make_dir_tree(flat_root, {{"meshes/foo.nif", "f"}, {"readme.txt", "r"}});
+    check(!analyze_staging_root(flat_root, "Data").needs_review,
+          "a root that already is game data never opens the dialog");
+
+    TempDir datatext;
+    auto dt_root = datatext.root / "staging";
+    make_dir_tree(dt_root, {{"Data/meshes/foo.nif", "f"}, {"readme.txt", "r"}});
+    check(!analyze_staging_root(dt_root, "Data").needs_review,
+          "the DataText repair never opens the dialog");
+
+    TempDir fomod;
+    auto fomod_root = fomod.root / "staging";
+    make_dir_tree(fomod_root,
+                  {{"fomod/ModuleConfig.xml", "<config/>"}, {"meshes/m.nif", "m"}});
+    check(!analyze_staging_root(fomod_root, "Data").needs_review,
+          "FOMOD is the wizard's business, not the layout dialog's");
+
+    // Nothing in the chain is data and no single-dir wrapper is left: that is
+    // the only case the dialog is for.
+    TempDir junk;
+    auto junk_root = junk.root / "staging";
+    make_dir_tree(junk_root, {{"Wrapper/readme.txt", "r"}, {"Wrapper/notes.txt", "n"}});
+    check(analyze_staging_root(junk_root, "Data").needs_review,
+          "an unresolvable archive does open the dialog");
+  }
+
+  // layout_verdict answers for ONE subtree - the node designated as the data
+  // directory, not a better level somewhere below it. Null checker is the amber
+  // "cannot check" state, a different answer from "checked and it does not match".
+  {
+    Game::Features::Registry::instance().clear();
+    GameKnowledge knowledge;
+    knowledge.set("fake", "mod_valid_dirs", "meshes,textures");
+    knowledge.set("fake", "mod_valid_exts", "");
+    auto checker = data_checker_for(knowledge, "fake");
+    REQUIRE(checker != nullptr);
+    TempDir env;
+    auto root = env.root / "staging";
+    make_dir_tree(root, {{"wrapper/meshes/foo.nif", "f"}, {"readme.txt", "r"}});
+    check(layout_verdict(root, checker) == LayoutVerdict::Invalid,
+          "a junk root is red");
+    check(layout_verdict(root / "wrapper", checker) == LayoutVerdict::Valid,
+          "the designated subtree is green");
+    check(layout_verdict(root / "wrapper", nullptr) == LayoutVerdict::Unknown,
+          "no declaration is amber, not red");
+  }
+
+  // ExtractStage reaches the dialog through layout_query_cb, and only through
+  // it. The callback returning cancel must abort with no staging dir left behind
+  // - the staging dir is the only thing this stage creates, so removing it is
+  // the whole of "no partial state".
+  {
+    // (a) unresolvable archive -> the dialog is asked, cancel -> nothing left.
+    {
+      TempDir env;
+      auto zip = env.root / "junk.zip";
+      REQUIRE(make_zip(zip, {{"Wrapper/readme.txt", "r"}, {"Wrapper/notes.txt", "n"}}));
+      fs::create_directories(env.root / "mods");
+      engine::PipelineContext ctx;
+      int asked           = 0;
+      ctx.layout_query_cb = [&](const fs::path &content_root,
+                                const std::string &data_prefix) {
+        asked++;
+        check(fs::exists(content_root / "Wrapper"), "the dialog sees the tree");
+        check(data_prefix == "Data", "the dialog is told the data dir name");
+        engine::LayoutDecision decision;
+        decision.cancel = true;
+        return decision;
+      };
+      ExtractStage stage;
+      auto mod = make_layout_mod(zip, env.root / "mods", ctx);
+      check(!stage.execute(mod, ctx), "a layout cancel aborts the stage");
+      check(asked == 1, "the dialog is asked exactly once");
+      check(ctx.canceled, "a layout cancel is a cancel, not a failure");
+      check(ctx.error_message.empty(), "a layout cancel reports no error");
+      check(!fs::exists(env.root / ".gmm_install_tmp"),
+            "the staging dir is gone - cancel leaves no partial state");
+      check(mod.state == ModState::Downloaded, "the mod is not marked extracted");
+    }
+
+    // (b) an archive the peel resolves -> the dialog is never opened.
+    {
+      TempDir env;
+      auto zip = env.root / "good.zip";
+      REQUIRE(make_zip(zip, {{"Wrapper/SKSE/Plugins/x.dll", "x"}}));
+      fs::create_directories(env.root / "mods");
+      engine::PipelineContext ctx;
+      int asked           = 0;
+      ctx.layout_query_cb = [&](const fs::path &, const std::string &) {
+        asked++;
+        return engine::LayoutDecision{};
+      };
+      ExtractStage stage;
+      auto mod = make_layout_mod(zip, env.root / "mods", ctx);
+      check(stage.execute(mod, ctx), "a peelable archive extracts without asking");
+      check(asked == 0, "the dialog is not reached when the peel already succeeded");
+      check(!ctx.canceled, "an unasked install is not a cancel");
+      check(mod.state == ModState::Extracted, "the peelable archive installs");
+    }
+    std::printf("PASS: manual layout gate - dialog only when the peel gave up\n");
   }
 }
