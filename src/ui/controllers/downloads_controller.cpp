@@ -1,6 +1,7 @@
 #include "ui/controllers/downloads_controller.h"
 #include "platform/platform.h"
 #include "ui/controllers/mod_list_controller.h"
+#include "ui/controllers/settings_controller.h"
 #include "ui/fomod/fomod_wizard_dialog.h"
 #include "ui/install/install_name_dialog.h"
 #include "ui/overwrite/query_overwrite_dialog.h"
@@ -695,10 +696,15 @@ void DownloadsController::handle_nxm_download(const engine::NxmLink &link) {
       " url=" + log_url);
 
   // A link with no file id is not a file download. The router only requires a
-  // domain, so a collection link parses "successfully" with mod_id and file_id
+  // domain, so a malformed link parses "successfully" with mod_id and file_id
   // both 0 - and would then queue a "Mod #0 - file 0" row that can only ever
   // fail. Say so instead. (MO2 stops here too, with a dialog.)
-  if (link.file_id <= 0) {
+  //
+  // A COLLECTION link also names no file, but it is not malformed: the parser
+  // has already told the two apart (is_collection), and a collection is a list
+  // of mods for one game rather than a download at all. It is routed to the
+  // collection flow once the domain below resolves to a game.
+  if (link.file_id <= 0 && !link.is_collection) {
     engine::Logger::instance().warn(
         "[NXM-Download] Rejected a link with no file id for domain '" +
         link.nexus_domain + "': " + log_url);
@@ -748,6 +754,22 @@ void DownloadsController::handle_nxm_download(const engine::NxmLink &link) {
                          tr("Unknown Nexus Mods domain: %1\nNo game plugin "
                             "supports this domain.")
                              .arg(QString::fromStdString(link.nexus_domain)));
+    return;
+  }
+
+  // A collection link names a list of mods for the link's game, not a file, so
+  // there is no download row to queue and no file id to key one by. It goes to
+  // the collection flow, which asks where the mods should go first. This is
+  // also the point where the link's game is known, which is what that flow
+  // needs - so it sits here rather than above the managed-game check, since a
+  // collection may legitimately create the instance it installs into.
+  if (link.is_collection) {
+    engine::Logger::instance().debug(
+        "[NXM-Collection] Collection link for game '" + matched_game_id + "': " +
+        (link.collection_revision > 0
+             ? "revision " + std::to_string(link.collection_revision)
+             : std::string("latest revision")));
+    w_->settings_->handle_collection_link(link, matched_game_id);
     return;
   }
 

@@ -294,6 +294,16 @@ void ModpackImportDialog::set_picked_file(const QString &path) {
     url_edit_->clear();
 }
 
+void ModpackImportDialog::set_collection_url(const QString &url) {
+  if (url.isEmpty())
+    return;
+  url_edit_->setText(url);
+  if (!picked_file_.isEmpty()) {
+    picked_file_.clear();
+    picked_file_label_->setText(tr("No file selected"));
+  }
+}
+
 void ModpackImportDialog::on_url_edited(const QString &text) {
   if (!text.trimmed().isEmpty() && !picked_file_.isEmpty()) {
     picked_file_.clear();

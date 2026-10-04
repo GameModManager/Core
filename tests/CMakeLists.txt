@@ -464,6 +464,11 @@ gmm_catch2_test(bbcode_test ui/bbcode_test.cpp
 # against gmm_ui either, since the decision is a header-only inline function.
 gmm_catch2_test(tray_decision_test ui/tray_decision_test.cpp)
 
+# What an nxm:// collection link click does (ui/nxm/collection_click.h). Same
+# shape as the tray decisions: pure logic over a facts struct, so the three-way
+# choice is reachable without a display.
+gmm_catch2_test(collection_click_test ui/collection_click_test.cpp)
+
 # DescriptionBrowser (ui/modinfo/description_browser.cpp) - the QTextBrowser
 # subclass that loads remote [img] URLs via QNetworkAccessManager. Needs a
 # QApplication for the loadResource override to be exercisable, so this is

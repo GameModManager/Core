@@ -75,6 +75,13 @@ public:
   [[nodiscard]] QString downloads_dir() const;
   [[nodiscard]] QString profile_path() const;
 
+  // Seed the Paths step. Append mode skips that step entirely, so without this
+  // an append has no instance to install into and its downloads land in the
+  // process's working directory. Empty arguments leave a field alone, so the
+  // user can still Browse over whatever was seeded.
+  void set_paths(const QString &instance_root, const QString &mods_dir,
+                 const QString &downloads_dir, const QString &profile_path);
+
 private:
   struct StepState {
     Step id;
