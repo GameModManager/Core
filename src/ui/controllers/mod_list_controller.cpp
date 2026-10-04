@@ -670,17 +670,9 @@ void ModListController::setup_mod_list(QVBoxLayout *left_layout) {
   // MO2-style digital counter above the mod list showing the enabled mod
   // count only, right-aligned. QLCDNumber gives the seven-segment "lcd"
   // look (same as the plugins-tab counter); colors come from the palette.
-  w_->mod_count_enabled_ = new QLCDNumber(w_);
-  w_->mod_count_enabled_->setObjectName("mo2CounterLabel");
-  w_->mod_count_enabled_->setWhatsThis(tr("The number of mods enabled in this instance."));
-  w_->mod_count_enabled_->setDigitCount(4);
-  w_->mod_count_enabled_->setSegmentStyle(QLCDNumber::Flat);
-  // Flat segments using QPalette text color for clear contrast on any theme.
-  {
-    auto pal = w_->mod_count_enabled_->palette();
-    pal.setColor(QPalette::WindowText, pal.color(QPalette::Text));
-    w_->mod_count_enabled_->setPalette(pal);
-  }
+  w_->mod_count_enabled_ = make_lcd_counter(w_);
+  w_->mod_count_enabled_->setWhatsThis(
+      tr("The number of mods enabled in this instance."));
   w_->mod_count_enabled_->display(0);
 
   // MO2 parks its mod-list backup / restore pair immediately left of the
@@ -708,9 +700,12 @@ void ModListController::setup_mod_list(QVBoxLayout *left_layout) {
 
   auto *count_row = new QHBoxLayout;
   count_row->setContentsMargins(4, 2, 4, 2);
-  count_row->addStretch(1);  // push the counter to the right edge
   count_row->addWidget(mod_backup_button);
   count_row->addWidget(mod_restore_button);
+  // The stretch sits before the counter, not at the front of the row, so the
+  // counter has whitespace in front of it instead of sitting flush against
+  // Restore - the same placement the plugins-tab counter gets.
+  count_row->addStretch(1);
   count_row->addWidget(w_->mod_count_enabled_);
 
   auto *mod_list_pane = new QWidget(w_);

@@ -598,16 +598,7 @@ PluginView::PluginView(QWidget *parent) : QWidget(parent) {
   header->addWidget(restore_button_);
 
   header->addStretch(1);
-  counter_display_ = new QLCDNumber(this);
-  counter_display_->setObjectName("mo2CounterLabel");
-  counter_display_->setDigitCount(4);
-  counter_display_->setSegmentStyle(QLCDNumber::Flat);
-  // Flat segments using QPalette text color for clear contrast on any theme.
-  {
-    auto pal = counter_display_->palette();
-    pal.setColor(QPalette::WindowText, pal.color(QPalette::Text));
-    counter_display_->setPalette(pal);
-  }
+  counter_display_ = make_lcd_counter(this);
   header->addWidget(counter_display_);
   layout->addLayout(header);
   layout->addWidget(table_);
