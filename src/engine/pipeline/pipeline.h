@@ -142,12 +142,14 @@ struct PipelineContext {
   // directory. Called on the pipeline thread ONLY when the silent peel and the
   // silent repair both found nothing, so an archive that installs fine on its
   // own never reaches it. Invoked with the extracted content root (the staging
-  // dir) and the game's deploy prefix, which is the name the dialog shows in
-  // its "<prefix>" pseudo-root and in "Set as <prefix> directory". Must be
-  // thread-safe (the UI wires it to marshal the dialog onto the main thread).
-  // Unset (headless/CLI): the content installs as-is and nobody is asked.
+  // dir), the game's deploy prefix, and the archive's file name - the dialog
+  // shows the deploy prefix in "Set as <prefix> directory" and the archive name
+  // on the row that stands for the extracted content. Must be thread-safe (the
+  // UI wires it to marshal the dialog onto the main thread). Unset
+  // (headless/CLI): the content installs as-is and nobody is asked.
   std::function<LayoutDecision(const std::filesystem::path &content_root,
-                               const std::string &data_prefix)>
+                               const std::string &data_prefix,
+                               const std::string &archive_name)>
       layout_query_cb;
 
   // True once FomodStage recognizes the archive as a FOMOD (a fomod/

@@ -24,19 +24,21 @@ namespace ui {
 // nothing that looks like the game's data directory, so an archive that installs
 // fine on its own never opens this.
 //
-// A tree over the extracted content carries a "<prefix>" pseudo-root at the top
-// (installdialog.cpp:55-62). Right-clicking a directory offers "Set as <prefix>
-// directory", and once one is set, "Unset <prefix> directory" (:167, :174).
-// The label under the tree is the live verdict against the subtree currently
-// designated - green valid, red does not look valid, amber cannot check (:100,
-// :109, :117). OK on a red verdict asks "Continue?" with CANCEL as the DEFAULT
-// button (:196-207): a mis-click backs out, and installing a layout the game
-// does not recognise has to be chosen deliberately.
+// A tree over the extracted content carries the archive's own name as its top
+// row (installdialog.cpp:55-62 seeds a pseudo-root there; archivetree.cpp's
+// setup() labels it "<" + dataFolderName + ">", which reads as a placeholder
+// rather than as the thing being installed). Right-clicking a directory offers
+// "Set as <prefix> directory", and once one is set, "Unset <prefix> directory"
+// (:167, :174). The label under the tree is the live verdict against the
+// subtree currently designated - green valid, red does not look valid, amber
+// cannot check (:100, :109, :117). OK on a red verdict asks "Continue?" with
+// CANCEL as the DEFAULT button (:196-207): a mis-click backs out, and
+// installing a layout the game does not recognise has to be chosen deliberately.
 class LayoutDialog : public QDialog {
   Q_OBJECT
 public:
   LayoutDialog(const std::filesystem::path &content_root,
-               const std::string &data_prefix,
+               const std::string &data_prefix, const std::string &archive_name,
                std::shared_ptr<const engine::ModDataCheckerFeature> checker,
                QWidget *parent = nullptr);
 
@@ -81,6 +83,7 @@ private:
 // onto the main thread and waits (same pattern as ask_overwrite).
 engine::LayoutDecision
 ask_layout(const std::filesystem::path &content_root, const std::string &data_prefix,
+           const std::string &archive_name,
            std::shared_ptr<const engine::ModDataCheckerFeature> checker,
            QWidget *parent = nullptr);
 

@@ -527,10 +527,15 @@ TEST_CASE("filetree", "[engine]") {
       engine::PipelineContext ctx;
       int asked           = 0;
       ctx.layout_query_cb = [&](const fs::path &content_root,
-                                const std::string &data_prefix) {
+                                const std::string &data_prefix,
+                                const std::string &archive_name) {
         asked++;
         check(fs::exists(content_root / "Wrapper"), "the dialog sees the tree");
         check(data_prefix == "Data", "the dialog is told the data dir name");
+        // The staging dir is a scratch path, so the archive's own name is the
+        // only thing the dialog can honestly show as the extracted content.
+        check(archive_name == "junk.zip",
+              "the dialog is told the archive name, which the staging dir cannot say");
         engine::LayoutDecision decision;
         decision.cancel = true;
         return decision;
@@ -554,7 +559,8 @@ TEST_CASE("filetree", "[engine]") {
       fs::create_directories(env.root / "mods");
       engine::PipelineContext ctx;
       int asked           = 0;
-      ctx.layout_query_cb = [&](const fs::path &, const std::string &) {
+      ctx.layout_query_cb = [&](const fs::path &, const std::string &,
+                                const std::string &) {
         asked++;
         return engine::LayoutDecision{};
       };
