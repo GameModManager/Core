@@ -11,6 +11,7 @@
 
 #include <QAction>
 #include <QApplication>
+#include <QCoreApplication>
 #include <QEvent>
 #include <QKeyEvent>
 #include <QLabel>
@@ -87,6 +88,115 @@ TEST_CASE("install progress dialog", "[ui]") {
   dlg.hide();
 }
 
+// The tree has to be able to REACH the data, not just show the first level. An
+// archive whose content sits inside a nested folder has its game data at depth
+// 2 or 3, so a directory the user cannot open is data they cannot designate and
+// the dialog has no answer left to give.
+//
+// Exercised on the MODEL, not on pixels: hasChildren is the exact call
+// QTreeView reads to decide whether to draw an expander at all, and
+// canFetchMore/fetchMore is the lazy population behind it.
+//
+// Hermetic: throwaway /tmp tree, no settings access, offscreen platform.
+TEST_CASE("layout dialog tree reaches nested directories", "[ui]") {
+  int test_argc     = 1;
+  char test_argv0[] = "test";
+  char *test_argv[] = {test_argv0, nullptr};
+  QApplication app(test_argc, test_argv);
+
+  const std::filesystem::path root = "/tmp/gmm_layout_tree";
+  std::filesystem::remove_all(root);
+  std::filesystem::create_directories(root / "wrapper" / "textures" / "deep");
+  std::ofstream(root / "wrapper" / "textures" / "deep" / "gizmo.dds") << "d";
+  std::filesystem::create_directories(root / "wrapper" / "hollow");
+  std::ofstream(root / "wrapper" / "readme.txt") << "r";
+  // A wide level, because an archive holds tens of thousands of entries and
+  // asking whether a directory has children must not cost reading them.
+  std::filesystem::create_directories(root / "wide");
+  for (int i = 0; i < 500; ++i)
+    std::ofstream(root / "wide" / ("f" + std::to_string(i) + ".txt")) << "x";
+
+  engine::GameKnowledge knowledge;
+  knowledge.set("fake", "mod_valid_dirs", "textures");
+  knowledge.set("fake", "mod_valid_exts", "");
+  auto checker = engine::data_checker_for(knowledge, "fake");
+  REQUIRE(checker != nullptr);
+
+  ui::LayoutDialog dlg(root, "Data", "CoolMod.rar", checker);
+  auto *tree  = dlg.findChild<QTreeView *>();
+  auto *model = tree ? tree->model() : nullptr;
+  check(tree && model, "the dialog has a tree over the extracted content");
+
+  const auto child_named = [model](const QModelIndex &parent, const char *name) {
+    for (int row = 0; row < model->rowCount(parent); ++row) {
+      const auto idx = model->index(row, 0, parent);
+      if (model->data(idx, Qt::DisplayRole).toString() == QLatin1String(name))
+        return idx;
+    }
+    return QModelIndex();
+  };
+
+  const auto root_index = model->index(0, 0);
+  const auto wrapper    = child_named(root_index, "wrapper");
+  const auto wide       = child_named(root_index, "wide");
+  REQUIRE(wrapper.isValid());
+  REQUIRE(wide.isValid());
+
+  // Expanding has to go through a laid-out view, because that is the only path
+  // that reaches the fetch: QTreeView::expand() acts on its own view rows, and
+  // with no layout it just records the request. Showing the dialog is also what
+  // the user does, so the code under test is the code that runs.
+  dlg.show();
+  QCoreApplication::processEvents();
+
+  // Walk down one level at a time, asking the two questions in the order a user
+  // meets them: is there an arrow, and does opening it do anything. The first
+  // question is the regression - the lazy population answered canFetchMore but
+  // never hasChildren, so every row below the eagerly fetched root reported
+  // itself childless, offered no arrow, and could not be opened at all.
+  check(model->hasChildren(wrapper), "a directory holding entries is expandable");
+  tree->expand(wrapper);
+  QCoreApplication::processEvents();
+
+  const auto textures = child_named(wrapper, "textures");
+  const auto hollow   = child_named(wrapper, "hollow");
+  const auto readme   = child_named(wrapper, "readme.txt");
+  REQUIRE(textures.isValid());
+  REQUIRE(hollow.isValid());
+  REQUIRE(readme.isValid());
+
+  check(model->hasChildren(textures),
+        "a directory at depth 2 is expandable, not a dead end");
+  tree->expand(textures);
+  QCoreApplication::processEvents();
+  check(model->rowCount(textures) == 1, "expanding populates the depth-2 directory");
+
+  const auto deep = child_named(textures, "deep");
+  REQUIRE(deep.isValid());
+  check(model->hasChildren(deep), "a directory at depth 3 is expandable too");
+  tree->expand(deep);
+  QCoreApplication::processEvents();
+  check(model->rowCount(deep) == 1, "expanding populates the depth-3 directory");
+  check(child_named(deep, "gizmo.dds").isValid(),
+        "a file four levels down is reachable, so it can be walked to");
+
+  // A leaf is a leaf. "hollow" holds nothing and readme.txt is a file, so
+  // neither may offer an arrow that opens onto nothing.
+  check(!model->hasChildren(hollow), "an empty directory shows no arrow");
+  check(!model->hasChildren(readme), "a file shows no arrow");
+  check(!model->hasChildren(child_named(deep, "gizmo.dds")),
+        "a leaf file shows no arrow");
+
+  // Laziness is the point of not populating: knowing a directory holds
+  // something must not cost reading 500 entries to find out.
+  check(model->hasChildren(wide), "a wide directory is still reported as expandable");
+  check(model->rowCount(wide) == 0,
+        "reporting a wide directory as expandable does not populate it");
+
+  std::error_code ec;
+  std::filesystem::remove_all(root, ec);
+}
+
 // LayoutDialog - the manual layout dialog the install opens as its LAST resort,
 // so it lives with the other install dialogs here. Two things about it are
 // load-bearing rather than cosmetic: the verdict follows the subtree the user
@@ -112,10 +222,23 @@ TEST_CASE("layout dialog verdict and continue prompt", "[ui]") {
   auto checker = engine::data_checker_for(knowledge, "fake");
   REQUIRE(checker != nullptr);
 
-  ui::LayoutDialog dlg(root, "Data", checker);
+  ui::LayoutDialog dlg(root, "Data", "CoolMod.rar", checker);
   auto *tree  = dlg.findChild<QTreeView *>();
   auto *model = tree ? tree->model() : nullptr;
   check(tree && model, "the dialog has a tree over the extracted content");
+
+  // The row that stands for the extracted content is named after the archive.
+  // MO2 labels it "<data>" (archivetree.cpp setup()), which reads as a
+  // placeholder and looks like the row already holds game data when it holds the
+  // wrapper the peel could not resolve.
+  const auto top = model->index(0, 0);
+  REQUIRE(top.isValid());
+  const auto top_label = model->data(top, Qt::DisplayRole).toString();
+  check(top_label == QStringLiteral("CoolMod.rar"),
+        "the top row is the archive's name");
+  check(!top_label.startsWith(QLatin1Char('<')) &&
+            !top_label.endsWith(QLatin1Char('>')),
+        "the top row is not an angle-bracket placeholder");
 
   // Nothing designated = the content root itself: "wrapper" is not a directory
   // the game declared and readme.txt is not a declared extension, so red.
@@ -156,7 +279,7 @@ TEST_CASE("layout dialog verdict and continue prompt", "[ui]") {
 
   // No declaration at all is a third answer, not a red one: nothing was
   // checked, so nothing is claimed.
-  ui::LayoutDialog unchecked(root, "Data", nullptr);
+  ui::LayoutDialog unchecked(root, "Data", "CoolMod.rar", nullptr);
   check(unchecked.verdict() == engine::LayoutVerdict::Unknown,
         "a game that declared nothing cannot be checked");
   check(unchecked.verdict_text().contains(QStringLiteral("Cannot check")),
