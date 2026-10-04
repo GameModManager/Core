@@ -118,7 +118,8 @@ bool ExtractStage::execute(Mod &mod, PipelineContext &ctx) {
 
   // Determine mod folder name and metadata
   // First try: if archive contains a top-level folder with metadata.xml, use that name
-  // Second try: check for Isaac-style mods (resources/ or resources-dlc3/ at root)
+  // Second try: the game's declared data dir at the root means there is no
+  //           wrapper and the archive stem names the mod
   // Third try: use common parent dir as the mod name
   // Fallback: use archive stem
 
@@ -140,23 +141,20 @@ bool ExtractStage::execute(Mod &mod, PipelineContext &ctx) {
     }
   }
 
-  // Check for directories that indicate Isaac mods or similar structure
-  auto has_resources = [](const std::filesystem::path &dir) {
-    return std::filesystem::exists(dir / "resources") ||
-           std::filesystem::exists(dir / "resources-dlc3") ||
-           std::filesystem::exists(dir / "resources-dlc4") ||
-           std::filesystem::exists(dir / "resources-dlc5") ||
-           std::filesystem::exists(dir / "mod.asm");
-  };
-
   if (mod_name.empty()) {
     // Isaac-style games (deploy_include_mod_id=true) ship the mod's own
     // folder in the archive - the wrapper IS the mod name, so it is kept
     // as-is and used for naming, matching how GMM always handled them.
     if (ctx.deploy_include_mod_id) {
-      // Check edge case: resources/ at staging root means the archive had
-      // no wrapper dir
-      if (has_resources(staging_dir)) {
+      // Whether the archive already holds its data at the top level (Isaac:
+      // "resources"/"resources-dlc3") or wraps it in a mod folder is the GAME's
+      // to answer, and the shared staging-layout decision answers it from the
+      // declared allow-lists in ctx.data_checker. simple with an empty
+      // peel_chain means the root itself looks like game data: no wrapper, so
+      // the archive stem names the mod and nothing is moved.
+      const auto layout =
+          analyze_staging_root(staging_dir, ctx.deploy_prefix, ctx.data_checker);
+      if (layout.simple && layout.peel_chain.empty()) {
         mod_name = archive_path.stem().string();
         mod.id   = mod_name;
       }
@@ -198,7 +196,8 @@ bool ExtractStage::execute(Mod &mod, PipelineContext &ctx) {
       // lone "Data" wrapper gets unwrapped. FOMOD archives are skipped
       // (FomodStage owns them). The first peeled wrapper name is a better
       // name hint than the archive stem unless it's the data dir itself.
-      auto normalized = normalize_staging_root(staging_dir, ctx.deploy_prefix);
+      auto normalized =
+          normalize_staging_root(staging_dir, ctx.deploy_prefix, ctx.data_checker);
       if (!normalized.fomod && !normalized.peeled_folder_hint.empty() &&
           !name_matches_ci(normalized.peeled_folder_hint, ctx.deploy_prefix)) {
         mod_name = normalized.peeled_folder_hint;

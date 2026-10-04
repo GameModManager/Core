@@ -17,6 +17,7 @@ class ConflictIndex;
 class ProfileModel;
 class OrderEncodingHook;
 class FomodViewModel;
+class ModDataCheckerFeature;
 
 // How an install should handle a mod folder that already exists. Mirrors
 // MO2's QueryOverwriteDialog actions (queryoverwritedialog.h).
@@ -78,6 +79,15 @@ struct PipelineContext {
   // "meta.ini"; games whose engine reads XML metadata from mod folders
   // (Isaac) register the filename via the metadata_file hook.
   std::string metadata_file = "meta.ini";
+
+  // The game's declared data allow-lists (MO2 IModDataChecker): a registered
+  // mod_data_checker feature, else the mod_valid_dirs / mod_valid_exts hooks,
+  // as resolved by data_checker_for() from the same declaration the mod
+  // scanner reads. ExtractStage hands it to the staging-layout decision, so
+  // "is this top-level content the game's data or a wrapper?" is answered by
+  // what the game declares - never by folder names baked into the engine.
+  // Null when the game declares nothing.
+  std::shared_ptr<const ModDataCheckerFeature> data_checker;
 
   // When using OverlayFS deploy strategy, staging_dir holds the mod symlink
   // tree that gets layered over game_dir at launch. Empty = deploy directly to

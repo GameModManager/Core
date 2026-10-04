@@ -16,6 +16,8 @@
 
 namespace engine {
 
+class ModDataCheckerFeature;
+
 // Outcome of normalizing an extracted archive's root so it matches the game's
 // data directory (MO2 InstallerQuick::getSimpleArchiveBase + the game's
 // ModDataChecker). GMM's historical behavior stripped whatever single top-level
@@ -42,14 +44,28 @@ struct StagingNormalizeResult {
 };
 
 // Pure decision. Repeats getSimpleArchiveBase's loop on a tree: if the root
-// already looks like the game's data dir (ModDataChecker) or is a DataText top
-// layer, it's the base; else descend a single-dir wrapper and retry; else give
-// up. A FOMOD tree is detected first (tree find_fomod_dir) and never reshaped.
-// Returns the verdict; the caller applies peel_chain / merges data_dir
-// physically. data_folder_name is the game's data dir name (e.g. "Data").
+// already looks like the game's data dir (the game's own ModDataChecker) or is
+// a DataText top layer, it's the base; else descend a single-dir wrapper and
+// retry; else give up. A FOMOD tree is detected first (tree find_fomod_dir) and
+// never reshaped. Returns the verdict; the caller applies peel_chain / merges
+// data_dir physically. data_folder_name is the game's data dir name (e.g.
+// "Data"). checker is the game's declared data allow-lists (a registered
+// mod_data_checker feature, else the mod_valid_dirs / mod_valid_exts hooks);
+// null falls back to the engine's own Bethesda set, so a game that declares
+// nothing behaves as it always has.
 [[nodiscard]] StagingNormalizeResult
 analyze_staging_layout(const std::shared_ptr<const FileTree> &tree,
-                       const std::string &data_folder_name);
+                       const std::string &data_folder_name,
+                       std::shared_ptr<const ModDataCheckerFeature> checker = nullptr);
+
+// Same decision, on an extracted archive's staging root: builds the tree the
+// way normalize_staging_root does and answers without touching disk. Callers
+// that need the verdict but not the peel (ExtractStage, which only asks
+// whether the root is already game data) use this.
+[[nodiscard]] StagingNormalizeResult
+analyze_staging_root(const std::filesystem::path &staging_root,
+                     const std::string &data_folder_name,
+                     std::shared_ptr<const ModDataCheckerFeature> checker = nullptr);
 
 // MO2-faithful archive root normalization ON DISK: analyze_staging_layout over
 // a DirectoryFileTree, then applies the verdict (peels the recorded wrappers,
@@ -57,6 +73,7 @@ analyze_staging_layout(const std::shared_ptr<const FileTree> &tree,
 // reshaped. Returns what happened to the tree on disk.
 [[nodiscard]] StagingNormalizeResult
 normalize_staging_root(const std::filesystem::path &staging_root,
-                       const std::string &data_folder_name);
+                       const std::string &data_folder_name,
+                       std::shared_ptr<const ModDataCheckerFeature> checker = nullptr);
 
 }  // namespace engine
