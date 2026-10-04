@@ -65,6 +65,73 @@ TEST_CASE("nxm router parse", "[engine]") {
   REQUIRE(legacy.file_id == 0);
 }
 
+TEST_CASE("nxm router parse collection links", "[engine]") {
+  // nxm://<game>/collections/<id>/revisions/<n> - the collection shape, named
+  // after NXMUrl::collectionId/collectionRevision so the fields line up.
+  {
+    const auto link = engine::NxmRouter::parse("nxm://skyrimspecialedition/collections/"
+                                               "hygge-for-lore-and-4096/revisions/7");
+    REQUIRE(link.valid());
+    REQUIRE(link.nexus_domain == "skyrimspecialedition");
+    REQUIRE(link.is_collection);
+    REQUIRE(link.collection_id == "hygge-for-lore-and-4096");
+    REQUIRE(link.collection_revision == 7);
+    // A collection is not a mod file: leaving these at 0 is what stops a
+    // collection link being downloaded as if it named mod 0, file 0.
+    REQUIRE(link.mod_id == 0);
+    REQUIRE(link.file_id == 0);
+  }
+
+  // The revision may be omitted - 0, and Nexus resolves that to the latest
+  // published revision.
+  {
+    const auto link =
+        engine::NxmRouter::parse("nxm://skyrimspecialedition/collections/abcd");
+    REQUIRE(link.is_collection);
+    REQUIRE(link.collection_id == "abcd");
+    REQUIRE(link.collection_revision == 0);
+  }
+
+  // Query strings ride on whichever segment carries them, and the literal
+  // "nexus" authority is unwrapped the same way it is for mod links.
+  {
+    const auto link = engine::NxmRouter::parse(
+        "nxm://nexus/cyberpunk2077/collections/neon-noir/revisions/2?key=abc");
+    REQUIRE(link.nexus_domain == "cyberpunk2077");
+    REQUIRE(link.is_collection);
+    REQUIRE(link.collection_id == "neon-noir");
+    REQUIRE(link.collection_revision == 2);
+  }
+
+  // A mod link is not a collection, and a collection-looking path under an
+  // unwrapped "nexus" authority keeps its real game domain.
+  {
+    const auto mod =
+        engine::NxmRouter::parse("nxm://skyrimspecialedition/mods/184625/files/781833");
+    REQUIRE_FALSE(mod.is_collection);
+    REQUIRE(mod.collection_id.empty());
+    REQUIRE(mod.mod_id == 184625);
+  }
+  {
+    const auto link =
+        engine::NxmRouter::parse("nxm://nexus/collections/abcd/revisions/3");
+    REQUIRE(link.nexus_domain == "nexus");
+    REQUIRE(link.is_collection);
+    REQUIRE(link.collection_id == "abcd");
+    REQUIRE(link.collection_revision == 3);
+  }
+
+  // A revision that is not a positive number stays 0 rather than becoming a
+  // bogus pin - the collection adapter rejects it instead of guessing.
+  {
+    const auto link = engine::NxmRouter::parse(
+        "nxm://skyrimspecialedition/collections/abcd/revisions/abc");
+    REQUIRE(link.is_collection);
+    REQUIRE(link.collection_id == "abcd");
+    REQUIRE(link.collection_revision == 0);
+  }
+}
+
 TEST_CASE("modl router parse", "[engine]") {
   // Canonical form: modl://<host>/?url=<percent-encoded https URL>
   expect_modl("modl://falloutnv/?url=https%3A%2F%2Fcdn.mod.pub%2Ffile.7z", "falloutnv",

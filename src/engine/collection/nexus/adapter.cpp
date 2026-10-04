@@ -5,6 +5,7 @@
 #include "engine/network/nexus_v2/client.h"
 #include "engine/network/nexus_v2/premium.h"
 #include "engine/source/nexus/auth.h"
+#include "engine/source/router.h"
 
 #include <cctype>
 
@@ -100,6 +101,53 @@ namespace {
     };
   }
 
+  // "nxm://<game>/collections/<id>[/revisions/<n>]" - the protocol form the
+  // Nexus site and the official app emit, and the only nxm:// shape this
+  // adapter can serve. Router::parse owns the grammar; a revision is optional
+  // and 0 means "latest published revision", which is what the GraphQL
+  // query's nullable revision argument asks for.
+  //
+  // A "revisions/" segment that is not a positive number is a malformed pin,
+  // not a request for the latest revision, so it is rejected here instead of
+  // being silently downgraded to whatever revision happens to be published.
+  bool parse_nxm_collection(const std::string &url, CollectionRef &ref) {
+    const Source::NxmLink link = Source::Router::parse(url);
+    if (!link.valid() || !link.is_collection || link.collection_id.empty())
+      return false;
+    if (link.collection_revision <= 0 && url.find("/revisions/") != std::string::npos)
+      return false;
+    ref.slug     = link.collection_id;
+    ref.revision = link.collection_revision;
+    return true;
+  }
+
+  // Why a source_id could not be used, naming the forms that would work. A
+  // malformed collection link is still recognisably a collection link, so it is
+  // told which part is broken rather than being called the wrong kind of link -
+  // that would send the reader hunting for the wrong problem. A link to a mod
+  // does get its own line: routing it to the collection API would ask for a
+  // collection called "nxm://skyrim/mods/1234/files/5678".
+  std::string unrecognized_message(const std::string &source_id) {
+    const Source::NxmLink link = Source::Router::parse(source_id);
+    if (!link.valid())
+      return "'" + source_id +
+             "' is not a Nexus collection reference. Expected one of:\n"
+             "  a collection slug, optionally pinned as slug@revision\n"
+             "  https://www.nexusmods.com/<game>/collections/<id>[/revisions/<n>]\n"
+             "  nxm://<game>/collections/<id>[/revisions/<n>]\n"
+             "  a collection.json file path";
+    const std::string expected =
+        " Expected nxm://<game>/collections/<id>[/revisions/<n>].";
+    if (!link.is_collection)
+      return "'" + source_id + "' is an nxm:// link to a mod, not to a collection." +
+             expected;
+    if (link.collection_id.empty())
+      return "'" + source_id + "' has no collection id after \"collections/\"." +
+             expected;
+    return "'" + source_id + "' pins a revision that is not a positive number." +
+           expected;
+  }
+
 }  // namespace
 
 CollectionRef parse_source_id(const std::string &source_id) {
@@ -109,8 +157,14 @@ CollectionRef parse_source_id(const std::string &source_id) {
     ref.file_path = source_id;
     return ref;
   }
+  if (parse_nxm_collection(source_id, ref))
+    return ref;
   if (is_nexus_collection_url(source_id))
     return parse_url(source_id);
+  // Any other nxm:// link is a mod link. Leaving the slug empty is what keeps
+  // it from being sent to the collection API verbatim.
+  if (Source::Router::parse(source_id).valid())
+    return ref;
   const auto at = source_id.find('@');
   if (at != std::string::npos) {
     ref.slug = source_id.substr(0, at);
@@ -230,7 +284,7 @@ FetchOutcome Adapter::fetch(const std::string &source_id) {
   }
 
   if (ref.slug.empty())
-    return FetchError{"unrecognized Nexus collection id '" + source_id + "'", 0};
+    return FetchError{unrecognized_message(source_id), 0};
 
   nexus_v2::FetchResult fetched = fetcher_(ref.slug, ref.revision);
   if (!fetched.ok)
@@ -249,6 +303,9 @@ bool Adapter::can_handle(const std::string &source_id) const {
   if (source_id.empty())
     return false;
   if (is_json_path(source_id))
+    return true;
+  CollectionRef ref;
+  if (parse_nxm_collection(source_id, ref))
     return true;
   if (is_nexus_collection_url(source_id))
     return !parse_url(source_id).slug.empty();
