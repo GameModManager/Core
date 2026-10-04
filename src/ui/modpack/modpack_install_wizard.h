@@ -33,8 +33,8 @@ namespace ui {
 //
 // Steps: Intro (pack info), Paths (new-instance dirs, skipped in append
 // mode), Choices (choice groups), INI Tweaks, Downloads, Run Tools,
-// Patches (binary-patch consent), Finishing (apply checklist), End
-// (author closing message).
+// Patches (binary-patch consent, skipped for a pack that carries no
+// patches), Finishing (apply checklist), End (author closing message).
 //
 // Choice selections, INI toggles and patch consent live in the wizard so
 // they persist while the user navigates back and forth.

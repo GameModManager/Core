@@ -34,7 +34,6 @@ enum class PackStage {
   Sources,      // resolve every exported mod's source; a bundled mod is hashed here
   Executables,  // resolve sources again, to validate sourceModId references
   Ini,          // parse every INI the exported mods ship
-  Patches,      // bsdiff every file two mods ship at the same path
   Tree,         // resolve sources a third time, for the separator/mod layout
   Payload,      // read the bundled bytes into RAM for the archive
   Count,
@@ -68,11 +67,11 @@ struct PackProgress {
 };
 
 // Cooperative cancellation for the long pack builders. Building a pack hashes
-// every bundled byte and binary-diffs every file two mods ship at the same path,
-// so it is unbounded work and cannot run on a GUI thread. A caller that runs a
-// build on a worker thread hands in one of these to abandon the build at the
-// next file boundary, and - when it wants a progress bar - a shared sink the
-// build publishes into. Absent (the default) = never cancelled, no progress.
+// every bundled byte and walks every exported mod's folder, so it is unbounded
+// work and cannot run on a GUI thread. A caller that runs a build on a worker
+// thread hands in one of these to abandon the build at the next file boundary,
+// and - when it wants a progress bar - a shared sink the build publishes into.
+// Absent (the default) = never cancelled, no progress.
 // std::atomic, not Qt, so the engine stays Qt-free.
 struct PackCancel {
   std::atomic<bool> flag{false};
@@ -238,50 +237,33 @@ std::vector<IniEntry> build_ini_entries(const std::filesystem::path &mods_dir,
                                         const std::vector<ModEntry> &mods,
                                         const PackCancel *cancel = nullptr);
 
-// One bsdiff patch per file that 2+ exported mods ship at the same relative
-// path: the higher-priority mod's copy is the base, each lower-priority mod's
-// copy becomes a patch against it (this is the pack format's consent-gated
-// alternative to silent file-priority conflict resolution). Files above
-// ~8 MB are skipped - a base64 diff of a game-sized asset is not something a
-// pack should carry. Empty when no exported mods collide, or when `cancel` was
-// raised first.
-std::vector<PatchEntry> build_patches(const InstanceSnapshot &snapshot,
-                                      const std::filesystem::path &mods_dir,
-                                      const std::vector<ModEntry> &mods,
-                                      const PackCancel *cancel = nullptr);
-
 // JSON serializers (reverse of unpacker.cpp parse_*).
 nlohmann::json serialize_manifest(const Manifest &m);
 nlohmann::json serialize_mod_source(const ModSource &source);
 nlohmann::json serialize_mod_entry(const ModEntry &m);
 nlohmann::json serialize_executable_entry(const ExecutableEntry &e);
 nlohmann::json serialize_ini_entry(const IniEntry &entry);
-nlohmann::json serialize_patch_entry(const PatchEntry &p);
-// Archive path of a patch entry: patches/<mod-id>.json for a single patch,
-// patches/<mod-id>-<N>.json for chain step N.
-std::string patch_archive_path(const PatchEntry &p);
 
 // Assemble the full pack in memory. Reads every exported mod's folder several
-// times over (once per stage that resolves sources, once for ini/, once for
-// patches/, once to load the bundled payload), so it is as slow as the mod
-// folder it is given - never call it on a GUI thread. `cancel` abandons it at
-// the next file boundary and receives the progress the build publishes; a
-// cancelled result is incomplete and must be discarded.
+// times over (once per stage that resolves sources, once for ini/, once to load
+// the bundled payload), so it is as slow as the mod folder it is given - never
+// call it on a GUI thread. `cancel` abandons it at the next file boundary and
+// receives the progress the build publishes; a cancelled result is incomplete
+// and must be discarded.
 //
-// Measured on a 199-mod / 5.6 GB Skyrim SE instance: every stage except
-// Patches together take about 11 s, while Patches - one bsdiff per file two
-// mods ship at the same path, 1,061 of them - took over 40 minutes. On that
-// instance Patches is ~99% of the build, so a caller that only needs the
-// layout should not be paying for it.
+// No patches/ directory is produced: two mods shipping the same path is an
+// instance conflict that deploy order decides, not something a pack of
+// references has to carry. Measured on a 199-mod / 5.6 GB Skyrim SE instance
+// every stage now takes about 11 s in total.
 Gmmpack build_gmmpack(const InstanceSnapshot &snapshot,
                       const std::filesystem::path &mods_dir, const PackOptions &options,
                       const PackCancel *cancel = nullptr);
 
 // Serialize + write a .gmmpack (zip) archive: manifest.json, tree.json,
-// mods/*.json, executables/*.json, files/** for embedded mods,
-// patches/*.json, ini/*.json, instructions.md when present. fileHashes are
-// computed over the serialized payloads and baked into the manifest before
-// writing, so the archive passes verify_archive_integrity.
+// mods/*.json, executables/*.json, files/** for embedded mods, ini/*.json,
+// instructions.md when present. fileHashes are computed over the serialized
+// payloads and baked into the manifest before writing, so the archive passes
+// verify_archive_integrity.
 //
 // Everything the packer just built is validated before the archive is
 // written: validate_schemas (when options.schema_dir is set) and
