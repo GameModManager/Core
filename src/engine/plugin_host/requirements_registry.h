@@ -10,7 +10,7 @@
 // included before gmm_abi_v2.h so its unconditional `#define GMM_ABI_VERSION 1`
 // wins and the v2 header's guarded definition is skipped (avoids a redefinition
 // warning, mirroring the include order in plugin_loader.cpp).
-#include "engine/pipeline/plugin_host/plugin_loader.h"
+#include "engine/plugin_host/plugin_loader.h"
 
 // v2 ABI requirement callback signature + struct (gmm_abi_v2.h) - pure C,
 // Qt-free.

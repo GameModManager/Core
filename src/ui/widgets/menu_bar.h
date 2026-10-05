@@ -6,7 +6,7 @@
 #include <string>
 #include <vector>
 
-#include "engine/platform/tools/external_tool.h"
+#include "engine/tools/external_tool.h"
 
 namespace ui {
 

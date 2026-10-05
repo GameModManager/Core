@@ -5,8 +5,8 @@
 #include "engine/instance/instance_utils.h"
 #include "engine/game/registry/game_knowledge.h"
 #include "engine/network/network_manager.h"
-#include "engine/pipeline/plugin_host/category_factory.h"
-#include "engine/pipeline/plugin_host/plugin_loader.h"
+#include "engine/plugin_host/category_factory.h"
+#include "engine/plugin_host/plugin_loader.h"
 #include "engine/profile/profile.h"
 #include "ui/widgets/rolling_chart.h"
 

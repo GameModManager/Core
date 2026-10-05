@@ -1,6 +1,6 @@
 #include "ui/widgets/category_filter_panel.h"
 
-#include "engine/pipeline/plugin_host/category_factory.h"
+#include "engine/plugin_host/category_factory.h"
 #include "ui/settings/settings.h"
 
 #include <QHBoxLayout>

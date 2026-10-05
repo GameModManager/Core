@@ -3,7 +3,7 @@
 #include "engine/log/logger.h"
 #include "engine/mod/meta/categories.h"
 #include "engine/mod/meta/mod_meta.h"
-#include "engine/pipeline/plugin_host/category_factory.h"
+#include "engine/plugin_host/category_factory.h"
 #include "ui/main_window/main_window.h"
 #include "ui/settings/settings.h"
 #include "ui/widgets/list_dialog.h"

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "engine/game/plugins/plugin_info.h"
+#include "engine/game/esp/plugin_info.h"
 #include "ui/panels/plugin_context_menu.h"
 #include "ui/panels/plugin_view.h"
 

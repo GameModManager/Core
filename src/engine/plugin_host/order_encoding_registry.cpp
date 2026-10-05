@@ -1,4 +1,4 @@
-#include "engine/pipeline/plugin_host/order_encoding_registry.h"
+#include "engine/plugin_host/order_encoding_registry.h"
 
 #include "engine/log/logger.h"
 

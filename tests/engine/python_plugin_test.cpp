@@ -1,11 +1,11 @@
 #include "engine/events/event_bus.h"
 #include "engine/game/detect/mod_scanner.h"
-#include "engine/game/plugins/plugin_database.h"
+#include "engine/game/esp/plugin_database.h"
 #include "engine/game/registry/game_features/game_feature_registry.h"
 #include "engine/game/registry/game_knowledge.h"
-#include "engine/pipeline/plugin_host/diagnostics_registry.h"
-#include "engine/pipeline/plugin_host/plugin_loader.h"
-#include "engine/pipeline/plugin_host/python_loader.h"
+#include "engine/plugin_host/diagnostics_registry.h"
+#include "engine/plugin_host/plugin_loader.h"
+#include "engine/plugin_host/python_loader.h"
 
 #include <catch2/catch_test_macros.hpp>
 #include <cstdio>

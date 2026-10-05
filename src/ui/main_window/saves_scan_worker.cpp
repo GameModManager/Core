@@ -3,7 +3,7 @@
 #include "engine/game/saves/save_fast_scan.h"
 #include "engine/game/saves/save_reader.h"
 #include "engine/game/saves/save_scanner.h"
-#include "engine/pipeline/plugin_host/save_parser_registry.h"
+#include "engine/plugin_host/save_parser_registry.h"
 
 #include <QMetaObject>
 #include <QThread>

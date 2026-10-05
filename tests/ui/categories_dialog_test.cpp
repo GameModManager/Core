@@ -7,7 +7,7 @@
 // as a diff (add/update/remove) plus persisting categories.dat.
 //
 // Hermetic: offscreen platform, throwaway XDG_CONFIG_HOME, no network.
-#include "engine/pipeline/plugin_host/category_factory.h"
+#include "engine/plugin_host/category_factory.h"
 #include "ui/settings/categories_dialog.h"
 
 #include <QApplication>

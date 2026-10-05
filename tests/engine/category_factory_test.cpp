@@ -3,7 +3,7 @@
 // Covers: merge from parallel arrays (duplicates skipped by ID), load/save of
 // the pipe-delimited categories.dat (ID|Name|ParentID), parent-child hierarchy
 // (hasChildren flag), and add/remove/update mutations.
-#include "engine/pipeline/plugin_host/category_factory.h"
+#include "engine/plugin_host/category_factory.h"
 
 #include <catch2/catch_test_macros.hpp>
 #include <filesystem>

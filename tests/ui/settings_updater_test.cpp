@@ -11,8 +11,8 @@
 //                                     disabled and its tooltip names the
 //                                     prerequisite, which is the only honest
 //                                     state while there are no releases
-#include "engine/platform/theme/theme_manager.h"
-#include "engine/pipeline/plugin_host/plugin_loader.h"
+#include "engine/theme/theme_manager.h"
+#include "engine/plugin_host/plugin_loader.h"
 #include "engine/update/install_method.h"
 #include "ui/settings/settings.h"
 #include "ui/settings/settings_content_widget.h"

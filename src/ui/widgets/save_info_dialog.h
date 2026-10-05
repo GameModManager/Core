@@ -12,7 +12,7 @@
 // never re-scans; it just renders what it was handed. Single-shot, modal,
 // geometry persisted via Settings::saveinfo_window_geometry.
 
-#include "engine/game/plugins/plugin_info.h"
+#include "engine/game/esp/plugin_info.h"
 #include "engine/game/saves/save_game.h"
 #include "engine/game/saves/save_missing_assets.h"
 

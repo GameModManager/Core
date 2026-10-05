@@ -3,7 +3,7 @@
 #include "engine/log/logger.h"
 #include "engine/deploy/deploy_utils.h"
 #include "engine/game/detect/mod_scanner.h"
-#include "engine/game/plugins/plugin_database.h"
+#include "engine/game/esp/plugin_database.h"
 #include "engine/game/registry/game_features/game_feature_registry.h"
 #include "engine/mod/meta/mod_meta.h"
 
