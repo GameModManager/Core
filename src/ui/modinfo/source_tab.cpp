@@ -13,6 +13,7 @@
 #include "ui/modinfo/source_panels/steam_source_panel.h"
 #include "ui/theme/icon_manager.h"
 
+#include <QAction>
 #include <QComboBox>
 #include <QDialog>
 #include <QDialogButtonBox>
@@ -20,6 +21,8 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QMap>
+#include <QMenu>
+#include <QMessageBox>
 #include <QPushButton>
 #include <QStackedWidget>
 #include <QTabBar>
@@ -70,11 +73,13 @@ namespace {
     tabs->addTab(page, engine::IconManager::instance().resolve_icon(icon_key), title);
   }
 
-  // Whether this mod is a git working copy. The .git inside the mod folder is
-  // the authoritative signal - a recorded [Git] section alone is not enough,
-  // since a mod whose .git was deleted is no longer managed from git. The
-  // sidecar is consulted as well so a repo that exists but was never stamped
-  // (a manual clone dropped into mods/) still counts.
+  // Whether this mod has a Git source. A .git inside the mod folder is the
+  // authoritative signal for being a working copy - that is what the panel's
+  // check / pull / reset act on, and what the mod list's git badge follows. A
+  // recorded [Git] section counts too, because it is a source the user
+  // attached: the panel then states that the folder holds no repository
+  // instead of pretending the mod has no Git source at all. data_.is_git is
+  // the controller's own scan of the folder, kept as the last resort.
   bool mod_is_git(const ModInfoData &data) {
     // A default-constructed QDir reports "." as its path, and the process's
     // working directory is not a mod folder - so a caller that never set
@@ -85,6 +90,8 @@ namespace {
       if (engine::Git::is_repository(dir))
         return true;
     }
+    if (data.load_meta && data.load_meta().has_git())
+      return true;
     return data.is_git;
   }
 
@@ -106,66 +113,141 @@ namespace {
     return {};
   }
 
-  // Determine the mod's actual source from meta + ModInfoData fallback.
-  // Returns the canonical source_type ("nexus", "loverslab", "steam") or an
-  // empty QString for manual / unknown. Strategy (Workspace-fqf5):
-  //   1. Use meta's [GameModManager]source_type when it names a known
-  //      provider. Empty / "manual" / unknown are NOT a source.
-  //   2. If absent, look at provider-specific sections already present in the
-  //      meta. A mod with [Nexusmods]/[LoversLab]/[SteamWorkshop] carrying
-  //      data shows that source even when the game's download_sources hook
-  //      does not declare the provider.
-  //   3. Fall back to the in-memory data_.source_type for mods whose meta
-  //      has no provider section yet (e.g. a brand-new install before
-  //      load_meta_for_mods has been called).
-  QString resolve_actual_source(const ModInfoData &data) {
-    auto lower = [](QString s) {
-      return s.toLower();
+  // The meta section that holds one source's own record: the same
+  // per-provider sidecar sections every source already writes. Empty for
+  // anything that is not a real source ("manual", "direct").
+  QString provider_section(const QString &source_type) {
+    if (source_type == QLatin1String("nexus"))
+      return QStringLiteral("Nexusmods");
+    if (source_type == QLatin1String("loverslab"))
+      return QStringLiteral("LoversLab");
+    if (source_type == QLatin1String("steam"))
+      return QStringLiteral("SteamWorkshop");
+    if (source_type == QLatin1String("modpub"))
+      return QStringLiteral("ModPub");
+    if (source_type == QLatin1String("git"))
+      return QStringLiteral("Git");
+    return {};
+  }
+
+  // Every source this mod actually has, primary first.
+  //
+  // A mod can carry several at once - a Nexus id and a Steam workshop id, plus
+  // a .git in its folder - and each keeps its own provider section, so this
+  // reads all of them instead of stopping at the first. A section counts when
+  // it holds a real id: modid=0 is MO2's "no Nexus id" sentinel, not
+  // provenance, and an empty id is nothing. The declared
+  // [GameModManager]source_type counts on its own (a mod can be attributed to
+  // a source whose id is not stamped yet), and data_.source_type is the last
+  // resort for a mod whose meta has not been stamped at all.
+  //
+  // The primary leads the list, so the tab the user picked comes first. A mod
+  // with one source is implicitly primary - nothing to pick, nothing recorded.
+  // A meta that somehow flags two sections resolves to the first of them, so
+  // the tab bar can never show two primaries.
+  QStringList recorded_sources(const ModInfoData &data) {
+    static const QStringList kOrder = {
+        QStringLiteral("nexus"), QStringLiteral("loverslab"), QStringLiteral("steam"),
+        QStringLiteral("modpub"), QStringLiteral("git")};
+    QStringList found;
+    // Only the four providers that own a typed panel are sources here.
+    // "manual" and "direct" are not a source (direct is the transport-only
+    // modl:// provider), and an unknown source_type falls through to the
+    // generic panel rather than becoming a tab of its own here.
+    auto is_source = [](const QString &type) {
+      return type == QLatin1String("nexus") || type == QLatin1String("loverslab") ||
+             type == QLatin1String("steam") || type == QLatin1String("modpub");
     };
+    auto add = [&found](const QString &type) {
+      if (!type.isEmpty() && !found.contains(type))
+        found.append(type);
+    };
+    engine::ModMeta meta;
     if (data.load_meta) {
-      auto meta       = data.load_meta();
-      const QString t = lower(QString::fromStdString(meta.source_type()));
-      if (t == QLatin1String("nexus") || t == QLatin1String("loverslab") ||
-          t == QLatin1String("steam") || t == QLatin1String("modpub")) {
-        return t;
-      }
-      // Legacy: "modl" was misregistered as a source (qvi6). Old mods may
-      // still carry it; fall through to the section checks below (which
-      // pick up [ModPub] if the modl link was actually a mod.pub page) or
-      // return empty (-> manual, no source panel). The [Modl] section
-      // remains readable via source_page_url() for the "open source page"
-      // action, so legacy mods do not lose their link.
-      // No declared source_type, but a provider section may exist. Prefer
-      // the section with the strongest signal (an actual id stored in it).
-      if (meta.has_section("Nexusmods")) {
-        const QString modid = QString::fromStdString(meta.get("Nexusmods", "modid"));
-        if (!modid.isEmpty() && modid != QLatin1String("0") && modid.toLongLong() > 0)
-          return QStringLiteral("nexus");
-      }
-      if (meta.has_section("LoversLab")) {
-        const QString fid = QString::fromStdString(meta.get("LoversLab", "fileid"));
-        if (!fid.isEmpty() && fid.toLongLong() > 0)
-          return QStringLiteral("loverslab");
-      }
-      if (meta.has_section("SteamWorkshop")) {
-        const QString wid =
-            QString::fromStdString(meta.get("SteamWorkshop", "workshop_id"));
-        if (!wid.isEmpty() && wid.toLongLong() > 0)
-          return QStringLiteral("steam");
-      }
-      if (meta.has_section("ModPub")) {
-        const QString mid = QString::fromStdString(meta.get("ModPub", "mod_id"));
-        if (!mid.isEmpty() && mid.toLongLong() > 0)
-          return QStringLiteral("modpub");
+      meta       = data.load_meta();
+      auto id_at = [&meta](const char *section, const char *key) {
+        return QString::fromStdString(meta.get(section, key)).toLongLong();
+      };
+      if (id_at("Nexusmods", "modid") > 0)
+        add(QStringLiteral("nexus"));
+      if (id_at("LoversLab", "fileid") > 0)
+        add(QStringLiteral("loverslab"));
+      if (id_at("SteamWorkshop", "workshop_id") > 0)
+        add(QStringLiteral("steam"));
+      if (id_at("ModPub", "mod_id") > 0)
+        add(QStringLiteral("modpub"));
+      const QString declared = QString::fromStdString(meta.source_type()).toLower();
+      if (is_source(declared))
+        add(declared);
+    }
+    const QString in_memory = data.source_type.toLower();
+    if (is_source(in_memory))
+      add(in_memory);
+    if (mod_is_git(data))
+      add(QStringLiteral("git"));
+
+    // Everything the fixed order does not know (a plugin's own provider) keeps
+    // the order it was found in, behind the known ones.
+    QStringList ordered;
+    for (const auto &type : kOrder) {
+      if (found.contains(type))
+        ordered.append(type);
+    }
+    for (const auto &type : std::as_const(found)) {
+      if (!ordered.contains(type))
+        ordered.append(type);
+    }
+
+    if (ordered.size() < 2)
+      return ordered;
+    // The section that names itself primary wins over the order above, which
+    // is the display order only.
+    QString primary;
+    if (data.load_meta) {
+      for (const auto &type : std::as_const(ordered)) {
+        const QString section = provider_section(type);
+        if (section.isEmpty())
+          continue;
+        if (meta.get(section.toStdString(), "primary") == "true") {
+          primary = type;
+          break;
+        }
       }
     }
-    // Fall back to the controller-supplied data_.source_type for mods that
-    // have no sidecar yet (a manual install before any load_meta round trip).
-    const QString dt = lower(data.source_type);
-    if (dt == QLatin1String("nexus") || dt == QLatin1String("loverslab") ||
-        dt == QLatin1String("steam") || dt == QLatin1String("modpub"))
-      return dt;
-    return {};
+    if (primary.isEmpty())
+      primary = ordered.first();
+    ordered.removeOne(primary);
+    ordered.prepend(primary);
+    return ordered;
+  }
+
+  // What detaching a source actually costs, in the stored fields' own terms:
+  // every key below is written back only by re-adding the source and fetching
+  // its metadata again. Unknown providers fall back to naming their section,
+  // because guessing at their fields would be a lie.
+  QString loss_summary(const QString &type) {
+    if (type == QLatin1String("nexus"))
+      return QStringLiteral("the recorded Nexus mod id, the Nexus metadata fetched "
+                            "for it (description, category, version, page dates) and "
+                            "the recorded installed-file list");
+    if (type == QLatin1String("steam"))
+      return QStringLiteral("the recorded Steam Workshop id and the metadata "
+                            "stored for it (title, description, preview image, tags, "
+                            "page dates)");
+    if (type == QLatin1String("loverslab"))
+      return QStringLiteral("the recorded LoversLab file id and page URL, and the "
+                            "metadata stored for it (display name, author, category, "
+                            "description, archive filename, page date)");
+    if (type == QLatin1String("modpub"))
+      return QStringLiteral("the recorded mod.pub id, page URL and game slug, and the "
+                            "metadata stored for it (display name, author, category, "
+                            "description, page date)");
+    if (type == QLatin1String("git"))
+      return QStringLiteral("the recorded remote URL, branch and commit");
+    const QString section = provider_section(type);
+    return section.isEmpty()
+               ? QStringLiteral("the mod's recorded attribution to %1").arg(type)
+               : QStringLiteral("everything stored in [%1]").arg(section);
   }
 
   // Build a panel for the given source_type, using the typed SourceInfoPanel
@@ -184,6 +266,9 @@ namespace {
     }
     if (source_type == QLatin1String("modpub")) {
       return new ModPubSourcePanel(data, parent);
+    }
+    if (source_type == QLatin1String("git")) {
+      return new GitSourcePanel(data, parent);
     }
     // Unknown / manual: try a registered generic provider that matches the
     // actual source_type string (some plugins use their own keys).
@@ -262,10 +347,12 @@ namespace {
       auto *form      = new QFormLayout();
       provider_combo_ = new QComboBox(this);
 
-      // The source the mod is ALREADY attached to, per the same helper the
-      // tab bar uses to decide which panel to build. Asking it instead of
-      // re-deriving "what sources does this mod have" keeps one notion of it.
-      const QString attached = resolve_actual_source(data);
+      // Every source the mod ALREADY has, per the same helper the tab bar
+      // uses to decide which panels to build. Asking it instead of
+      // re-deriving "what sources does this mod have" keeps one notion of it -
+      // which is also what makes the de-duplication below cover a mod that
+      // carries several sources rather than just the one it declares.
+      const QStringList existing = recorded_sources(data);
 
       // Build the sorted Entry list from the registry. We normalize
       // "steamworkshop" -> "steam" so the canonical key the rest of the
@@ -285,7 +372,9 @@ namespace {
           return 2;
         if (canonical == QLatin1String("modpub"))
           return 3;
-        return 4;
+        if (canonical == QLatin1String("git"))
+          return 4;
+        return 5;
       };
       QList<Entry> entries;
       for (auto *provider : engine::SourceRegistry::instance().providers()) {
@@ -303,11 +392,21 @@ namespace {
         // untouched - its panel stays on the tab bar, fully visible and
         // editable - only the add affordance goes away, so once the source is
         // detached the entry comes straight back into this combo.
-        if (!attached.isEmpty() && pt == attached)
+        if (existing.contains(pt))
           continue;
         e.canonical = pt;
         e.priority  = priority_for(pt);
         entries.append(e);
+      }
+      // Git is not a download provider - nothing is fetched from a repository -
+      // so no SourceProvider is registered for it and the loop above cannot
+      // produce the entry. It is a source all the same: it owns the [Git]
+      // section and its own tab. Offered directly, and skipped for a mod that
+      // already has one (a .git in the folder, or a recorded [Git] section),
+      // which is what existing.contains("git") already reports.
+      if (!existing.contains(QStringLiteral("git"))) {
+        entries.append(
+            Entry{QStringLiteral("Git"), QStringLiteral("git"), priority_for("git")});
       }
       std::sort(entries.begin(), entries.end(), [](const Entry &a, const Entry &b) {
         if (a.priority != b.priority)
@@ -330,16 +429,19 @@ namespace {
       loverslab_page_ = build_loverslab_page();
       steam_page_     = build_steam_page();
       modpub_page_    = build_modpub_page();
+      git_page_       = build_git_page();
       field_stack_->addWidget(nexus_page_);
       field_stack_->addWidget(loverslab_page_);
       field_stack_->addWidget(steam_page_);
       field_stack_->addWidget(modpub_page_);
+      field_stack_->addWidget(git_page_);
       // Map canonical -> field page index. Unknown providers (custom plugins)
       // get an empty page with an "edit in meta.ini" hint.
       page_by_canonical_[QStringLiteral("nexus")]     = 0;
       page_by_canonical_[QStringLiteral("loverslab")] = 1;
       page_by_canonical_[QStringLiteral("steam")]     = 2;
       page_by_canonical_[QStringLiteral("modpub")]    = 3;
+      page_by_canonical_[QStringLiteral("git")]       = 4;
       unknown_page_                                   = new QLabel(
           tr("This provider has no editable fields here. After confirming, the "
              "mod's source_type will be set and you can finish configuration by "
@@ -371,6 +473,8 @@ namespace {
       connect(modpub_mod_id_, &QLineEdit::textChanged, this,
               &AddSourceDialog::refresh_accept_enabled);
       connect(modpub_page_url_, &QLineEdit::textChanged, this,
+              &AddSourceDialog::refresh_accept_enabled);
+      connect(git_remote_, &QLineEdit::textChanged, this,
               &AddSourceDialog::refresh_accept_enabled);
       refresh_accept_enabled();
     }
@@ -406,6 +510,9 @@ namespace {
     // enter them (LoversLab page_url, ModPub page_url, Steam none).
     QString loverslab_page_url() const { return loverslab_page_url_->text().trimmed(); }
     QString modpub_page_url() const { return modpub_page_url_->text().trimmed(); }
+    // The repository a newly attached Git source came from. Git has no numeric
+    // id, so chosen_source_id() stays empty for it.
+    QString git_remote() const { return git_remote_->text().trimmed(); }
 
   private:
     QWidget *build_nexus_page() {
@@ -474,6 +581,23 @@ namespace {
       form->addRow(hint);
       return page;
     }
+    QWidget *build_git_page() {
+      auto *page  = new QWidget(this);
+      auto *form  = new QFormLayout(page);
+      git_remote_ = new QLineEdit(page);
+      git_remote_->setPlaceholderText(
+          QStringLiteral("https://github.com/user/repo.git"));
+      form->addRow(tr("Remote URL:"), git_remote_);
+      auto *hint = new QLabel(
+          tr("Where this mod's files come from. A .git in the mod folder is what "
+             "makes the mod a git working copy - this only records which "
+             "repository, so the tab appears even when the folder holds no "
+             "repository of its own."),
+          page);
+      hint->setWordWrap(true);
+      form->addRow(hint);
+      return page;
+    }
 
     void on_provider_changed(int idx) {
       Q_UNUSED(idx);
@@ -535,6 +659,12 @@ namespace {
               }
             }
           }
+        } else if (t == QLatin1String("git")) {
+          // No id to validate: a remote may be any git transport
+          // (https://, ssh://, git@host:path), so requiring http(s) here
+          // would reject the scp-style form. A remote is all there is to
+          // record, so an empty one means there is nothing to attach.
+          ok = !git_remote_->text().trimmed().isEmpty();
         }
         // Custom / unknown providers: allow OK; they get an empty source_id
         // and rely on manual meta.ini editing.
@@ -550,6 +680,7 @@ namespace {
     QWidget *loverslab_page_       = nullptr;
     QWidget *steam_page_           = nullptr;
     QWidget *modpub_page_          = nullptr;
+    QWidget *git_page_             = nullptr;
     QLabel *unknown_page_          = nullptr;
     QLineEdit *nexus_mod_id_       = nullptr;
     QLineEdit *loverslab_fileid_   = nullptr;
@@ -557,6 +688,7 @@ namespace {
     QLineEdit *steam_workshop_id_  = nullptr;
     QLineEdit *modpub_mod_id_      = nullptr;
     QLineEdit *modpub_page_url_    = nullptr;
+    QLineEdit *git_remote_         = nullptr;
     // Canonical source_type -> index in field_stack_. Always populated
     // for the well-known providers; an empty-string entry points at the
     // unknown-provider hint page.
@@ -587,7 +719,70 @@ SourceTab::SourceTab(QWidget *parent) : ModInfoTab(parent) {
     sources_->setCurrentIndex(restore);
     show_add_source_dialog();
   });
+  // Right-click a source tab to make it primary or detach it. The bar has its
+  // own menu: the widget-level menu would carry the tab bar's own items.
+  sources_->tabBar()->setContextMenuPolicy(Qt::CustomContextMenu);
+  connect(sources_->tabBar(), &QWidget::customContextMenuRequested, this,
+          &SourceTab::show_source_menu);
   layout->addWidget(sources_, 1);
+}
+
+QString primary_source(const ModInfoData &data) {
+  return recorded_sources(data).value(0);
+}
+
+bool apply_primary_source(const ModInfoData &data, const QString &source_type) {
+  if (!data.load_meta || !data.save_meta)
+    return false;
+  const QString section = provider_section(source_type);
+  auto meta             = data.load_meta();
+  if (section.isEmpty())
+    return false;
+  // Exactly one section carries the flag: setting a new primary clears the
+  // flag from every other source, so the previous one is demoted in the same
+  // write and two primaries cannot survive, not even in a hand-edited meta.
+  const QStringList recorded = recorded_sources(data);
+  if (!recorded.contains(source_type))
+    return false;
+  for (const auto &other : recorded) {
+    const QString other_section = provider_section(other);
+    if (other_section.isEmpty())
+      continue;
+    if (other == source_type)
+      meta.set(other_section.toStdString(), "primary", "true");
+    else
+      meta.unset(other_section.toStdString(), "primary");
+  }
+  return data.save_meta(meta);
+}
+
+bool detach_source(const ModInfoData &data, const QString &source_type) {
+  if (!data.load_meta || !data.save_meta)
+    return false;
+  const QString section = provider_section(source_type);
+  auto meta             = data.load_meta();
+  if (section.isEmpty() || !meta.has_section(section.toStdString()))
+    return false;
+  // Read before the section goes: [General]modid is the Nexus id namespace
+  // ONLY, so a leftover entry there would keep claiming the id the mod is
+  // about to give up.
+  const std::string nexus_modid = meta.get("Nexusmods", "modid");
+  const bool clears_general     = section == QLatin1String("Nexusmods") &&
+                                  !nexus_modid.empty() && nexus_modid != "0" &&
+                                  meta.get("General", "modid") == nexus_modid;
+  meta.clear_section(section.toStdString());
+  // The mod's declared attribution pointed at this source. Leaving it would
+  // keep naming a source the mod no longer has, in the mod list's badge and
+  // every reader of [GameModManager]source_type.
+  if (meta.source_type() == source_type.toStdString()) {
+    meta.set("GameModManager", "source_type", "manual");
+    meta.unset("GameModManager", "source_id");
+  }
+  if (clears_general)
+    meta.unset("General", "modid");
+  // Nothing else: no file in the mod folder is read or written here, so
+  // detaching a source cannot uninstall the mod or touch its data.
+  return data.save_meta(meta);
 }
 
 SourceTab::~SourceTab() = default;
@@ -629,57 +824,75 @@ void SourceTab::populate() {
     delete page;
   }
 
-  // A mod can be a git working copy AND have a download source; the two
-  // coexist as two tabs. Git first when it is the only source, so a git-only
-  // mod shows a single "Git" tab and never a "Manual" placeholder beside it.
-  const bool is_git = mod_is_git(current());
+  // Every source the mod actually has, one tab each, the primary first.
+  // A mod can be a git working copy AND have download sources, or carry a
+  // Nexus id and a Steam workshop id; each keeps its own section, so each gets
+  // its own tab. Git is in the list too (a recorded [Git] section or a .git in
+  // the folder), which is why a git-only mod shows a single "Git" tab and
+  // never a "Manual" placeholder beside it.
+  const QStringList sources = recorded_sources(current());
+  const QString primary     = sources.value(0);
 
-  const QString actual_source = resolve_actual_source(current());
-  if (actual_source.isEmpty()) {
-    if (is_git) {
-      // Git-only: no Manual placeholder, nothing to warn about.
-    } else {
-      // No source attributed. Show a Manual placeholder (Workspace-fqf5:
-      // manual mods must never show a Nexus tab) and the "+" affordance.
-      auto *hint =
-          new QLabel(tr("This mod has no download source.\n\n"
-                        "It is treated as a manual install. Click \"+\" to attach a "
-                        "source (Nexus, LoversLab, Steam Workshop, ...) if you know "
-                        "where this mod came from."),
-                     sources_);
-      hint->setWordWrap(true);
-      hint->setAlignment(Qt::AlignCenter);
-      sources_->addTab(hint, tr("Manual"));
-    }
-  } else {
-    QWidget *page = build_panel_for(actual_source, current(), sources_);
-    if (page == nullptr) {
-      // Fallback: provider registered but the typed panel failed to
-      // instantiate. Treat as no source.
-      auto *hint = new QLabel(tr("No editor available for this source."), sources_);
-      hint->setWordWrap(true);
-      sources_->addTab(hint, actual_source);
-    } else {
-      auto display        = display_for_source(actual_source);
-      const QString title = display ? display->title : actual_source;
-      // display->icon_key is a source_type ("nexus", "loverslab", "steam",
-      // "modpub"), so it still needs the map to a vendor icon key. The git tab
-      // below has no such step: its key is already final.
-      const QString icon_key = QString::fromStdString(engine::vendor_icon_key(
-          (display ? display->icon_key : actual_source).toStdString()));
-      add_tab_with_icon(sources_, page, title, icon_key);
-    }
+  if (sources.isEmpty()) {
+    // No source attributed. Show a Manual placeholder (Workspace-fqf5: manual
+    // mods must never show a Nexus tab) and the "+" affordance.
+    auto *hint =
+        new QLabel(tr("This mod has no download source.\n\n"
+                      "It is treated as a manual install. Click \"+\" to attach a "
+                      "source (Nexus, LoversLab, Steam Workshop, ...) if you know "
+                      "where this mod came from."),
+                   sources_);
+    hint->setWordWrap(true);
+    hint->setAlignment(Qt::AlignCenter);
+    sources_->addTab(hint, tr("Manual"));
+    // A placeholder is not a source: the context menu must skip it.
+    tab_sources_.append(QString());
   }
 
-  if (is_git) {
-    // The title is always "Git" - GitHub, GitLab and a self-hosted server are
-    // the same source with a different badge, so the platform never names a
-    // tab. icon_key_for() reads the remote's host and returns the FINAL icon
-    // key ("github" for github.com, "git" for every other host), which is
-    // exactly what add_tab_with_icon() takes.
-    const QString git_key = GitSourcePanel::icon_key_for(git_remote_url(current()));
-    add_tab_with_icon(sources_, new GitSourcePanel(current(), sources_), tr("Git"),
-                      git_key);
+  for (int i = 0; i < sources.size(); ++i) {
+    const QString type = sources.at(i);
+    QString title;
+    QString icon_key;
+    if (type == QLatin1String("git")) {
+      // The title is always "Git" - GitHub, GitLab and a self-hosted server are
+      // the same source with a different badge, so the platform never names a
+      // tab. icon_key_for() reads the remote's host and returns the FINAL icon
+      // key ("github" for github.com, "git" for every other host), which is
+      // exactly what add_tab_with_icon() takes.
+      title    = tr("Git");
+      icon_key = GitSourcePanel::icon_key_for(git_remote_url(current()));
+    } else {
+      auto display = display_for_source(type);
+      title        = display ? display->title : type;
+      // display->icon_key is a source_type ("nexus", "loverslab", "steam",
+      // "modpub"), so it still needs the map to a vendor icon key.
+      icon_key = QString::fromStdString(
+          engine::vendor_icon_key((display ? display->icon_key : type).toStdString()));
+    }
+    // A mod with one source is implicitly primary, so the marker only appears
+    // where there is a choice to make - which is also the only case where the
+    // context menu offers the action.
+    const bool is_primary = (type == primary) && sources.size() > 1;
+
+    QWidget *page = build_panel_for(type, current(), sources_);
+    if (page == nullptr) {
+      // Fallback: provider registered but the typed panel failed to
+      // instantiate. The source still has a tab, so it stays visible and
+      // removable.
+      auto *hint = new QLabel(tr("No editor available for this source."), sources_);
+      hint->setWordWrap(true);
+      page = hint;
+    }
+    add_tab_with_icon(sources_, page, is_primary ? title + tr(" (primary)") : title,
+                      icon_key);
+    tab_sources_.append(type);
+    auto *bar = sources_->tabBar();
+    if (bar != nullptr && is_primary) {
+      // indexOf, not the loop index: a mod with no source carries a Manual
+      // placeholder ahead of the real tabs.
+      bar->setTabToolTip(sources_->indexOf(page),
+                         tr("Primary source: the one the mod is attributed to."));
+    }
   }
 
   // The "+" affordance: a tab on the right that, when activated, opens
@@ -713,6 +926,143 @@ void SourceTab::save_state() {
   }
 }
 
+void SourceTab::show_source_menu(const QPoint &pos) {
+  if (current().id.isEmpty())
+    return;
+  auto *bar       = sources_->tabBar();
+  const int index = bar->tabAt(pos);
+  // The "+" affordance (past the end of tab_sources_) and the Manual
+  // placeholder (an empty entry) have nothing to act on.
+  if (index < 0 || index >= tab_sources_.size() || tab_sources_.at(index).isEmpty())
+    return;
+  const QString type        = tab_sources_.at(index);
+  const QStringList sources = recorded_sources(current());
+  const bool is_primary     = sources.value(0) == type;
+
+  QMenu menu(this);
+  // The action stays visible when it cannot do anything - it says why there.
+  if (sources.size() < 2)
+    menu.addSection(tr("This is the mod's only source, so it is primary already"));
+  else if (is_primary)
+    menu.addSection(tr("Already the primary source"));
+  auto *set_primary = menu.addAction(tr("Set as primary source"));
+  set_primary->setEnabled(sources.size() > 1 && !is_primary);
+  menu.addSeparator();
+  auto *del = menu.addAction(tr("Delete this source..."));
+
+  QAction *picked = menu.exec(bar->mapToGlobal(pos));
+  if (picked == set_primary)
+    set_primary_source(type);
+  else if (picked == del)
+    delete_source(type);
+}
+
+void SourceTab::set_primary_source(const QString &type) {
+  if (!apply_primary_source(current(), type))
+    return;
+  // The tab bar leads with the primary, so it reorders.
+  populate();
+}
+
+void SourceTab::delete_source(const QString &type) {
+  if (!current().load_meta || !current().save_meta)
+    return;
+  auto meta             = current().load_meta();
+  const QString section = provider_section(type);
+  if (section.isEmpty() || !meta.has_section(section.toStdString()))
+    return;
+
+  // What the confirmation states, counted BEFORE anything is written, so the
+  // dialog cannot describe a write that then does something else.
+  // [General]modid is the Nexus id namespace ONLY, and detaching a Nexus source
+  // clears the entry there too when it holds that same id.
+  const std::string nexus_modid = meta.get("Nexusmods", "modid");
+  const bool clears_general = type == QLatin1String("nexus") && !nexus_modid.empty() &&
+                              nexus_modid != "0" &&
+                              meta.get("General", "modid") == nexus_modid;
+  // What is left, for the "and afterwards" half of the dialog.
+  QStringList remaining;
+  const QStringList recorded = recorded_sources(current());
+  for (const auto &other : recorded) {
+    if (other != type)
+      remaining.append(other);
+  }
+  // A .git in the folder outranks the recorded section, so deleting a Git
+  // source off a real working copy removes the record but not the tab.
+  const bool repo_survives = type == QLatin1String("git") && mod_is_git(current()) &&
+                             !current().mod_dir.path().isEmpty() &&
+                             current().mod_dir.path() != QLatin1String(".") &&
+                             engine::Git::is_repository(std::filesystem::path(
+                                 current().mod_dir.path().toStdString()));
+
+  QString after;
+  if (repo_survives) {
+    after = tr("The mod folder holds a .git, and that is what makes this a Git "
+               "source, so the Git tab stays. Only what was recorded about the "
+               "repository goes.");
+  } else if (remaining.isEmpty()) {
+    after = tr("The mod is left with no source: it is treated as a manual "
+               "install and its tab shows the Manual placeholder.");
+  } else {
+    // Whatever is left leads the tab bar instead, so name it - that is the
+    // source the mod will be attributed to.
+    QStringList names;
+    for (const auto &other : std::as_const(remaining)) {
+      auto display = display_for_source(other);
+      names.append(display ? display->title : other);
+    }
+    after = names.size() == 1
+                ? tr("The mod keeps %1, which becomes its primary source.")
+                      .arg(names.first())
+                : tr("The mod keeps %1; %2 becomes its primary source.")
+                      .arg(names.join(", "), names.first());
+  }
+
+  QMessageBox box(this);
+  box.setIcon(QMessageBox::Warning);
+  box.setWindowTitle(tr("Delete this source"));
+  box.setText(
+      tr("Detach %1 from this mod?")
+          .arg(display_for_source(type) ? display_for_source(type)->title : type));
+  box.setInformativeText(
+      tr("You lose %1%2. Nothing in the mod folder is deleted or changed: the mod "
+         "stays installed with every file it has.\n\n%3\n\nThis cannot be undone "
+         "except by attaching the source again and fetching its metadata afresh.")
+          .arg(loss_summary(type),
+               clears_general ? tr(", and the mod id in [General]") : QString(),
+               after));
+  auto *yes    = box.addButton(tr("Delete source"), QMessageBox::AcceptRole);
+  auto *cancel = box.addButton(tr("Cancel"), QMessageBox::RejectRole);
+  // Focus lands on Cancel: the destructive path must be the deliberate one.
+  box.setDefaultButton(cancel);
+  box.exec();
+  if (box.clickedButton() != yes)
+    return;
+
+  detach_source(current(), type);
+
+  // The in-memory copy still names the deleted source, and populate() reads
+  // it, so the tab would come straight back.
+  ModInfoData updated = current();
+  if (updated.source_type.toLower() == type)
+    updated.source_type = QStringLiteral("manual");
+  updated.source_id.clear();
+  set_current(updated);
+  populate();
+
+  bool has = false;
+  for (int i = 0; i < sources_->count(); ++i) {
+    if (i == plus_index_)
+      continue;
+    auto *panel = qobject_cast<SourceInfoPanel *>(sources_->widget(i));
+    if (panel && panel->has_data()) {
+      has = true;
+      break;
+    }
+  }
+  set_has_data(has);
+}
+
 void SourceTab::show_add_source_dialog() {
   if (current().id.isEmpty())
     return;
@@ -731,9 +1081,15 @@ void SourceTab::show_add_source_dialog() {
   // see the new source_type. We copy current() into a local, mutate, and
   // re-set via the public set_current() so the dialog's reload_current()
   // path on next mod-switch picks up the same values.
+  //
+  // Git is deliberately left out: it is provenance beside whatever the mod
+  // was installed from, not a replacement for it, so it never claims
+  // [GameModManager]source_type. A git-managed manual mod stays manual.
   ModInfoData updated = current();
-  updated.source_type = source_type;
-  updated.source_id   = source_id;
+  if (source_type != QLatin1String("git")) {
+    updated.source_type = source_type;
+    updated.source_id   = source_id;
+  }
   if (source_type == QLatin1String("loverslab")) {
     updated.source_page_url = dialog.loverslab_page_url();
   } else if (source_type == QLatin1String("modpub")) {
@@ -745,12 +1101,14 @@ void SourceTab::show_add_source_dialog() {
   // whether or not the dialog was constructed with a real save_meta.
   if (current().load_meta && current().save_meta) {
     auto meta = current().load_meta();
-    meta.set("GameModManager", "source_type", source_type.toStdString());
-    meta.set("GameModManager", "source_id", source_id.toStdString());
+    if (source_type != QLatin1String("git")) {
+      meta.set("GameModManager", "source_type", source_type.toStdString());
+      meta.set("GameModManager", "source_id", source_id.toStdString());
+    }
     // Provider-specific keys. We add the minimum the panel needs to
     // identify the mod on the new source: [Nexusmods]modid,
     // [LoversLab]fileid + page_url, [SteamWorkshop]workshop_id,
-    // [ModPub]mod_id + page_url.
+    // [ModPub]mod_id + page_url, [Git]remote_url.
     if (source_type == QLatin1String("nexus")) {
       meta.set("Nexusmods", "modid", source_id.toStdString());
       meta.set("Nexusmods", "mod_id", source_id.toStdString());
@@ -766,6 +1124,11 @@ void SourceTab::show_add_source_dialog() {
       const QString url = dialog.modpub_page_url();
       if (!url.isEmpty())
         meta.set("ModPub", "page_url", url.toStdString());
+    } else if (source_type == QLatin1String("git")) {
+      // Only the remote: the section itself is what makes the mod a Git
+      // source, and commit/branch are stamped by the Git panel from the
+      // repository itself.
+      meta.set("Git", "remote_url", dialog.git_remote().toStdString());
     }
     current().save_meta(meta);
   }

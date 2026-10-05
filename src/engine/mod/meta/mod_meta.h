@@ -117,6 +117,12 @@ public:
   // parent_id so a top-level row serializes without the key.
   void unset(const std::string &section, const std::string &key);
 
+  // Remove a whole section and everything in it. A provider section is the
+  // only record of one source, so dropping it detaches that source from the
+  // mod; unset() cannot do this, and an emptied section would still read as
+  // present to has_section().
+  void clear_section(const std::string &section);
+
   // --- File I/O ---
   // Load/save meta file at {mods_dir}/{folder_name}/meta.ini
   // (MO2-compatible in-folder location). load() falls back to the legacy

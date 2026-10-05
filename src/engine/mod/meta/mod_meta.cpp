@@ -627,6 +627,14 @@ void ModMeta::unset(const std::string &section, const std::string &key) {
   sections_[idx].second.erase(key);
 }
 
+void ModMeta::clear_section(const std::string &section) {
+  sections_.erase(std::remove_if(sections_.begin(), sections_.end(),
+                                 [&section](const auto &named) {
+                                   return named.first == section;
+                                 }),
+                  sections_.end());
+}
+
 // ---------------------------------------------------------------------------
 // File I/O
 // ---------------------------------------------------------------------------
