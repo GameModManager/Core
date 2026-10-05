@@ -4,7 +4,7 @@
 // None of these can be observed through fetch_update_info, which needs a live
 // release feed, so each is pinned at the function that carries the behaviour:
 // the endpoint selector, the version comparison, and the asset lookup.
-#include "engine/core/github.h"
+#include "engine/github.h"
 #include "engine/update/self_updater_p.h"
 
 #include <catch2/catch_test_macros.hpp>

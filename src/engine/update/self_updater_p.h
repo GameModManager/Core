@@ -5,7 +5,7 @@
 
 #include "engine/update/self_updater.h"
 
-#include "engine/core/github.h"
+#include "engine/github.h"
 
 namespace engine::update {
 
