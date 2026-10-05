@@ -50,9 +50,9 @@ instance/mod_state.cpp
     game/detect/mod_scanner.cpp
     mod/archive/archive_extractor.cpp
     mod/archive/sevenzip_backend.cpp
-    gmmpack/sha256.cpp
-    gmmpack/bsdiff.cpp
-    gmmpack/patch.cpp
+    modpack/gmmpack/sha256.cpp
+    modpack/gmmpack/bsdiff.cpp
+    modpack/gmmpack/patch.cpp
     index/conflict_index.cpp
     index/conflict_engine.cpp
     mod/model/profile.cpp
@@ -174,14 +174,14 @@ install/conflict_resolver.cpp
     deploy/launch/launcher.cpp
     deploy/launch/proton_tools.cpp
     proton/proton_tweaks.cpp
-gmmpack/schema_validator.cpp
-    gmmpack/tree_parser.cpp
-    gmmpack/unpacker.cpp
-    gmmpack/ini_edit_parser.cpp
-    gmmpack/packer.cpp
-    gmmpack/uuid.cpp
+modpack/gmmpack/schema_validator.cpp
+    modpack/gmmpack/tree_parser.cpp
+    modpack/gmmpack/unpacker.cpp
+    modpack/gmmpack/ini_edit_parser.cpp
+    modpack/gmmpack/packer.cpp
+    modpack/gmmpack/uuid.cpp
     modpack/collection/choice_groups.cpp
-    gmmpack/executable_pipeline.cpp
+    modpack/gmmpack/executable_pipeline.cpp
     ${FOMOD_ENGINE_SOURCES}
 )
 

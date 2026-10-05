@@ -1,4 +1,4 @@
-#include "engine/gmmpack/sha256.h"
+#include "engine/modpack/gmmpack/sha256.h"
 
 #include <array>
 #include <cstring>

@@ -3,9 +3,9 @@
 // Covers JSON -> IniTweak parsing, conversion to the shared engine structs,
 // delegation to modpack/ini_edits for merge/apply, and referential integrity.
 
-#include "engine/gmmpack/ini_edit_parser.h"
+#include "engine/modpack/gmmpack/ini_edit_parser.h"
 
-#include "engine/gmmpack/unpacker.h"
+#include "engine/modpack/gmmpack/unpacker.h"
 #include "engine/modpack/ini_edits.h"
 
 #include <nlohmann/json.hpp>

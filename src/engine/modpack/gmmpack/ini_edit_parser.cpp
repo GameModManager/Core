@@ -1,4 +1,4 @@
-#include "engine/gmmpack/ini_edit_parser.h"
+#include "engine/modpack/gmmpack/ini_edit_parser.h"
 
 namespace engine::gmmpack {
 

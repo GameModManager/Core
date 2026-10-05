@@ -8,8 +8,8 @@
 // Tests create synthetic .gmmpack zip archives via libarchive's write API
 // so no fixture files are needed.
 
-#include "engine/gmmpack/unpacker.h"
-#include "engine/gmmpack/schema_validator.h"
+#include "engine/modpack/gmmpack/unpacker.h"
+#include "engine/modpack/gmmpack/schema_validator.h"
 
 #include <archive.h>
 #include <archive_entry.h>

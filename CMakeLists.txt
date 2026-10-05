@@ -352,7 +352,7 @@ endif()
 
 # -- Data files ---------------------------------------------------------------
 # The gmmpack JSON Schemas. The importer validates every archive against them
-# before it will open it (engine/gmmpack/schema_validator.cpp), so a packaged
+# before it will open it (engine/modpack/gmmpack/schema_validator.cpp), so a packaged
 # build that does not ship them cannot import anything at all - the schema
 # lookup (engine::gmmpack::find_schema_dir) checks the binary's own schemas/
 # dir first, then this prefix-relative location.

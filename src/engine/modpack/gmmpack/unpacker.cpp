@@ -1,7 +1,7 @@
-#include "engine/gmmpack/unpacker.h"
-#include "engine/gmmpack/ini_edit_parser.h"
-#include "engine/gmmpack/schema_validator.h"
-#include "engine/gmmpack/tree_parser.h"
+#include "engine/modpack/gmmpack/unpacker.h"
+#include "engine/modpack/gmmpack/ini_edit_parser.h"
+#include "engine/modpack/gmmpack/schema_validator.h"
+#include "engine/modpack/gmmpack/tree_parser.h"
 
 #include <archive.h>
 #include <archive_entry.h>

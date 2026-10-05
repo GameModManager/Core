@@ -5,7 +5,7 @@
 
 #include <nlohmann/json.hpp>
 
-#include "engine/gmmpack/types.h"
+#include "engine/modpack/gmmpack/types.h"
 
 namespace engine::gmmpack {
 

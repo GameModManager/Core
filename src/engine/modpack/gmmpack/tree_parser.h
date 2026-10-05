@@ -12,7 +12,7 @@
 // module without pulling in unpacker.h's libarchive/OpenSSL dependencies.
 // unpacker.h re-declares it for backward compatibility.
 
-#include "engine/gmmpack/types.h"
+#include "engine/modpack/gmmpack/types.h"
 
 #include <nlohmann/json.hpp>
 

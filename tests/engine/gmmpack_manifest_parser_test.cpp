@@ -8,9 +8,9 @@
 //
 // These tests exercise the parser in isolation from the archive pipeline.
 
-#include "engine/gmmpack/schema_validator.h"
-#include "engine/gmmpack/types.h"
-#include "engine/gmmpack/unpacker.h"
+#include "engine/modpack/gmmpack/schema_validator.h"
+#include "engine/modpack/gmmpack/types.h"
+#include "engine/modpack/gmmpack/unpacker.h"
 
 #include <catch2/catch_test_macros.hpp>
 #include <nlohmann/json.hpp>
