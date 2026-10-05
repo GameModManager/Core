@@ -14,7 +14,7 @@ add_subdirectory(cli)
 add_executable(gamemodmanager
     main.cpp
     cli/command_line.cpp
-    core/core.cpp
+    app/core.cpp
 )
 
 # Keep the binary at <build>/gamemodmanager (documented in README.md), same

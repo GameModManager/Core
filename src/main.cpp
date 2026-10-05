@@ -1,4 +1,4 @@
-#include "core/core.h"
+#include "app/core.h"
 
 int main(int argc, char *argv[]) {
   Core::Application app(argc, argv);
