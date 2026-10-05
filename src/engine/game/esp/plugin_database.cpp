@@ -1,10 +1,10 @@
-#include "engine/game/plugins/plugin_database.h"
+#include "engine/game/esp/plugin_database.h"
 
 #include "engine/instance/instance.h"
 #include "engine/log/logger.h"
 #include "engine/util/fs_utils.h"
 #include "engine/vfs/path_resolver.h"
-#include "engine/game/plugins/esp_header.h"
+#include "engine/game/esp/esp_header.h"
 #include "engine/game/registry/game_features/game_feature_registry.h"
 #include "engine/game/registry/game_knowledge.h"
 #include "engine/mod/meta/mod_meta.h"

@@ -3,7 +3,7 @@
 #include "engine/log/logger.h"
 #include "engine/util/fs_utils.h"
 #include "engine/vfs/path_resolver.h"
-#include "engine/game/plugins/plugin_database.h"
+#include "engine/game/esp/plugin_database.h"
 #include "engine/game/registry/game_features/game_feature.h"
 #include "engine/game/registry/game_features/game_feature_registry.h"
 #include "engine/game/saves/save_reader.h"

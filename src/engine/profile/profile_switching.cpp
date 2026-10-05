@@ -2,7 +2,7 @@
 
 #include "engine/events/event_bus.h"
 #include "engine/log/logger.h"
-#include "engine/game/plugins/plugin_database.h"
+#include "engine/game/esp/plugin_database.h"
 #include "engine/profile/safe_write_file.h"
 
 #include <algorithm>

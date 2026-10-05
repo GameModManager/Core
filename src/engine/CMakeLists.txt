@@ -125,8 +125,8 @@ install/conflict_resolver.cpp
     install/instance_router.cpp
     install/fresh_install.cpp
     install/append_install.cpp
-    game/plugins/esp_header.cpp
-    game/plugins/plugin_database.cpp
+    game/esp/esp_header.cpp
+    game/esp/plugin_database.cpp
     game/saves/save_game.cpp
     game/saves/save_fast_scan.cpp
     game/saves/save_reader.cpp

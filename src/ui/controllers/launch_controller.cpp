@@ -59,7 +59,7 @@
 #include "engine/deploy/interface.h"
 #include "engine/deploy/launch/proton_tools.h"
 #include "engine/game/detect/mod_scanner.h"
-#include "engine/game/plugins/plugin_database.h"
+#include "engine/game/esp/plugin_database.h"
 #include "engine/game/registry/game_knowledge.h"
 #include "engine/mod/meta/mod_meta.h"
 #include "engine/mod/overwrite/overwrite_utils.h"
