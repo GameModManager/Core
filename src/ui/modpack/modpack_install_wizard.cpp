@@ -31,7 +31,7 @@
 
 #include "engine/collection/download_router.h"
 #include "engine/collection/nexus/adapter.h"
-#include "engine/core/log/logger.h"
+#include "engine/log/logger.h"
 #include "engine/gmmpack/unpacker.h"
 #include "engine/mod/model/mod.h"
 #include "engine/pipeline/pipeline.h"

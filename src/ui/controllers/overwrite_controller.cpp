@@ -8,7 +8,7 @@
 #include <QObject>
 #include <QUrl>
 
-#include "engine/core/log/logger.h"
+#include "engine/log/logger.h"
 #include "engine/mod/meta/mod_meta.h"
 #include "engine/mod/overwrite/overwrite_utils.h"
 #include "engine/game/registry/game_knowledge.h"

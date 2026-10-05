@@ -1,6 +1,6 @@
 #include "engine/network/nexus_v2/client.h"
 
-#include "engine/core/log/logger.h"
+#include "engine/log/logger.h"
 #include "engine/network/network_manager.h"
 #include "engine/source/nexus/account.h"
 #include "engine/source/nexus/auth.h"

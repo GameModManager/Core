@@ -3,7 +3,7 @@
 #include "engine/util/fs_utils.h"
 #include "engine/index/conflict_engine.h"
 #include "engine/vfs/path_resolver_registry.h"
-#include "engine/core/log/logger.h"
+#include "engine/log/logger.h"
 #include "engine/mod/meta/mod_meta.h"
 
 #include <algorithm>

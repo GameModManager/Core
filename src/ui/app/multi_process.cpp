@@ -1,5 +1,5 @@
 #include "ui/app/multi_process.h"
-#include "engine/core/log/logger.h"
+#include "engine/log/logger.h"
 #include "platform/platform.h"
 
 #include <QDir>

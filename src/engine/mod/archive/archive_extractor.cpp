@@ -2,7 +2,7 @@
 #include "engine/mod/archive/sevenzip_backend.h"
 #include "engine/util/fs_utils.h"
 #include "engine/util/thread_priority.h"
-#include "engine/core/log/logger.h"
+#include "engine/log/logger.h"
 
 #include <archive.h>
 #include <archive_entry.h>

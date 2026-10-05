@@ -9,7 +9,7 @@
 #include "engine/pipeline/install_stage.h"
 #include "engine/pipeline/pipeline.h"
 #include "engine/mod/model/mod.h"
-#include "engine/core/log/logger.h"
+#include "engine/log/logger.h"
 #include "engine/util/process_utils.h"
 
 #include <algorithm>

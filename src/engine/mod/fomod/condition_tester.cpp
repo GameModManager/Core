@@ -1,7 +1,7 @@
 #include "engine/mod/fomod/condition_tester.h"
 
 #include "engine/mod/fomod/fomod_utils.h"
-#include "engine/core/log/logger.h"
+#include "engine/log/logger.h"
 
 #include <algorithm>
 #include <set>

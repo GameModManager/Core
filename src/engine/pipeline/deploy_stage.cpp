@@ -1,5 +1,5 @@
 #include "engine/pipeline/deploy_stage.h"
-#include "engine/core/log/logger.h"
+#include "engine/log/logger.h"
 #include "engine/vfs/path_resolver.h"
 #include "engine/deploy/interface.h"
 #include "engine/pipeline/pipeline.h"

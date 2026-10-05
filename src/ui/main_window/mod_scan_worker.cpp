@@ -1,6 +1,6 @@
 #include "ui/main_window/mod_scan_worker.h"
 
-#include "engine/core/log/logger.h"
+#include "engine/log/logger.h"
 #include "engine/deploy/deploy_utils.h"
 #include "engine/game/detect/mod_scanner.h"
 #include "engine/game/plugins/plugin_database.h"

@@ -1,5 +1,5 @@
 #include "engine/pipeline/registry/stage_registry.h"
-#include "engine/core/log/logger.h"
+#include "engine/log/logger.h"
 
 #include <algorithm>
 

@@ -8,7 +8,7 @@
 #include <vector>
 
 #include "gmm_abi_v2.h"  // GmmPreviewFn
-#include "engine/core/log/logger.h"
+#include "engine/log/logger.h"
 
 // ---------------------------------------------------------------------------
 // Registry - v2 IPluginPreview backing store.

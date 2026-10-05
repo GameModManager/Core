@@ -15,7 +15,7 @@
 
 #include "engine/source/download/curl_download.h"
 
-#include "engine/core/log/logger.h"
+#include "engine/log/logger.h"
 #include "engine/network/network_manager.h"
 #include "engine/source/http_util.h"  // encode_url_path (shared URL helper)
 

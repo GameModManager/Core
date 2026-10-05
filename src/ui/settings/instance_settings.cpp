@@ -4,7 +4,7 @@
 #include <QProcess>
 
 #include "engine/core/instance/instance.h"
-#include "engine/core/log/logger.h"
+#include "engine/log/logger.h"
 #include "ui/settings/settings.h"
 
 namespace ui {

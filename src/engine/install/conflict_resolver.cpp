@@ -1,6 +1,6 @@
 #include "engine/install/conflict_resolver.h"
 
-#include "engine/core/log/logger.h"
+#include "engine/log/logger.h"
 #include "engine/vfs/path_resolver.h"
 
 #include <algorithm>

@@ -84,8 +84,8 @@ core/instance/mod_state.cpp
     trace/trace_recorder.cpp
     events/event_bus.cpp
     pipeline/plugin_host/abi_bridge.cpp
-    core/log/logger.cpp
-    core/log/crash_handler.cpp
+    log/logger.cpp
+    log/crash_handler.cpp
     mod/cache/mod_cache.cpp
     pipeline/plugin_host/plugin_loader.cpp
     pipeline/plugin_host/tool_registry.cpp

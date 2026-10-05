@@ -3,7 +3,7 @@
 #include "engine/mod/filetree/dir_file_tree.h"
 #include "engine/util/fs_utils.h"
 #include "engine/vfs/path_resolver_registry.h"
-#include "engine/core/log/logger.h"
+#include "engine/log/logger.h"
 
 #include <algorithm>
 #include <filesystem>

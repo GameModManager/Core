@@ -1,7 +1,7 @@
 #include "engine/profile/profile_switching.h"
 
 #include "engine/events/event_bus.h"
-#include "engine/core/log/logger.h"
+#include "engine/log/logger.h"
 #include "engine/game/plugins/plugin_database.h"
 #include "engine/profile/safe_write_file.h"
 
