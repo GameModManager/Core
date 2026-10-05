@@ -5,7 +5,7 @@
 #include <cstdlib>
 #include <string>
 
-#include "engine/core/github.h"
+#include "engine/github.h"
 #include "engine/log/logger.h"
 #include "engine/network/network_manager.h"
 

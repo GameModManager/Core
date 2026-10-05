@@ -633,7 +633,7 @@ Workspace files read:
   `windows/standalone/CMakeLists.txt`, `macos/dmg/CMakeLists.txt`
 - `projects/Core/CMakeLists.txt`, `projects/Core/src/engine/CMakeLists.txt`,
   `projects/Core/src/engine/update/` (all 15 files),
-  `projects/Core/src/engine/core/github.{h,cpp}`,
+  `projects/Core/src/engine/github.{h,cpp}`,
   `projects/Core/src/engine/network/network_manager.cpp`,
   `projects/Core/src/ui/settings/settings.{h,cpp}`,
   `projects/Core/src/ui/settings/settings_content_widget.cpp`,

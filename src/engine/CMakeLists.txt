@@ -164,7 +164,7 @@ collection/batch_installer.cpp
     update/appimage_updater.cpp
     update/mod_update_db_client.cpp
     keyring/keyring.cpp
-    core/github.cpp
+    github.cpp
     collection/nexus/parser.cpp
     collection/nexus/adapter.cpp
     collection/nexus/collection_zip.cpp
