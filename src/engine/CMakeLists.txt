@@ -161,7 +161,7 @@ collection/batch_installer.cpp
     update/windows_self_updater.cpp
     update/macos_self_updater.cpp
     update/appimage_updater.cpp
-    update/mod_update_db_client.cpp
+    source/update/mod_update_db_client.cpp
     keyring/keyring.cpp
     github.cpp
     collection/nexus/parser.cpp
