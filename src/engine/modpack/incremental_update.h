@@ -56,7 +56,7 @@
 #include <unordered_map>
 #include <vector>
 
-#include "engine/core/instance/installed_pack_state.h"
+#include "engine/instance/installed_pack_state.h"
 #include "engine/gmmpack/types.h"
 
 namespace engine::modpack {

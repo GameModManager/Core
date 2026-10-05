@@ -1,6 +1,6 @@
 #include "engine/source/loverslab/auth.h"
 
-#include "engine/core/log/logger.h"
+#include "engine/log/logger.h"
 #include "platform/platform.h"
 
 #include <cctype>

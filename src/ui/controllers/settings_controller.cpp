@@ -25,13 +25,13 @@
 #include <iterator>
 #include <vector>
 
-#include "engine/core/events/event_bus.h"
-#include "engine/core/instance/instance.h"
-#include "engine/core/instance/instance_snapshot.h"
-#include "engine/core/instance/instance_utils.h"
-#include "engine/core/log/logger.h"
-#include "engine/core/trace/trace_recorder.h"
-#include "engine/core/util/fs_utils.h"
+#include "engine/events/event_bus.h"
+#include "engine/instance/instance.h"
+#include "engine/instance/instance_snapshot.h"
+#include "engine/instance/instance_utils.h"
+#include "engine/log/logger.h"
+#include "engine/trace/trace_recorder.h"
+#include "engine/util/fs_utils.h"
 #include "engine/deploy/core.h"
 #include "engine/deploy/interface.h"
 #include "engine/deploy/overlay_fs_deploy.h"

@@ -1,4 +1,4 @@
-#include "engine/core/trace/trace_recorder.h"
+#include "engine/trace/trace_recorder.h"
 
 #include <chrono>
 

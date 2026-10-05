@@ -1,6 +1,6 @@
-#include "engine/core/instance/instance_snapshot.h"
+#include "engine/instance/instance_snapshot.h"
 
-#include "engine/core/instance/toml_utils.h"
+#include "engine/instance/toml_utils.h"
 #include "engine/deploy/deploy_utils.h"
 #include "engine/profile/safe_write_file.h"
 

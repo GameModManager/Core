@@ -1,8 +1,8 @@
 #include "ui/widgets/debug_window.h"
 
-#include "engine/core/instance/instance.h"
-#include "engine/core/instance/instance_registry.h"
-#include "engine/core/instance/instance_utils.h"
+#include "engine/instance/instance.h"
+#include "engine/instance/instance_registry.h"
+#include "engine/instance/instance_utils.h"
 #include "engine/game/registry/game_knowledge.h"
 #include "engine/network/network_manager.h"
 #include "engine/pipeline/plugin_host/category_factory.h"

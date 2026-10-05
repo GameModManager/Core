@@ -1,4 +1,4 @@
-#include "engine/core/instance/installed_pack_state.h"
+#include "engine/instance/installed_pack_state.h"
 
 #include "engine/profile/safe_write_file.h"
 

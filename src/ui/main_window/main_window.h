@@ -18,7 +18,7 @@
 #include <unordered_set>
 #include <vector>
 
-#include "engine/core/instance/instance.h"
+#include "engine/instance/instance.h"
 #include "engine/deploy/interface.h"
 #include "engine/deploy/launch/proton_tools.h"
 #include "engine/game/plugins/plugin_database.h"

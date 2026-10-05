@@ -48,14 +48,14 @@
 #include <sys/wait.h>
 #endif
 
-#include "engine/core/events/event_bus.h"
-#include "engine/core/instance/instance.h"
-#include "engine/core/instance/instance_utils.h"
-#include "engine/core/instance/toml_utils.h"
-#include "engine/core/log/logger.h"
-#include "engine/core/trace/trace_recorder.h"
-#include "engine/core/util/debug_env.h"
-#include "engine/core/util/fs_utils.h"
+#include "engine/events/event_bus.h"
+#include "engine/instance/instance.h"
+#include "engine/instance/instance_utils.h"
+#include "engine/instance/toml_utils.h"
+#include "engine/log/logger.h"
+#include "engine/trace/trace_recorder.h"
+#include "engine/util/debug_env.h"
+#include "engine/util/fs_utils.h"
 #include "engine/deploy/interface.h"
 #include "engine/deploy/launch/proton_tools.h"
 #include "engine/game/detect/mod_scanner.h"

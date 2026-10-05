@@ -28,7 +28,7 @@
 // (XDG_CONFIG_HOME + XDG_DATA_HOME point into it), so Settings, the
 // freedesktop trash and the masterlist cache are per-test isolated. No
 // shared /tmp state between test cases or with other test binaries.
-#include "engine/core/instance/instance.h"
+#include "engine/instance/instance.h"
 #include "engine/game/registry/game_capabilities.h"
 #include "engine/game/registry/game_knowledge.h"
 #include "engine/update/mod_update_db_client.h"

@@ -26,7 +26,7 @@
 //
 // Uses the check() PASS/FAIL pattern (Release builds compile out assert()).
 
-#include "engine/core/events/event_bus.h"
+#include "engine/events/event_bus.h"
 #include "engine/game/detect/mod_scanner.h"
 #include "engine/game/registry/game_features/game_feature_registry.h"
 #include "engine/game/registry/game_knowledge.h"

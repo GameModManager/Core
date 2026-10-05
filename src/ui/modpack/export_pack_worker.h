@@ -5,7 +5,7 @@
 #include <filesystem>
 #include <memory>
 
-#include "engine/core/instance/instance_snapshot.h"
+#include "engine/instance/instance_snapshot.h"
 #include "engine/gmmpack/packer.h"
 
 class QThread;

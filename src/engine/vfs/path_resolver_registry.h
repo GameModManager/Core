@@ -1,6 +1,6 @@
 #pragma once
 
-#include "engine/core/vfs/path_resolver.h"
+#include "engine/vfs/path_resolver.h"
 
 #include <filesystem>
 #include <map>
@@ -15,7 +15,7 @@ namespace engine::vfs {
 // PathResolver's index is a cache derived from the deploy ledger / on-disk
 // tree, never the authority (the ledger stays the source of truth). Qt-free: it
 // includes EventBus directly (EventBus is also Qt-free) rather than
-// PathResolver depending on it, satisfying the engine/core/vfs "no Qt" rule.
+// PathResolver depending on it, satisfying the engine/vfs "no Qt" rule.
 //
 // Resolvers are keyed by (root path, NameCompare) so a case-sensitive game and
 // a case-insensitive game at the same root get distinct indexes. References

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "engine/core/util/fs_utils.h"
+#include "engine/util/fs_utils.h"
 
 #include <filesystem>
 #include <functional>

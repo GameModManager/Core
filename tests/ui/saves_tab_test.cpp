@@ -34,7 +34,7 @@
 // is needed here (the engine still links them for the reader).
 #include "ui/panels/tab_panels.h"
 
-#include "engine/core/instance/instance.h"
+#include "engine/instance/instance.h"
 #include "engine/game/registry/game_capabilities.h"
 #include "engine/game/registry/game_knowledge.h"
 #include "engine/game/saves/save_fast_scan.h"

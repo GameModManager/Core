@@ -1,7 +1,7 @@
 #include "ui/modinfo/filetree_tab.h"
 
-#include "engine/core/log/logger.h"
-#include "engine/core/util/fs_utils.h"
+#include "engine/log/logger.h"
+#include "engine/util/fs_utils.h"
 #include "ui/settings/settings.h"
 #include "ui/theme/icon_manager.h"
 #include "ui/viewer/file_viewer.h"

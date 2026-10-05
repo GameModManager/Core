@@ -5,8 +5,8 @@
 #include <QDialog>
 #include <QWidget>
 
-#include "engine/core/instance/instance.h"
-#include "engine/core/instance/instance_utils.h"
+#include "engine/instance/instance.h"
+#include "engine/instance/instance_utils.h"
 #include "ui/instance_options/instance_options_widget.h"
 #include "ui/settings/settings.h"
 #include "ui/settings/settings_content_widget.h"

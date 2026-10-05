@@ -8,7 +8,7 @@
 // get_workarounds() would pass with the bridge body emptied; this one does not.
 //
 // Hermetic: offscreen platform, throwaway config (see tests/support/test_main.cpp).
-#include "engine/core/util/fs_utils.h"
+#include "engine/util/fs_utils.h"
 #include "ui/settings/settings.h"
 
 #include <QApplication>

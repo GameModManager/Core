@@ -1,6 +1,6 @@
 #include "engine/game/registry/game_features/game_feature.h"
 
-#include "engine/core/util/fs_utils.h"
+#include "engine/util/fs_utils.h"
 
 namespace engine {
 

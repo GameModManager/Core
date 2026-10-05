@@ -18,11 +18,11 @@
 #include <vector>
 
 #include "cli/headless_launcher.h"
-#include "engine/core/instance/instance.h"
-#include "engine/core/instance/instance_utils.h"
-#include "engine/core/instance/masterlist_fetch.h"
-#include "engine/core/log/crash_handler.h"
-#include "engine/core/log/logger.h"
+#include "engine/instance/instance.h"
+#include "engine/instance/instance_utils.h"
+#include "engine/instance/masterlist_fetch.h"
+#include "engine/log/crash_handler.h"
+#include "engine/log/logger.h"
 #include "engine/game/detect/game_detector.h"
 #include "engine/network/network_manager.h"
 #include "engine/pipeline/plugin_host/plugin_loader.h"

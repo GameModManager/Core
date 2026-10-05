@@ -22,7 +22,7 @@
 #include "ui/settings/settings.h"
 #include "ui/settings/settings_dialog.h"
 
-#include "engine/core/instance/instance_utils.h"
+#include "engine/instance/instance_utils.h"
 #include "engine/pipeline/plugin_host/plugin_loader.h"
 #include "engine/platform/theme/theme_manager.h"
 #include "engine/source/source_provider.h"

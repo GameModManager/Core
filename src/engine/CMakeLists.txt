@@ -22,22 +22,22 @@ set(FOMOD_ENGINE_SOURCES
 )
 
 set(ENGINE_SOURCES
-    core/instance/instance.cpp
-    core/instance/instance_utils.cpp
-    core/instance/instance_registry.cpp
-    core/instance/toml_utils.cpp
-core/instance/mod_state.cpp
-    core/instance/instance_snapshot.cpp
-    core/instance/installed_pack_state.cpp
-    core/instance/game_icons.cpp
-    core/instance/masterlist_fetch.cpp
-    core/util/fs_utils.cpp
-    core/util/thread_priority.cpp
-    core/vfs/game_file.h
-    core/vfs/path_resolver.h
-    core/vfs/path_resolver.cpp
-    core/vfs/path_resolver_registry.h
-    core/vfs/path_resolver_registry.cpp
+    instance/instance.cpp
+    instance/instance_utils.cpp
+    instance/instance_registry.cpp
+    instance/toml_utils.cpp
+instance/mod_state.cpp
+    instance/instance_snapshot.cpp
+    instance/installed_pack_state.cpp
+    instance/game_icons.cpp
+    instance/masterlist_fetch.cpp
+    util/fs_utils.cpp
+    util/thread_priority.cpp
+    vfs/game_file.h
+    vfs/path_resolver.h
+    vfs/path_resolver.cpp
+    vfs/path_resolver_registry.h
+    vfs/path_resolver_registry.cpp
     mod/filetree/file_tree.cpp
     mod/filetree/dir_file_tree.cpp
     mod/filetree/data_archive.cpp
@@ -81,11 +81,11 @@ core/instance/mod_state.cpp
     pipeline/launch_stage.cpp
     pipeline/sync_stage.cpp
     pipeline/plugin_claim_stage.cpp
-    core/trace/trace_recorder.cpp
-    core/events/event_bus.cpp
+    trace/trace_recorder.cpp
+    events/event_bus.cpp
     pipeline/plugin_host/abi_bridge.cpp
-    core/log/logger.cpp
-    core/log/crash_handler.cpp
+    log/logger.cpp
+    log/crash_handler.cpp
     mod/cache/mod_cache.cpp
     pipeline/plugin_host/plugin_loader.cpp
     pipeline/plugin_host/tool_registry.cpp
@@ -164,12 +164,12 @@ collection/batch_installer.cpp
     update/appimage_updater.cpp
     update/mod_update_db_client.cpp
     keyring/keyring.cpp
-    core/github.cpp
+    github.cpp
     collection/nexus/parser.cpp
     collection/nexus/adapter.cpp
     collection/nexus/collection_zip.cpp
-    core/module.cpp
-    core/directory_refresher.cpp
+    module.cpp
+    directory_refresher.cpp
     deploy/launch/preload_interceptor.cpp
     deploy/launch/elevation.cpp
     deploy/launch/launcher.cpp

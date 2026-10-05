@@ -18,7 +18,7 @@
 // in the test process itself would take Catch2 down with it and report
 // nothing. The child installs the handler into a throwaway directory and
 // crashes; the parent reads the dump back off disk and asserts on it.
-#include "engine/core/log/crash_handler.h"
+#include "engine/log/crash_handler.h"
 
 #include <sys/wait.h>
 #include <unistd.h>

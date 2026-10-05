@@ -1,6 +1,6 @@
 #include "ui/workers/exe_icon_worker.h"
 
-#include "engine/core/log/logger.h"
+#include "engine/log/logger.h"
 
 #include <QCoreApplication>
 #include <QFileInfo>

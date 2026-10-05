@@ -1,5 +1,5 @@
 #include "ui/widgets/exec_controls_bar.h"
-#include "engine/core/log/logger.h"
+#include "engine/log/logger.h"
 #include "ui/workers/exe_icon_worker.h"
 
 #include <QApplication>

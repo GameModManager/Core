@@ -1,6 +1,6 @@
-#include "engine/core/vfs/path_resolver_registry.h"
+#include "engine/vfs/path_resolver_registry.h"
 
-#include "engine/core/events/event_bus.h"
+#include "engine/events/event_bus.h"
 
 namespace engine::vfs {
 

@@ -5,8 +5,8 @@
 #include <QLabel>
 
 #include "engine/game/detect/mod_scanner.h"
-#include "engine/core/events/event_bus.h"
-#include "engine/core/log/logger.h"
+#include "engine/events/event_bus.h"
+#include "engine/log/logger.h"
 #include "engine/source/nxm/nxm_router.h"
 #include "engine/game/registry/game_knowledge.h"
 #include "ui/main_window/main_window.h"

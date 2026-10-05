@@ -1,6 +1,6 @@
 #include "engine/pipeline/plugin_host/deploy_strategy_registry.h"
 
-#include "engine/core/log/logger.h"
+#include "engine/log/logger.h"
 
 #include <algorithm>
 

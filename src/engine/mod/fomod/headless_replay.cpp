@@ -1,6 +1,6 @@
 #include "engine/mod/fomod/headless_replay.h"
 
-#include "engine/core/log/logger.h"
+#include "engine/log/logger.h"
 #include "engine/mod/fomod/view_models.h"
 
 #include <algorithm>

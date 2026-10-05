@@ -19,8 +19,8 @@
 // (pid + sequence, cf. TempTree in vfs_path_resolver_test.cpp) plus
 // throwaway XDG_CONFIG_HOME/XDG_DATA_HOME per case, an empty
 // GameKnowledge seeded with just mods_subpath. No network, no plugins.
-#include "engine/core/events/event_bus.h"
-#include "engine/core/instance/instance.h"
+#include "engine/events/event_bus.h"
+#include "engine/instance/instance.h"
 #include "engine/game/registry/game_knowledge.h"
 #include "engine/mod/meta/mod_meta.h"
 #include "engine/sort/sorter/interface.h"
