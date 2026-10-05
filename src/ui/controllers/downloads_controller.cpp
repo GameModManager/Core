@@ -19,7 +19,7 @@
 #include <optional>
 #include <vector>
 
-#include "engine/core/events/event_bus.h"
+#include "engine/events/event_bus.h"
 #include "engine/core/log/logger.h"
 #include "engine/trace/trace_recorder.h"
 #include "engine/core/util/fs_utils.h"
