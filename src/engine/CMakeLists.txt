@@ -168,7 +168,7 @@ collection/batch_installer.cpp
     collection/nexus/parser.cpp
     collection/nexus/adapter.cpp
     collection/nexus/collection_zip.cpp
-    core/module.cpp
+    module.cpp
     directory_refresher.cpp
     deploy/launch/preload_interceptor.cpp
     deploy/launch/elevation.cpp
