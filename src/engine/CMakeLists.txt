@@ -81,7 +81,7 @@ core/instance/mod_state.cpp
     pipeline/launch_stage.cpp
     pipeline/sync_stage.cpp
     pipeline/plugin_claim_stage.cpp
-    core/trace/trace_recorder.cpp
+    trace/trace_recorder.cpp
     core/events/event_bus.cpp
     pipeline/plugin_host/abi_bridge.cpp
     core/log/logger.cpp
