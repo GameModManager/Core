@@ -115,7 +115,8 @@ namespace {
 
   // The meta section that holds one source's own record: the same
   // per-provider sidecar sections every source already writes. Empty for
-  // anything that is not a real source ("manual", "direct").
+  // anything that is not a real source ("manual", and the legacy "direct"
+  // stamp an older build wrote).
   QString provider_section(const QString &source_type) {
     if (source_type == QLatin1String("nexus"))
       return QStringLiteral("Nexusmods");
@@ -151,9 +152,10 @@ namespace {
         QStringLiteral("modpub"), QStringLiteral("git")};
     QStringList found;
     // Only the four providers that own a typed panel are sources here.
-    // "manual" and "direct" are not a source (direct is the transport-only
-    // modl:// provider), and an unknown source_type falls through to the
-    // generic panel rather than becoming a tab of its own here.
+    // "manual" is not a source, and neither is the legacy "direct" stamp an
+    // older build wrote for a modl:// download (the mod scan rewrites those
+    // to "manual"). An unknown source_type falls through to the generic panel
+    // rather than becoming a tab of its own here.
     auto is_source = [](const QString &type) {
       return type == QLatin1String("nexus") || type == QLatin1String("loverslab") ||
              type == QLatin1String("steam") || type == QLatin1String("modpub");
@@ -286,8 +288,10 @@ namespace {
     QString icon_key;
   };
   std::optional<SourceDisplay> display_for_source(const QString &source_type) {
-    // "direct" is a transport-only provider (modl:// flow) - not a
-    // user-attributable source. Treat it like Manual.
+    // A meta an older build stamped "direct" (the modl:// transport, wrongly
+    // registered as a source) reads the same as Manual: no provider is
+    // registered for it any more, so this is belt-and-braces for a meta the
+    // scan has not rewritten yet.
     if (source_type == QLatin1String("direct"))
       return std::nullopt;
     for (auto *provider : engine::SourceRegistry::instance().providers()) {
@@ -383,11 +387,6 @@ namespace {
         QString pt = QString::fromStdString(provider->source_type()).toLower();
         if (pt == QLatin1String("steamworkshop"))
           pt = QStringLiteral("steam");
-        // "direct" is the transport-only provider used by the modl:// flow;
-        // it is not a user-attributable source (a "Direct" tag carries no
-        // useful identity). Skip it in the Add Source combo.
-        if (pt == QLatin1String("direct"))
-          continue;
         // Never offer a source the mod already has. The existing source is
         // untouched - its panel stays on the tab bar, fully visible and
         // editable - only the add affordance goes away, so once the source is
