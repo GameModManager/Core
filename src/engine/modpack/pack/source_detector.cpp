@@ -1,4 +1,4 @@
-#include "engine/pack/source_detector.h"
+#include "engine/modpack/pack/source_detector.h"
 
 #include <cctype>
 #include <cstddef>

@@ -14,7 +14,7 @@
 //
 // Engine layer - Qt-free (only <string>, <vector>, <cstddef>).
 
-#include "engine/pack/adapter.h"
+#include "engine/modpack/pack/adapter.h"
 
 #include <cstddef>
 #include <string>

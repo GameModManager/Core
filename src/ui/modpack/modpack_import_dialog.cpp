@@ -23,7 +23,7 @@
 
 #include "engine/modpack/collection/nexus/adapter.h"
 #include "engine/modpack/gmmpack/unpacker.h"
-#include "engine/pack/source_detector.h"
+#include "engine/modpack/pack/source_detector.h"
 
 namespace ui {
 
