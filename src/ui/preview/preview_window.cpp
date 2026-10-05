@@ -1,5 +1,5 @@
 #include "ui/preview/preview_window.h"
-#include "engine/core/log/logger.h"
+#include "engine/log/logger.h"
 #include "ui/preview/preview_registry.h"
 #include "ui/preview/preview_widget.h"
 #include "ui/settings/settings.h"

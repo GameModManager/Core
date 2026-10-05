@@ -32,7 +32,7 @@
 #include <QEventLoop>
 #include <QThread>
 
-#include "engine/core/log/logger.h"
+#include "engine/log/logger.h"
 #include "engine/pipeline/extract_stage.h"
 #include "engine/pipeline/pipeline.h"
 #include "engine/source/source_provider.h"

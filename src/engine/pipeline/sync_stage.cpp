@@ -2,7 +2,7 @@
 #include "engine/pipeline/pipeline.h"
 #include "engine/index/conflict_index.h"
 #include "engine/core/instance/instance.h"
-#include "engine/core/log/logger.h"
+#include "engine/log/logger.h"
 #include "engine/vfs/path_resolver.h"
 
 #include <algorithm>

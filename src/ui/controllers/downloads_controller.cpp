@@ -20,7 +20,7 @@
 #include <vector>
 
 #include "engine/events/event_bus.h"
-#include "engine/core/log/logger.h"
+#include "engine/log/logger.h"
 #include "engine/trace/trace_recorder.h"
 #include "engine/util/fs_utils.h"
 #include "engine/update/mod_update_db_client.h"

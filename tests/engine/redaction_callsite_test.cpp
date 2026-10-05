@@ -8,7 +8,7 @@
 // log, not that a redaction call was made. A redaction call that was later
 // dropped, or a URL field added to a new log line, would leave the secret
 // present and fail here.
-#include "engine/core/log/logger.h"
+#include "engine/log/logger.h"
 #include "engine/network/network_manager.h"
 #include "engine/source/download/curl_download.h"
 

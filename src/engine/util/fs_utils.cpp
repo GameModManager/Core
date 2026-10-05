@@ -1,5 +1,5 @@
 #include "engine/util/fs_utils.h"
-#include "engine/core/log/logger.h"
+#include "engine/log/logger.h"
 #include "platform/platform.h"
 
 #include <chrono>

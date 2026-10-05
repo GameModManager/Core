@@ -7,7 +7,7 @@
 #include "engine/source/modpub/provider.h"
 #include "engine/source/router.h"
 #include "engine/source/source_provider.h"
-#include "engine/core/log/logger.h"
+#include "engine/log/logger.h"
 #include "ui/settings/settings.h"
 
 #include <filesystem>

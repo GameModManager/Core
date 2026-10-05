@@ -1,7 +1,7 @@
 #include "engine/core/instance/instance_registry.h"
 
 #include "engine/core/instance/toml_utils.h"
-#include "engine/core/log/logger.h"
+#include "engine/log/logger.h"
 #include "engine/util/fs_utils.h"
 #include "engine/game/registry/game_features/game_feature_registry.h"
 #include "platform/platform.h"

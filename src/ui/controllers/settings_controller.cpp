@@ -29,7 +29,7 @@
 #include "engine/core/instance/instance.h"
 #include "engine/core/instance/instance_snapshot.h"
 #include "engine/core/instance/instance_utils.h"
-#include "engine/core/log/logger.h"
+#include "engine/log/logger.h"
 #include "engine/trace/trace_recorder.h"
 #include "engine/util/fs_utils.h"
 #include "engine/deploy/core.h"

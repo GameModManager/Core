@@ -2,7 +2,7 @@
 
 #include "engine/core/instance/instance_utils.h"
 #include "engine/deploy/launch/launcher.h"
-#include "engine/core/log/logger.h"
+#include "engine/log/logger.h"
 #include "engine/game/detect/mod_scanner.h"
 #include "engine/game/plugins/plugin_database.h"
 #include "engine/game/registry/game_knowledge.h"

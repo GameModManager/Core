@@ -1,6 +1,6 @@
 #include "ui/theme/style_manager.h"
 #include "engine/platform/theme/theme_manager.h"
-#include "engine/core/log/logger.h"
+#include "engine/log/logger.h"
 
 #include <QApplication>
 #include <QEvent>

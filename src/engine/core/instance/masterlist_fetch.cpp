@@ -1,7 +1,7 @@
 #include "engine/core/instance/masterlist_fetch.h"
 
 #include "engine/core/instance/instance_utils.h"
-#include "engine/core/log/logger.h"
+#include "engine/log/logger.h"
 #include "engine/source/download/curl_download.h"
 #include "engine/network/network_manager.h"
 

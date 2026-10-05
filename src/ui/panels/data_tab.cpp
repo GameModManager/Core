@@ -6,7 +6,7 @@
 #include "ui/widgets/column_toggle_header.h"
 #include "ui/widgets/mod_list_model.h"
 
-#include "engine/core/log/logger.h"
+#include "engine/log/logger.h"
 #include "engine/deploy/deploy_utils.h"
 #include "engine/deploy/root_override.h"
 

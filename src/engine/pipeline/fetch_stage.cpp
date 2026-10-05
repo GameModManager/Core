@@ -3,7 +3,7 @@
 #include "engine/mod/model/mod.h"
 #include "engine/source/source_provider.h"
 #include "engine/core/instance/instance.h"
-#include "engine/core/log/logger.h"
+#include "engine/log/logger.h"
 #include "engine/source/modl/provider.h"
 #include "engine/source/update_policy.h"
 

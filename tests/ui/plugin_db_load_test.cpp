@@ -25,7 +25,7 @@
 #include <QThread>
 #include <QTimer>
 
-#include "engine/core/log/logger.h"
+#include "engine/log/logger.h"
 
 #include <algorithm>
 #include <atomic>

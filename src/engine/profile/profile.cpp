@@ -1,6 +1,6 @@
 #include "engine/profile/profile.h"
 
-#include "engine/core/log/logger.h"
+#include "engine/log/logger.h"
 #include "engine/profile/safe_write_file.h"
 
 #include <algorithm>

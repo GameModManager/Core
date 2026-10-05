@@ -9,7 +9,7 @@
 #include <filesystem>
 #include <fstream>
 
-#include "engine/core/log/logger.h"
+#include "engine/log/logger.h"
 #include "engine/source/download/curl_download.h"
 #include "engine/network/network_manager.h"
 #include "engine/update/self_updater_p.h"

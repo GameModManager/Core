@@ -1,5 +1,5 @@
 #include "engine/game/registry/game_capabilities.h"
-#include "engine/core/log/logger.h"
+#include "engine/log/logger.h"
 
 #include <algorithm>
 #include <map>

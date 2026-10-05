@@ -1,7 +1,7 @@
 #include "engine/game/plugins/plugin_database.h"
 
 #include "engine/core/instance/instance.h"
-#include "engine/core/log/logger.h"
+#include "engine/log/logger.h"
 #include "engine/util/fs_utils.h"
 #include "engine/vfs/path_resolver.h"
 #include "engine/game/plugins/esp_header.h"

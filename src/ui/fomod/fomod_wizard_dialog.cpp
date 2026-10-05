@@ -6,7 +6,7 @@
 #include "ui/widgets/event_filter.h"
 #include "engine/mod/fomod/file_installer.h"
 #include "engine/mod/fomod/fomod_utils.h"
-#include "engine/core/log/logger.h"
+#include "engine/log/logger.h"
 #include "engine/vfs/path_resolver.h"
 
 #include <QApplication>

@@ -1,6 +1,6 @@
 #include "engine/source/modpub/provider.h"
 
-#include "engine/core/log/logger.h"
+#include "engine/log/logger.h"
 #include "engine/mod/model/mod.h"
 #include "engine/network/network_manager.h"
 #include "engine/pipeline/pipeline.h"

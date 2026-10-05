@@ -1,6 +1,6 @@
 #include "engine/deploy/core.h"
 
-#include "engine/core/log/logger.h"
+#include "engine/log/logger.h"
 #include "engine/deploy/overlay_fs_deploy.h"
 #include "engine/deploy/symlink.h"
 #include "engine/game/registry/game_knowledge.h"
