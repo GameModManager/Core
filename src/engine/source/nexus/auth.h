@@ -1,6 +1,6 @@
 #pragma once
 
-#include "engine/core/keyring/keyring.h"
+#include "engine/keyring/keyring.h"
 
 #include <cstdint>
 #include <filesystem>

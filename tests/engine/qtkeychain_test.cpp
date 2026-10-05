@@ -5,7 +5,7 @@
 // mid-test leaves the entry behind, so it is opt-in: set GMM_LIVE_KEYRING=1
 // to run it. Without the gate this runs in CI and on developer machines as a
 // side effect of the test suite, which is not worth the risk.
-#include "keyring/qtkeychain_keyring.h"
+#include "engine/keyring/qtkeychain_keyring.h"
 
 #include <catch2/catch_test_macros.hpp>
 
