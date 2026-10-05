@@ -48,7 +48,7 @@
 #include <sys/wait.h>
 #endif
 
-#include "engine/core/events/event_bus.h"
+#include "engine/events/event_bus.h"
 #include "engine/core/instance/instance.h"
 #include "engine/core/instance/instance_utils.h"
 #include "engine/core/instance/toml_utils.h"

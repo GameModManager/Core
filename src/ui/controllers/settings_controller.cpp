@@ -25,7 +25,7 @@
 #include <iterator>
 #include <vector>
 
-#include "engine/core/events/event_bus.h"
+#include "engine/events/event_bus.h"
 #include "engine/core/instance/instance.h"
 #include "engine/core/instance/instance_snapshot.h"
 #include "engine/core/instance/instance_utils.h"

@@ -1,5 +1,5 @@
 #include "engine/pipeline/plugin_host/python_loader.h"
-#include "engine/core/events/event_bus.h"
+#include "engine/events/event_bus.h"
 #include "engine/core/log/logger.h"
 #include "engine/core/vfs/path_resolver.h"
 #include "engine/game/registry/game_features/game_feature_registry.h"

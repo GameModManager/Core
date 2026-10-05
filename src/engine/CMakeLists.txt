@@ -82,7 +82,7 @@ core/instance/mod_state.cpp
     pipeline/sync_stage.cpp
     pipeline/plugin_claim_stage.cpp
     trace/trace_recorder.cpp
-    core/events/event_bus.cpp
+    events/event_bus.cpp
     pipeline/plugin_host/abi_bridge.cpp
     core/log/logger.cpp
     core/log/crash_handler.cpp

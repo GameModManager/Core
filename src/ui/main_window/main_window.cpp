@@ -51,7 +51,7 @@
 #include "ui/widgets/status_bar.h"
 #include "ui/workers/pipeline_worker.h"
 
-#include "engine/core/events/event_bus.h"
+#include "engine/events/event_bus.h"
 
 namespace ui {
 
