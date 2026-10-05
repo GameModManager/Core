@@ -330,8 +330,8 @@ void LoversLabSourcePanel::launch_fetch() {
   source_fetch_thread_->start(std::move(fetch), gen);
 }
 
-void LoversLabSourcePanel::on_fetch_finished(engine::LoversLabModInfoResult result,
-                                             quint64 generation) {
+void LoversLabSourcePanel::on_fetch_finished(
+    engine::Source::LoversLab::ModInfoResult result, quint64 generation) {
   fetch_in_flight_ = false;
   if (refresh_ != nullptr) {
     refresh_->setEnabled(true);
@@ -349,7 +349,7 @@ void LoversLabSourcePanel::on_fetch_finished(engine::LoversLabModInfoResult resu
 }
 
 void LoversLabSourcePanel::apply_fetch_result(
-    const engine::LoversLabModInfoResult &result) {
+    const engine::Source::LoversLab::ModInfoResult &result) {
   if (!result.available) {
     render_description();
     update_out_of_date_label();

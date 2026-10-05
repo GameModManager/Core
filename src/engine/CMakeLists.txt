@@ -110,8 +110,8 @@ instance/mod_state.cpp
     sort/sorter/registry.cpp
     sort/sorter/loot/sorter.cpp
     sort/sorter/loot/masterlists.cpp
-    source/workshop/remote_cache.cpp
-    source/workshop/workshop_client.cpp
+    source/steam/remote_cache.cpp
+    source/steam/workshop_client.cpp
     platform/theme/theme_manager.cpp
     platform/tools/external_tool.cpp
     pipeline/plugin_host/python_loader.cpp
@@ -141,18 +141,18 @@ collection/batch_installer.cpp
     source/registry.cpp
     source/update_policy.cpp
     source/http_util.cpp
-    source/nexus_provider.cpp
-    source/nexus_account.cpp
-    source/nexus_http.cpp
-    source/nexus_servers.cpp
-    source/steam_workshop_provider.cpp
-    source/loverslab_provider.cpp
+    source/nexus/provider.cpp
+    source/nexus/account.cpp
+    source/nexus/http.cpp
+    source/nexus/servers.cpp
+    source/steam/provider.cpp
+    source/loverslab/fetch.cpp
     source/loverslab/provider.cpp
     source/modl/provider.cpp
     source/modpub/provider.cpp
     source/git/git_info.cpp
-    source/nexus_auth.cpp
-    source/loverslab_auth.cpp
+    source/nexus/auth.cpp
+    source/loverslab/auth.cpp
     source/download/curl_download.cpp
     network/network_manager.cpp
     network/nexus_v2/client.cpp

@@ -27,8 +27,8 @@
 #include "engine/network/network_manager.h"
 #include "engine/pipeline/plugin_host/plugin_loader.h"
 #include "engine/platform/theme/theme_manager.h"
-#include "engine/source/loverslab_auth.h"
-#include "engine/source/nexus_auth.h"
+#include "engine/source/loverslab/auth.h"
+#include "engine/source/nexus/auth.h"
 #include "engine/source/nxm/managed_games.h"
 #include "engine/source/nxm/nxm_router.h"
 #include "engine/source/router.h"
@@ -126,7 +126,7 @@ Application::Application(int &argc, char **argv)
 #ifdef GMM_HAS_QTKEYCHAIN
   engine::Source::Nexus::Auth::instance().set_keyring(
       std::make_unique<engine::QtKeychainKeyring>());
-  engine::LoversLabAuth::instance().set_keyring(
+  engine::Source::LoversLab::Auth::instance().set_keyring(
       std::make_unique<engine::QtKeychainKeyring>());
 #endif
 

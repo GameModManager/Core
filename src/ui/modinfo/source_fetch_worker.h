@@ -1,6 +1,6 @@
 #pragma once
 
-#include "engine/source/nexus_provider.h"
+#include "engine/source/nexus/provider.h"
 
 #include <QObject>
 
@@ -25,10 +25,11 @@ public:
   // Runs on the worker thread. Only ever invoked through
   // SourceFetchThread::start(). Never throws; a fetch that fails simply
   // yields ModInfoResult::available=false.
-  void run(std::function<engine::ModInfoResult()> fetch, quint64 generation);
+  void run(std::function<engine::Source::Nexus::ModInfoResult()> fetch,
+           quint64 generation);
 
 signals:
-  void finished(engine::ModInfoResult result, quint64 generation);
+  void finished(engine::Source::Nexus::ModInfoResult result, quint64 generation);
 };
 
 // Long-lived worker thread reusing the LootSortThread shape. start() queues
@@ -48,7 +49,8 @@ public:
 
   // Queue a fetch for the worker thread. The callable is copied into the
   // queued functor, so no shared state.
-  void start(std::function<engine::ModInfoResult()> fetch, quint64 generation);
+  void start(std::function<engine::Source::Nexus::ModInfoResult()> fetch,
+             quint64 generation);
 
 private:
   QThread *thread_           = nullptr;
@@ -57,4 +59,4 @@ private:
 
 }  // namespace ui
 
-Q_DECLARE_METATYPE(engine::ModInfoResult)
+Q_DECLARE_METATYPE(engine::Source::Nexus::ModInfoResult)

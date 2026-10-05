@@ -1,9 +1,9 @@
-// Test for LoversLabProvider::parse_mod_info - the pure HTML scrape behind the
-// Mod Info LoversLab tab "Refresh" button. The parser pulls the schema.org
+// Test for LoversLab::Provider::parse_mod_info - the pure HTML scrape behind
+// the Mod Info LoversLab tab "Refresh" button. The parser pulls the schema.org
 // WebApplication JSON-LD block from the guest-visible mod page (the page is
 // guest-visible; downloads are not). Mirrors nexus_provider_test.cpp's
 // approach: feed a captured HTML snippet, assert the fields map cleanly.
-#include "engine/source/loverslab_provider.h"
+#include "engine/source/loverslab/provider.h"
 
 #include <catch2/catch_test_macros.hpp>
 #include <cstdio>
@@ -17,8 +17,8 @@ void require(bool cond, const char *msg) {
 }  // namespace
 
 TEST_CASE("loverslab provider", "[engine]") {
-  using engine::LoversLabModInfoResult;
-  using engine::LoversLabProvider;
+  using engine::Source::LoversLab::ModInfoResult;
+  using engine::Source::LoversLab::Provider;
 
   // --- Realistic captured mod page snippet. The script tags and meta tags
   // here mirror what the live Invision Community page emits: a single
@@ -60,7 +60,7 @@ TEST_CASE("loverslab provider", "[engine]") {
 <body>...</body>
 </html>)";
 
-  LoversLabModInfoResult r = LoversLabProvider::parse_mod_info(body);
+  ModInfoResult r = Provider::parse_mod_info(body);
   require(r.available, "available parsed");
   require(r.name == "The Xims Magazine", "name parsed");
   require(r.version == "1.0", "softwareVersion -> version");
@@ -87,7 +87,7 @@ TEST_CASE("loverslab provider", "[engine]") {
   ]
 }
 </script>)";
-  LoversLabModInfoResult g = LoversLabProvider::parse_mod_info(graph_body);
+  ModInfoResult g = Provider::parse_mod_info(graph_body);
   require(g.available, "graph: available");
   require(g.name == "Graph Mod", "graph: name extracted");
   require(g.version == "2.5", "graph: softwareVersion extracted");
@@ -102,7 +102,7 @@ TEST_CASE("loverslab provider", "[engine]") {
 <meta property="og:description" content="OG description text" />
 <meta property="og:updated_time" content="2025-04-01" />
 </head></html>)";
-  LoversLabModInfoResult o = LoversLabProvider::parse_mod_info(og_only);
+  ModInfoResult o = Provider::parse_mod_info(og_only);
   require(o.available, "og fallback: available");
   require(o.name == "OG Title", "og fallback: title");
   require(o.description == "OG description text", "og fallback: description");
@@ -115,7 +115,7 @@ TEST_CASE("loverslab provider", "[engine]") {
       R"(<script type="application/ld+json">
 {"@type":"WebApplication","name":"Date Only","description":"d","dateModified":"2025-06-05"}
 </script>)";
-  LoversLabModInfoResult d = LoversLabProvider::parse_mod_info(date_only);
+  ModInfoResult d = Provider::parse_mod_info(date_only);
   require(d.available, "date-only: available");
   require(d.date_modified == "2025-06-05", "date-only dateModified kept");
 
@@ -126,7 +126,7 @@ TEST_CASE("loverslab provider", "[engine]") {
 <meta property="og:title" content="After Bad JSON" />
 <meta property="og:description" content="Recovered description" />
 </head></html>)";
-  LoversLabModInfoResult m = LoversLabProvider::parse_mod_info(malformed);
+  ModInfoResult m = Provider::parse_mod_info(malformed);
   require(m.available, "malformed JSON-LD: og fallback works");
   require(m.name == "After Bad JSON", "malformed JSON-LD: og:title used as name");
   require(m.description == "Recovered description",
@@ -140,16 +140,15 @@ TEST_CASE("loverslab provider", "[engine]") {
       R"(<script type="application/ld+json">
 {"@type":"WebApplication","name":"Lonely Mod"}
 </script>)";
-  LoversLabModInfoResult nd = LoversLabProvider::parse_mod_info(no_desc);
+  ModInfoResult nd = Provider::parse_mod_info(no_desc);
   require(!nd.available, "missing description: available=false");
 
   // --- Empty body: available=false, no crash.
-  LoversLabModInfoResult empty = LoversLabProvider::parse_mod_info({});
+  ModInfoResult empty = Provider::parse_mod_info({});
   require(!empty.available, "empty body: available=false");
 
   // --- Garbage body: available=false, no crash.
-  LoversLabModInfoResult garbage =
-      LoversLabProvider::parse_mod_info("just some text, no html at all");
+  ModInfoResult garbage = Provider::parse_mod_info("just some text, no html at all");
   require(!garbage.available, "garbage body: available=false");
 
   // --- Attribute-order-agnostic <meta>: some themes emit the content
@@ -160,7 +159,7 @@ TEST_CASE("loverslab provider", "[engine]") {
 <meta content="Reversed Title" property="og:title">
 <meta content="Reversed description text" property="og:description">
 </head></html>)";
-  LoversLabModInfoResult cf = LoversLabProvider::parse_mod_info(content_first);
+  ModInfoResult cf = Provider::parse_mod_info(content_first);
   require(cf.available, "content-first meta: available (regex handles reversed order)");
   require(cf.name == "Reversed Title", "content-first meta: og:title picked");
   require(cf.description == "Reversed description text",
@@ -173,7 +172,7 @@ TEST_CASE("loverslab provider", "[engine]") {
 <meta name="og:title" content="Named Title">
 <meta name="og:description" content="Named description text">
 </head></html>)";
-  LoversLabModInfoResult nf = LoversLabProvider::parse_mod_info(name_first);
+  ModInfoResult nf = Provider::parse_mod_info(name_first);
   require(nf.available, "name= meta: available");
   require(nf.name == "Named Title", "name= meta: og:title picked");
   require(nf.description == "Named description text",
@@ -194,7 +193,7 @@ TEST_CASE("loverslab provider", "[engine]") {
 </head><body>
 <div class="ipsType_richText"><p>rich <a href="https://www.example.com">link</a> text</p></div>
 </body></html>)";
-  LoversLabModInfoResult b = LoversLabProvider::parse_mod_info(both);
+  ModInfoResult b = Provider::parse_mod_info(both);
   require(b.available, "both: available");
   require(b.name == "Both Mod", "both: JSON-LD name used for name");
   // Rich text wins for description: the string "plain text JSON-LD"
@@ -206,7 +205,7 @@ TEST_CASE("loverslab provider", "[engine]") {
 }
 
 TEST_CASE("loverslab provider description_html block", "[engine][loverslab]") {
-  using engine::LoversLabProvider;
+  using engine::Source::LoversLab::Provider;
   // --- Realistic Invision Community "About This File" block: the
   // class="ipsType_richText" container holds <p>...</p> paragraphs, a
   // real <a href> anchor, and a plain text run. The parser must:
@@ -234,7 +233,7 @@ TEST_CASE("loverslab provider description_html block", "[engine][loverslab]") {
   </div>
 </section>
 </body></html>)";
-  const std::string got = LoversLabProvider::parse_description_html(body);
+  const std::string got = Provider::parse_description_html(body);
   require(!got.empty(), "rich-text block extracted");
   // Safe links survive as real <a> tags - no BBCode round-trip, so the
   // renderer receives the markup the site authored.
@@ -260,7 +259,7 @@ TEST_CASE("loverslab provider description_html block", "[engine][loverslab]") {
   // href reaches the renderer).
   const std::string bad =
       R"DELIM(<div class="ipsType_richText">before <a href="javascript:alert(1)">bad</a> after</div>)DELIM";
-  const std::string bad_got = LoversLabProvider::parse_description_html(bad);
+  const std::string bad_got = Provider::parse_description_html(bad);
   require(bad_got.find("javascript") == std::string::npos,
           "javascript: scheme is dropped");
   require(bad_got.find("bad") != std::string::npos,
@@ -271,14 +270,13 @@ TEST_CASE("loverslab provider description_html block", "[engine][loverslab]") {
   // whole tag, quotes and all).
   const std::string sq_anchor =
       R"DELIM(<div class="ipsType_richText"><a href='https://www.example.com/x'>quoted</a></div>)DELIM";
-  require(LoversLabProvider::parse_description_html(sq_anchor) ==
+  require(Provider::parse_description_html(sq_anchor) ==
               "<a href='https://www.example.com/x'>quoted</a>",
           "single-quoted safe anchor preserved verbatim");
 
   // --- No rich-text block at all: empty result, no crash.
-  require(LoversLabProvider::parse_description_html("just text").empty(),
-          "no block: empty");
-  require(LoversLabProvider::parse_description_html({}).empty(), "empty body: empty");
+  require(Provider::parse_description_html("just text").empty(), "no block: empty");
+  require(Provider::parse_description_html({}).empty(), "empty body: empty");
 
   // --- Single-quoted class attribute. Some LL themes / mod.pub render
   // the class attribute with single quotes; the regex used to require
@@ -286,14 +284,14 @@ TEST_CASE("loverslab provider description_html block", "[engine][loverslab]") {
   // either quote.
   const std::string single_quote =
       R"DELIM(<div class='ipsType_richText'><p>quoted class survives</p></div>)DELIM";
-  const std::string sq_got = LoversLabProvider::parse_description_html(single_quote);
+  const std::string sq_got = Provider::parse_description_html(single_quote);
   require(!sq_got.empty(), "single-quoted class: block extracted");
   require(sq_got.find("quoted class survives") != std::string::npos,
           "single-quoted class: text preserved");
 }
 
 TEST_CASE("loverslab description raw html passthrough", "[engine][loverslab]") {
-  using engine::LoversLabProvider;
+  using engine::Source::LoversLab::Provider;
   // --- Raw-HTML mode: the inner fragment reaches the renderer verbatim.
   // <br> stays a tag (the WebEngine view renders it natively), so the
   // old <br>-to-newline dedup no longer applies - what the site
@@ -301,20 +299,20 @@ TEST_CASE("loverslab description raw html passthrough", "[engine][loverslab]") {
   const std::string br_nl =
       R"DELIM(<div class="ipsType_richText">line1<br>
 line2</div>)DELIM";
-  require(LoversLabProvider::parse_description_html(br_nl) == "line1<br>\nline2",
+  require(Provider::parse_description_html(br_nl) == "line1<br>\nline2",
           "<br> + newline preserved verbatim");
 
   // --- Same with CRLF bodies (real HTTP pages use \r\n): verbatim too,
   // the renderer normalizes line endings.
   const std::string br_crlf =
       "<div class=\"ipsType_richText\">line1<br />\r\nline2</div>";
-  require(LoversLabProvider::parse_description_html(br_crlf) == "line1<br />\r\nline2",
+  require(Provider::parse_description_html(br_crlf) == "line1<br />\r\nline2",
           "<br /> + CRLF preserved verbatim");
 
   // --- A doubled <br><br> (author-intended gap) stays two tags.
   const std::string br_br =
       R"DELIM(<div class="ipsType_richText">a<br><br>b</div>)DELIM";
-  require(LoversLabProvider::parse_description_html(br_br) == "a<br><br>b",
+  require(Provider::parse_description_html(br_br) == "a<br><br>b",
           "<br><br> preserved verbatim");
 
   // --- Pretty-printed paragraphs: block tags and their indentation
@@ -323,14 +321,14 @@ line2</div>)DELIM";
                              "    <p>para1</p>\n"
                              "    <p>para2</p>\n"
                              "  </div>";
-  require(LoversLabProvider::parse_description_html(pretty) ==
+  require(Provider::parse_description_html(pretty) ==
               "\n    <p>para1</p>\n    <p>para2</p>\n  ",
           "pretty-printed block markup preserved verbatim");
 }
 
 TEST_CASE("loverslab metadata entity decoding", "[engine][loverslab]") {
-  using engine::LoversLabModInfoResult;
-  using engine::LoversLabProvider;
+  using engine::Source::LoversLab::ModInfoResult;
+  using engine::Source::LoversLab::Provider;
   // --- Workspace-vbx3: JSON-LD text fields arrive HTML-escaped from
   // the page; the panel shows them verbatim so they must be decoded
   // at parse time (the og:* fallback path always did).
@@ -341,7 +339,7 @@ TEST_CASE("loverslab metadata entity decoding", "[engine][loverslab]") {
  "applicationCategory":"Framework &amp; Resources",
  "author":{"name":"Modder &quot;Bob&quot;"}}
 </script>)";
-  LoversLabModInfoResult r = LoversLabProvider::parse_mod_info(body);
+  ModInfoResult r = Provider::parse_mod_info(body);
   require(r.available, "entities: available");
   require(r.name == "Swords & Sorcery", "entities: name decoded");
   require(r.category == "Framework & Resources", "entities: category decoded");
@@ -354,7 +352,7 @@ TEST_CASE("loverslab metadata entity decoding", "[engine][loverslab]") {
 <meta property="og:title" content="Fish &amp; Chips" />
 <meta property="og:description" content="Tasty &lt;food&gt;" />
 </head></html>)";
-  LoversLabModInfoResult o = LoversLabProvider::parse_mod_info(og);
+  ModInfoResult o = Provider::parse_mod_info(og);
   require(o.available, "og entities: available");
   require(o.name == "Fish & Chips", "og entities: title decoded");
   require(o.description == "Tasty <food>", "og entities: description decoded");

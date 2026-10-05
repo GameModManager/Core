@@ -9,15 +9,16 @@ namespace ui {
 
 LoversLabFetchWorker::LoversLabFetchWorker(QObject *parent) : QObject(parent) {}
 
-void LoversLabFetchWorker::run(std::function<engine::LoversLabModInfoResult()> fetch,
-                               quint64 generation) {
-  engine::LoversLabModInfoResult result =
-      fetch ? fetch() : engine::LoversLabModInfoResult{};
+void LoversLabFetchWorker::run(
+    std::function<engine::Source::LoversLab::ModInfoResult()> fetch,
+    quint64 generation) {
+  engine::Source::LoversLab::ModInfoResult result =
+      fetch ? fetch() : engine::Source::LoversLab::ModInfoResult{};
   emit finished(std::move(result), generation);
 }
 
 LoversLabFetchThread::LoversLabFetchThread(QObject *parent) : QObject(parent) {
-  qRegisterMetaType<engine::LoversLabModInfoResult>();
+  qRegisterMetaType<engine::Source::LoversLab::ModInfoResult>();
   thread_ = new QThread(this);
   thread_->setObjectName(QStringLiteral("gmm-loverslab-fetch"));
   worker_ = new LoversLabFetchWorker(nullptr);
@@ -31,8 +32,9 @@ LoversLabFetchThread::~LoversLabFetchThread() {
   thread_->wait();
 }
 
-void LoversLabFetchThread::start(std::function<engine::LoversLabModInfoResult()> fetch,
-                                 quint64 generation) {
+void LoversLabFetchThread::start(
+    std::function<engine::Source::LoversLab::ModInfoResult()> fetch,
+    quint64 generation) {
   LoversLabFetchWorker *worker = worker_;
   QMetaObject::invokeMethod(
       worker,

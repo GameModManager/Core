@@ -116,13 +116,13 @@ struct ModInfoData {
 
   // Live Nexus mod-info fetch for the Nexus tab's Refresh button (domain and
   // mod id are captured by the caller). available=false on any failure.
-  std::function<engine::ModInfoResult()> fetch_nexus_info;
+  std::function<engine::Source::Nexus::ModInfoResult()> fetch_nexus_info;
 
   // Live LoversLab mod-info fetch for the LoversLab tab's Refresh button.
   // Captures the file id or page URL (LoversLab has no domain like Nexus's
   // skyrimspecialedition; the file id IS the identifier). Same
   // available=false failure semantics.
-  std::function<engine::LoversLabModInfoResult()> fetch_loverslab_info;
+  std::function<engine::Source::LoversLab::ModInfoResult()> fetch_loverslab_info;
 
   // Live mod.pub mod-info fetch for the ModPub tab's Refresh button.
   // Captures the mod id and the page URL (the page URL carries the

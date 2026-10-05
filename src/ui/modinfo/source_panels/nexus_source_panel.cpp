@@ -224,7 +224,7 @@ void NexusSourcePanel::launch_fetch() {
   source_fetch_thread_->start(std::move(fetch), gen);
 }
 
-void NexusSourcePanel::on_fetch_finished(engine::ModInfoResult result,
+void NexusSourcePanel::on_fetch_finished(engine::Source::Nexus::ModInfoResult result,
                                          quint64 generation) {
   fetch_in_flight_ = false;
   if (refresh_ != nullptr) {
@@ -242,7 +242,8 @@ void NexusSourcePanel::on_fetch_finished(engine::ModInfoResult result,
     launch_fetch();
 }
 
-void NexusSourcePanel::apply_fetch_result(const engine::ModInfoResult &result) {
+void NexusSourcePanel::apply_fetch_result(
+    const engine::Source::Nexus::ModInfoResult &result) {
   if (!result.available) {
     render_description();
     return;

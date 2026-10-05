@@ -33,15 +33,15 @@
 #include "engine/pipeline/plugin_claim_stage.h"
 #include "engine/pipeline/plugin_host/plugin_loader.h"
 #include "engine/pipeline/registry/stage_registry.h"
-#include "engine/source/loverslab_auth.h"
-#include "engine/source/loverslab_provider.h"
+#include "engine/source/loverslab/auth.h"
+#include "engine/source/loverslab/provider.h"
 #include "engine/source/modpub/provider.h"
-#include "engine/source/nexus_provider.h"
+#include "engine/source/nexus/provider.h"
 #include "engine/source/nxm/managed_games.h"
 #include "engine/source/nxm/nxm_router.h"
 #include "engine/source/registry.h"
 #include "engine/source/router.h"
-#include "engine/source/steam_workshop_provider.h"
+#include "engine/source/steam/provider.h"
 #include "ui/install/install_progress_dialog.h"
 #include "ui/main_window/main_window.h"
 #include "ui/network/network_options_bridge.h"
@@ -255,10 +255,10 @@ void DownloadsController::setup_pipeline() {
           });
 
   // Register built-in source providers
-  engine::SourceRegistry::instance().register_provider(
+  engine::Source::Registry::instance().register_provider(
       std::make_unique<engine::Source::Nexus::Provider>());
-  engine::SourceRegistry::instance().register_provider(
-      std::make_unique<engine::LoversLabProvider>());
+  engine::Source::Registry::instance().register_provider(
+      std::make_unique<engine::Source::LoversLab::Provider>());
   // modl:// is a URI handler, not a source, so its transport is NOT
   // registered here. A modl link from mod.pub attributes to ModPub below;
   // any other host names no source and the mod stays "manual", and
@@ -269,13 +269,13 @@ void DownloadsController::setup_pipeline() {
   // attribute a mod to "modpub" and the metadata panel can scrape the
   // page (single-source rule fqf5: modpub is its own source, never
   // folded into nexus).
-  engine::SourceRegistry::instance().register_provider(
+  engine::Source::Registry::instance().register_provider(
       std::make_unique<engine::Source::ModPub::Provider>());
 
   std::string ws_db = engine::safe_home_dir().string() +
                       "/.local/share/GameModManager/workshop_cache.db";
-  engine::SourceRegistry::instance().register_provider(
-      std::make_unique<engine::SteamWorkshopProvider>(
+  engine::Source::Registry::instance().register_provider(
+      std::make_unique<engine::Source::Steam::Provider>(
           ws_db, Settings::instance().workshop_rate_limit_per_hour()));
 }
 
@@ -1009,7 +1009,7 @@ void DownloadsController::handle_modl_download(const engine::Source::ModlLink &l
 }
 
 void DownloadsController::start_loverslab_download(const std::string &url) {
-  if (!engine::LoversLabProvider::is_loverslab_url(url)) {
+  if (!engine::Source::LoversLab::Provider::is_loverslab_url(url)) {
     QMessageBox::warning(
         w_, tr("Download from URL"),
         tr("Not a LoversLab download link.\n\n"
@@ -1018,7 +1018,7 @@ void DownloadsController::start_loverslab_download(const std::string &url) {
     return;
   }
 
-  if (!engine::LoversLabAuth::instance().has_cookie()) {
+  if (!engine::Source::LoversLab::Auth::instance().has_cookie()) {
     QMessageBox::information(
         w_, tr("Download from URL"),
         tr("No LoversLab session cookie is configured.\n\n"
@@ -1044,7 +1044,7 @@ void DownloadsController::start_loverslab_download(const std::string &url) {
   // (keeps map keys and archive-name fallbacks free of '/' characters).
   // Use a process-stable hash so a paused LoversLab download can be resumed
   // after a restart - std::hash<std::string> is randomized on libstdc++.
-  std::string file_id = engine::LoversLabProvider::extract_file_id(url);
+  std::string file_id = engine::Source::LoversLab::Provider::extract_file_id(url);
   const std::string key =
       file_id.empty() ? "ll-" + std::to_string(stable_hash64(url)) : file_id;
 
@@ -1052,7 +1052,8 @@ void DownloadsController::start_loverslab_download(const std::string &url) {
   if (dt) {
     dt->add_download(
         key, tr("LoversLab file %1").arg(QString::fromStdString(key)).toStdString(),
-        "LoversLab", {}, {}, 0, {}, engine::LoversLabProvider::mod_page_url(url));
+        "LoversLab", {}, {}, 0, {},
+        engine::Source::LoversLab::Provider::mod_page_url(url));
   }
 
   // Surface the download: bring the window to front and switch to the

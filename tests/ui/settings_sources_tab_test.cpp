@@ -20,12 +20,12 @@
 #include "ui/settings/settings.h"
 #include "ui/settings/source_pages.h"
 
-#include "engine/source/nexus_auth.h"
+#include "engine/source/nexus/auth.h"
 #include "engine/pipeline/plugin_host/plugin_loader.h"
-#include "engine/source/nexus_provider.h"
-#include "engine/source/nexus_servers.h"
+#include "engine/source/nexus/provider.h"
+#include "engine/source/nexus/servers.h"
 #include "engine/source/source_provider.h"
-#include "engine/source/steam_workshop_provider.h"
+#include "engine/source/steam/provider.h"
 #include "ui/theme/style_manager.h"
 #include "engine/platform/theme/theme_manager.h"
 
@@ -119,15 +119,15 @@ TEST_CASE("settings sources tab", "[ui]") {
   engine::StyleManager style(tm);
   engine::PluginLoader loader;
 
-  auto &auth = engine::NexusAuth::instance();
+  auto &auth = engine::Source::Nexus::Auth::instance();
   auth.clear_api_key();
   auth.clear_user_info();
-  engine::NexusServers::instance().clear_all();
+  engine::Source::Nexus::Servers::instance().clear_all();
 
   engine::SourceRegistry::instance().register_provider(
-      std::make_unique<engine::NexusProvider>());
+      std::make_unique<engine::Source::Nexus::Provider>());
   engine::SourceRegistry::instance().register_provider(
-      std::make_unique<engine::SteamWorkshopProvider>(
+      std::make_unique<engine::Source::Steam::Provider>(
           "/tmp/gmm_sources_tab/workshop.db"));
   engine::SourceRegistry::instance().register_provider(
       std::make_unique<FakeProvider>());
@@ -312,7 +312,7 @@ TEST_CASE("settings sources tab", "[ui]") {
   }
 
   // --- Engine server registry: discovery, CDN preference, speed samples. ---
-  auto &servers = engine::NexusServers::instance();
+  auto &servers = engine::Source::Nexus::Servers::instance();
   servers.clear_all();
   servers.record_discovered("TestMirror", false);
   servers.record_discovered("CDN", true);
@@ -398,15 +398,16 @@ TEST_CASE("settings sources tab", "[ui]") {
 
   // --- NexusAuth user-info roundtrip + display (no network involved). ---
   check(!auth.has_user_info(), "no persisted user info after clear");
-  engine::NexusUserInfo info;
+  engine::Source::Nexus::NexusUserInfo info;
   info.user_id      = "12345";
   info.name         = "TestUser";
-  info.account_type = engine::NexusUserInfo::AccountType::Supporter;
+  info.account_type = engine::Source::Nexus::NexusUserInfo::AccountType::Supporter;
   auth.set_user_info(info);
   check(auth.has_user_info(), "user info persisted");
   const auto got = auth.get_user_info();
   check(got.user_id == "12345" && got.name == "TestUser" &&
-            got.account_type == engine::NexusUserInfo::AccountType::Supporter,
+            got.account_type ==
+                engine::Source::Nexus::NexusUserInfo::AccountType::Supporter,
         "user info roundtrips through disk");
   {
     auto dlg      = make_dialog();
@@ -438,8 +439,8 @@ TEST_CASE("settings sources tab", "[ui]") {
   // Premium login -> the checkbox defaults OFF while unset (Premium lifts
   // the ~1.5MB/s cap, so parallel Nexus downloads are useful).
   {
-    engine::NexusUserInfo prem;
-    prem.account_type = engine::NexusUserInfo::AccountType::Premium;
+    engine::Source::Nexus::NexusUserInfo prem;
+    prem.account_type = engine::Source::Nexus::NexusUserInfo::AccountType::Premium;
     auth.set_user_info(prem);
     auto dlg = make_dialog();
     auto *q  = queue_box_of(nexus_page_of(dlg));
@@ -447,8 +448,8 @@ TEST_CASE("settings sources tab", "[ui]") {
   }
   // Supporter keeps the free-account throttle -> ON.
   {
-    engine::NexusUserInfo sup;
-    sup.account_type = engine::NexusUserInfo::AccountType::Supporter;
+    engine::Source::Nexus::NexusUserInfo sup;
+    sup.account_type = engine::Source::Nexus::NexusUserInfo::AccountType::Supporter;
     auth.set_user_info(sup);
     auto dlg = make_dialog();
     auto *q  = queue_box_of(nexus_page_of(dlg));
@@ -456,8 +457,8 @@ TEST_CASE("settings sources tab", "[ui]") {
   }
   // Regular -> ON.
   {
-    engine::NexusUserInfo reg;
-    reg.account_type = engine::NexusUserInfo::AccountType::Regular;
+    engine::Source::Nexus::NexusUserInfo reg;
+    reg.account_type = engine::Source::Nexus::NexusUserInfo::AccountType::Regular;
     auth.set_user_info(reg);
     auto dlg = make_dialog();
     auto *q  = queue_box_of(nexus_page_of(dlg));
@@ -477,15 +478,15 @@ TEST_CASE("settings sources tab", "[ui]") {
   }
   // apply_nexus_queue_default seeds the tier default only while unset.
   {
-    engine::NexusUserInfo sup;
-    sup.account_type = engine::NexusUserInfo::AccountType::Supporter;
+    engine::Source::Nexus::NexusUserInfo sup;
+    sup.account_type = engine::Source::Nexus::NexusUserInfo::AccountType::Supporter;
     auth.set_user_info(sup);
     ui::apply_nexus_queue_default();
     check(s.nexus_queue_downloads() && s.nexus_queue_downloads_set(),
           "apply_nexus_queue_default seeds Supporter -> ON while unset");
     s.remove_nexus_queue_downloads();
-    engine::NexusUserInfo prem;
-    prem.account_type = engine::NexusUserInfo::AccountType::Premium;
+    engine::Source::Nexus::NexusUserInfo prem;
+    prem.account_type = engine::Source::Nexus::NexusUserInfo::AccountType::Premium;
     auth.set_user_info(prem);
     ui::apply_nexus_queue_default();
     check(!s.nexus_queue_downloads() && s.nexus_queue_downloads_set(),
@@ -534,5 +535,5 @@ TEST_CASE("settings sources tab", "[ui]") {
           "empty manual-key entry stays empty (MO2 parity: clears creds)");
   }
 
-  engine::NexusServers::instance().clear_all();
+  engine::Source::Nexus::Servers::instance().clear_all();
 }

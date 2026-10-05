@@ -11,7 +11,7 @@
 // it on every build. To refresh the fixture, re-capture and overwrite.
 // The test is opt-in by fixture presence so CI does not flake on absent
 // local state when the file is removed.
-#include "engine/source/loverslab_provider.h"
+#include "engine/source/loverslab/provider.h"
 
 #include <cstdio>
 #include <filesystem>
@@ -40,7 +40,7 @@ TEST_CASE("loverslab provider - real captured fixture", "[engine][live]") {
   const std::string body = slurp(fixture);
   INFO("body size: " << body.size());
 
-  auto r = engine::LoversLabProvider::parse_mod_info(body);
+  auto r = engine::Source::LoversLab::Provider::parse_mod_info(body);
   INFO("available: " << r.available);
   INFO("name: " << r.name);
   INFO("version: " << r.version);
