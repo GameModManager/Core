@@ -1,4 +1,4 @@
-#include "engine/collection/sync.h"
+#include "engine/modpack/collection/sync.h"
 
 #include <unordered_map>
 #include <unordered_set>

@@ -1,4 +1,4 @@
-#include "engine/collection/manifest.h"
+#include "engine/modpack/collection/manifest.h"
 
 namespace engine::Collection {
 

@@ -10,7 +10,7 @@
 //
 // Engine layer - Qt-free.
 
-#include "engine/collection/manifest.h"
+#include "engine/modpack/collection/manifest.h"
 #include "engine/mod/fomod/fomod_view_model.h"
 
 #include <string>

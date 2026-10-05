@@ -1,4 +1,4 @@
-#include "engine/collection/batch_installer.h"
+#include "engine/modpack/collection/batch_installer.h"
 
 namespace engine::Collection {
 

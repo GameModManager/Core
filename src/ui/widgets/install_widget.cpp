@@ -20,7 +20,7 @@
 #include <algorithm>
 #include <set>
 
-#include "engine/collection/choice_groups.h"
+#include "engine/modpack/collection/choice_groups.h"
 #include "engine/gmmpack/ini_edit_parser.h"
 #include "engine/modpack/ini_edits.h"
 

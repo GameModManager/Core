@@ -24,7 +24,7 @@
 //
 // Engine layer - Qt-free.
 
-#include "engine/collection/resolver.h"
+#include "engine/modpack/collection/resolver.h"
 #include "engine/pipeline/pipeline.h"
 
 #include <functional>

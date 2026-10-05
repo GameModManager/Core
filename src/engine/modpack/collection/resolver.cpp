@@ -1,4 +1,4 @@
-#include "engine/collection/resolver.h"
+#include "engine/modpack/collection/resolver.h"
 
 #include <algorithm>
 #include <unordered_set>

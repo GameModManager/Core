@@ -8,7 +8,7 @@
 #include <string>
 #include <vector>
 
-#include "engine/collection/nexus/adapter.h"
+#include "engine/modpack/collection/nexus/adapter.h"
 #include "engine/gmmpack/types.h"
 #include "ui/widgets/line_edit_clear.h"
 

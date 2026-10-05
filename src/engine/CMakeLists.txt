@@ -133,10 +133,10 @@ install/conflict_resolver.cpp
     game/saves/save_scanner.cpp
     game/saves/save_missing_assets.cpp
     game/saves/local_saves.cpp
-    collection/resolver.cpp
-collection/batch_installer.cpp
-    collection/manifest.cpp
-    collection/sync.cpp
+    modpack/collection/resolver.cpp
+    modpack/collection/batch_installer.cpp
+    modpack/collection/manifest.cpp
+    modpack/collection/sync.cpp
     source/registry.cpp
     source/update_policy.cpp
     source/http_util.cpp
@@ -164,9 +164,9 @@ collection/batch_installer.cpp
     source/update/mod_update_db_client.cpp
     keyring/keyring.cpp
     github.cpp
-    collection/nexus/parser.cpp
-    collection/nexus/adapter.cpp
-    collection/nexus/collection_zip.cpp
+    modpack/collection/nexus/parser.cpp
+    modpack/collection/nexus/adapter.cpp
+    modpack/collection/nexus/collection_zip.cpp
     module.cpp
     directory_refresher.cpp
     deploy/launch/preload_interceptor.cpp
@@ -180,7 +180,7 @@ gmmpack/schema_validator.cpp
     gmmpack/ini_edit_parser.cpp
     gmmpack/packer.cpp
     gmmpack/uuid.cpp
-    collection/choice_groups.cpp
+    modpack/collection/choice_groups.cpp
     gmmpack/executable_pipeline.cpp
     ${FOMOD_ENGINE_SOURCES}
 )
