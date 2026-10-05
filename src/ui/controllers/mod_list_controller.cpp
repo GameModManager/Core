@@ -45,7 +45,7 @@
 #include "engine/core/instance/toml_utils.h"
 #include "engine/core/log/logger.h"
 #include "engine/trace/trace_recorder.h"
-#include "engine/core/util/fs_utils.h"
+#include "engine/util/fs_utils.h"
 #include "engine/game/detect/mod_scanner.h"
 #include "engine/game/plugins/plugin_database.h"
 #include "engine/game/registry/game_features/game_feature_registry.h"

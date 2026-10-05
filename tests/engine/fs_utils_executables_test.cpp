@@ -3,7 +3,7 @@
 // the platform filter: a Windows .exe declared in the CSV simply does not
 // exist on a macOS game dir and is dropped, while a ".app" bundle directory
 // counts as found. Free function (fs_utils.h) so it tests without a UI.
-#include "engine/core/util/fs_utils.h"
+#include "engine/util/fs_utils.h"
 
 #include <filesystem>
 #include <fstream>

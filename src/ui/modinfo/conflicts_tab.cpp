@@ -1,6 +1,6 @@
 #include "ui/modinfo/conflicts_tab.h"
 
-#include "engine/core/util/fs_utils.h"
+#include "engine/util/fs_utils.h"
 #include "ui/preview/preview_window.h"
 #include "ui/settings/settings.h"
 

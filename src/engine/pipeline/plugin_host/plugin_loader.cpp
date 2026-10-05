@@ -1,7 +1,7 @@
 #include "engine/pipeline/plugin_host/plugin_loader.h"
 #include "engine/events/event_bus.h"
 #include "engine/core/log/logger.h"
-#include "engine/core/util/fs_utils.h"
+#include "engine/util/fs_utils.h"
 #include "engine/vfs/path_resolver.h"
 #include "engine/game/plugins/plugin_database.h"
 #include "engine/game/registry/game_features/game_feature.h"

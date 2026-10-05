@@ -31,8 +31,8 @@ core/instance/mod_state.cpp
     core/instance/installed_pack_state.cpp
     core/instance/game_icons.cpp
     core/instance/masterlist_fetch.cpp
-    core/util/fs_utils.cpp
-    core/util/thread_priority.cpp
+    util/fs_utils.cpp
+    util/thread_priority.cpp
     vfs/game_file.h
     vfs/path_resolver.h
     vfs/path_resolver.cpp

@@ -1,8 +1,8 @@
 #include "engine/deploy/launch/launcher.h"
 
 #include "engine/core/log/logger.h"
-#include "engine/core/util/debug_env.h"
-#include "engine/core/util/fs_utils.h"
+#include "engine/util/debug_env.h"
+#include "engine/util/fs_utils.h"
 #include "engine/deploy/launch/overlay_launcher.h"
 #include "engine/deploy/launch/preload_interceptor.h"
 #include "engine/mod/overwrite/overwrite_utils.h"
