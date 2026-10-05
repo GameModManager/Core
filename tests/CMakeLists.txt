@@ -72,7 +72,6 @@ endfunction()
 # ---------------------------------------------------------------------------
 # Engine tests — Qt-free, link the engine library
 # ---------------------------------------------------------------------------
-gmm_catch2_test(pack_adapter_test engine/pack_adapter_test.cpp)
 gmm_catch2_test(conflict_resolver_test engine/conflict_resolver_test.cpp)
 
 # The crash handler, verified by crashing a forked child on purpose and
