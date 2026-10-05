@@ -506,13 +506,6 @@ LaunchParams prepare_launch_params(const LaunchPrepRequest &req,
   // same values (knowledge keys + GMM_CASE_SENSITIVE override included).
   const DeployConfig deploy_cfg =
       deploy_config_for(req.instance_root, req.game_dir, req.knowledge, req.game_id);
-  // === BROKEN FEATURE - DO NOT ENABLE ===
-  // Historical arm switch for the libgmm_ci_intercept.so case-insensitive
-  // interposer. The shim is broken (shadows Wine's own case-insensitivity,
-  // broke Pandora, 2026-08-09) and do_launch only honors ci_resolve when
-  // GMM_ENABLE_BROKEN_CI_SHIM is explicitly set. Kept as inert documentation
-  // of the old wiring; do not build on it.
-  params.ci_resolve = !deploy_cfg.case_sensitive;
 
   // The engine deploy is synchronous: it returns only once the deploy tree
   // is fully populated, so every launch path chains launch on this return
