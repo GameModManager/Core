@@ -18,7 +18,7 @@
 
 #include "engine/instance/instance.h"
 #include "engine/game/registry/game_knowledge.h"
-#include "engine/pipeline/plugin_host/plugin_loader.h"
+#include "engine/plugin_host/plugin_loader.h"
 #include "platform/platform.h"
 #include "ui/main_window/main_window.h"
 #include "ui/settings/settings.h"

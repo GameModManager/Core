@@ -3,7 +3,7 @@
 #include "engine/deploy/deploy_utils.h"
 #include "engine/instance/instance.h"
 #include "engine/deploy/launch/overlay_launcher.h"
-#include "engine/pipeline/plugin_host/plugin_loader.h"
+#include "engine/plugin_host/plugin_loader.h"
 #include "engine/deploy/launch/proton_tools.h"
 #include "engine/proton/proton_tweaks.h"
 #include "platform/platform.h"

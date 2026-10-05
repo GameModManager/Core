@@ -1,4 +1,4 @@
-#include "engine/pipeline/plugin_host/save_parser_registry.h"
+#include "engine/plugin_host/save_parser_registry.h"
 
 #include <algorithm>
 #include <mutex>

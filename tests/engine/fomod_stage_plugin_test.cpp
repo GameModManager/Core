@@ -22,7 +22,7 @@
 #include "engine/mod/model/mod.h"
 #include "engine/pipeline/pipeline.h"
 #include "engine/pipeline/plugin_claim_stage.h"
-#include "engine/pipeline/plugin_host/plugin_loader.h"
+#include "engine/plugin_host/plugin_loader.h"
 #include "engine/pipeline/registry/stage_registry.h"
 
 #include <cstdio>

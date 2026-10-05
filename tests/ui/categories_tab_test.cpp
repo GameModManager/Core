@@ -12,7 +12,7 @@
 // (the registry is driven through Category::Factory::load() exactly like
 // SettingsController does).
 #include "engine/mod/meta/mod_meta.h"
-#include "engine/pipeline/plugin_host/category_factory.h"
+#include "engine/plugin_host/category_factory.h"
 #include "ui/modinfo/categories_tab.h"
 
 #include <QApplication>

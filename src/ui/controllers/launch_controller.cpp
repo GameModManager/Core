@@ -63,7 +63,7 @@
 #include "engine/game/registry/game_knowledge.h"
 #include "engine/mod/meta/mod_meta.h"
 #include "engine/mod/overwrite/overwrite_utils.h"
-#include "engine/pipeline/plugin_host/plugin_loader.h"
+#include "engine/plugin_host/plugin_loader.h"
 #include "ui/instance_options/instance_options_panel.h"
 #include "ui/main_window/deploy_worker.h"
 #include "ui/main_window/main_window.h"

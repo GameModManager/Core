@@ -18,7 +18,7 @@
 #include "ui/settings/settings.h"
 #include "ui/settings/settings_content_widget.h"
 
-#include "engine/pipeline/plugin_host/plugin_loader.h"
+#include "engine/plugin_host/plugin_loader.h"
 #include "engine/platform/theme/theme_manager.h"
 #include "ui/theme/style_manager.h"
 
