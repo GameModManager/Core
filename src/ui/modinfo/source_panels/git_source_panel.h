@@ -13,16 +13,18 @@ class QComboBox;
 
 namespace ui {
 
+class DescriptionRenderer;
+
 // The Git sub-panel of the mod-info Sources tab. Shown for a mod whose folder
 // is a git working copy, IN ADDITION to whatever download source it also has
 // (Nexus + Git coexist) - never instead of one.
 //
 // Everything git-specific about the mod is here: the upstream URL (read-only
 // - it comes from the repository, not from a field the user types), the
-// current branch and commit, upstream branch listing, and the three actions -
-// check for updates, pull, and the destructive clean reset. The platform
-// (GitHub / GitLab / ...) never appears: the source_type is "git" and the
-// host only chooses the tab's icon.
+// current branch and commit, upstream branch listing, the README as the
+// mod's description, and the three actions - check for updates, pull, and the
+// destructive clean reset. The platform (GitHub / GitLab / ...) never appears:
+// the source_type is "git" and the host only chooses the tab's icon.
 class GitSourcePanel : public SourceInfoPanel {
   Q_OBJECT
 public:
@@ -47,6 +49,11 @@ private:
   void refresh_branches();
   void persist_checkout();
 
+  // Reads README.md from the mod root and renders it through the same
+  // description renderer the download-source panels use. No README, no
+  // description - readme_missing_ says so rather than one being invented.
+  void render_readme();
+
   void on_check_updates();
   void on_pull();
   void on_reset_to_upstream();
@@ -66,6 +73,10 @@ private:
   QPushButton *pull_      = nullptr;
   QPushButton *reset_     = nullptr;
   QLabel *git_missing_    = nullptr;
+  QLabel *readme_missing_ = nullptr;
+  // Built on the first README this panel renders, so a repository without one
+  // never pays for a web engine view. Null means no README was seen yet.
+  DescriptionRenderer *description_ = nullptr;
 };
 
 }  // namespace ui

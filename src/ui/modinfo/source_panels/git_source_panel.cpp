@@ -2,6 +2,7 @@
 
 #include "engine/mod/meta/mod_meta.h"
 #include "engine/source/git/git_info.h"
+#include "ui/modinfo/description_renderer.h"
 #include "ui/modinfo/git_ops.h"
 #include "ui/theme/icon_manager.h"
 
@@ -10,6 +11,8 @@
 #include <QDialog>
 #include <QDialogButtonBox>
 #include <QDir>
+#include <QFile>
+#include <QFileInfo>
 #include <QFormLayout>
 #include <QHBoxLayout>
 #include <QLabel>
@@ -17,6 +20,7 @@
 #include <QMessageBox>
 #include <QPalette>
 #include <QPushButton>
+#include <QTextDocument>
 #include <QVBoxLayout>
 
 namespace ui {
@@ -45,6 +49,25 @@ namespace {
     label->setStyleSheet(
         QStringLiteral("QLabel { border: 1px solid %1; padding: 6px; }")
             .arg(base.name()));
+  }
+
+  // Markdown to the HTML fragment the description renderer takes. QTextDocument
+  // is Qt's own parser, so this needs no converter of its own - it is the same
+  // path QLabel::setMarkdown() uses. The document carries its own
+  // <html>/<head>/<body> envelope, which the renderer supplies for itself, so
+  // only what sits between the body tags is handed over.
+  QString markdown_to_html(const QString &markdown) {
+    QTextDocument doc;
+    doc.setMarkdown(markdown);
+    const QString html = doc.toHtml();
+    const int open     = html.indexOf(QStringLiteral("<body"));
+    if (open < 0)
+      return html;
+    const int content = html.indexOf('>', open);
+    const int close   = html.lastIndexOf(QStringLiteral("</body>"));
+    if (content < 0 || close <= content)
+      return html;
+    return html.mid(content + 1, close - content - 1);
   }
 
 }  // namespace
@@ -103,6 +126,18 @@ GitSourcePanel::GitSourcePanel(const ModInfoData &data, QWidget *parent)
   git_missing_ = new QLabel(this);
   git_missing_->setWordWrap(true);
   layout->addWidget(git_missing_);
+
+  // The README is the description for a git source, and there may be none: the
+  // label is shown instead, saying so. The renderer itself is built on the
+  // first README this panel sees, because a repository without one must not pay
+  // for a web engine view it never renders into.
+  readme_missing_ =
+      new QLabel(tr("This mod's folder has no README.md, so there is no description to "
+                    "show."),
+                 this);
+  readme_missing_->setWordWrap(true);
+  readme_missing_->setVisible(false);
+  layout->addWidget(readme_missing_);
 
   connect(check_, &QPushButton::clicked, this, &GitSourcePanel::on_check_updates);
   connect(pull_, &QPushButton::clicked, this, &GitSourcePanel::on_pull);
@@ -165,6 +200,7 @@ void GitSourcePanel::populate() {
   branch_->setText(meta_value("Git", "branch"));
   commit_->setText(meta_value("Git", "commit"));
   update_coexistence_banner();
+  render_readme();
   loading_ = false;
 
   const bool have_repo = !dir.empty() && engine::Git::is_repository(dir);
@@ -203,6 +239,65 @@ void GitSourcePanel::populate() {
                           "outside the mod."));
   refresh_status();
   refresh_branches();
+}
+
+void GitSourcePanel::render_readme() {
+  // The mod root IS the repository root, so this is the README the project
+  // itself ships. Matched case-insensitively: README.MD is the same file to a
+  // user and to every link in the repo's other docs.
+  QDir root(QString::fromStdString(repo_path().string()));
+  QString readme_name;
+  for (const auto &entry : root.entryInfoList(QDir::Files)) {
+    if (entry.fileName().compare(QLatin1String("README.md"), Qt::CaseInsensitive) ==
+        0) {
+      readme_name = entry.fileName();
+      break;
+    }
+  }
+  if (readme_name.isEmpty()) {
+    // No README, no description - stated rather than invented.
+    readme_missing_->setVisible(true);
+    if (description_ != nullptr)
+      description_->setVisible(false);
+    return;
+  }
+  QFile readme(root.filePath(readme_name));
+  if (!readme.open(QIODevice::ReadOnly | QIODevice::Text)) {
+    readme_missing_->setText(tr("This mod's folder has a README.md that cannot be "
+                                "read, so there is no description to show."));
+    readme_missing_->setVisible(true);
+    if (description_ != nullptr)
+      description_->setVisible(false);
+    return;
+  }
+  const QString markdown = QString::fromUtf8(readme.readAll());
+  readme.close();
+  if (markdown.trimmed().isEmpty()) {
+    readme_missing_->setText(tr("This mod's README.md is empty, so there is no "
+                                "description to show."));
+    readme_missing_->setVisible(true);
+    if (description_ != nullptr)
+      description_->setVisible(false);
+    return;
+  }
+  if (description_ == nullptr) {
+    description_ = create_description_renderer(this);
+    description_->set_source_style(SourceCSS::Default);
+    // Descriptions never navigate in place: the renderer emits link_clicked
+    // and the panel opens the URL externally, same as the other panels.
+    connect(description_, &DescriptionRenderer::link_clicked, this,
+            [this](const QUrl &url) {
+              if (data_.open_url)
+                data_.open_url(url.toString());
+            });
+    // The renderer was built after the layout took the label, so it has to go
+    // in ahead of it rather than after.
+    static_cast<QBoxLayout *>(layout())->insertWidget(layout()->count() - 1,
+                                                      description_, 1);
+  }
+  description_->setVisible(true);
+  readme_missing_->setVisible(false);
+  description_->set_description(markdown_to_html(markdown));
 }
 
 void GitSourcePanel::save_state() {
