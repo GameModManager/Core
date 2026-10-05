@@ -21,7 +21,7 @@
 #include <nlohmann/json.hpp>
 
 #include "engine/instance/instance_snapshot.h"
-#include "engine/gmmpack/types.h"
+#include "engine/modpack/gmmpack/types.h"
 #include "engine/mod/meta/mod_meta.h"
 
 namespace engine::gmmpack {

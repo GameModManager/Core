@@ -20,7 +20,7 @@
 
 #include "engine/util/process_utils.h"
 #include "engine/deploy/launch/launcher.h"
-#include "engine/gmmpack/types.h"
+#include "engine/modpack/gmmpack/types.h"
 
 namespace engine::gmmpack {
 

@@ -1,4 +1,4 @@
-#include "engine/gmmpack/schema_validator.h"
+#include "engine/modpack/gmmpack/schema_validator.h"
 
 #include <algorithm>
 #include <regex>

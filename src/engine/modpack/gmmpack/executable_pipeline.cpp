@@ -1,4 +1,4 @@
-#include "engine/gmmpack/executable_pipeline.h"
+#include "engine/modpack/gmmpack/executable_pipeline.h"
 
 #include <algorithm>
 #include <cstdint>

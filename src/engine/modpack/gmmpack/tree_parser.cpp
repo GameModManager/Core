@@ -1,4 +1,4 @@
-#include "engine/gmmpack/tree_parser.h"
+#include "engine/modpack/gmmpack/tree_parser.h"
 
 #include <algorithm>
 #include <unordered_set>

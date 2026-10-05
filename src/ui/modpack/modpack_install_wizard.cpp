@@ -32,7 +32,7 @@
 #include "engine/modpack/collection/download_router.h"
 #include "engine/modpack/collection/nexus/adapter.h"
 #include "engine/log/logger.h"
-#include "engine/gmmpack/unpacker.h"
+#include "engine/modpack/gmmpack/unpacker.h"
 #include "engine/mod/model/mod.h"
 #include "engine/pipeline/pipeline.h"
 #include "engine/source/loverslab/provider.h"

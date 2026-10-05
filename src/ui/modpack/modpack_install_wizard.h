@@ -12,7 +12,7 @@
 #include <string>
 #include <vector>
 
-#include "engine/gmmpack/types.h"
+#include "engine/modpack/gmmpack/types.h"
 #include "engine/mod/model/mod.h"
 
 class QListWidget;

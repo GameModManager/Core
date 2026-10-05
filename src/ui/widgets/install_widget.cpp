@@ -21,7 +21,7 @@
 #include <set>
 
 #include "engine/modpack/collection/choice_groups.h"
-#include "engine/gmmpack/ini_edit_parser.h"
+#include "engine/modpack/gmmpack/ini_edit_parser.h"
 #include "engine/modpack/ini_edits.h"
 
 namespace ui {

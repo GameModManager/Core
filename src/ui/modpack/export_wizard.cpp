@@ -30,7 +30,7 @@
 #include <QTreeWidget>
 #include <QVBoxLayout>
 
-#include "engine/gmmpack/packer.h"
+#include "engine/modpack/gmmpack/packer.h"
 #include "engine/mod/meta/mod_meta.h"
 #include "ui/modpack/export_pack_worker.h"
 

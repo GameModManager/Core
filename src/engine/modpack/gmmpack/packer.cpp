@@ -1,4 +1,4 @@
-#include "engine/gmmpack/packer.h"
+#include "engine/modpack/gmmpack/packer.h"
 
 #include <archive.h>
 #include <archive_entry.h>
@@ -14,13 +14,13 @@
 #include <type_traits>
 #include <unordered_set>
 
-#include "engine/gmmpack/bsdiff.h"
-#include "engine/gmmpack/codec.h"
-#include "engine/gmmpack/ini_edit_parser.h"
-#include "engine/gmmpack/sha256.h"
-#include "engine/gmmpack/tree_parser.h"
-#include "engine/gmmpack/unpacker.h"
-#include "engine/gmmpack/uuid.h"
+#include "engine/modpack/gmmpack/bsdiff.h"
+#include "engine/modpack/gmmpack/codec.h"
+#include "engine/modpack/gmmpack/ini_edit_parser.h"
+#include "engine/modpack/gmmpack/sha256.h"
+#include "engine/modpack/gmmpack/tree_parser.h"
+#include "engine/modpack/gmmpack/unpacker.h"
+#include "engine/modpack/gmmpack/uuid.h"
 #include "engine/modpack/ini_edits.h"
 
 namespace engine::gmmpack {

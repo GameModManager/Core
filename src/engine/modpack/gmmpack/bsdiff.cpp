@@ -1,4 +1,4 @@
-#include "engine/gmmpack/bsdiff.h"
+#include "engine/modpack/gmmpack/bsdiff.h"
 
 #include <algorithm>
 #include <cstring>
