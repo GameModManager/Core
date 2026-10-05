@@ -53,7 +53,7 @@
 #include "engine/core/instance/instance_utils.h"
 #include "engine/core/instance/toml_utils.h"
 #include "engine/core/log/logger.h"
-#include "engine/core/trace/trace_recorder.h"
+#include "engine/trace/trace_recorder.h"
 #include "engine/core/util/debug_env.h"
 #include "engine/core/util/fs_utils.h"
 #include "engine/deploy/interface.h"

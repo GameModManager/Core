@@ -21,7 +21,7 @@
 
 #include "engine/core/events/event_bus.h"
 #include "engine/core/log/logger.h"
-#include "engine/core/trace/trace_recorder.h"
+#include "engine/trace/trace_recorder.h"
 #include "engine/core/util/fs_utils.h"
 #include "engine/update/mod_update_db_client.h"
 #include "engine/deploy/interface.h"
