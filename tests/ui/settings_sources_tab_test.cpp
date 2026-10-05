@@ -27,7 +27,7 @@
 #include "engine/source/source_provider.h"
 #include "engine/source/steam/provider.h"
 #include "ui/theme/style_manager.h"
-#include "engine/platform/theme/theme_manager.h"
+#include "engine/theme/theme_manager.h"
 
 #ifdef GMM_PLATFORM_LINUX
 #include "platform/linux/linux_platform.h"

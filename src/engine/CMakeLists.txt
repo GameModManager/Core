@@ -111,8 +111,8 @@ instance/mod_state.cpp
     sort/sorter/loot/sorter.cpp
     sort/sorter/loot/masterlists.cpp
     source/steam/workshop_client.cpp
-    platform/theme/theme_manager.cpp
-    platform/tools/external_tool.cpp
+    theme/theme_manager.cpp
+    tools/external_tool.cpp
     plugin_host/python_loader.cpp
     mod/meta/mod_meta.cpp
     mod/meta/categories.cpp

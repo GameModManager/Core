@@ -57,7 +57,7 @@
 #include "engine/mod/overwrite/overwrite_utils.h"
 #include "engine/plugin_host/category_factory.h"
 #include "engine/plugin_host/plugin_loader.h"
-#include "engine/platform/theme/theme_manager.h"
+#include "engine/theme/theme_manager.h"
 #include "engine/profile/profile.h"
 #include "engine/profile/profile_creation.h"
 #include "engine/profile/profile_switching.h"

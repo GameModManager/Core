@@ -24,7 +24,7 @@
 
 #include "engine/instance/instance_utils.h"
 #include "engine/plugin_host/plugin_loader.h"
-#include "engine/platform/theme/theme_manager.h"
+#include "engine/theme/theme_manager.h"
 #include "engine/source/source_provider.h"
 #include "ui/theme/style_manager.h"
 

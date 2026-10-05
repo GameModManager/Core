@@ -1,5 +1,5 @@
 // Test for engine::ThemeManager: scanning, discovery, tokens, rendering.
-#include "engine/platform/theme/theme_manager.h"
+#include "engine/theme/theme_manager.h"
 #include "engine/log/logger.h"
 
 #include <cstdio>

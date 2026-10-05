@@ -4,7 +4,7 @@
 
 #include "platform/linux/linux_platform.h"
 
-#include "engine/platform/file_type_dispatch.h"
+#include "platform/file_type_dispatch.h"
 #include "platform/linux/linux_file_type_dispatch.h"
 
 #include <algorithm>
