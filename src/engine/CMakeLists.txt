@@ -169,7 +169,7 @@ collection/batch_installer.cpp
     collection/nexus/adapter.cpp
     collection/nexus/collection_zip.cpp
     core/module.cpp
-    core/directory_refresher.cpp
+    directory_refresher.cpp
     deploy/launch/preload_interceptor.cpp
     deploy/launch/elevation.cpp
     deploy/launch/launcher.cpp
