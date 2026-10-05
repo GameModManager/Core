@@ -743,7 +743,7 @@ port - their cited GMM symbol names were invented, the features are not.
 | Steam Workshop | ✅ | ✅ `SteamWorkshopProvider` - `steam_workshop_provider.h` | ✅ · |
 | LOVERS LAB | ❌ | 🚀 `LoversLabProvider` - `loverslab/provider.h:35` | 🚀 · |
 | Download manager | ✅ `DownloadManager` | ✅ `curl_download` - `download/curl_download.cpp` | ✅ · |
-| Remote cache | ✅ | ✅ `RemoteCache` (6-layer fetch chain) - `workshop/remote_cache.h:19` | ✅ · |
+| Remote cache | ✅ | ✅ `MasterlistManager` (24h TTL, temp-file download, offline cache reuse) - `sort/sorter/loot/masterlists.h:21` | ✅ · |
 | Steam Workshop client (Web API) | ❌ | 🚀 `WorkshopClient` (SQLite cache, dead IDs) - `workshop/workshop_client.h:29` | 🚀 · |
 | LoversLab session-cookie auth | ❌ | 🚀 `LoversLabAuth` (Cloudflare stripping) - `loverslab/auth.h:41` | 🚀 · |
 | Managed games tracking | ❌ | 🚀 `ManagedGames` (source_id, website_url, nexus_domain) - `nxm/managed_games.h:23` | 🚀 · |
@@ -892,8 +892,8 @@ port - their cited GMM symbol names were invented, the features are not.
 |---------|-----|-----|--------|
 | Symlink strategy | ❌ | 🚀 `SymlinkStrategy` (CI target resolution) - `strategy.h:10` | 🚀 · |
 | Direct deploy strategy | ❌ | 🚀 `DirectDeployStrategy` (ledger + backup) - `strategy_direct.h:7` | 🚀 · |
-| Hardlink strategy | ❌ | 🚀 `HardlinkStrategy` - `strategy_hardlink.h:7` | 🚀 · |
-| Junction strategy (Windows) | ❌ | 🚀 `JunctionStrategy` - `strategy_junction.h:7` | 🚀 · |
+| Hardlink strategy | ❌ | 🚫 never reachable, removed - the factory builds only overlayfs and symlink - `deploy/core.cpp:16` | 🚫 · |
+| Junction strategy (Windows) | ❌ | 🚫 removed - Windows-shaped with no Linux subject - `deploy/core.cpp:16` | 🚫 · |
 | OverlayFS deploy strategy | ❌ | 🚀 `OverlayFsDeploy` (O(1) reorder) - `overlay_fs_deploy.h:14` | 🚀 · |
 | FUSE VFS strategy | ❌ | 🚀 `VfsStrategy` (FUSE + file_map) - `strategy_vfs.h:7` | 🚀 · |
 | Deploy ledger (incremental tracking) | ❌ | 🚀 `DeployLedger` (diff for priority changes) - `deploy_ledger.h:8` | 🚀 · |
@@ -1029,7 +1029,7 @@ port - their cited GMM symbol names were invented, the features are not.
 
 | Feature | MO2 | GMM | Status |
 |---------|-----|-----|--------|
-| Instance manager | ✅ `InstanceManager` | ✅ `Instance` (TOML, per-folder overrides) - `instance.h:25` | ✅ · |
+| Instance manager | ✅ `InstanceManager` | ✅ `Instance` + `instance_utils` free functions, no manager object - `instance.h:39` | ✅ · |
 | Create instance dialog | ✅ `CreateInstanceDialog` | ✅ `GameSelectionWidget` (cards + filter) - `game_selection_widget.h:22` | ✅ · |
 | Instance switcher | ✅ | ✅ `InstanceSwitcherDialog` - `instance_switcher_dialog.h:19` | ✅ · |
 | Instance TOML persistence | ❌ | 🚀 `parse_instance_toml()` + JSON-to-TOML repair - `toml_utils.h:18` | 🚀 · |
