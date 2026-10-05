@@ -3,7 +3,7 @@
 #include "engine/mod/meta/categories.h"
 #include "engine/mod/meta/mod_meta.h"
 #include "engine/mod/overwrite/overwrite_utils.h"
-#include "engine/pipeline/plugin_host/category_factory.h"
+#include "engine/plugin_host/category_factory.h"
 #include "ui/controllers/mod_actions.h"
 #include "ui/controllers/mod_list_controller.h"
 #include "ui/controllers/overwrite_controller.h"

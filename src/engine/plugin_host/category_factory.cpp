@@ -1,4 +1,4 @@
-#include "engine/pipeline/plugin_host/category_factory.h"
+#include "engine/plugin_host/category_factory.h"
 #include "engine/mod/meta/category_set_registry.h"
 
 #include <fstream>

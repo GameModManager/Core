@@ -83,22 +83,22 @@ instance/mod_state.cpp
     pipeline/plugin_claim_stage.cpp
     trace/trace_recorder.cpp
     events/event_bus.cpp
-    pipeline/plugin_host/abi_bridge.cpp
+    plugin_host/abi_bridge.cpp
     log/logger.cpp
     log/crash_handler.cpp
     mod/cache/mod_cache.cpp
-    pipeline/plugin_host/plugin_loader.cpp
-    pipeline/plugin_host/tool_registry.cpp
-    pipeline/plugin_host/category_factory.cpp
-    pipeline/plugin_host/diagnostics_registry.cpp
-    pipeline/plugin_host/diagnose_registry.cpp
-    pipeline/plugin_host/file_mapper_registry.cpp
-    pipeline/plugin_host/save_parser_registry.cpp
-    pipeline/plugin_host/requirements_registry.cpp
-    pipeline/plugin_host/order_encoding_registry.cpp
-    pipeline/plugin_host/deploy_strategy_registry.cpp
-    pipeline/plugin_host/hook_registry.cpp
-    pipeline/plugin_host/plugin_settings_registry.cpp
+    plugin_host/plugin_loader.cpp
+    plugin_host/tool_registry.cpp
+    plugin_host/category_factory.cpp
+    plugin_host/diagnostics_registry.cpp
+    plugin_host/diagnose_registry.cpp
+    plugin_host/file_mapper_registry.cpp
+    plugin_host/save_parser_registry.cpp
+    plugin_host/requirements_registry.cpp
+    plugin_host/order_encoding_registry.cpp
+    plugin_host/deploy_strategy_registry.cpp
+    plugin_host/hook_registry.cpp
+    plugin_host/plugin_settings_registry.cpp
     pipeline/registry/stage_registry.cpp
     pipeline/registry/hook_registry.cpp
     game/registry/game_capabilities.cpp
@@ -113,7 +113,7 @@ instance/mod_state.cpp
     source/steam/workshop_client.cpp
     platform/theme/theme_manager.cpp
     platform/tools/external_tool.cpp
-    pipeline/plugin_host/python_loader.cpp
+    plugin_host/python_loader.cpp
     mod/meta/mod_meta.cpp
     mod/meta/categories.cpp
     mod/meta/category_set_registry.cpp

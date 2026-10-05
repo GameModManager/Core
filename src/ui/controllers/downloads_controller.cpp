@@ -31,7 +31,7 @@
 #include "engine/pipeline/fomod_stage.h"
 #include "engine/pipeline/install_stage.h"
 #include "engine/pipeline/plugin_claim_stage.h"
-#include "engine/pipeline/plugin_host/plugin_loader.h"
+#include "engine/plugin_host/plugin_loader.h"
 #include "engine/pipeline/registry/stage_registry.h"
 #include "engine/source/loverslab/auth.h"
 #include "engine/source/loverslab/provider.h"

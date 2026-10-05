@@ -6,7 +6,7 @@
 // save_requested()/cancel_requested() (the host decides what saving means),
 // and the inline deploy progress bar exists (the tab-mode replacement for the
 // modal QProgressDialog) and starts hidden.
-#include "engine/pipeline/plugin_host/plugin_loader.h"
+#include "engine/plugin_host/plugin_loader.h"
 #include "platform/platform.h"
 #include "ui/instance_options/instance_options_widget.h"
 

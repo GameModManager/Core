@@ -1,6 +1,6 @@
 #include "ui/settings/categories_dialog.h"
 
-#include "engine/pipeline/plugin_host/category_factory.h"
+#include "engine/plugin_host/category_factory.h"
 
 #include <QAbstractItemView>
 #include <QDialogButtonBox>

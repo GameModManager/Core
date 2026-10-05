@@ -2,7 +2,7 @@
 
 #include "engine/mod/meta/categories.h"
 #include "engine/mod/meta/mod_meta.h"
-#include "engine/pipeline/plugin_host/category_factory.h"
+#include "engine/plugin_host/category_factory.h"
 
 #include <QComboBox>
 #include <QHBoxLayout>

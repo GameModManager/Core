@@ -3,7 +3,7 @@
 #include "engine/instance/instance_utils.h"
 #include "engine/log/logger.h"
 #include "engine/parallel/parallel.h"
-#include "engine/pipeline/plugin_host/plugin_loader.h"
+#include "engine/plugin_host/plugin_loader.h"
 #include "engine/source/source_provider.h"
 #include "engine/update/install_method.h"
 #include "ui/settings/instance_settings.h"

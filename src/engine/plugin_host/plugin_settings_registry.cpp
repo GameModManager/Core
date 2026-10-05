@@ -1,4 +1,4 @@
-#include "engine/pipeline/plugin_host/plugin_settings_registry.h"
+#include "engine/plugin_host/plugin_settings_registry.h"
 
 #include <QSettings>
 

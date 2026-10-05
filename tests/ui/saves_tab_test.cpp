@@ -40,7 +40,7 @@
 #include "engine/game/saves/save_fast_scan.h"
 #include "engine/game/saves/save_game.h"
 #include "engine/game/saves/save_reader.h"
-#include "engine/pipeline/plugin_host/save_parser_registry.h"
+#include "engine/plugin_host/save_parser_registry.h"
 #include "engine/profile/profile_creation.h"
 #include "ui/controllers/downloads_controller.h"
 #include "ui/controllers/mod_list_controller.h"

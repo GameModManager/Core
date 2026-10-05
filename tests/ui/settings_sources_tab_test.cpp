@@ -21,7 +21,7 @@
 #include "ui/settings/source_pages.h"
 
 #include "engine/source/nexus/auth.h"
-#include "engine/pipeline/plugin_host/plugin_loader.h"
+#include "engine/plugin_host/plugin_loader.h"
 #include "engine/source/nexus/provider.h"
 #include "engine/source/nexus/servers.h"
 #include "engine/source/source_provider.h"

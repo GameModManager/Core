@@ -6,7 +6,7 @@
 // category_filter_changed signal on toggle and Clear.
 //
 // Hermetic: offscreen platform, throwaway XDG_CONFIG_HOME, no network.
-#include "engine/pipeline/plugin_host/category_factory.h"
+#include "engine/plugin_host/category_factory.h"
 #include "ui/settings/settings.h"
 #include "ui/widgets/category_filter_panel.h"
 
