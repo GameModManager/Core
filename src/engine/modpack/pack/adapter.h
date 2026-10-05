@@ -6,7 +6,7 @@
 // A pack is either file-based (a .gmmpack archive on disk) or API-based (a
 // Nexus collection reached through an nxm:// URL, resolved over the Nexus API
 // - never as a raw file). Source classification lives in
-// engine/pack/source_detector.h; this header carries the resolved result that
+// engine/modpack/pack/source_detector.h; this header carries the resolved result that
 // conflict detection and append-install compare.
 //
 // Engine layer - Qt-free (only <string>).
