@@ -1,7 +1,7 @@
 #include "engine/mod/archive/archive_extractor.h"
 #include "engine/mod/archive/sevenzip_backend.h"
-#include "engine/core/util/fs_utils.h"
-#include "engine/core/util/thread_priority.h"
+#include "engine/util/fs_utils.h"
+#include "engine/util/thread_priority.h"
 #include "engine/core/log/logger.h"
 
 #include <archive.h>

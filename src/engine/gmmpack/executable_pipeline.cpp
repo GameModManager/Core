@@ -6,7 +6,7 @@
 #include <set>
 #include <system_error>
 
-#include "engine/core/util/process_utils.h"
+#include "engine/util/process_utils.h"
 
 namespace engine::gmmpack {
 namespace {

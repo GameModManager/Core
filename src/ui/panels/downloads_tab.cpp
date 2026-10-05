@@ -3,7 +3,7 @@
 #include "ui/settings/settings.h"
 
 #include "engine/core/log/logger.h"
-#include "engine/core/util/fs_utils.h"
+#include "engine/util/fs_utils.h"
 #include "engine/source/loverslab_provider.h"
 #include "ui/theme/icon_manager.h"
 #include "ui/widgets/task_dialog.h"

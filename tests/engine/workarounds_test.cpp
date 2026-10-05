@@ -18,7 +18,7 @@
 // Both cases also pin the untouched-install behaviour: with the lists at their
 // stored default (empty) every file is deployed and every file is in the
 // registry.
-#include "engine/core/util/fs_utils.h"
+#include "engine/util/fs_utils.h"
 #include "engine/deploy/deploy_utils.h"
 #include "engine/game/detect/mod_scanner.h"
 #include "engine/game/registry/game_knowledge.h"

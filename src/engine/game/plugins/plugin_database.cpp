@@ -2,7 +2,7 @@
 
 #include "engine/core/instance/instance.h"
 #include "engine/core/log/logger.h"
-#include "engine/core/util/fs_utils.h"
+#include "engine/util/fs_utils.h"
 #include "engine/vfs/path_resolver.h"
 #include "engine/game/plugins/esp_header.h"
 #include "engine/game/registry/game_features/game_feature_registry.h"

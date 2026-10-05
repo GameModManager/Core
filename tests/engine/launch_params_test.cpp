@@ -15,7 +15,7 @@
 // lowerdirs.
 #include "engine/core/instance/instance_utils.h"
 #include "engine/core/log/logger.h"
-#include "engine/core/util/fs_utils.h"
+#include "engine/util/fs_utils.h"
 #include "engine/deploy/launch/launcher.h"
 #include "engine/deploy/launch/overlay_launcher.h"
 #include "engine/game/registry/game_knowledge.h"

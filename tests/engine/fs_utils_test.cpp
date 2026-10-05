@@ -1,4 +1,4 @@
-#include "engine/core/util/fs_utils.h"
+#include "engine/util/fs_utils.h"
 #include "engine/vfs/path_resolver.h"
 
 #include <catch2/catch_test_macros.hpp>
