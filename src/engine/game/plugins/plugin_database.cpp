@@ -1,6 +1,6 @@
 #include "engine/game/plugins/plugin_database.h"
 
-#include "engine/core/instance/instance.h"
+#include "engine/instance/instance.h"
 #include "engine/log/logger.h"
 #include "engine/util/fs_utils.h"
 #include "engine/vfs/path_resolver.h"

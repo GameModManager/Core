@@ -4,7 +4,7 @@
 // tracked state (mod entries, profile state, executables) into a single
 // serializable object. Round-trip through JSON, capture from disk, apply to disk.
 
-#include "engine/core/instance/instance_snapshot.h"
+#include "engine/instance/instance_snapshot.h"
 
 #include "engine/gmmpack/uuid.h"
 

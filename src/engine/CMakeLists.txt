@@ -22,15 +22,15 @@ set(FOMOD_ENGINE_SOURCES
 )
 
 set(ENGINE_SOURCES
-    core/instance/instance.cpp
-    core/instance/instance_utils.cpp
-    core/instance/instance_registry.cpp
-    core/instance/toml_utils.cpp
-core/instance/mod_state.cpp
-    core/instance/instance_snapshot.cpp
-    core/instance/installed_pack_state.cpp
-    core/instance/game_icons.cpp
-    core/instance/masterlist_fetch.cpp
+    instance/instance.cpp
+    instance/instance_utils.cpp
+    instance/instance_registry.cpp
+    instance/toml_utils.cpp
+instance/mod_state.cpp
+    instance/instance_snapshot.cpp
+    instance/installed_pack_state.cpp
+    instance/game_icons.cpp
+    instance/masterlist_fetch.cpp
     util/fs_utils.cpp
     util/thread_priority.cpp
     vfs/game_file.h

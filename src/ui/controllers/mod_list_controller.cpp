@@ -40,9 +40,9 @@
 #include <sstream>
 
 #include "engine/events/event_bus.h"
-#include "engine/core/instance/instance.h"
-#include "engine/core/instance/instance_utils.h"
-#include "engine/core/instance/toml_utils.h"
+#include "engine/instance/instance.h"
+#include "engine/instance/instance_utils.h"
+#include "engine/instance/toml_utils.h"
 #include "engine/log/logger.h"
 #include "engine/trace/trace_recorder.h"
 #include "engine/util/fs_utils.h"

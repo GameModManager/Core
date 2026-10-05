@@ -20,7 +20,7 @@
 
 #include <nlohmann/json.hpp>
 
-#include "engine/core/instance/instance_snapshot.h"
+#include "engine/instance/instance_snapshot.h"
 #include "engine/gmmpack/types.h"
 #include "engine/mod/meta/mod_meta.h"
 

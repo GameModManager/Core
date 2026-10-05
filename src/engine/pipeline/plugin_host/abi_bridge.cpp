@@ -10,7 +10,7 @@
 
 #include "gmm_abi_v1.h"
 
-#include "engine/core/instance/instance.h"
+#include "engine/instance/instance.h"
 #include "engine/index/conflict_index.h"
 #include "engine/mod/model/mod.h"
 #include "engine/mod/model/profile.h"

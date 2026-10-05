@@ -18,7 +18,7 @@
 // Uses the check() PASS/FAIL pattern (Release builds compile out assert()).
 
 #include "engine/mod/fomod/fomod_view_model.h"
-#include "engine/core/instance/instance.h"
+#include "engine/instance/instance.h"
 #include "engine/mod/model/mod.h"
 #include "engine/pipeline/pipeline.h"
 #include "engine/pipeline/plugin_claim_stage.h"

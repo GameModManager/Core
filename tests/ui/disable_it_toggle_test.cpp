@@ -16,7 +16,7 @@
 // written there even when the instance keeps a stub of the same folder and even
 // when the row's display name is not its folder name.
 
-#include "engine/core/instance/instance.h"
+#include "engine/instance/instance.h"
 #include "engine/game/registry/game_knowledge.h"
 #include "engine/pipeline/plugin_host/plugin_loader.h"
 #include "platform/platform.h"

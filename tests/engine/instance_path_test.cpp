@@ -9,8 +9,8 @@
 // instance (empty install_path) is creatable and round-trips, and
 // deploy_config_for leaves backup_root empty instead of deriving a
 // CWD-relative path.
-#include "engine/core/instance/instance.h"
-#include "engine/core/instance/instance_utils.h"
+#include "engine/instance/instance.h"
+#include "engine/instance/instance_utils.h"
 #include "engine/deploy/deploy_utils.h"
 #include "engine/game/detect/game_detector.h"
 #include "engine/game/registry/game_knowledge.h"

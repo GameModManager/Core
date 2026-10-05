@@ -7,7 +7,7 @@
 //     array and returns the first entry matching the launched binary
 //     (game-relative, case-insensitive, first match wins).
 // Hermetic: all fixtures live under the system temp dir; no Qt, no spawn.
-#include "engine/core/instance/instance_utils.h"
+#include "engine/instance/instance_utils.h"
 
 #include <filesystem>
 #include <fstream>

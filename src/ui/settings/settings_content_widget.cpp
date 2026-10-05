@@ -1,6 +1,6 @@
 #include "ui/settings/settings_content_widget.h"
-#include "engine/core/instance/instance.h"
-#include "engine/core/instance/instance_utils.h"
+#include "engine/instance/instance.h"
+#include "engine/instance/instance_utils.h"
 #include "engine/log/logger.h"
 #include "engine/parallel/parallel.h"
 #include "engine/pipeline/plugin_host/plugin_loader.h"

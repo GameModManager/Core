@@ -6,8 +6,8 @@
 //     explicitly empty array overrides globals)
 //   [plugin_options] nested tables + dotted keys (plugin1.option1 = "value")
 // and that unrelated keys survive the read-modify-write roundtrip.
-#include "engine/core/instance/instance.h"
-#include "engine/core/instance/toml_utils.h"
+#include "engine/instance/instance.h"
+#include "engine/instance/toml_utils.h"
 
 #include <cstdio>
 #include <filesystem>
