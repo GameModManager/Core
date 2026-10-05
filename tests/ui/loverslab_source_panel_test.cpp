@@ -23,7 +23,7 @@
 // Hermetic: no network, no real config (XDG_CONFIG_HOME pointed at a
 // throwaway dir).
 #include "engine/mod/meta/mod_meta.h"
-#include "engine/source/loverslab_provider.h"
+#include "engine/source/loverslab/provider.h"
 #include "engine/source/source_provider.h"
 #include "ui/modinfo/description_renderer.h"
 #include "ui/modinfo/source_panels/loverslab_source_panel.h"
@@ -84,11 +84,11 @@ static bool wait_for(const std::function<bool()> &pred, int timeout_ms = 5000) {
   return pred();
 }
 
-static ui::ModInfoData make_data(const std::string &id, const std::string &file_id,
-                                 const std::string &page_url,
-                                 std::function<engine::LoversLabModInfoResult()> fetch,
-                                 const std::filesystem::path &mods_dir,
-                                 qint64 installation_ts = 0) {
+static ui::ModInfoData
+make_data(const std::string &id, const std::string &file_id,
+          const std::string &page_url,
+          std::function<engine::Source::LoversLab::ModInfoResult()> fetch,
+          const std::filesystem::path &mods_dir, qint64 installation_ts = 0) {
   ui::ModInfoData data;
   data.id                   = QString::fromStdString(id);
   data.name                 = QString::fromStdString(id);
@@ -140,9 +140,9 @@ TEST_CASE("loverslab source panel - refresh + out-of-date", "[ui]") {
     auto data               = make_data(
         "LLModA", "11488",
         "https://www.loverslab.com/files/file/11488-the-xims-magazine/",
-        [&]() -> engine::LoversLabModInfoResult {
+        [&]() -> engine::Source::LoversLab::ModInfoResult {
           on_worker = QThread::currentThread() != qApp->thread();
-          engine::LoversLabModInfoResult r;
+          engine::Source::LoversLab::ModInfoResult r;
           r.available     = true;
           r.name          = "The Xims Magazine";
           r.version       = "1.1";
@@ -212,11 +212,11 @@ TEST_CASE("loverslab source panel - refresh + out-of-date", "[ui]") {
     ui::SourceTab tab;
     auto data = make_data(
         "LLModB", "12345", "https://www.loverslab.com/files/file/12345-other/",
-        [&]() -> engine::LoversLabModInfoResult {
+        [&]() -> engine::Source::LoversLab::ModInfoResult {
           ++calls;
           if (calls == 1)
             gate.tryAcquire(1, 5000);
-          engine::LoversLabModInfoResult r;
+          engine::Source::LoversLab::ModInfoResult r;
           r.available   = true;
           r.description = (calls == 2) ? "second" : "first";
           return r;

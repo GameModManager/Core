@@ -5,7 +5,7 @@
 #include "engine/network/network_manager.h"
 #include "engine/network/nexus_v2/premium.h"
 #include "engine/source/nexus/auth.h"
-#include "engine/source/nexus_account.h"
+#include "engine/source/nexus/account.h"
 
 #include <filesystem>
 #include <fstream>

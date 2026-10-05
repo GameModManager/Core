@@ -52,8 +52,9 @@ private:
   void render_description();
   void on_refresh();
   void launch_fetch();
-  void on_fetch_finished(engine::LoversLabModInfoResult result, quint64 generation);
-  void apply_fetch_result(const engine::LoversLabModInfoResult &result);
+  void on_fetch_finished(engine::Source::LoversLab::ModInfoResult result,
+                         quint64 generation);
+  void apply_fetch_result(const engine::Source::LoversLab::ModInfoResult &result);
   void on_visit();
   void on_visit_custom();
   void on_custom_url_toggled();

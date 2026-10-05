@@ -1,6 +1,6 @@
 #pragma once
 
-#include "engine/source/nexus_auth.h"
+#include "engine/source/nexus/auth.h"
 
 #include <QDialog>
 #include <QString>
@@ -21,7 +21,7 @@ namespace ui {
 // Tier-derived default for the "Queue downloads (one at a time)" Nexus option.
 // Regular/Supporter accounts keep the free-account ~1.5MB/s throttle, so they
 // default to queueing; Premium lifts the cap, so it defaults to parallel.
-bool nexus_queue_default_for(engine::NexusUserInfo::AccountType type);
+bool nexus_queue_default_for(engine::Source::Nexus::NexusUserInfo::AccountType type);
 
 // Applied on a successful login (users/validate.json): writes the tier-derived
 // default into Settings ONLY while the user has never set the value explicitly,

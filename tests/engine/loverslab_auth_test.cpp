@@ -1,9 +1,9 @@
-// LoversLabAuth keyring storage + LoversLabProvider URL-parsing tests (Qt-free).
-// No network is involved: the injected keyring is a FileKeyring over a temp
-// dir and the Content-Disposition parsing is pure string handling.
+// LoversLab::Auth keyring storage + LoversLab::Provider URL-parsing tests
+// (Qt-free). No network is involved: the injected keyring is a FileKeyring over
+// a temp dir and the Content-Disposition parsing is pure string handling.
 #include "engine/source/download/curl_download.h"
-#include "engine/source/loverslab_auth.h"
-#include "engine/source/loverslab_provider.h"
+#include "engine/source/loverslab/auth.h"
+#include "engine/source/loverslab/provider.h"
 
 #include <cstdio>
 #include <cstdlib>
@@ -36,10 +36,10 @@ TEST_CASE("loverslab auth", "[engine]") {
   // ---- LoversLabAuth with injected keyring ----------------------
   {
     fs::path primary_dir = temp_dir("primary");
-    engine::LoversLabAuth::instance().set_keyring(
+    engine::Source::LoversLab::Auth::instance().set_keyring(
         std::make_unique<engine::FileKeyring>(primary_dir));
 
-    auto &auth = engine::LoversLabAuth::instance();
+    auto &auth = engine::Source::LoversLab::Auth::instance();
     CHECK_MSG(!auth.has_cookie(), "no cookie initially");
     // __cf_bm is a Cloudflare challenge cookie and must be stripped by the
     // sanitizer on both store and read.
@@ -57,7 +57,7 @@ TEST_CASE("loverslab auth", "[engine]") {
 
   // ---- LoversLabAuth fallback to internal file storage ----------
   {
-    auto &auth = engine::LoversLabAuth::instance();
+    auto &auth = engine::Source::LoversLab::Auth::instance();
     auth.set_keyring(nullptr);  // force the file fallback path
     auth.set_cookie("fallback=xyz");
     CHECK_MSG(auth.has_cookie(), "fallback has cookie");
@@ -70,53 +70,53 @@ TEST_CASE("loverslab auth", "[engine]") {
 
   // ---- redact() -------------------------------------------------
   {
-    CHECK_MSG(engine::LoversLabAuth::redact("") == "<empty>", "empty redact");
+    CHECK_MSG(engine::Source::LoversLab::Auth::redact("") == "<empty>", "empty redact");
     const std::string c = "memberID=12345; pass_hash=abcdef";
-    CHECK_MSG(engine::LoversLabAuth::redact(c) ==
+    CHECK_MSG(engine::Source::LoversLab::Auth::redact(c) ==
                   "memberID=… (" + std::to_string(c.size()) + " bytes)",
               "redact keeps only the first cookie name and size");
     const std::string bare = "no-equals-sign";
-    CHECK_MSG(engine::LoversLabAuth::redact(bare) ==
+    CHECK_MSG(engine::Source::LoversLab::Auth::redact(bare) ==
                   "<cookie>=… (" + std::to_string(bare.size()) + " bytes)",
               "redact without '=' names the cookie generically");
   }
 
   // ---- LoversLabProvider URL parsing ----------------------------
   {
-    CHECK_MSG(engine::LoversLabProvider::is_loverslab_url(
+    CHECK_MSG(engine::Source::LoversLab::Provider::is_loverslab_url(
                   "https://www.loverslab.com/files/file/4242-slug/?do=download&r=7"),
               "valid file-page URL accepted");
-    CHECK_MSG(engine::LoversLabProvider::is_loverslab_url(
+    CHECK_MSG(engine::Source::LoversLab::Provider::is_loverslab_url(
                   "https://loverslab.com/files/file/4242/"),
               "bare loverslab.com host accepted");
-    CHECK_MSG(!engine::LoversLabProvider::is_loverslab_url(
+    CHECK_MSG(!engine::Source::LoversLab::Provider::is_loverslab_url(
                   "https://evil-loverslab.com/files/file/4242/"),
               "suffix-spoof host rejected");
-    CHECK_MSG(!engine::LoversLabProvider::is_loverslab_url(
+    CHECK_MSG(!engine::Source::LoversLab::Provider::is_loverslab_url(
                   "https://www.loverslab.com/topic/4242/"),
               "non-file-page rejected");
 
-    CHECK_MSG(engine::LoversLabProvider::extract_file_id(
+    CHECK_MSG(engine::Source::LoversLab::Provider::extract_file_id(
                   "https://www.loverslab.com/files/file/4242-slug/?do=download") ==
                   "4242",
               "file id before slug");
-    CHECK_MSG(engine::LoversLabProvider::extract_file_id(
+    CHECK_MSG(engine::Source::LoversLab::Provider::extract_file_id(
                   "https://www.loverslab.com/files/file/999/") == "999",
               "bare id");
-    CHECK_MSG(engine::LoversLabProvider::extract_file_id(
+    CHECK_MSG(engine::Source::LoversLab::Provider::extract_file_id(
                   "https://www.loverslab.com/files/file/abc-slug/")
                   .empty(),
               "non-numeric id rejected");
-    CHECK_MSG(engine::LoversLabProvider::extract_file_id(
+    CHECK_MSG(engine::Source::LoversLab::Provider::extract_file_id(
                   "https://www.loverslab.com/topic/4242/")
                   .empty(),
               "no file marker -> empty");
 
-    CHECK_MSG(engine::LoversLabProvider::mod_page_url(
+    CHECK_MSG(engine::Source::LoversLab::Provider::mod_page_url(
                   "https://www.loverslab.com/files/file/4242-slug/?do=download&r=7") ==
                   "https://www.loverslab.com/files/file/4242-slug/",
               "download query stripped -> page URL");
-    CHECK_MSG(engine::LoversLabProvider::mod_page_url(
+    CHECK_MSG(engine::Source::LoversLab::Provider::mod_page_url(
                   "https://www.loverslab.com/files/file/4242/") ==
                   "https://www.loverslab.com/files/file/4242/",
               "bare page link unchanged");
@@ -146,7 +146,7 @@ TEST_CASE("loverslab auth", "[engine]") {
 
   // ---- sanitize_cookie() ----------------------------------------
   {
-    using S = engine::LoversLabAuth;
+    using S = engine::Source::LoversLab::Auth;
     CHECK_MSG(S::sanitize_cookie("a=1; b=2; c=3") == "a=1; b=2; c=3",
               "standard ;-joined form unchanged");
     CHECK_MSG(S::sanitize_cookie("a=1\nb=2\nc=3") == "a=1; b=2; c=3",

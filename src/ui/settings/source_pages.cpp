@@ -1,13 +1,13 @@
 #include "ui/settings/source_pages.h"
 
 #include "engine/log/logger.h"
-#include "engine/source/loverslab_auth.h"
-#include "engine/source/nexus_auth.h"
-#include "engine/source/nexus_account.h"
-#include "engine/source/nexus_provider.h"
-#include "engine/source/nexus_servers.h"
+#include "engine/source/loverslab/auth.h"
+#include "engine/source/nexus/auth.h"
+#include "engine/source/nexus/account.h"
+#include "engine/source/nexus/provider.h"
+#include "engine/source/nexus/servers.h"
 #include "engine/source/source_provider.h"
-#include "engine/source/steam_workshop_provider.h"
+#include "engine/source/steam/provider.h"
 #include "ui/settings/settings.h"
 #include "ui/widgets/web_link.h"
 
@@ -62,13 +62,13 @@ namespace {
     return QString::number(kb, 'f', 0) + " KB/s";
   }
 
-  QString account_type_label(engine::NexusUserInfo::AccountType t) {
+  QString account_type_label(engine::Source::Nexus::NexusUserInfo::AccountType t) {
     switch (t) {
-    case engine::NexusUserInfo::AccountType::Premium:
+    case engine::Source::Nexus::NexusUserInfo::AccountType::Premium:
       return QObject::tr("Premium");
-    case engine::NexusUserInfo::AccountType::Supporter:
+    case engine::Source::Nexus::NexusUserInfo::AccountType::Supporter:
       return QObject::tr("Supporter");
-    case engine::NexusUserInfo::AccountType::Regular:
+    case engine::Source::Nexus::NexusUserInfo::AccountType::Regular:
       return QObject::tr("Regular");
     default:
       return QObject::tr("N/A");
@@ -77,10 +77,10 @@ namespace {
 
 }  // namespace
 
-bool nexus_queue_default_for(engine::NexusUserInfo::AccountType type) {
+bool nexus_queue_default_for(engine::Source::Nexus::NexusUserInfo::AccountType type) {
   // Supporter keeps the free-account ~1.5MB/s throttle (only Premium lifts
   // it), so only a Premium account defaults to parallel Nexus downloads.
-  return type != engine::NexusUserInfo::AccountType::Premium;
+  return type != engine::Source::Nexus::NexusUserInfo::AccountType::Premium;
 }
 
 void apply_nexus_queue_default() {
@@ -90,8 +90,9 @@ void apply_nexus_queue_default() {
   if (s.nexus_queue_downloads_set())
     return;
   auto &auth      = engine::Source::Nexus::Auth::instance();
-  const auto type = auth.has_user_info() ? auth.get_user_info().account_type
-                                         : engine::NexusUserInfo::AccountType::None;
+  const auto type = auth.has_user_info()
+                        ? auth.get_user_info().account_type
+                        : engine::Source::Nexus::NexusUserInfo::AccountType::None;
   s.set_nexus_queue_downloads(nexus_queue_default_for(type));
 }
 
@@ -173,7 +174,8 @@ private:
   void refresh_account_and_stats();
   void refresh_buttons();
   void refresh_servers();
-  QListWidgetItem *make_server_item(const engine::NexusServer &srv) const;
+  QListWidgetItem *
+  make_server_item(const engine::Source::Nexus::NexusServer &srv) const;
   void persist_server_preferences();
 
   void connect_to_nexus();
@@ -287,9 +289,10 @@ NexusPanel::NexusPanel(QWidget *parent) : QWidget(parent) {
   const bool queue_effective =
       s.nexus_queue_downloads_set()
           ? s.nexus_queue_downloads()
-          : nexus_queue_default_for(auth.has_user_info()
-                                        ? auth.get_user_info().account_type
-                                        : engine::NexusUserInfo::AccountType::None);
+          : nexus_queue_default_for(
+                auth.has_user_info()
+                    ? auth.get_user_info().account_type
+                    : engine::Source::Nexus::NexusUserInfo::AccountType::None);
   queue_box->setChecked(queue_effective);
   opts_left->addWidget(endorse_box);
   opts_left->addWidget(track_box);
@@ -431,7 +434,8 @@ void NexusPanel::refresh_buttons() {
 #endif
 }
 
-QListWidgetItem *NexusPanel::make_server_item(const engine::NexusServer &srv) const {
+QListWidgetItem *
+NexusPanel::make_server_item(const engine::Source::Nexus::NexusServer &srv) const {
   QString text = QString::fromStdString(srv.name);
   if (contains_ci(srv.name, "CDN"))
     text += tr(" (automatic)");
@@ -468,7 +472,7 @@ void NexusPanel::persist_server_preferences() {
 void NexusPanel::connect_to_nexus() {
   log_clear();
   add_log(tr("Authorizing with Nexus..."));
-  const auto r = engine::validate_nexus_account();
+  const auto r = engine::Source::Nexus::Account::validate_nexus_account();
   if (r.ok) {
     add_log(tr("Received user account information"));
     add_log(tr("Linked with Nexus successfully."));
@@ -535,7 +539,8 @@ void NexusPanel::associate_with_nxm() {
 
 // -- Steam Workshop -----------------------------------------------------------
 
-QWidget *build_workshop_page(engine::SteamWorkshopProvider *provider, QWidget *parent) {
+QWidget *build_workshop_page(engine::Source::Steam::Provider *provider,
+                             QWidget *parent) {
   auto &s      = Settings::instance();
   auto *page   = new QWidget(parent);
   auto *layout = new QVBoxLayout(page);
@@ -570,7 +575,7 @@ QWidget *build_workshop_page(engine::SteamWorkshopProvider *provider, QWidget *p
 // ?do=download link. The cookie is a session secret - it lives in the OS
 // keyring (same backend as the Nexus API key), never on disk in plain text.
 QWidget *build_loverslab_page(QWidget *parent) {
-  auto &auth   = engine::LoversLabAuth::instance();
+  auto &auth   = engine::Source::LoversLab::Auth::instance();
   auto *page   = new QWidget(parent);
   auto *layout = new QVBoxLayout(page);
 
@@ -605,11 +610,12 @@ QWidget *build_loverslab_page(QWidget *parent) {
 
   auto *status = new QLabel(group);
   status->setObjectName("llCookieStatus");
-  status->setText(auth.has_cookie()
-                      ? QWidget::tr("Stored: %1")
-                            .arg(QString::fromStdString(
-                                engine::LoversLabAuth::redact(auth.get_cookie())))
-                      : QWidget::tr("No cookie stored."));
+  status->setText(
+      auth.has_cookie()
+          ? QWidget::tr("Stored: %1")
+                .arg(QString::fromStdString(
+                    engine::Source::LoversLab::Auth::redact(auth.get_cookie())))
+          : QWidget::tr("No cookie stored."));
   v->addWidget(status);
 
   auto *btn_row   = new QHBoxLayout;
@@ -625,10 +631,11 @@ QWidget *build_loverslab_page(QWidget *parent) {
   layout->addStretch(1);
 
   auto update_status = [&auth, status](const std::string &cookie) {
-    status->setText(cookie.empty() ? QWidget::tr("No cookie stored.")
-                                   : QWidget::tr("Stored: %1")
-                                         .arg(QString::fromStdString(
-                                             engine::LoversLabAuth::redact(cookie))));
+    status->setText(cookie.empty()
+                        ? QWidget::tr("No cookie stored.")
+                        : QWidget::tr("Stored: %1")
+                              .arg(QString::fromStdString(
+                                  engine::Source::LoversLab::Auth::redact(cookie))));
   };
 
   QObject::connect(paste_btn, &QPushButton::clicked, [cookie_edit]() {
@@ -663,7 +670,7 @@ QWidget *build_source_settings_page(engine::SourceProvider *provider, QWidget *p
     return new NexusPanel(parent);
   }
   if (provider->source_type() == "steam") {
-    auto *ws = dynamic_cast<engine::SteamWorkshopProvider *>(provider);
+    auto *ws = dynamic_cast<engine::Source::Steam::Provider *>(provider);
     if (ws != nullptr)
       return build_workshop_page(ws, parent);
   }

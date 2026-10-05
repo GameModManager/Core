@@ -1,13 +1,13 @@
-#include "engine/source/nexus_provider.h"
+#include "engine/source/nexus/provider.h"
 #include "engine/source/download/curl_download.h"
 #include "engine/mod/model/mod.h"
 #include "engine/pipeline/pipeline.h"
 #include "engine/source/nxm/nxm_router.h"
 #include "engine/log/logger.h"
-#include "engine/source/nexus_auth.h"
-#include "engine/source/nexus_account.h"
-#include "engine/source/nexus_http.h"
-#include "engine/source/nexus_servers.h"
+#include "engine/source/nexus/auth.h"
+#include "engine/source/nexus/account.h"
+#include "engine/source/nexus/http.h"
+#include "engine/source/nexus/servers.h"
 #include "engine/network/network_manager.h"
 
 #include <curl/curl.h>
