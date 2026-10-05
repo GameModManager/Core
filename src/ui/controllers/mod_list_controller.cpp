@@ -2076,16 +2076,26 @@ void ModListController::load_meta_for_mods() {
         }
       }
 
+      // "direct" was the modl transport provider, registered as a source only
+      // so a SourceRegistry lookup would succeed. It never carried provenance
+      // - the host it came from was never attributable - so a mod stamped with
+      // it is exactly what "manual" means. Rewrite in place; there is no
+      // provider section to re-derive, because a direct-URL install never
+      // wrote one.
+      if (meta.source_type() == "direct") {
+        meta.set("GameModManager", "source_type", "manual");
+        upgraded = true;
+      }
+
       if (upgraded) {
         persist_meta(meta);
       }
     }
 
-    // Update ModEntry with source info. "direct" is a transport-only
-    // provider (modl:// flow) - not a user-attributable source. Skip it.
+    // Update ModEntry with source info.
     auto st  = meta.source_type();
     auto sid = meta.source_id();
-    if (!st.empty() && st != "direct") {
+    if (!st.empty()) {
       w_->mod_model_->set_source_info(mod.id, QString::fromStdString(st),
                                       QString::fromStdString(sid),
                                       QString::fromStdString(meta.source_page_url()));
