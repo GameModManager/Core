@@ -365,13 +365,14 @@ namespace Source {
           meta.set("LoversLab", "archive_filename", mod.archive_filename);
       }
 
-      // modl:// is a transport protocol, not a source - the [Modl] section
+      // modl:// is a URI handler, not a source - the [Modl] section
       // is no longer written. Source attribution for modl-derived downloads
       // comes from the direct URL's host (see Router::derive_source_from_direct_url):
-      // a mod.pub direct URL -> [ModPub] below; an arbitrary https URL ->
-      // [GameModManager] source_type="direct" only, with no provider section.
-      // Legacy mods with a [Modl] section still read it via source_page_url()
-      // for backward compatibility; the section is never overwritten.
+      // a mod.pub direct URL -> [ModPub] below; any other host names no source,
+      // so the mod is recorded as [GameModManager] source_type="manual" with no
+      // provider section. Legacy mods with a [Modl] section still read it via
+      // source_page_url() for backward compatibility; the section is never
+      // overwritten.
 
       // ModPub is metadata-only - downloads route through modl://. Persist
       // the mod id, the canonical mod.pub page URL (carries game-slug + the
