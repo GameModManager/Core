@@ -222,7 +222,7 @@ gmm_catch2_test(icon_manager_test engine/icon_manager_test.cpp
 # any library (it is compiled into the app only), so compile it here.
 if(Qt6Keychain_FOUND)
     gmm_catch2_test(qtkeychain_test engine/qtkeychain_test.cpp
-        ${PROJECT_SOURCE_DIR}/src/keyring/qtkeychain_keyring.cpp
+        ${PROJECT_SOURCE_DIR}/src/engine/keyring/qtkeychain_keyring.cpp
         LIBS Qt6Keychain::Qt6Keychain Qt6::Core)
 endif()
 
