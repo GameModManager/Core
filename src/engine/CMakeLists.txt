@@ -110,7 +110,6 @@ instance/mod_state.cpp
     sort/sorter/registry.cpp
     sort/sorter/loot/sorter.cpp
     sort/sorter/loot/masterlists.cpp
-    source/steam/remote_cache.cpp
     source/steam/workshop_client.cpp
     platform/theme/theme_manager.cpp
     platform/tools/external_tool.cpp
