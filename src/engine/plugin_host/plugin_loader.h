@@ -4,7 +4,7 @@
 #include "engine/game/registry/game_knowledge.h"
 #include "engine/pipeline/registry/hook_registry.h"
 #include "engine/pipeline/registry/stage_registry.h"
-#include "engine/platform/tools/external_tool.h"
+#include "engine/tools/external_tool.h"
 
 #include <cstdint>
 #include <memory>

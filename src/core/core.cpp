@@ -26,7 +26,7 @@
 #include "engine/game/detect/game_detector.h"
 #include "engine/network/network_manager.h"
 #include "engine/plugin_host/plugin_loader.h"
-#include "engine/platform/theme/theme_manager.h"
+#include "engine/theme/theme_manager.h"
 #include "engine/source/loverslab/auth.h"
 #include "engine/source/nexus/auth.h"
 #include "engine/source/nxm/managed_games.h"

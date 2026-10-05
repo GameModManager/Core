@@ -9,7 +9,7 @@
 #include <string>
 #include <vector>
 
-#include "engine/platform/theme/theme_manager.h"
+#include "engine/theme/theme_manager.h"
 
 class QEvent;
 

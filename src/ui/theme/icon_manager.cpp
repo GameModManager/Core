@@ -1,5 +1,5 @@
 #include "ui/theme/icon_manager.h"
-#include "engine/platform/theme/theme_manager.h"
+#include "engine/theme/theme_manager.h"
 
 #include <QApplication>
 #include <QFileInfo>

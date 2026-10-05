@@ -3,7 +3,7 @@
 // macOS file type dispatcher stub - fork+exec / open based launch.
 // TODO: Implement full dispatch for .app, .jar, .command on macOS.
 
-#include "engine/platform/file_type_dispatch.h"
+#include "platform/file_type_dispatch.h"
 
 namespace engine {
 
