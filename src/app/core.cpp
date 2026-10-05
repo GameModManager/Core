@@ -1,4 +1,4 @@
-#include "core/core.h"
+#include "app/core.h"
 
 #include <QCommandLineParser>
 #include <QDir>
