@@ -8,7 +8,7 @@
 #include <system_error>
 #include <vector>
 
-#include "engine/core/vfs/path_resolver.h"
+#include "engine/vfs/path_resolver.h"
 
 namespace engine {
 

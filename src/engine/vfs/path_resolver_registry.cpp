@@ -1,4 +1,4 @@
-#include "engine/core/vfs/path_resolver_registry.h"
+#include "engine/vfs/path_resolver_registry.h"
 
 #include "engine/events/event_bus.h"
 
