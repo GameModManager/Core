@@ -12,7 +12,7 @@
 // provider registered in SourceRegistry, XDG_CONFIG_HOME pointed at a
 // throwaway dir).
 #include "engine/mod/meta/mod_meta.h"
-#include "engine/source/nexus_provider.h"
+#include "engine/source/nexus/provider.h"
 #include "engine/source/source_provider.h"
 #include "ui/modinfo/description_renderer.h"
 #include "ui/modinfo/mod_info_dialog.h"
@@ -110,9 +110,10 @@ static QApplication &shared_app() {
   return *app;
 }
 
-static ui::ModInfoData make_data(const std::string &id,
-                                 std::function<engine::ModInfoResult()> fetch,
-                                 const std::filesystem::path &mods_dir) {
+static ui::ModInfoData
+make_data(const std::string &id,
+          std::function<engine::Source::Nexus::ModInfoResult()> fetch,
+          const std::filesystem::path &mods_dir) {
   ui::ModInfoData data;
   data.id   = QString::fromStdString(id);
   data.name = QString::fromStdString(id);
@@ -178,10 +179,10 @@ TEST_CASE("source tab", "[ui]") {
     ui::SourceTab tab;
     auto data1 = make_data(
         "ModA",
-        [&]() -> engine::ModInfoResult {
+        [&]() -> engine::Source::Nexus::ModInfoResult {
           ++calls;
           on_worker = QThread::currentThread() != qApp->thread();
-          engine::ModInfoResult r;
+          engine::Source::Nexus::ModInfoResult r;
           r.available      = true;
           r.name           = "Fetched Mod";
           r.version        = "2.0";
@@ -242,12 +243,12 @@ TEST_CASE("source tab", "[ui]") {
     ui::SourceTab tab;
     auto data2 = make_data(
         "ModB",
-        [&]() -> engine::ModInfoResult {
+        [&]() -> engine::Source::Nexus::ModInfoResult {
           ++calls;
           on_worker = QThread::currentThread() != qApp->thread();
           if (calls == 1)
             gate.tryAcquire(1, 5000);  // park the worker
-          engine::ModInfoResult r;
+          engine::Source::Nexus::ModInfoResult r;
           r.available   = true;
           r.description = (calls == 2) ? "second result" : "first result";
           return r;

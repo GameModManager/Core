@@ -1,7 +1,7 @@
-// FileKeyring + NexusAuth keyring fallback/migration tests (Qt-free).
+// FileKeyring + Nexus::Auth keyring fallback/migration tests (Qt-free).
 #include "engine/keyring/keyring.h"
 #include "engine/log/logger.h"
-#include "engine/source/nexus_auth.h"
+#include "engine/source/nexus/auth.h"
 
 #include <cstdio>
 #include <cstdlib>
@@ -327,10 +327,10 @@ TEST_CASE("keyring", "[engine]") {
   // ---- NexusAuth with injected keyring (no OS keyring) ----------
   {
     fs::path primary_dir = temp_dir("primary");
-    engine::NexusAuth::instance().set_keyring(
+    engine::Source::Nexus::Auth::instance().set_keyring(
         std::make_unique<engine::FileKeyring>(primary_dir));
 
-    auto &auth = engine::NexusAuth::instance();
+    auto &auth = engine::Source::Nexus::Auth::instance();
     CHECK_MSG(!auth.has_api_key(), "no key initially");
     auth.set_api_key("injected-key-abc");
     CHECK_MSG(auth.has_api_key(), "key present after set");
@@ -341,7 +341,7 @@ TEST_CASE("keyring", "[engine]") {
 
   // ---- NexusAuth fallback to internal file storage ---------------
   {
-    auto &auth = engine::NexusAuth::instance();
+    auto &auth = engine::Source::Nexus::Auth::instance();
     auth.set_keyring(nullptr);  // force the file fallback path
     auth.set_api_key("fallback-key-xyz");
     CHECK_MSG(auth.has_api_key(), "fallback has key");
@@ -358,7 +358,7 @@ TEST_CASE("keyring", "[engine]") {
   // "falling back to insecure storage" warning could never fire. Assert on the
   // message the fallback path actually produces now.
   {
-    auto &auth = engine::NexusAuth::instance();
+    auto &auth = engine::Source::Nexus::Auth::instance();
     auth.set_keyring(nullptr);
     auth.set_api_key("warn-on-read-key");
     // Static because Logger::add_callback holds its callback for the life of
@@ -399,9 +399,9 @@ TEST_CASE("keyring", "[engine]") {
                   fs::copy_options::overwrite_existing);
     fs::remove(gmm_dir / "keyring_seed.dat");
 
-    engine::NexusAuth::instance().set_keyring(
+    engine::Source::Nexus::Auth::instance().set_keyring(
         std::make_unique<engine::FileKeyring>(primary_dir));
-    auto &auth = engine::NexusAuth::instance();
+    auto &auth = engine::Source::Nexus::Auth::instance();
     CHECK_MSG(auth.get_api_key() == "migrating-key-777",
               "legacy key migrated into keyring");
     CHECK_MSG(!fs::exists(gmm_dir / "nexus_auth.dat"),

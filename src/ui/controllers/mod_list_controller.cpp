@@ -66,7 +66,7 @@
 #include "engine/source/git/git_info.h"
 #include "engine/source/loverslab/provider.h"
 #include "engine/source/modpub/provider.h"
-#include "engine/source/nexus_provider.h"
+#include "engine/source/nexus/provider.h"
 #include "engine/source/nxm/managed_games.h"
 #include "engine/source/router.h"
 #include "engine/source/source_provider.h"
@@ -2871,7 +2871,7 @@ ui::ModInfoData ModListController::build_mod_info_data(const ModEntry &mod) {
     auto *provider = dynamic_cast<engine::Source::Nexus::Provider *>(
         engine::SourceRegistry::instance().provider_for("nexus"));
     if (!provider || domain.isEmpty() || live_id.isEmpty())
-      return engine::ModInfoResult{};
+      return engine::Source::Nexus::ModInfoResult{};
     return provider->fetch_mod_info(domain.toStdString(), live_id.toStdString());
   };
 
@@ -2899,7 +2899,7 @@ ui::ModInfoData ModListController::build_mod_info_data(const ModEntry &mod) {
     auto *provider = dynamic_cast<engine::Source::LoversLab::Provider *>(
         engine::SourceRegistry::instance().provider_for("loverslab"));
     if (!provider)
-      return engine::LoversLabModInfoResult{};
+      return engine::Source::LoversLab::ModInfoResult{};
     // Prefer the full page URL when we have one - the slug survives the
     // round-trip and the JSON-LD `url` field will agree.
     const std::string arg =

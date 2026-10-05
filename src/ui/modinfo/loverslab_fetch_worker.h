@@ -1,6 +1,6 @@
 #pragma once
 
-#include "engine/source/loverslab_provider.h"
+#include "engine/source/loverslab/provider.h"
 
 #include <QObject>
 
@@ -23,10 +23,11 @@ public:
   // Runs on the worker thread. Only ever invoked through
   // LoversLabFetchThread::start(). Never throws; a fetch that fails
   // simply yields ModInfoResult::available=false.
-  void run(std::function<engine::LoversLabModInfoResult()> fetch, quint64 generation);
+  void run(std::function<engine::Source::LoversLab::ModInfoResult()> fetch,
+           quint64 generation);
 
 signals:
-  void finished(engine::LoversLabModInfoResult result, quint64 generation);
+  void finished(engine::Source::LoversLab::ModInfoResult result, quint64 generation);
 };
 
 // Long-lived worker thread reusing the LootSortThread shape. start()
@@ -41,7 +42,8 @@ public:
 
   LoversLabFetchWorker *worker() const { return worker_; }
 
-  void start(std::function<engine::LoversLabModInfoResult()> fetch, quint64 generation);
+  void start(std::function<engine::Source::LoversLab::ModInfoResult()> fetch,
+             quint64 generation);
 
 private:
   QThread *thread_              = nullptr;
@@ -50,4 +52,4 @@ private:
 
 }  // namespace ui
 
-Q_DECLARE_METATYPE(engine::LoversLabModInfoResult)
+Q_DECLARE_METATYPE(engine::Source::LoversLab::ModInfoResult)

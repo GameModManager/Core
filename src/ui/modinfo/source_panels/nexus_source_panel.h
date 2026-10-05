@@ -2,7 +2,7 @@
 
 #include "ui/modinfo/source_panels/source_info_panel.h"
 
-#include "engine/source/nexus_provider.h"
+#include "engine/source/nexus/provider.h"
 
 #include <QCheckBox>
 #include <QComboBox>
@@ -35,8 +35,9 @@ private:
   void render_description();
   void on_refresh();
   void launch_fetch();
-  void on_fetch_finished(engine::ModInfoResult result, quint64 generation);
-  void apply_fetch_result(const engine::ModInfoResult &result);
+  void on_fetch_finished(engine::Source::Nexus::ModInfoResult result,
+                         quint64 generation);
+  void apply_fetch_result(const engine::Source::Nexus::ModInfoResult &result);
   void on_visit();
   void on_visit_custom();
   void on_custom_url_toggled();

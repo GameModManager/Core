@@ -1,7 +1,7 @@
 #pragma once
 
 #include "engine/source/interface.h"
-#include "engine/source/workshop/workshop_client.h"
+#include "engine/source/steam/workshop_client.h"
 
 #include <memory>
 #include <mutex>
