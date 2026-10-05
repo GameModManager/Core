@@ -24,7 +24,7 @@
 //
 // Hermeticity: one throwaway root per TEST_CASE with XDG_CONFIG_HOME and
 // XDG_DATA_HOME inside it, the main_window_harness_test.cpp shape.
-#include "engine/core/instance/instance.h"
+#include "engine/instance/instance.h"
 #include "engine/game/registry/game_capabilities.h"
 #include "engine/game/registry/game_knowledge.h"
 #include "platform/platform.h"

@@ -1,5 +1,5 @@
 #include "engine/pipeline/install_stage.h"
-#include "engine/core/instance/instance.h"
+#include "engine/instance/instance.h"
 #include "engine/log/logger.h"
 #include "engine/mod/meta/mod_meta.h"
 #include "engine/mod/model/mod.h"

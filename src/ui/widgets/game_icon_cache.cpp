@@ -1,6 +1,6 @@
 #include "ui/widgets/game_icon_cache.h"
 
-#include "engine/core/instance/game_icons.h"
+#include "engine/instance/game_icons.h"
 #include "engine/log/logger.h"
 
 #include <QMetaObject>

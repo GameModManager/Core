@@ -1,6 +1,6 @@
-#include "engine/core/instance/instance.h"
+#include "engine/instance/instance.h"
 
-#include "engine/core/instance/toml_utils.h"
+#include "engine/instance/toml_utils.h"
 #include "platform/platform.h"
 
 #include <cctype>

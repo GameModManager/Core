@@ -1,6 +1,6 @@
-#include "engine/core/instance/instance_utils.h"
+#include "engine/instance/instance_utils.h"
 
-#include "engine/core/instance/toml_utils.h"
+#include "engine/instance/toml_utils.h"
 #include "engine/log/logger.h"
 #include "engine/util/fs_utils.h"
 #include "engine/deploy/core.h"

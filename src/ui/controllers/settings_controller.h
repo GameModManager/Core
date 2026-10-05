@@ -7,7 +7,7 @@
 #include <optional>
 #include <string>
 
-#include "engine/core/instance/instance.h"
+#include "engine/instance/instance.h"
 #include "engine/gmmpack/types.h"
 #include "ui/main_window/main_window.h"
 

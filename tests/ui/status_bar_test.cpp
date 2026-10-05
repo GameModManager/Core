@@ -20,7 +20,7 @@
 // GameKnowledge. No network: the source providers are only asked for their
 // in-process budget state. The Steam case uses the real provider the
 // DownloadsController registers, so it asserts the shipped readout shape.
-#include "engine/core/instance/instance.h"
+#include "engine/instance/instance.h"
 #include "engine/game/registry/game_knowledge.h"
 #include "engine/source/interface.h"
 #include "engine/source/registry.h"

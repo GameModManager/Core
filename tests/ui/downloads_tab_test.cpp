@@ -62,7 +62,7 @@
 #include "ui/settings/settings.h"
 #include "ui/theme/icon_manager.h"
 
-#include "engine/core/instance/instance.h"
+#include "engine/instance/instance.h"
 #include "engine/log/logger.h"
 #include "engine/game/registry/game_capabilities.h"
 #include "engine/game/registry/game_knowledge.h"

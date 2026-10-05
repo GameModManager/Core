@@ -12,8 +12,8 @@
 //
 // Engine layer, Qt-free, JSON serializable (nlohmann/json).
 
-#include "engine/core/instance/instance.h"
-#include "engine/core/instance/mod_state.h"
+#include "engine/instance/instance.h"
+#include "engine/instance/mod_state.h"
 #include "engine/profile/profile.h"
 
 #include <cstdint>

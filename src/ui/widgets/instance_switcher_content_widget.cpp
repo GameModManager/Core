@@ -7,8 +7,8 @@
 #include <QStyle>
 #include <QVBoxLayout>
 
-#include "engine/core/instance/instance_utils.h"
-#include "engine/core/instance/toml_utils.h"
+#include "engine/instance/instance_utils.h"
+#include "engine/instance/toml_utils.h"
 #include "engine/pipeline/plugin_host/plugin_loader.h"
 #include "ui/settings/settings.h"
 #include "ui/widgets/game_icon_cache.h"

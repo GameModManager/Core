@@ -1,5 +1,5 @@
 #include "ui/controllers/mod_actions.h"
-#include "engine/core/instance/instance_utils.h"
+#include "engine/instance/instance_utils.h"
 #include "engine/log/logger.h"
 #include "engine/mod/meta/categories.h"
 #include "engine/mod/meta/mod_meta.h"

@@ -20,7 +20,7 @@
 #include <vector>
 #include <catch2/catch_test_macros.hpp>
 
-#include "engine/core/instance/instance_utils.h"
+#include "engine/instance/instance_utils.h"
 #include "engine/deploy/launch/launcher.h"
 #include "engine/game/registry/game_knowledge.h"
 

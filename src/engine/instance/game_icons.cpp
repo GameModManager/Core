@@ -1,6 +1,6 @@
-#include "engine/core/instance/game_icons.h"
+#include "engine/instance/game_icons.h"
 
-#include "engine/core/instance/instance_utils.h"
+#include "engine/instance/instance_utils.h"
 #include "engine/source/download/curl_download.h"
 #include "engine/network/network_manager.h"
 

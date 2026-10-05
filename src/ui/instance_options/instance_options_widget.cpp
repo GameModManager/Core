@@ -1,7 +1,7 @@
 #include "ui/instance_options/instance_options_widget.h"
 
 #include "engine/deploy/deploy_utils.h"
-#include "engine/core/instance/instance.h"
+#include "engine/instance/instance.h"
 #include "engine/deploy/launch/overlay_launcher.h"
 #include "engine/pipeline/plugin_host/plugin_loader.h"
 #include "engine/deploy/launch/proton_tools.h"
