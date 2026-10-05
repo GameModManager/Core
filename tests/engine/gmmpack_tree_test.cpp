@@ -4,7 +4,7 @@
 // recursive tree.json structure. The parse_tree() function (JSON -> typed
 // structs) is tested via the full round-trip in gmmpack_test.cpp.
 
-#include "engine/gmmpack/tree_parser.h"
+#include "engine/modpack/gmmpack/tree_parser.h"
 
 #include <catch2/catch_test_macros.hpp>
 #include <nlohmann/json.hpp>

@@ -10,9 +10,9 @@
 //   - Resolver stamps collection membership on resolve()
 //   - ModMeta collection key roundtrip + clear_collection
 
-#include "engine/collection/manifest.h"
-#include "engine/collection/resolver.h"
-#include "engine/collection/sync.h"
+#include "engine/modpack/collection/manifest.h"
+#include "engine/modpack/collection/resolver.h"
+#include "engine/modpack/collection/sync.h"
 #include "engine/mod/meta/mod_meta.h"
 #include "engine/mod/model/mod.h"
 

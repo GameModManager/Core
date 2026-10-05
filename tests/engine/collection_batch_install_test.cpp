@@ -9,8 +9,8 @@
 //   - user cancel stops the batch, rest reported NotAttempted
 //   - pipeline gets a copy (collection stays pristine)
 
-#include "engine/collection/batch_installer.h"
-#include "engine/collection/resolver.h"
+#include "engine/modpack/collection/batch_installer.h"
+#include "engine/modpack/collection/resolver.h"
 
 #include <catch2/catch_test_macros.hpp>
 

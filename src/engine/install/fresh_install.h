@@ -21,7 +21,7 @@
 #include <vector>
 
 #include "engine/instance/installed_pack_state.h"
-#include "engine/gmmpack/types.h"
+#include "engine/modpack/gmmpack/types.h"
 
 namespace engine::Install {
 

@@ -7,8 +7,8 @@
 //   - Unresolvable mods produce diagnostics
 //   - Phase grouping preserves manifest order
 
-#include "engine/collection/provider.h"
-#include "engine/collection/resolver.h"
+#include "engine/modpack/collection/provider.h"
+#include "engine/modpack/collection/resolver.h"
 
 #include <catch2/catch_test_macros.hpp>
 

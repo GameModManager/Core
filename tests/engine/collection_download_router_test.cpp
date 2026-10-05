@@ -1,5 +1,5 @@
 // Test for engine::Collection download path routing.
-#include "engine/collection/download_router.h"
+#include "engine/modpack/collection/download_router.h"
 
 #include <catch2/catch_test_macros.hpp>
 

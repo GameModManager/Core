@@ -5,7 +5,7 @@
 // output capture, and launcher LaunchParams conversion. Entries are built
 // directly (archive parsing is covered by gmmpack_test).
 
-#include "engine/gmmpack/executable_pipeline.h"
+#include "engine/modpack/gmmpack/executable_pipeline.h"
 
 #include <atomic>
 #include <cstdio>

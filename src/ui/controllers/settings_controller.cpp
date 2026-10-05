@@ -39,7 +39,7 @@
 #include "engine/game/detect/game_detector.h"
 #include "engine/game/registry/game_features/game_feature_registry.h"
 #include "engine/game/registry/game_knowledge.h"
-#include "engine/gmmpack/unpacker.h"
+#include "engine/modpack/gmmpack/unpacker.h"
 #include "engine/mod/meta/category_set_registry.h"
 #include "engine/mod/overwrite/overwrite_utils.h"
 #include "engine/pipeline/extract_stage.h"

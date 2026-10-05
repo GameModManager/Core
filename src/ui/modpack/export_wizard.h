@@ -9,7 +9,7 @@
 #include <vector>
 
 #include "engine/instance/instance_snapshot.h"
-#include "engine/gmmpack/packer.h"
+#include "engine/modpack/gmmpack/packer.h"
 
 class QCloseEvent;
 class QListWidget;
