@@ -121,12 +121,6 @@ static bool check_launch_executable(const fs::path &game_dir, const fs::path &st
 
 static LaunchResult do_launch(const LaunchParams &params);
 
-// Truthy check for an opt-in env flag: set and not "0".
-static bool env_is_true(const char *name) {
-  const char *v = std::getenv(name);
-  return v && *v && v[0] != '0';
-}
-
 // POD-only wire format for the launch result pipe. LaunchResult contains a
 // std::string (cgroup_path) whose internal heap pointers are only valid in the
 // child's address space after fork(); serializing the whole struct across the
@@ -378,55 +372,8 @@ static LaunchResult do_launch(const LaunchParams &params) {
   // game-launch) process; the OverlayFS child, Proton, and the game inherit
   // them via fork/exec. Explicit overrides take precedence over inherited
   // values (setenv overwrite=1), which is what lets WINEDEBUG=+file and
-  // friends reach the tool while leaving everything else untouched. These are
-  // applied before downstream launch decisions (e.g. the broken-CI-shim
-  // opt-in gate) so launch knobs can be supplied per executable via the
-  // Environment field.
+  // friends reach the tool while leaving everything else untouched.
   apply_launch_env(params.environment);
-
-  // === BROKEN FEATURE - DO NOT ENABLE ===
-  // The custom case-insensitive interposer (libgmm_ci_intercept.so) is
-  // broken and must NEVER be preloaded. It shadows Wine's own (correct)
-  // case-insensitive path handling: its ENOENT re-resolution actively
-  // breaks Windows tools that read the deployed game tree. The Pandora
-  // "Could not find file Z:\...\Data\meshes\actors\..." failures
-  // (2026-08-09) were caused by THIS shim, not by missing files - Wine's
-  // native case-insensitivity resolves those lookups correctly. Our shim
-  // only fights the runtime it is injected into.
-  // The library, its build target and its unit test are kept in-tree purely
-  // as reference. It stays inert unless GMM_ENABLE_BROKEN_CI_SHIM is set to
-  // a truthy value - re-enabling it without a genuine case-sensitivity bug
-  // that Wine itself cannot handle is a mistake. (If you do, remove the
-  // stale GMM_NO_CI_SHIM entries from executable Environment fields first.)
-  const bool ci_shim_enabled =
-      params.ci_resolve && env_is_true("GMM_ENABLE_BROKEN_CI_SHIM");
-  if (ci_shim_enabled) {
-    static const fs::path ci_so = []() {
-      std::error_code e;
-      auto self = fs::read_symlink("/proc/self/exe", e);
-      if (e)
-        return fs::path();
-      auto d = self.parent_path();
-      for (const auto &cand : {d / "libgmm_ci_intercept.so",
-                               d.parent_path() / "lib" / "libgmm_ci_intercept.so"}) {
-        if (fs::exists(cand, e))
-          return cand;
-      }
-      return fs::path();
-    }();
-    if (!ci_so.empty()) {
-      auto cur        = getenv("LD_PRELOAD");
-      std::string pre = ci_so.string() + (cur && cur[0] ? ":" + std::string(cur) : "");
-      setenv("LD_PRELOAD", pre.c_str(), 1);
-      setenv("GMM_CI_ENABLED", "1", 1);
-      setenv("GMM_CI_ROOT", params.game_dir.c_str(), 1);
-      if (gmm_debug_enabled())
-        setenv("GMM_CI_DEBUG", "1", 1);
-      Logger::instance().debug("CI shim: preloaded " + ci_so.string());
-    } else {
-      Logger::instance().warn("CI shim enabled but libgmm_ci_intercept.so not found");
-    }
-  }
 
 #ifdef GMM_PLATFORM_LINUX
   // Priority 1: OverlayFS - kernel VFS level, works for any binary format.

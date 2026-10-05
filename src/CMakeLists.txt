@@ -137,18 +137,4 @@ if(UNIX AND NOT APPLE)
         AUTOMOC OFF
         LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}"
     )
-
-    # === BROKEN FEATURE - DO NOT ENABLE ===
-    # libgmm_ci_intercept.so is a case-insensitive syscall interposer that is
-    # broken: it shadows Wine's own case-insensitivity and broke Pandora's
-    # game-tree reads (2026-08-09). It is built + unit-tested only as
-    # kept-reference. do_launch never preloads it unless
-    # GMM_ENABLE_BROKEN_CI_SHIM is explicitly set. Do not rely on it.
-    add_library(gmm_ci_intercept SHARED engine/deploy/launch/ci_intercept.c)
-    target_include_directories(gmm_ci_intercept PRIVATE ${PROJECT_SOURCE_DIR}/src)
-    target_link_libraries(gmm_ci_intercept PRIVATE dl)
-    set_target_properties(gmm_ci_intercept PROPERTIES
-        AUTOMOC OFF
-        LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}"
-    )
 endif()

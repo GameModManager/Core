@@ -768,13 +768,6 @@ if(UNIX AND NOT APPLE)
     add_test(NAME overlay_intercept_test COMMAND overlay_intercept_test)
     set_tests_properties(overlay_intercept_test PROPERTIES ENVIRONMENT "TZ=UTC")
 
-    add_executable(ci_intercept_test engine/ci_intercept_test.c)
-    target_compile_definitions(ci_intercept_test PRIVATE
-        GMM_CI_SO="${CMAKE_BINARY_DIR}/libgmm_ci_intercept.so")
-    target_link_libraries(ci_intercept_test PRIVATE ${CMAKE_DL_LIBS})
-    add_test(NAME ci_intercept_test COMMAND ci_intercept_test)
-    set_tests_properties(ci_intercept_test PROPERTIES ENVIRONMENT "TZ=UTC")
-
     # Deliberate leak that MUST still be reported. The binary links the same
     # suppression list as every other test; PASS_REGULAR_EXPRESSION matches
     # LSan's report, so a suppression entry broad enough to hide our own

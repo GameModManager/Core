@@ -55,15 +55,6 @@ struct LaunchParams {
   std::filesystem::path bind_mount_source;
   std::filesystem::path bind_mount_target;
 
-  // === BROKEN FEATURE - DO NOT ENABLE ===
-  // Historical arm switch for the libgmm_ci_intercept.so case-insensitive
-  // interposer. The shim is broken - it shadows Wine's own case-insensitive
-  // path handling and broke Pandora's game-tree reads (2026-08-09). do_launch
-  // never preloads it unless GMM_ENABLE_BROKEN_CI_SHIM is explicitly set to a
-  // truthy value. Kept only so the old wiring stays documented; do not build
-  // on this flag.
-  bool ci_resolve = false;
-
   // Per-executable environment overrides, each "KEY=VALUE". Applied to the
   // launched process (inherited by the overlay child / Proton / the game).
   // Entries without '=' are ignored with a warning. Empty = inherit the
