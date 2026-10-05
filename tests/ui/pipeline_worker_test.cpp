@@ -19,6 +19,9 @@
 //      alongside; with it OFF, Nexus downloads parallelize again.
 //   7. A failed install reports the reason the pipeline stage recorded, not a
 //      generic literal - that reason is what the UI shows the user.
+//   8. A modl:// download stamps the source its direct URL's host names:
+//      mod.pub -> "modpub", anything else -> "manual" - never "direct", which
+//      is a transport, not a source.
 //
 // Hermetic: QCoreApplication (no widgets), fake providers write local files,
 // no network, throwaway temp dir.
@@ -71,8 +74,16 @@ public:
 
   std::string source_type() const override { return source_type_; }
 
-  bool fetch(const engine::Mod &, engine::PipelineContext &ctx,
+  bool fetch(const engine::Mod &mod, engine::PipelineContext &ctx,
              const std::filesystem::path &dest_path) override {
+    {
+      // What the mod carried into fetch(). The source-stamp assertions read
+      // this, so a wrong source_type cannot pass by still producing a file.
+      std::lock_guard<std::mutex> lk(stamp_mu_);
+      stamp_source_type_ = mod.download_source_type;
+      stamp_source_id_   = mod.download_source_id;
+      stamp_url_         = mod.download_url;
+    }
     started_.fetch_add(1);
     {
       std::lock_guard<std::mutex> lk(entry_mu_);
@@ -149,8 +160,25 @@ public:
     std::lock_guard<std::mutex> lk(max_mu_);
     return max_active_;
   }
+  // The mod as the provider saw it on the most recent fetch.
+  std::string last_source_type() const {
+    std::lock_guard<std::mutex> lk(stamp_mu_);
+    return stamp_source_type_;
+  }
+  std::string last_source_id() const {
+    std::lock_guard<std::mutex> lk(stamp_mu_);
+    return stamp_source_id_;
+  }
+  std::string last_url() const {
+    std::lock_guard<std::mutex> lk(stamp_mu_);
+    return stamp_url_;
+  }
 
 private:
+  mutable std::mutex stamp_mu_;
+  std::string stamp_source_type_;
+  std::string stamp_source_id_;
+  std::string stamp_url_;
   std::atomic<int> started_{0};
   std::atomic<int> completed_{0};
   std::atomic<int> active_{0};
@@ -515,6 +543,60 @@ TEST_CASE("pipeline worker", "[ui]") {
               5000),
           "a successful install still emits install_complete");
     check(outcome("empty-1").first, "an install with nothing to extract still succeeds");
+  }
+
+  // --- 8) modl:// is a URI handler, so the source stamp comes from the host
+  // the direct URL points at, never from modl itself: mod.pub -> "modpub",
+  // anything else -> "manual". Fakes stand in for the two providers so the
+  // stamp and the fetch are both observed without a network; the routing from
+  // an unregistered stamp to the real transport is covered by
+  // fetch_provider_for in the pipeline test.
+  {
+    auto manual_provider = std::make_unique<FakeProvider>("manual");
+    FakeProvider *mfake  = manual_provider.get();
+    engine::SourceRegistry::instance().register_provider(std::move(manual_provider));
+    auto modpub_provider = std::make_unique<FakeProvider>("modpub");
+    FakeProvider *pfake  = modpub_provider.get();
+    engine::SourceRegistry::instance().register_provider(std::move(modpub_provider));
+
+    const auto start_modl = [&](const std::string &id, const std::string &url) {
+      engine::Source::ModlLink link;
+      link.game_id    = "skyrim";
+      link.direct_url = url;
+      link.full_url   = "modl://skyrim/?url=" + url;
+      worker.download_modl(id, link, "skyrim", mods.string());
+    };
+
+    // Non-mod.pub host: no source is attributable, so the mod is "manual" and
+    // never "direct".
+    mfake->set_barrier(false);
+    start_modl("m1", "https://cdn.example.org/files/22-stay-at-the-page.zip");
+    check(wait_until(
+              [&] {
+                return has_completion("m1");
+              },
+              5000),
+          "a modl:// download from a non-mod.pub host still downloads");
+    check(mfake->last_source_type() == "manual",
+          "modl:// from a non-mod.pub host stamps manual, not direct");
+    check(mfake->last_source_id() == "22-stay-at-the-page.zip",
+          "the archive basename becomes the source id");
+    check(mfake->last_url() == "https://cdn.example.org/files/22-stay-at-the-page.zip",
+          "the resolved direct URL rides along for the fetch");
+
+    // mod.pub host: ModPub is a real source and keeps winning, modl or not.
+    pfake->set_barrier(false);
+    start_modl("p1", "https://mod.pub/skyrim-se/22-stay-at-the-system-page-ng.zip");
+    check(wait_until(
+              [&] {
+                return has_completion("p1");
+              },
+              5000),
+          "a mod.pub modl:// download still downloads");
+    check(pfake->last_source_type() == "modpub",
+          "a mod.pub modl:// link still attributes to ModPub");
+    check(pfake->last_source_id() == "22",
+          "the ModPub mod id is extracted from the page URL");
   }
 
   std::filesystem::remove_all(base, ec);
