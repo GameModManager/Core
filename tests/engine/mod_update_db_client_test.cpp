@@ -4,7 +4,7 @@
 // (a FakeModUpdateDbClient subclass that returns canned bodies, just
 // like FakeNetworkManager does for network_test). LoversLab is
 // untouched; this client is the default update-badge path.
-#include "engine/update/mod_update_db_client.h"
+#include "engine/source/update/mod_update_db_client.h"
 
 #include "engine/instance/instance_utils.h"
 

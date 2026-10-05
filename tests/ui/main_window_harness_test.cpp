@@ -31,7 +31,7 @@
 #include "engine/instance/instance.h"
 #include "engine/game/registry/game_capabilities.h"
 #include "engine/game/registry/game_knowledge.h"
-#include "engine/update/mod_update_db_client.h"
+#include "engine/source/update/mod_update_db_client.h"
 #include "platform/platform.h"
 #include "ui/controllers/downloads_controller.h"
 #include "ui/controllers/mod_list_controller.h"

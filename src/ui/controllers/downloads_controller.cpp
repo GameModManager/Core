@@ -23,7 +23,7 @@
 #include "engine/log/logger.h"
 #include "engine/trace/trace_recorder.h"
 #include "engine/util/fs_utils.h"
-#include "engine/update/mod_update_db_client.h"
+#include "engine/source/update/mod_update_db_client.h"
 #include "engine/deploy/interface.h"
 #include "engine/deploy/launch/overlay_launcher.h"
 #include "engine/game/registry/game_knowledge.h"
