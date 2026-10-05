@@ -1,4 +1,4 @@
-#include "engine/collection/choice_groups.h"
+#include "engine/modpack/collection/choice_groups.h"
 
 #include "engine/log/logger.h"
 

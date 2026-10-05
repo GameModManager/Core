@@ -1,4 +1,4 @@
-#include "engine/collection/nexus/collection_zip.h"
+#include "engine/modpack/collection/nexus/collection_zip.h"
 
 #include "engine/log/logger.h"
 #include "engine/mod/archive/archive_extractor.h"

@@ -2,7 +2,7 @@
 // prior-choice reconciliation for incremental updates.
 // Source-agnostic - operates on Collection::ChoiceGroup picks only.
 
-#include "engine/collection/choice_groups.h"
+#include "engine/modpack/collection/choice_groups.h"
 
 #include <string>
 #include <catch2/catch_test_macros.hpp>

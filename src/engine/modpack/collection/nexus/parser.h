@@ -8,7 +8,7 @@
 //
 // Engine layer - Qt-free. Depends on nlohmann/json for parsing.
 
-#include "engine/collection/manifest.h"
+#include "engine/modpack/collection/manifest.h"
 
 #include <stdexcept>
 #include <string>

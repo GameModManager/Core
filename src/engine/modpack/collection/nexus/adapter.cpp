@@ -1,7 +1,7 @@
-#include "engine/collection/nexus/adapter.h"
+#include "engine/modpack/collection/nexus/adapter.h"
 
-#include "engine/collection/nexus/collection_zip.h"
-#include "engine/collection/nexus/parser.h"
+#include "engine/modpack/collection/nexus/collection_zip.h"
+#include "engine/modpack/collection/nexus/parser.h"
 #include "engine/log/logger.h"
 #include "engine/network/network_manager.h"
 #include "engine/network/nexus_v2/client.h"

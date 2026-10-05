@@ -3,7 +3,7 @@
 // usable: default construction, enum values, variant dispatch, round-trip
 // field access.
 
-#include "engine/collection/manifest.h"
+#include "engine/modpack/collection/manifest.h"
 
 #include <catch2/catch_test_macros.hpp>
 

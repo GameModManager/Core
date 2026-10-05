@@ -15,9 +15,9 @@
 //
 // Engine layer - Qt-free.
 
-#include "engine/collection/download_router.h"
-#include "engine/collection/manifest.h"
-#include "engine/collection/provider.h"
+#include "engine/modpack/collection/download_router.h"
+#include "engine/modpack/collection/manifest.h"
+#include "engine/modpack/collection/provider.h"
 #include "engine/network/nexus_v2/collection_revision.h"
 
 #include <functional>

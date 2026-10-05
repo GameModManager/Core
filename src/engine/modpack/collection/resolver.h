@@ -14,7 +14,7 @@
 //
 // Engine layer - Qt-free.
 
-#include "engine/collection/manifest.h"
+#include "engine/modpack/collection/manifest.h"
 #include "engine/mod/model/mod.h"
 
 #include <string>

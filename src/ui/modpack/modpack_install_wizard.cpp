@@ -29,8 +29,8 @@
 #include <filesystem>
 #include <system_error>
 
-#include "engine/collection/download_router.h"
-#include "engine/collection/nexus/adapter.h"
+#include "engine/modpack/collection/download_router.h"
+#include "engine/modpack/collection/nexus/adapter.h"
 #include "engine/log/logger.h"
 #include "engine/gmmpack/unpacker.h"
 #include "engine/mod/model/mod.h"
