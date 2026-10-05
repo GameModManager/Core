@@ -24,7 +24,7 @@
 #include "engine/game/registry/game_knowledge.h"
 #include "engine/source/interface.h"
 #include "engine/source/registry.h"
-#include "engine/source/steam_workshop_provider.h"
+#include "engine/source/steam/provider.h"
 #include "ui/main_window/main_window.h"
 #include "ui/settings/settings.h"
 #include "ui/widgets/status_bar.h"

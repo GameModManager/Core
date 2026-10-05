@@ -123,7 +123,7 @@ public:
 // worker, the ModPub mod-info panel, the ModInfoData lambda return type)
 // can spell it as engine::ModPubModInfoResult without a separate include
 // of the UI mod_info_data.h header. Mirrors the LoversLab pattern in
-// engine/source/loverslab_provider.h.
+// engine/source/loverslab/provider.h.
 namespace engine {
 using ModPubModInfoResult = Source::ModPub::ModInfoResult;
 }  // namespace engine

@@ -9,14 +9,15 @@ namespace ui {
 
 SourceFetchWorker::SourceFetchWorker(QObject *parent) : QObject(parent) {}
 
-void SourceFetchWorker::run(std::function<engine::ModInfoResult()> fetch,
+void SourceFetchWorker::run(std::function<engine::Source::Nexus::ModInfoResult()> fetch,
                             quint64 generation) {
-  engine::ModInfoResult result = fetch ? fetch() : engine::ModInfoResult{};
+  engine::Source::Nexus::ModInfoResult result =
+      fetch ? fetch() : engine::Source::Nexus::ModInfoResult{};
   emit finished(std::move(result), generation);
 }
 
 SourceFetchThread::SourceFetchThread(QObject *parent) : QObject(parent) {
-  qRegisterMetaType<engine::ModInfoResult>();
+  qRegisterMetaType<engine::Source::Nexus::ModInfoResult>();
   thread_ = new QThread(this);
   thread_->setObjectName(QStringLiteral("gmm-source-fetch"));
   worker_ = new SourceFetchWorker(nullptr);
@@ -30,8 +31,8 @@ SourceFetchThread::~SourceFetchThread() {
   thread_->wait();
 }
 
-void SourceFetchThread::start(std::function<engine::ModInfoResult()> fetch,
-                              quint64 generation) {
+void SourceFetchThread::start(
+    std::function<engine::Source::Nexus::ModInfoResult()> fetch, quint64 generation) {
   SourceFetchWorker *worker = worker_;
   QMetaObject::invokeMethod(
       worker,

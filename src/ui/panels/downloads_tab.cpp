@@ -4,7 +4,7 @@
 
 #include "engine/log/logger.h"
 #include "engine/util/fs_utils.h"
-#include "engine/source/loverslab_provider.h"
+#include "engine/source/loverslab/provider.h"
 #include "ui/theme/icon_manager.h"
 #include "ui/widgets/task_dialog.h"
 #include "ui/widgets/web_link.h"
@@ -125,7 +125,8 @@ static std::string loverslab_drop_url(const QMimeData *data) {
   if (candidate.isEmpty())
     return {};
   const std::string url = candidate.toStdString();
-  return engine::LoversLabProvider::is_loverslab_url(url) ? url : std::string();
+  return engine::Source::LoversLab::Provider::is_loverslab_url(url) ? url
+                                                                    : std::string();
 }
 
 // --- DownloadsTab ---

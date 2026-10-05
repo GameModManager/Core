@@ -1,6 +1,6 @@
-// Test for NexusProvider::parse_mod_info — the pure JSON mapping behind the
+// Test for Nexus::Provider::parse_mod_info — the pure JSON mapping behind the
 // Mod Info Nexus tab "Refresh" button (mods/{game}/mods/{id}.json).
-#include "engine/source/nexus_provider.h"
+#include "engine/source/nexus/provider.h"
 
 #include <cstdio>
 #include <cstdlib>
@@ -15,8 +15,8 @@ void require(bool cond, const char *msg) {
 }  // namespace
 
 TEST_CASE("nexus provider", "[engine]") {
-  using engine::ModInfoResult;
-  using engine::NexusProvider;
+  using engine::Source::Nexus::ModInfoResult;
+  using engine::Source::Nexus::Provider;
 
   // --- Realistic mods/{game}/mods/{id}.json response. ---
   const std::string body =
@@ -30,7 +30,7 @@ TEST_CASE("nexus provider", "[engine]") {
           "description": "[size=3][b]RaceMenu[/b][/size]\r\n A description.",
           "author": "expired6978"
         })";
-  ModInfoResult r = NexusProvider::parse_mod_info(body);
+  ModInfoResult r = Provider::parse_mod_info(body);
   require(r.available, "available parsed");
   require(r.name == "RaceMenu", "name parsed");
   require(r.version == "0.4.20", "version parsed");
@@ -43,15 +43,15 @@ TEST_CASE("nexus provider", "[engine]") {
   // --- Unavailable mod: available=false but fields still present. ---
   const std::string hidden =
       R"({"name": "Hidden Mod", "available": false, "version": "1.0"})";
-  ModInfoResult h = NexusProvider::parse_mod_info(hidden);
+  ModInfoResult h = Provider::parse_mod_info(hidden);
   require(!h.available, "unavailable flag honored");
   require(h.name == "Hidden Mod" && h.version == "1.0",
           "fields still parsed when unavailable");
 
   // --- Garbage / non-object input -> empty result. ---
-  ModInfoResult bad = NexusProvider::parse_mod_info("not json {");
+  ModInfoResult bad = Provider::parse_mod_info("not json {");
   require(!bad.available && bad.name.empty(), "garbage yields empty result");
-  ModInfoResult arr = NexusProvider::parse_mod_info("[1,2,3]");
+  ModInfoResult arr = Provider::parse_mod_info("[1,2,3]");
   require(!arr.available, "non-object JSON yields empty result");
 }
 
@@ -59,8 +59,8 @@ TEST_CASE("nexus provider", "[engine]") {
 // that has a fallback: the pinned fileId while Nexus still serves it, the mod's
 // newest file once that file was archived or deleted upstream.
 TEST_CASE("nexus provider update policy file selection", "[engine]") {
-  using engine::ModInfoResult;
-  using engine::NexusProvider;
+  using engine::Source::Nexus::ModInfoResult;
+  using engine::Source::Nexus::Provider;
 
   // --- mods/{game}/mods/{id}/files.json. File 20 is archived upstream: it is
   // still listed in "files" but missing from "available_mod_files". ---
@@ -74,30 +74,30 @@ TEST_CASE("nexus provider update policy file selection", "[engine]") {
         "available_mod_files": [10, 30]
       }
     })";
-  const auto list        = NexusProvider::parse_file_list(body);
+  const auto list        = Provider::parse_file_list(body);
   require(list.ok, "file list parsed");
   require(list.available.size() == 2, "only downloadable files are available");
 
   // prefer: the pin survives when it is still there.
-  require(NexusProvider::select_file_id("prefer", 10, list) == 10,
+  require(Provider::select_file_id("prefer", 10, list) == 10,
           "prefer keeps a pin that is still available");
   // prefer: the pin is gone, fall back to the newest file.
-  require(NexusProvider::select_file_id("prefer", 20, list) == 30,
+  require(Provider::select_file_id("prefer", 20, list) == 30,
           "prefer falls back to the newest file when the pin is archived");
   // latest ignores the pin entirely.
-  require(NexusProvider::select_file_id("latest", 10, list) == 30,
+  require(Provider::select_file_id("latest", 10, list) == 30,
           "latest always takes the newest file");
   // exact has no fallback to offer and does not spend a request on the list.
-  require(NexusProvider::select_file_id("exact", 20, list) == 20,
+  require(Provider::select_file_id("exact", 20, list) == 20,
           "exact keeps its pin whatever the list says");
-  require(NexusProvider::select_file_id("exact", 0, list) == 0,
+  require(Provider::select_file_id("exact", 0, list) == 0,
           "exact with no pin yields nothing");
 
   // A failed or empty list never silently resolves to some other file.
-  const NexusProvider::FileList failed = NexusProvider::parse_file_list("not json {");
+  const Provider::FileList failed = Provider::parse_file_list("not json {");
   require(!failed.ok, "garbage yields an unusable list");
-  require(NexusProvider::select_file_id("prefer", 10, failed) == 0,
+  require(Provider::select_file_id("prefer", 10, failed) == 0,
           "prefer with no list reports failure instead of guessing");
-  require(NexusProvider::select_file_id("latest", 0, failed) == 0,
+  require(Provider::select_file_id("latest", 0, failed) == 0,
           "latest with no list reports failure");
 }
