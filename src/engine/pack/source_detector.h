@@ -34,7 +34,7 @@ enum class PackFormat {
 };
 
 // Adapter registry id for a format: "gmmpack", "nexus-collection", or ""
-// for Unknown. Matches Interface::format_id() in engine/pack/adapter.h.
+// for Unknown.
 [[nodiscard]] std::string_view format_id_of(PackFormat format);
 
 struct Detection {

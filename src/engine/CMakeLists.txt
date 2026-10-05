@@ -24,9 +24,7 @@ set(FOMOD_ENGINE_SOURCES
 set(ENGINE_SOURCES
     core/instance/instance.cpp
     core/instance/instance_utils.cpp
-    core/instance/instance_manager.cpp
     core/instance/instance_registry.cpp
-    core/instance/mo2_importer.cpp
     core/instance/toml_utils.cpp
 core/instance/mod_state.cpp
     core/instance/instance_snapshot.cpp
@@ -68,8 +66,6 @@ core/instance/mod_state.cpp
     deploy/core.cpp
     deploy/strategy_symlink.cpp
     deploy/strategy_direct.cpp
-    deploy/strategy_hardlink.cpp
-    deploy/strategy_junction.cpp
     deploy/strategy_overlayfs_deploy.cpp
     deploy/deploy_ledger.cpp
     deploy/deploy_utils.cpp
@@ -124,7 +120,6 @@ core/instance/mod_state.cpp
     mod/meta/category_set_registry.cpp
     mod/overwrite/overwrite_utils.cpp
 modpack/ini_edits.cpp
-    pack/adapter.cpp
 install/conflict_resolver.cpp
     modpack/incremental_update.cpp
     install/game_match_validator.cpp
@@ -168,7 +163,7 @@ collection/batch_installer.cpp
     update/macos_self_updater.cpp
     update/appimage_updater.cpp
     update/mod_update_db_client.cpp
-    core/keyring/keyring.cpp
+    keyring/keyring.cpp
     core/github.cpp
     collection/nexus/parser.cpp
     collection/nexus/adapter.cpp
@@ -178,8 +173,6 @@ collection/batch_installer.cpp
     deploy/launch/preload_interceptor.cpp
     deploy/launch/elevation.cpp
     deploy/launch/launcher.cpp
-    deploy/launch/usvfs_mapping.cpp
-    deploy/launch/usvfs_mapping.h
     deploy/launch/proton_tools.cpp
     proton/proton_tweaks.cpp
 gmmpack/schema_validator.cpp
@@ -192,14 +185,6 @@ gmmpack/schema_validator.cpp
     gmmpack/executable_pipeline.cpp
     ${FOMOD_ENGINE_SOURCES}
 )
-
-# FUSE/VFS strategies - Linux only
-if(NOT WIN32 AND FUSE3_FOUND)
-    list(APPEND ENGINE_SOURCES
-        deploy/strategy_vfs.cpp
-        deploy/strategy_overlayfs.cpp
-    )
-endif()
 
 # OverlayFS launcher - Linux-only APIs (clone, mount namespaces, setxattr,
 # /proc/*); excluded on macOS/Windows rather than ifdef'd per-error.
@@ -253,8 +238,4 @@ target_link_libraries(gmm_engine PRIVATE
 )
 if(NOT WIN32)
     target_link_libraries(gmm_engine PRIVATE ${CMAKE_DL_LIBS})
-    if(FUSE3_FOUND)
-        target_link_libraries(gmm_engine PRIVATE PkgConfig::FUSE3)
-        target_compile_definitions(gmm_engine PUBLIC HAS_FUSE3=1)
-    endif()
 endif()

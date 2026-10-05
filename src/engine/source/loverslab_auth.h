@@ -3,7 +3,7 @@
 // Backward-compat wrapper - consumers should migrate to engine/source/loverslab/auth.h
 #include "engine/source/loverslab/auth.h"
 
-#include "engine/core/keyring/keyring.h"
+#include "engine/keyring/keyring.h"
 
 #include <filesystem>
 #include <memory>

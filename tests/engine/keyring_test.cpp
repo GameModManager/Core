@@ -1,5 +1,5 @@
 // FileKeyring + NexusAuth keyring fallback/migration tests (Qt-free).
-#include "engine/core/keyring/keyring.h"
+#include "engine/keyring/keyring.h"
 #include "engine/core/log/logger.h"
 #include "engine/source/nexus_auth.h"
 

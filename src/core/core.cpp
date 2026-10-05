@@ -44,7 +44,7 @@
 #include "ui/widgets/game_icon_cache.h"
 
 #ifdef GMM_HAS_QTKEYCHAIN
-#include "keyring/qtkeychain_keyring.h"
+#include "engine/keyring/qtkeychain_keyring.h"
 #endif
 
 #if defined(GMM_PLATFORM_LINUX)
