@@ -13,9 +13,9 @@
 // are skipped, the deploy is idempotent, staging is the overlay lowerdir
 // (overlay mode), and direct mode writes into game_dir with no staging or
 // lowerdirs.
-#include "engine/core/instance/instance_utils.h"
-#include "engine/core/log/logger.h"
-#include "engine/core/util/fs_utils.h"
+#include "engine/instance/instance_utils.h"
+#include "engine/log/logger.h"
+#include "engine/util/fs_utils.h"
 #include "engine/deploy/launch/launcher.h"
 #include "engine/deploy/launch/overlay_launcher.h"
 #include "engine/game/registry/game_knowledge.h"

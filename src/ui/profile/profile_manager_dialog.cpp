@@ -1,6 +1,6 @@
 #include "ui/profile/profile_manager_dialog.h"
 
-#include "engine/core/log/logger.h"
+#include "engine/log/logger.h"
 #include "engine/profile/profile.h"
 #include "engine/profile/profile_creation.h"
 #include "ui/profile/profile_create_dialog.h"

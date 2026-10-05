@@ -1,4 +1,4 @@
-#include "engine/core/util/thread_priority.h"
+#include "engine/util/thread_priority.h"
 
 #if defined(_WIN32)
 #include <windows.h>

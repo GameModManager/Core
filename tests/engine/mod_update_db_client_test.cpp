@@ -6,7 +6,7 @@
 // untouched; this client is the default update-badge path.
 #include "engine/update/mod_update_db_client.h"
 
-#include "engine/core/instance/instance_utils.h"
+#include "engine/instance/instance_utils.h"
 
 #include <catch2/catch_test_macros.hpp>
 

@@ -3,7 +3,7 @@
 #include "engine/mod/model/mod.h"
 #include "engine/pipeline/pipeline.h"
 #include "engine/source/nxm/nxm_router.h"
-#include "engine/core/log/logger.h"
+#include "engine/log/logger.h"
 #include "engine/source/nexus_auth.h"
 #include "engine/source/nexus_account.h"
 #include "engine/source/nexus_http.h"

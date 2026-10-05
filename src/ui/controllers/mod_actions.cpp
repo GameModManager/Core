@@ -1,6 +1,6 @@
 #include "ui/controllers/mod_actions.h"
-#include "engine/core/instance/instance_utils.h"
-#include "engine/core/log/logger.h"
+#include "engine/instance/instance_utils.h"
+#include "engine/log/logger.h"
 #include "engine/mod/meta/categories.h"
 #include "engine/mod/meta/mod_meta.h"
 #include "engine/pipeline/plugin_host/category_factory.h"

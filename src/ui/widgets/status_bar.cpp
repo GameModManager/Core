@@ -1,7 +1,7 @@
 #include "ui/widgets/status_bar.h"
 
 #include "engine/source/registry.h"
-#include "engine/core/trace/trace_recorder.h"
+#include "engine/trace/trace_recorder.h"
 #include "ui/settings/settings.h"
 
 #include <QCoreApplication>

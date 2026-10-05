@@ -3,7 +3,7 @@
 // patches/ini edits, ini tweak toggles. JSON round-trip through
 // installed_pack.json, atomic writes, missing/corrupt file handling.
 // Uses temp dirs only, no Qt.
-#include "engine/core/instance/installed_pack_state.h"
+#include "engine/instance/installed_pack_state.h"
 
 #include <catch2/catch_test_macros.hpp>
 

@@ -8,7 +8,7 @@
 //
 // Round-trip through mod_state.json, atomic write, missing file handling.
 
-#include "engine/core/instance/mod_state.h"
+#include "engine/instance/mod_state.h"
 
 #include <cstdio>
 #include <filesystem>

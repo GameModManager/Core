@@ -12,8 +12,8 @@
 #include <QScrollArea>
 #include <QVBoxLayout>
 
-#include "engine/core/instance/instance_utils.h"
-#include "engine/core/util/fs_utils.h"
+#include "engine/instance/instance_utils.h"
+#include "engine/util/fs_utils.h"
 #include "ui/theme/icon_manager.h"
 #include "ui/widgets/game_icon_cache.h"
 

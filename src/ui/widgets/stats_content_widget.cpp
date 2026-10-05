@@ -1,6 +1,6 @@
 #include "ui/widgets/stats_content_widget.h"
 
-#include "engine/core/log/crash_handler.h"
+#include "engine/log/crash_handler.h"
 
 #include <QHBoxLayout>
 #include <QProcess>

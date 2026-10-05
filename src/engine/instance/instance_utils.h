@@ -3,7 +3,7 @@
 #include "engine/deploy/launch/elevation.h"
 #include "engine/deploy/deploy_utils.h"
 #include "engine/game/detect/game_detector.h"
-#include "engine/core/instance/instance.h"
+#include "engine/instance/instance.h"
 #include "engine/game/registry/game_knowledge.h"
 
 #include <filesystem>

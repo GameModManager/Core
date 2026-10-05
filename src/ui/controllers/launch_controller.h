@@ -8,7 +8,7 @@
 #include <string>
 #include <vector>
 
-#include "engine/core/instance/instance_utils.h"
+#include "engine/instance/instance_utils.h"
 #include "ui/main_window/main_window.h"
 
 namespace ui {

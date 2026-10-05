@@ -1,7 +1,7 @@
 #include "engine/update/mod_update_db_client.h"
 
-#include "engine/core/instance/instance_utils.h"
-#include "engine/core/log/logger.h"
+#include "engine/instance/instance_utils.h"
+#include "engine/log/logger.h"
 #include "engine/network/network_manager.h"
 
 #include <nlohmann/json.hpp>

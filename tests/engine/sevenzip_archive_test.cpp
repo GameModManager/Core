@@ -7,7 +7,7 @@
 // backend exists, so every assertion below is a case libarchive cannot serve.
 #include "engine/mod/archive/archive_extractor.h"
 #include "engine/mod/archive/sevenzip_backend.h"
-#include "engine/core/log/logger.h"
+#include "engine/log/logger.h"
 #include "engine/pipeline/extract_stage.h"
 #include "engine/pipeline/install_stage.h"
 #include "engine/pipeline/pipeline.h"

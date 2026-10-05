@@ -5,7 +5,7 @@
 #include "engine/mod/archive/archive_extractor.h"
 #include "engine/mod/filetree/staging_layout.h"
 #include "engine/mod/fomod/fomod_utils.h"
-#include "engine/core/log/logger.h"
+#include "engine/log/logger.h"
 
 #include <algorithm>
 #include <fstream>

@@ -1,6 +1,6 @@
 #include "ui/settings/settings.h"
 
-#include "engine/core/util/fs_utils.h"
+#include "engine/util/fs_utils.h"
 #include "ui/widgets/mod_list_model.h"
 
 #include <algorithm>

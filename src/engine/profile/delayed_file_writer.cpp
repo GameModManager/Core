@@ -1,6 +1,6 @@
 #include "engine/profile/delayed_file_writer.h"
 
-#include "engine/core/log/logger.h"
+#include "engine/log/logger.h"
 
 namespace engine::profile {
 

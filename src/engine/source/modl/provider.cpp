@@ -1,6 +1,6 @@
 #include "engine/source/modl/provider.h"
 
-#include "engine/core/log/logger.h"
+#include "engine/log/logger.h"
 #include "engine/mod/model/mod.h"
 #include "engine/pipeline/pipeline.h"
 #include "engine/source/download/curl_download.h"

@@ -22,7 +22,7 @@
 // dir, knowledge hooks drive the scan (no game plugin needed).
 #include "ui/main_window/mod_scan_worker.h"
 
-#include "engine/core/instance/mod_state.h"
+#include "engine/instance/mod_state.h"
 #include "engine/mod/meta/mod_meta.h"
 
 #include <QCoreApplication>

@@ -1,6 +1,6 @@
 #include "engine/collection/nexus/collection_zip.h"
 
-#include "engine/core/log/logger.h"
+#include "engine/log/logger.h"
 #include "engine/mod/archive/archive_extractor.h"
 #include "engine/network/network_manager.h"
 #include "engine/network/nexus_v2/premium.h"

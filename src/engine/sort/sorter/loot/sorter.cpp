@@ -1,7 +1,7 @@
 #include "engine/sort/sorter/loot/sorter.h"
 
-#include "engine/core/log/logger.h"
-#include "engine/core/util/process_utils.h"
+#include "engine/log/logger.h"
+#include "engine/util/process_utils.h"
 #include "engine/sort/sorter/loot/masterlists.h"
 #include "platform/platform.h"
 

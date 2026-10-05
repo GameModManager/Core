@@ -1,4 +1,4 @@
-#include "engine/core/events/event_bus.h"
+#include "engine/events/event_bus.h"
 
 #include <algorithm>
 #include <chrono>

@@ -1,6 +1,6 @@
 #include "engine/mod/archive/sevenzip_backend.h"
 
-#include "engine/core/util/fs_utils.h"
+#include "engine/util/fs_utils.h"
 
 // 7-Zip's own COM-style interfaces. These are confined to this file: the header
 // and everything above the engine layer stay free of 7-Zip types, which is what
