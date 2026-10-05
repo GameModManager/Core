@@ -10,7 +10,7 @@
 // the UI can render them progressively (Workspace-0owv) instead of waiting
 // for the full batch.
 
-#include "engine/game/plugins/plugin_info.h"
+#include "engine/game/esp/plugin_info.h"
 #include "engine/game/saves/save_game.h"
 #include "engine/game/saves/save_missing_assets.h"
 

@@ -4,7 +4,7 @@
 // Profile, restore mod/plugin state, archive invalidation, refresh callbacks,
 // profile_changed event), and write_tweaked_ini. Uses temp dirs only, no Qt.
 #include "engine/events/event_bus.h"
-#include "engine/game/plugins/plugin_database.h"
+#include "engine/game/esp/plugin_database.h"
 #include "engine/profile/profile.h"
 #include "engine/profile/profile_creation.h"
 #include "engine/profile/profile_switching.h"

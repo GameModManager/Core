@@ -21,7 +21,7 @@
 #include "engine/instance/instance.h"
 #include "engine/deploy/interface.h"
 #include "engine/deploy/launch/proton_tools.h"
-#include "engine/game/plugins/plugin_database.h"
+#include "engine/game/esp/plugin_database.h"
 #include "engine/game/registry/game_knowledge.h"
 #include "engine/index/conflict_engine.h"
 #include "engine/mod/meta/mod_meta.h"

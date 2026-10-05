@@ -1,4 +1,4 @@
-#include "engine/game/plugins/esp_header.h"
+#include "engine/game/esp/esp_header.h"
 
 #include <cstring>
 #include <fstream>

@@ -1,6 +1,6 @@
 #include "engine/events/event_bus.h"
 #include "engine/game/detect/mod_scanner.h"
-#include "engine/game/plugins/plugin_database.h"
+#include "engine/game/esp/plugin_database.h"
 #include "engine/game/registry/game_features/game_feature_registry.h"
 #include "engine/game/registry/game_knowledge.h"
 #include "engine/plugin_host/diagnostics_registry.h"

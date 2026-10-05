@@ -1,6 +1,6 @@
 #pragma once
 
-#include "engine/game/plugins/plugin_info.h"
+#include "engine/game/esp/plugin_info.h"
 #include "engine/game/saves/save_game.h"
 
 #include <filesystem>
