@@ -16,7 +16,7 @@
 //   - create_gmmpack writes an archive that passes extract + integrity check
 //   - generated manifest/mod JSON validates against the input/ schemas
 
-#include "engine/gmmpack/packer.h"
+#include "engine/modpack/gmmpack/packer.h"
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -25,11 +25,11 @@
 #include <fstream>
 #include <unistd.h>
 
-#include "engine/gmmpack/bsdiff.h"
-#include "engine/gmmpack/codec.h"
-#include "engine/gmmpack/schema_validator.h"
-#include "engine/gmmpack/tree_parser.h"
-#include "engine/gmmpack/unpacker.h"
+#include "engine/modpack/gmmpack/bsdiff.h"
+#include "engine/modpack/gmmpack/codec.h"
+#include "engine/modpack/gmmpack/schema_validator.h"
+#include "engine/modpack/gmmpack/tree_parser.h"
+#include "engine/modpack/gmmpack/unpacker.h"
 #include "engine/mod/meta/mod_meta.h"
 
 namespace fs      = std::filesystem;

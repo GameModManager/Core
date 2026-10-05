@@ -2,7 +2,7 @@
 // Verifies mapping from Nexus Vortex-compatible collection JSON into the
 // source-agnostic Collection::Manifest data model.
 
-#include "engine/collection/nexus/parser.h"
+#include "engine/modpack/collection/nexus/parser.h"
 
 #include <catch2/catch_test_macros.hpp>
 

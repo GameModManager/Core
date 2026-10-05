@@ -8,7 +8,7 @@
 
 #include <nlohmann/json.hpp>
 
-#include "engine/gmmpack/unpacker.h"
+#include "engine/modpack/gmmpack/unpacker.h"
 #include "engine/modpack/ini_edits.h"
 
 namespace engine::modpack {

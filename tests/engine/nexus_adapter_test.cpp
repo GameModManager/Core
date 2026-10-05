@@ -1,5 +1,5 @@
 // Tests for engine::Collection::Nexus::Adapter - the Nexus-specific
-// CollectionProvider (src/engine/collection/nexus/adapter.{h,cpp}).
+// CollectionProvider (src/engine/modpack/collection/nexus/adapter.{h,cpp}).
 //
 // Covers every path:
 //   - parse_source_id: bare slugs, slug@revision, collection URLs, .json paths
@@ -8,7 +8,7 @@
 //   - Adapter::fetch: GraphQL success/error, file path, unrecognized ids
 //   - route_download glue: premium-vs-free via the generic router
 
-#include "engine/collection/nexus/adapter.h"
+#include "engine/modpack/collection/nexus/adapter.h"
 
 #include <catch2/catch_test_macros.hpp>
 

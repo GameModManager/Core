@@ -6,7 +6,7 @@
 
 #include "engine/instance/instance_snapshot.h"
 
-#include "engine/gmmpack/uuid.h"
+#include "engine/modpack/gmmpack/uuid.h"
 
 #include <cstdio>
 #include <filesystem>

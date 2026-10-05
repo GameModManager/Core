@@ -1,5 +1,5 @@
 // Test for engine::Pack::detect_pack_source.
-#include "engine/pack/source_detector.h"
+#include "engine/modpack/pack/source_detector.h"
 
 #include <catch2/catch_test_macros.hpp>
 

@@ -1,7 +1,7 @@
-#include "engine/gmmpack/bsdiff.h"
-#include "engine/gmmpack/codec.h"
-#include "engine/gmmpack/patch.h"
-#include "engine/gmmpack/sha256.h"
+#include "engine/modpack/gmmpack/bsdiff.h"
+#include "engine/modpack/gmmpack/codec.h"
+#include "engine/modpack/gmmpack/patch.h"
+#include "engine/modpack/gmmpack/sha256.h"
 
 #include <catch2/catch_test_macros.hpp>
 #include <filesystem>

@@ -9,7 +9,7 @@
 //   - Minimal vs full JSON payloads
 //   - Edge cases (unknown provider, missing optional fields, variant modId types)
 
-#include "engine/gmmpack/unpacker.h"
+#include "engine/modpack/gmmpack/unpacker.h"
 
 #include <catch2/catch_test_macros.hpp>
 

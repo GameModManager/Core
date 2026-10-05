@@ -14,7 +14,7 @@
 // modules instead of reimplementing them:
 //   - choice groups: Collection::validate_choice_groups() for the radio step
 //     and Collection::reconcile_prior_choices() for carrying picks across
-//     updates (engine/collection/choice_groups.h),
+//     updates (engine/modpack/collection/choice_groups.h),
 //   - INI tweaks: gmmpack::to_edit_file() + modpack::merge_ini_edits() for the
 //     per-tweak list and its overridden badges,
 //   - incremental updates: modpack::UpdatePlan from diff_update(), which
@@ -29,9 +29,9 @@
 #include <unordered_map>
 #include <vector>
 
-#include "engine/collection/choice_groups.h"
-#include "engine/collection/manifest.h"
-#include "engine/gmmpack/types.h"
+#include "engine/modpack/collection/choice_groups.h"
+#include "engine/modpack/collection/manifest.h"
+#include "engine/modpack/gmmpack/types.h"
 #include "engine/modpack/incremental_update.h"
 
 class QButtonGroup;
