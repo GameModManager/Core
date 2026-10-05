@@ -4,6 +4,7 @@
 #include <string>
 
 #include "engine/pipeline/stage.h"
+#include "engine/source/interface.h"
 #include "engine/source/update_policy.h"
 
 namespace engine {
@@ -21,6 +22,17 @@ namespace engine {
 // fatal: those bytes are not the ones the pack named.
 Source::VerifyResult verify_downloaded_archive(const Mod &mod,
                                                const std::filesystem::path &archive);
+
+// The provider that will fetch `mod`, or nullptr when nothing can.
+//
+// The registry lookup answers it for every real source. A mod that already
+// holds a resolved https download URL and has no source registered for it is
+// the transport case - modl://, a pasted URL, a collection or gmmpack direct
+// entry - and is fetched by the direct-URL transport. That is where the bytes
+// come from, which is a transport question; which site the mod is attributed
+// to is a source question, answered elsewhere and left as "manual" when the
+// host names no known source.
+[[nodiscard]] Source::Interface *fetch_provider_for(const Mod &mod);
 
 class FetchStage : public Stage {
 public:

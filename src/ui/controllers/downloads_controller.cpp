@@ -35,7 +35,6 @@
 #include "engine/pipeline/registry/stage_registry.h"
 #include "engine/source/loverslab_auth.h"
 #include "engine/source/loverslab_provider.h"
-#include "engine/source/modl/provider.h"
 #include "engine/source/modpub/provider.h"
 #include "engine/source/nexus_provider.h"
 #include "engine/source/nxm/managed_games.h"
@@ -260,12 +259,10 @@ void DownloadsController::setup_pipeline() {
       std::make_unique<engine::Source::Nexus::Provider>());
   engine::SourceRegistry::instance().register_provider(
       std::make_unique<engine::LoversLabProvider>());
-  engine::SourceRegistry::instance().register_provider(
-      std::make_unique<engine::Source::Modl::Provider>());
-  // The modl::Provider now acts as a transport helper (source_type
-  // "direct") for non-mod.pub hosts - the modl:// flow stamps
-  // "modpub" or "direct" on the mod and the registered provider
-  // dispatches the actual curl_download via FetchStage.
+  // modl:// is a URI handler, not a source, so its transport is NOT
+  // registered here. A modl link from mod.pub attributes to ModPub below;
+  // any other host names no source and the mod stays "manual", and
+  // FetchStage hands the already-resolved URL to the transport directly.
   // ModPub is metadata-only (mod.pub has no public download API; the
   // companion modl:// protocol is the actual download path). The
   // provider is registered so the SourceTab / AddSourceDialog can

@@ -1085,4 +1085,33 @@ TEST_CASE("pipeline", "[engine]") {
     std::printf("PASS: FetchStage on_download_meta fires empty when the provider has "
                 "no info\n");
   }
+
+  // A mod with no registered source but an already-resolved download URL is the
+  // transport case: modl:// is a URI handler, so a link from a host that names
+  // no source leaves the mod "manual" and the bytes still come down. Without a
+  // URL there is nothing to fetch, and the honest answer is no provider.
+  {
+    Mod mod;
+    mod.download_source_type = "manual";
+    REQUIRE(fetch_provider_for(mod) == nullptr);
+
+    mod.download_url = "https://example.com/path/Mod.7z";
+    auto *transport  = fetch_provider_for(mod);
+    REQUIRE(transport != nullptr);
+    REQUIRE(transport->display_name() == "Direct URL");
+
+    // The upgrade path: an older build stamped "direct" on every modl://
+    // download. A meta the scan has not rewritten yet still resolves to the
+    // transport rather than failing the install.
+    Mod legacy                  = mod;
+    legacy.download_source_type = "direct";
+    REQUIRE(fetch_provider_for(legacy) != nullptr);
+
+    // A real source still wins over the transport.
+    Mod registered                  = mod;
+    registered.download_source_type = "test-blank";
+    REQUIRE(fetch_provider_for(registered) != transport);
+    std::printf("PASS: fetch_provider_for routes a resolved direct URL to the "
+                "transport\n");
+  }
 }
