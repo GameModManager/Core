@@ -12,7 +12,7 @@ endif()
 # the plugins (GMM_VERSION, visible in the add_subdirectory'd external/plugins
 # scope below).
 project(GameModManager
-    VERSION 0.5.50
+    VERSION 0.5.51
     DESCRIPTION "Cross-platform game mod manager"
     LANGUAGES CXX C
 )
@@ -254,11 +254,6 @@ else()
     # Windows branch above declares against a system install.
     include(cmake/7zip.cmake)
     find_package(OpenSSL REQUIRED)
-    # fuse3 is Linux-only (macOS ships no pkg-config fuse3); every consumer
-    # guards on FUSE3_FOUND and the VFS deploy strategy degrades without it.
-    if(NOT APPLE)
-        pkg_check_modules(FUSE3 IMPORTED_TARGET fuse3)
-    endif()
 endif()
 
 # Python embedding via pybind11

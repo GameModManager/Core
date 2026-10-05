@@ -1,4 +1,4 @@
-#include "keyring/qtkeychain_keyring.h"
+#include "engine/keyring/qtkeychain_keyring.h"
 
 #include <qt6keychain/keychain.h>
 

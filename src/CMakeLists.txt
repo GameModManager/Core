@@ -63,7 +63,7 @@ endif()
 
 # OS keyring (QtKeychain) - compiled in wherever the library is available
 if(Qt6Keychain_FOUND)
-    target_sources(gamemodmanager PRIVATE keyring/qtkeychain_keyring.cpp)
+    target_sources(gamemodmanager PRIVATE engine/keyring/qtkeychain_keyring.cpp)
     target_compile_definitions(gamemodmanager PRIVATE GMM_HAS_QTKEYCHAIN=1)
     target_link_libraries(gamemodmanager PRIVATE Qt6Keychain::Qt6Keychain)
 endif()
@@ -117,9 +117,6 @@ if(Qt6WebEngineWidgets_FOUND)
 endif()
 if(NOT WIN32)
     target_link_libraries(gamemodmanager PRIVATE ${CMAKE_DL_LIBS})
-    if(FUSE3_FOUND)
-        target_link_libraries(gamemodmanager PRIVATE PkgConfig::FUSE3)
-    endif()
 else()
     # Windows: link ws2_32 for network, advapi32 for registry, shell32 for
     # SHFileOperation (Recycle Bin / move-to-trash)
