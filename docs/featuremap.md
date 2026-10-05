@@ -743,7 +743,7 @@ port - their cited GMM symbol names were invented, the features are not.
 | Steam Workshop | ✅ | ✅ `SteamWorkshopProvider` - `steam_workshop_provider.h` | ✅ · |
 | LOVERS LAB | ❌ | 🚀 `LoversLabProvider` - `loverslab/provider.h:35` | 🚀 · |
 | Download manager | ✅ `DownloadManager` | ✅ `curl_download` - `download/curl_download.cpp` | ✅ · |
-| Remote cache | ✅ | ✅ `RemoteCache` (6-layer fetch chain) - `workshop/remote_cache.h:19` | ✅ · |
+| Remote cache | ✅ | ✅ `MasterlistManager` (24h TTL, temp-file download, offline cache reuse) - `sort/sorter/loot/masterlists.h:21` | ✅ · |
 | Steam Workshop client (Web API) | ❌ | 🚀 `WorkshopClient` (SQLite cache, dead IDs) - `workshop/workshop_client.h:29` | 🚀 · |
 | LoversLab session-cookie auth | ❌ | 🚀 `LoversLabAuth` (Cloudflare stripping) - `loverslab/auth.h:41` | 🚀 · |
 | Managed games tracking | ❌ | 🚀 `ManagedGames` (source_id, website_url, nexus_domain) - `nxm/managed_games.h:23` | 🚀 · |
