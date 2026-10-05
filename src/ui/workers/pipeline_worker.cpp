@@ -280,20 +280,20 @@ void PipelineWorker::download_modl(const std::string &id,
   mod.id    = id;
   mod.name  = "Mod file " + id;
   mod.state = engine::ModState::Downloaded;
-  // Source attribution comes from the direct URL's host (modl is a
-  // transport, not a source). mod.pub -> "modpub" (fetched by the ModPub
-  // provider using the direct URL it has pre-resolved); anything else ->
-  // "direct" (the modl transport provider, which is the curl helper for
-  // arbitrary https URLs).
+  // Source attribution comes from the direct URL's host. modl:// is a URI
+  // handler, not a source: mod.pub -> "modpub" (fetched by the ModPub
+  // provider using the direct URL it has pre-resolved); any other host names
+  // no source, so the mod is "manual" - FetchStage hands the already-resolved
+  // URL to the direct-URL transport.
   const auto derived =
       engine::Source::Router::derive_source_from_direct_url(link.direct_url);
   mod.download_source_type =
-      derived.source_type.empty() ? std::string("direct") : derived.source_type;
+      derived.source_type.empty() ? std::string("manual") : derived.source_type;
   // source_id:
   //   * modpub -> the numeric mod id extracted from the canonical page URL
   //     (install_stage writes it to [ModPub]mod_id and the panel uses it
   //     for Visit/Refresh).
-  //   * direct (generic modl) -> the URL basename, ?query/#fragment
+  //   * manual (generic modl) -> the URL basename, ?query/#fragment
   //     stripped and percent-decoded via the existing helper, so a
   //     download_url like ".../file.zip?token=abc" yields "file.zip" and
   //     the on-disk archive has a meaningful default name.

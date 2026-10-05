@@ -14,10 +14,10 @@ namespace engine::Source::Modl {
 
 bool Provider::fetch(const Mod &mod, PipelineContext &ctx,
                      const std::filesystem::path &dest_path) {
-  // The transport: any source_type routed through the modl flow arrives
-  // here with a direct https URL in mod.download_url. The actual source
-  // attribution (modpub / manual / ...) is the mod's download_source_type;
-  // this class only cares that there is a URL to fetch.
+  // The transport: a mod that already resolved its own https URL arrives
+  // here with it in mod.download_url. The mod's source attribution
+  // (modpub / manual / ...) is its download_source_type; this class only
+  // cares that there is a URL to fetch.
   if (mod.download_url.empty()) {
     Logger::instance().error("ModlProvider: no download URL");
     return false;
@@ -89,10 +89,15 @@ SourceDownloadInfo Provider::resolve_download_info(const Mod &mod) const {
 }
 
 std::string Provider::display_name() const {
-  // Transport helper - this string is only used as a fallback label for
-  // the direct provider entry; the user-facing source attribution comes
-  // from the mod's actual download_source_type (modpub / manual / ...).
-  return "Direct";
+  // Names the transport, not a source: this is what FetchStage puts in a
+  // failure message. The mod's user-facing provenance comes from its own
+  // download_source_type (modpub / manual / ...), never from this string.
+  return "Direct URL";
+}
+
+Interface &transport() {
+  static Provider instance;
+  return instance;
 }
 
 }  // namespace engine::Source::Modl

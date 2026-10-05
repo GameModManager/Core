@@ -4,11 +4,25 @@
 #include "engine/source/source_provider.h"
 #include "engine/core/instance/instance.h"
 #include "engine/core/log/logger.h"
+#include "engine/source/modl/provider.h"
 #include "engine/source/update_policy.h"
 
 #include <sstream>
 
 namespace engine {
+
+Source::Interface *fetch_provider_for(const Mod &mod) {
+  if (auto *provider =
+          SourceRegistry::instance().provider_for(mod.download_source_type))
+    return provider;
+  // No source, but the URL is already resolved: the transport takes it from
+  // here. modl:// is the case that matters - it is a URI handler, so a link
+  // from an unrecognized host carries no provenance and the mod stays
+  // "manual" while the bytes still come down.
+  if (!mod.download_url.empty())
+    return &Source::Modl::transport();
+  return nullptr;
+}
 
 Source::VerifyResult verify_downloaded_archive(const Mod &mod,
                                                const std::filesystem::path &archive) {
@@ -48,8 +62,9 @@ bool FetchStage::execute(Mod &mod, PipelineContext &ctx) {
     return true;
   }
 
-  // Find provider for this source type
-  auto *provider = SourceRegistry::instance().provider_for(mod.download_source_type);
+  // Find the provider for this source, or the transport for a mod that
+  // already resolved its own download URL.
+  auto *provider = fetch_provider_for(mod);
   if (!provider) {
     Logger::instance().error("[FetchStage] No provider for source type '" +
                              mod.download_source_type + "'");
