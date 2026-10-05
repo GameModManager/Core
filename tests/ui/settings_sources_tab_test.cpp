@@ -21,13 +21,13 @@
 #include "ui/settings/source_pages.h"
 
 #include "engine/source/nexus/auth.h"
-#include "engine/pipeline/plugin_host/plugin_loader.h"
+#include "engine/plugin_host/plugin_loader.h"
 #include "engine/source/nexus/provider.h"
 #include "engine/source/nexus/servers.h"
 #include "engine/source/source_provider.h"
 #include "engine/source/steam/provider.h"
 #include "ui/theme/style_manager.h"
-#include "engine/platform/theme/theme_manager.h"
+#include "engine/theme/theme_manager.h"
 
 #ifdef GMM_PLATFORM_LINUX
 #include "platform/linux/linux_platform.h"

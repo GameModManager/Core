@@ -11,9 +11,9 @@
 #include "ui/widgets/main_tab_container.h"
 
 #include "engine/parallel/parallel.h"
-#include "engine/pipeline/plugin_host/plugin_loader.h"
+#include "engine/plugin_host/plugin_loader.h"
 #include "ui/theme/style_manager.h"
-#include "engine/platform/theme/theme_manager.h"
+#include "engine/theme/theme_manager.h"
 
 #include <QApplication>
 #include <QCheckBox>

@@ -4,7 +4,7 @@
 // Replaces the old std::system("cmd &") pattern in LinuxPlatform with
 // proper fork+exec that avoids shell injection.
 
-#include "engine/platform/file_type_dispatch.h"
+#include "platform/file_type_dispatch.h"
 
 namespace engine {
 

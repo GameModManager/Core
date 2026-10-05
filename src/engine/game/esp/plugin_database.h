@@ -1,7 +1,7 @@
 #pragma once
 
-#include "engine/game/plugins/plugin_file.h"
-#include "engine/game/plugins/plugin_info.h"
+#include "engine/game/esp/plugin_file.h"
+#include "engine/game/esp/plugin_info.h"
 
 #include <filesystem>
 #include <map>

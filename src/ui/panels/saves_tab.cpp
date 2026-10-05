@@ -2,7 +2,7 @@
 #include "ui/panels/panel_utils.h"
 
 #include "engine/log/logger.h"
-#include "engine/pipeline/plugin_host/save_parser_registry.h"
+#include "engine/plugin_host/save_parser_registry.h"
 
 #include <QCursor>
 #include <QDateTime>

@@ -3,7 +3,7 @@
 // Windows file type dispatcher stub - ShellExecute / CreateProcess based launch.
 // TODO: Implement full dispatch for .exe, .bat, .jar, .ps1 on Windows.
 
-#include "engine/platform/file_type_dispatch.h"
+#include "platform/file_type_dispatch.h"
 
 namespace engine {
 

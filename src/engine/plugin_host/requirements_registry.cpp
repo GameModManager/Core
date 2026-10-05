@@ -1,4 +1,4 @@
-#include "engine/pipeline/plugin_host/requirements_registry.h"
+#include "engine/plugin_host/requirements_registry.h"
 
 #include "engine/log/logger.h"
 
