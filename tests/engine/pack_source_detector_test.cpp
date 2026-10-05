@@ -133,8 +133,7 @@ void write_text(const std::filesystem::path &path, const std::string &text) {
 }  // namespace
 
 TEST_CASE("pack source ids stay in sync with the adapter interface", "[engine]") {
-  // engine/pack/adapter.h documents format_id() as "gmmpack" and
-  // "nexus-collection".
+  // The registry ids the installer routes on.
   REQUIRE(engine::Pack::format_id_of(PackFormat::Gmmpack) == "gmmpack");
   REQUIRE(engine::Pack::format_id_of(PackFormat::NexusCollection) ==
           "nexus-collection");
