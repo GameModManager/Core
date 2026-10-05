@@ -31,6 +31,7 @@
 #include <QPushButton>
 #include <QSemaphore>
 #include <QTabBar>
+#include <QTabWidget>
 #include <QThread>
 
 #include <atomic>
@@ -596,8 +597,8 @@ TEST_CASE("git source coexists with a download source", "[ui]") {
     REQUIRE(qtw != nullptr);
     // Nexus + Git + "+". The Manual placeholder is gone: the mod HAS a source.
     check(qtw->count() == 3, "git + nexus shows 3 tabs (Nexus, Git, '+')");
-    check(qtw->tabText(0) == QLatin1String("Test Nexus"),
-          "the download source keeps its own tab");
+    check(qtw->tabText(0) == QLatin1String("Test Nexus (primary)"),
+          "the download source keeps its own tab, marked primary over Git");
     check(qtw->tabText(1) == QLatin1String("Git"),
           "the git tab is titled Git, never GitHub");
 
@@ -1000,4 +1001,410 @@ TEST_CASE("chromium configuration is applied before the first web view", "[ui]")
   check(view->current_description() == QStringLiteral("<p>a mod description</p>"),
         "a description renders through a view built on that path");
   delete view;
+}
+
+// The per-source actions: a mod can carry more than one source at a time (a
+// Nexus id AND a Steam workshop id, plus a .git in the folder), and exactly one
+// of them is primary. The primary is recorded in the source's OWN sidecar
+// section, so setting it needs no new storage format and survives a restart -
+// these cases re-load the meta from disk after every write rather than reading
+// the in-memory copy back.
+//
+// What a single-source mod does is the load-bearing half: it is primary without
+// the user clicking anything, and a mod with no source at all has none.
+TEST_CASE("source tab primary source", "[ui]") {
+  qputenv("QT_QPA_PLATFORM", "offscreen");
+  const std::filesystem::path root = "/tmp/gmm_source_tab_primary";
+  std::filesystem::remove_all(root);
+  const std::filesystem::path cfg = root / "config";
+  std::filesystem::create_directories(cfg);
+  qputenv("XDG_CONFIG_HOME", cfg.c_str());
+  shared_app();
+  QCoreApplication::setOrganizationName("GameModManager");
+  QCoreApplication::setApplicationName("GameModManager");
+
+  const std::filesystem::path mods_dir = root / "instances" / "Test" / "mods";
+  std::filesystem::create_directories(mods_dir);
+
+  engine::SourceRegistry::instance().register_provider(
+      std::make_unique<FakeNexusProvider>());
+
+  // --- A mod with exactly one source is primary without being told. ---
+  {
+    engine::ModMeta meta;
+    meta.set("General", "version", "1.0");
+    meta.set("GameModManager", "source_type", "nexus");
+    meta.set("GameModManager", "source_id", "12345");
+    meta.set("Nexusmods", "modid", "12345");
+    meta.save(mods_dir, "SingleMod");
+
+    auto data        = make_manual_data("SingleMod", mods_dir);
+    data.source_type = QStringLiteral("nexus");
+    data.source_id   = QStringLiteral("12345");
+
+    check(ui::primary_source(data) == QLatin1String("nexus"),
+          "a one-source mod is implicitly primary, with nothing recorded");
+
+    ui::SourceTab tab;
+    tab.set_current(data);
+    tab.set_mod(data);
+    QApplication::processEvents();
+
+    auto *qtw = tab.findChild<QTabWidget *>();
+    REQUIRE(qtw != nullptr);
+    check(qtw->count() == 2, "single source: 2 tabs (Nexus, '+')");
+    check(qtw->tabText(0) == QLatin1String("Test Nexus"),
+          "the only source carries no primary marker: there is nothing to pick");
+
+    // Nothing to make primary either, so the flag must not appear - if it did,
+    // a later source could demote a source the user never chose.
+    check(engine::ModMeta::load(mods_dir, "SingleMod")
+              .get("Nexusmods", "primary")
+              .empty(),
+          "an implicit primary writes no flag to the sidecar");
+  }
+
+  // --- Two sources: setting one primary demotes the other and persists. ---
+  {
+    const std::string id                = "TwoMod";
+    const std::filesystem::path mod_dir = mods_dir / id;
+    std::filesystem::create_directories(mod_dir);
+    engine::ModMeta meta;
+    meta.set("General", "version", "1.0");
+    meta.set("GameModManager", "source_type", "nexus");
+    meta.set("GameModManager", "source_id", "111");
+    meta.set("Nexusmods", "modid", "111");
+    meta.set("SteamWorkshop", "workshop_id", "222");
+    meta.save(mods_dir, id);
+
+    auto data        = make_manual_data(id, mods_dir);
+    data.source_type = QStringLiteral("nexus");
+    data.source_id   = QStringLiteral("111");
+    data.mod_dir     = QDir(QString::fromStdString(mod_dir.string()));
+
+    // Nexus is first in the fixed order, so it leads until told otherwise.
+    check(ui::primary_source(data) == QLatin1String("nexus"),
+          "with two sources and no flag, the first one is primary");
+
+    ui::SourceTab tab;
+    tab.set_current(data);
+    tab.set_mod(data);
+    QApplication::processEvents();
+    auto *qtw = tab.findChild<QTabWidget *>();
+    REQUIRE(qtw != nullptr);
+    check(qtw->count() == 3, "two sources: 3 tabs (Nexus, Steam, '+')");
+    check(qtw->tabText(0) == QLatin1String("Test Nexus (primary)"),
+          "the primary source is visibly marked on its tab");
+    // No Steam provider is registered in this fixture, so the Steam tab falls
+    // back to its source_type for a title - the same fallback the app shows
+    // for any provider that is not registered.
+    check(qtw->tabText(1) == QLatin1String("steam"),
+          "the non-primary source is not marked");
+
+    // Steam is made primary first, so the demotion below removes a flag that
+    // is actually there. Asserting it against a section that was never flagged
+    // would pass even if the demotion did nothing.
+    check(ui::apply_primary_source(data, QStringLiteral("steam")),
+          "a primary can be set");
+    check(engine::ModMeta::load(mods_dir, id).get("SteamWorkshop", "primary") == "true",
+          "the flag is recorded in the new primary's own section");
+    // The user right-clicks Nexus and picks "Set as primary".
+    check(ui::apply_primary_source(data, QStringLiteral("nexus")),
+          "the primary source can be moved");
+    check(!ui::apply_primary_source(data, QStringLiteral("loverslab")),
+          "a source with no section cannot be made primary");
+
+    // Re-read from disk: this is the restart path.
+    engine::ModMeta after = engine::ModMeta::load(mods_dir, id);
+    check(after.get("Nexusmods", "primary") == "true",
+          "the new primary is recorded in its own section");
+    check(after.get("SteamWorkshop", "primary").empty(),
+          "the previous primary is demoted in the same write");
+    check(ui::primary_source(data) == QLatin1String("nexus"),
+          "the new primary survives the reload and leads the tab order");
+
+    // Never two primaries, read back out of the file rather than the model.
+    int flagged = 0;
+    for (const auto &section : after.sections()) {
+      if (after.get(section, "primary") == "true")
+        ++flagged;
+    }
+    check(flagged == 1, "exactly one section is flagged primary");
+
+    ui::SourceTab reopened;
+    reopened.set_current(data);
+    reopened.set_mod(data);
+    QApplication::processEvents();
+    auto *qtw2 = reopened.findChild<QTabWidget *>();
+    REQUIRE(qtw2 != nullptr);
+    check(qtw2->tabText(0) == QLatin1String("Test Nexus (primary)"),
+          "the tab bar leads with the primary the user picked");
+    check(qtw2->tabText(1) == QLatin1String("steam"),
+          "the demoted source keeps its own tab, unmarked");
+  }
+
+  // --- Git counts as a source: a mod with .git and a Nexus id has two, so
+  //     Nexus is primary by position and the flag can move it. ---
+  {
+    const std::string id                = "GitNexusPrimary";
+    const std::filesystem::path mod_dir = mods_dir / id;
+    std::filesystem::create_directories(mod_dir / ".git");
+    {
+      std::ofstream cfgout(mod_dir / ".git" / "config");
+      cfgout << "[remote \"origin\"]\n\turl = https://github.com/user/repo.git\n";
+    }
+    engine::ModMeta meta;
+    meta.set("General", "version", "1.0");
+    meta.set("GameModManager", "source_type", "manual");
+    meta.set("Nexusmods", "modid", "333");
+    meta.save(mods_dir, id);
+
+    auto data    = make_manual_data(id, mods_dir);
+    data.mod_dir = QDir(QString::fromStdString(mod_dir.string()));
+
+    check(ui::primary_source(data) == QLatin1String("nexus"),
+          "a .git in the folder makes Git a source, not the only one");
+    check(ui::apply_primary_source(data, QStringLiteral("git")),
+          "git can be made the primary source");
+    engine::ModMeta after = engine::ModMeta::load(mods_dir, id);
+    check(after.get("Git", "primary") == "true", "the flag lands in [Git]");
+    check(after.get("Nexusmods", "primary").empty(), "[Nexusmods] no longer flagged");
+    check(ui::primary_source(data) == QLatin1String("git"),
+          "git leads the tab order once it is primary");
+  }
+}
+
+// Deleting a source detaches it from the mod and does NOTHING else: the mod
+// stays installed, every file it has stays on disk, and the other sources are
+// untouched. That is the whole risk of the action, so it is what the case
+// checks - the files, not just the meta.
+//
+// Detaching the LAST source is allowed and leaves a mod that is a manual
+// install: a real state with a visible consequence, not an error.
+TEST_CASE("source tab delete source", "[ui]") {
+  qputenv("QT_QPA_PLATFORM", "offscreen");
+  const std::filesystem::path root = "/tmp/gmm_source_tab_delete";
+  std::filesystem::remove_all(root);
+  const std::filesystem::path cfg = root / "config";
+  std::filesystem::create_directories(cfg);
+  qputenv("XDG_CONFIG_HOME", cfg.c_str());
+  shared_app();
+  QCoreApplication::setOrganizationName("GameModManager");
+  QCoreApplication::setApplicationName("GameModManager");
+
+  const std::filesystem::path mods_dir = root / "instances" / "Test" / "mods";
+  std::filesystem::create_directories(mods_dir);
+
+  engine::SourceRegistry::instance().register_provider(
+      std::make_unique<FakeNexusProvider>());
+
+  const std::string id                = "DeleteMod";
+  const std::filesystem::path mod_dir = mods_dir / id;
+  std::filesystem::create_directories(mod_dir / "meshes");
+  {
+    // The installed file the mod is made of. Detaching a source must leave it
+    // exactly here.
+    std::ofstream mesh(mod_dir / "meshes" / "thing.nif");
+    mesh << "<nif>\n";
+  }
+
+  engine::ModMeta meta;
+  meta.set("General", "version", "1.0");
+  meta.set("General", "modid", "555");
+  meta.set("GameModManager", "source_type", "nexus");
+  meta.set("GameModManager", "source_id", "555");
+  meta.set("Nexusmods", "modid", "555");
+  meta.set("Nexusmods", "nexusdescription", "from nexus");
+  meta.set("SteamWorkshop", "workshop_id", "666");
+  meta.set("SteamWorkshop", "description", "from workshop");
+  meta.save(mods_dir, id);
+
+  auto data        = make_manual_data(id, mods_dir);
+  data.source_type = QStringLiteral("nexus");
+  data.source_id   = QStringLiteral("555");
+  data.mod_dir     = QDir(QString::fromStdString(mod_dir.string()));
+
+  check(ui::detach_source(data, QStringLiteral("nexus")),
+        "an attached source can be detached");
+  check(!ui::detach_source(data, QStringLiteral("loverslab")),
+        "a source the mod never had cannot be detached");
+
+  engine::ModMeta after = engine::ModMeta::load(mods_dir, id);
+  // Only the Nexus record is gone. The Steam source was never the target.
+  check(!after.has_section("Nexusmods"), "the detached source's section is gone");
+  check(after.has_section("SteamWorkshop"), "the other source's section is untouched");
+  check(after.get("SteamWorkshop", "description") == "from workshop",
+        "the other source's stored metadata survives");
+  check(after.get("SteamWorkshop", "workshop_id") == "666",
+        "the other source's id survives");
+  // The mod must not keep claiming the id it gave up.
+  check(after.get("GameModManager", "source_type") == "manual",
+        "the declared attribution no longer names the detached source");
+  check(after.get("General", "modid").empty(),
+        "the Nexus id namespace in [General] is cleared with it");
+  check(after.get("General", "version") == "1.0", "unrelated metadata is untouched");
+
+  // The point of the action: the mod is NOT uninstalled.
+  check(std::filesystem::exists(mod_dir / "meshes" / "thing.nif"),
+        "the mod's installed file is still on disk");
+  check(std::filesystem::exists(mod_dir / "meta.ini"),
+        "the mod is still installed (its sidecar is there)");
+  check(std::filesystem::is_directory(mod_dir), "the mod folder itself is untouched");
+
+  // What the tab looks like afterwards: the remaining source, no placeholder.
+  auto steam_data        = data;
+  steam_data.source_type = QStringLiteral("manual");
+  ui::SourceTab tab;
+  tab.set_current(steam_data);
+  tab.set_mod(steam_data);
+  QApplication::processEvents();
+  auto *qtw = tab.findChild<QTabWidget *>();
+  REQUIRE(qtw != nullptr);
+  check(qtw->count() == 2, "after deleting Nexus: 2 tabs (Steam, '+')");
+  // No Steam provider is registered in this fixture, so the tab falls back to
+  // its source_type for a title.
+  check(qtw->tabText(0) == QLatin1String("steam"),
+        "the surviving source is the only tab, and unmarked: one source is primary");
+
+  // Deleting the last one is allowed. The mod becomes a manual install.
+  check(ui::detach_source(steam_data, QStringLiteral("steam")),
+        "the last remaining source can be detached too");
+  engine::ModMeta bare = engine::ModMeta::load(mods_dir, id);
+  check(!bare.has_section("SteamWorkshop"), "no source section is left");
+  check(bare.get("GameModManager", "source_type") == "manual",
+        "a mod with no source is a manual install");
+  check(std::filesystem::exists(mod_dir / "meshes" / "thing.nif"),
+        "the mod's files survive losing every source");
+
+  auto bare_data = steam_data;
+  ui::SourceTab bare_tab;
+  bare_tab.set_current(bare_data);
+  bare_tab.set_mod(bare_data);
+  QApplication::processEvents();
+  auto *qtw2 = bare_tab.findChild<QTabWidget *>();
+  REQUIRE(qtw2 != nullptr);
+  check(qtw2->count() == 2, "no sources: 2 tabs (Manual placeholder, '+')");
+  check(qtw2->tabText(0) == QLatin1String("Manual"),
+        "the mod with no sources shows the Manual placeholder");
+}
+
+// A Git source's description is the README.md in the mod root, rendered through
+// the same description renderer the download-source panels use. 100% of the time
+// for git: there is no fetch and no cached copy, the file is read on every
+// populate. With no README there is no description and the panel says so rather
+// than inventing one.
+TEST_CASE("git source renders its README as the description", "[ui]") {
+  qputenv("QT_QPA_PLATFORM", "offscreen");
+  const std::filesystem::path root = "/tmp/gmm_source_tab_readme";
+  std::filesystem::remove_all(root);
+  const std::filesystem::path cfg = root / "config";
+  std::filesystem::create_directories(cfg);
+  qputenv("XDG_CONFIG_HOME", cfg.c_str());
+  shared_app();
+  QCoreApplication::setOrganizationName("GameModManager");
+  QCoreApplication::setApplicationName("GameModManager");
+
+  const std::filesystem::path mods_dir = root / "instances" / "Test" / "mods";
+  std::filesystem::create_directories(mods_dir);
+
+  engine::SourceRegistry::instance().register_provider(
+      std::make_unique<FakeNexusProvider>());
+
+  // The description text handed to the renderer, whatever the backend turned it
+  // into. Empty means the README never reached the description path.
+  auto shown = [](ui::GitSourcePanel &panel) {
+    for (auto *renderer : panel.findChildren<ui::DescriptionRenderer *>())
+      return renderer->current_description();
+    return QString();
+  };
+  auto says_no_readme = [](ui::GitSourcePanel &panel) {
+    for (auto *label : panel.findChildren<QLabel *>()) {
+      if (label->isVisibleTo(&panel) &&
+          label->text().contains(QLatin1String("no README.md")))
+        return true;
+    }
+    return false;
+  };
+
+  // --- A repo WITH a README: it is the description. ---
+  {
+    const std::string id                = "ReadmeMod";
+    const std::filesystem::path mod_dir = mods_dir / id;
+    std::filesystem::create_directories(mod_dir / ".git");
+    {
+      std::ofstream cfgout(mod_dir / ".git" / "config");
+      cfgout << "[remote \"origin\"]\n\turl = https://github.com/user/repo.git\n";
+    }
+    {
+      std::ofstream readme(mod_dir / "README.md");
+      readme << "# Fancy Mod\n\nInstalls a **fancy** thing.\n";
+    }
+    engine::ModMeta meta;
+    meta.set("General", "version", "1.0");
+    meta.set("GameModManager", "source_type", "manual");
+    meta.save(mods_dir, id);
+
+    auto data    = make_manual_data(id, mods_dir);
+    data.mod_dir = QDir(QString::fromStdString(mod_dir.string()));
+
+    ui::SourceTab tab;
+    tab.set_current(data);
+    tab.set_mod(data);
+    tab.first_activation();
+    QApplication::processEvents();
+
+    ui::GitSourcePanel *panel = nullptr;
+    for (auto *p : tab.findChildren<ui::GitSourcePanel *>())
+      panel = p;
+    REQUIRE(panel != nullptr);
+    const QString html = shown(*panel);
+    check(html.contains(QLatin1String("Fancy Mod")),
+          "the README's heading is rendered as the description");
+    check(html.contains(QLatin1String("fancy")),
+          "the README's body text is rendered as the description");
+    check(!says_no_readme(*panel),
+          "a repo with a README is not told it has no description");
+
+    // The README is re-read, not cached: a checkout that brings a new one shows
+    // the new text.
+    {
+      std::ofstream readme(mod_dir / "README.md");
+      readme << "# Renamed Mod\n";
+    }
+    panel->populate();
+    check(shown(*panel).contains(QLatin1String("Renamed Mod")),
+          "the README is read again on every populate, not cached");
+  }
+
+  // --- A repo with NO README: no description, and the panel says so. ---
+  {
+    const std::string id                = "NoReadmeMod";
+    const std::filesystem::path mod_dir = mods_dir / id;
+    std::filesystem::create_directories(mod_dir / ".git");
+    {
+      std::ofstream cfgout(mod_dir / ".git" / "config");
+      cfgout << "[remote \"origin\"]\n\turl = https://github.com/user/repo.git\n";
+    }
+    engine::ModMeta meta;
+    meta.set("General", "version", "1.0");
+    meta.set("GameModManager", "source_type", "manual");
+    meta.save(mods_dir, id);
+
+    auto data    = make_manual_data(id, mods_dir);
+    data.mod_dir = QDir(QString::fromStdString(mod_dir.string()));
+
+    ui::SourceTab tab;
+    tab.set_current(data);
+    tab.set_mod(data);
+    tab.first_activation();
+    QApplication::processEvents();
+
+    ui::GitSourcePanel *panel = nullptr;
+    for (auto *p : tab.findChildren<ui::GitSourcePanel *>())
+      panel = p;
+    REQUIRE(panel != nullptr);
+    check(shown(*panel).isEmpty(),
+          "a repo with no README has no description, rather than an invented one");
+    check(says_no_readme(*panel), "and the panel says plainly that there is none");
+  }
 }
