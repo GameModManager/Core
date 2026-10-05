@@ -2,7 +2,7 @@
 #include "engine/events/event_bus.h"
 #include "engine/core/log/logger.h"
 #include "engine/core/util/fs_utils.h"
-#include "engine/core/vfs/path_resolver.h"
+#include "engine/vfs/path_resolver.h"
 #include "engine/game/plugins/plugin_database.h"
 #include "engine/game/registry/game_features/game_feature.h"
 #include "engine/game/registry/game_features/game_feature_registry.h"

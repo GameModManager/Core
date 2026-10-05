@@ -33,11 +33,11 @@ core/instance/mod_state.cpp
     core/instance/masterlist_fetch.cpp
     core/util/fs_utils.cpp
     core/util/thread_priority.cpp
-    core/vfs/game_file.h
-    core/vfs/path_resolver.h
-    core/vfs/path_resolver.cpp
-    core/vfs/path_resolver_registry.h
-    core/vfs/path_resolver_registry.cpp
+    vfs/game_file.h
+    vfs/path_resolver.h
+    vfs/path_resolver.cpp
+    vfs/path_resolver_registry.h
+    vfs/path_resolver_registry.cpp
     mod/filetree/file_tree.cpp
     mod/filetree/dir_file_tree.cpp
     mod/filetree/data_archive.cpp

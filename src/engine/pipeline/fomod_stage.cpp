@@ -8,7 +8,7 @@
 #include "engine/mod/fomod/module_config.h"
 #include "engine/mod/meta/mod_meta.h"
 #include "engine/core/log/logger.h"
-#include "engine/core/vfs/path_resolver.h"
+#include "engine/vfs/path_resolver.h"
 
 #include <nlohmann/json.hpp>
 

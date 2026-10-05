@@ -3,7 +3,7 @@
 #include "engine/index/conflict_index.h"
 #include "engine/core/instance/instance.h"
 #include "engine/core/log/logger.h"
-#include "engine/core/vfs/path_resolver.h"
+#include "engine/vfs/path_resolver.h"
 
 #include <algorithm>
 #include <filesystem>

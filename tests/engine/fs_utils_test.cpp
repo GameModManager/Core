@@ -1,5 +1,5 @@
 #include "engine/core/util/fs_utils.h"
-#include "engine/core/vfs/path_resolver.h"
+#include "engine/vfs/path_resolver.h"
 
 #include <catch2/catch_test_macros.hpp>
 #include <cstdio>

@@ -1,6 +1,6 @@
 #include "engine/game/saves/save_missing_assets.h"
 
-#include "engine/core/vfs/path_resolver.h"
+#include "engine/vfs/path_resolver.h"
 #include "engine/game/plugins/plugin_file.h"
 
 #include <algorithm>
