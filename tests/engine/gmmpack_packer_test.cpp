@@ -15,6 +15,7 @@
 //     parse_tree back)
 //   - create_gmmpack writes an archive that passes extract + integrity check
 //   - generated manifest/mod JSON validates against the input/ schemas
+//   - colliding mods ship no patches/, both stay in the pack
 
 #include "engine/gmmpack/packer.h"
 
@@ -25,8 +26,6 @@
 #include <fstream>
 #include <unistd.h>
 
-#include "engine/gmmpack/bsdiff.h"
-#include "engine/gmmpack/codec.h"
 #include "engine/gmmpack/schema_validator.h"
 #include "engine/gmmpack/tree_parser.h"
 #include "engine/gmmpack/unpacker.h"
@@ -986,17 +985,20 @@ TEST_CASE("packer create: an invalid pack is refused, not written",
 }
 
 // ---------------------------------------------------------------------------
-// ini/ and patches/ producers: a mod's shipped INI settings and the files
-// several mods collide on both have to reach the archive.
+// ini/ producer and colliding paths: a shipped INI becomes payload, while two
+// mods shipping the same path do NOT become a binary patch. The pack references
+// both mods and the deploy order in tree.json decides who wins the file.
 // ---------------------------------------------------------------------------
 
-TEST_CASE("packer ini+patches: shipped INI and colliding files become payload",
+TEST_CASE("packer ini+collision: shipped INI becomes payload, colliding files "
+          "are left to deploy order",
           "[gmmpack][packer]") {
   TempDir td;
   nexus_mod(td.root, "Clothes");
   nexus_mod(td.root, "ENB");
-  // Both mods ship textures/example.dds; ENB is lower in the list, so it
-  // becomes an opt-in patch against Clothes' copy.
+  // Both mods ship textures/example.dds with different bytes. ENB is lower in
+  // the list, so at install it loses that path to Clothes and the pack carries
+  // no delta for it.
   fs::create_directories(td.root / "Clothes" / "textures");
   fs::create_directories(td.root / "ENB" / "textures");
   {
@@ -1031,9 +1033,20 @@ TEST_CASE("packer ini+patches: shipped INI and colliding files become payload",
   auto extract = gmmpack::extract_archive(out);
   REQUIRE(extract.ok);
   REQUIRE(extract.archive.path_index.count("ini/ENB.ini.json"));
-  REQUIRE(extract.archive.path_index.count("patches/enb.json"));
+  // Both mods are still in the pack; neither was dropped for colliding.
+  REQUIRE(extract.archive.path_index.count("mods/clothes.json"));
+  REQUIRE(extract.archive.path_index.count("mods/enb.json"));
+  // No patch directory, and no base64 delta in any JSON the pack carries.
+  for (const auto &entry : extract.archive.files) {
+    INFO("unexpected archive entry: " << entry.path);
+    REQUIRE(entry.path.rfind("patches/", 0) != 0);
+    if (entry.path.ends_with(".json"))
+      REQUIRE(entry.content.find("payloadBase64") == std::string::npos);
+  }
+  const auto manifest = gmmpack::parse_manifest(extract.manifest_json);
+  REQUIRE(manifest.archive.file_hashes.count("patches/enb.json") == 0);
 
-  // Both are schema-valid and referentially sound, and import accepts them.
+  // The pack is still schema-valid, referentially sound, and importable.
   auto unpacked = gmmpack::unpack_gmmpack(out, schema_dir());
   INFO([&] {
     std::string joined;
@@ -1048,21 +1061,16 @@ TEST_CASE("packer ini+patches: shipped INI and colliding files become payload",
   REQUIRE(unpacked.pack.ini_edits[0].tweaks[0].source_mod_id == "enb");
   REQUIRE(unpacked.pack.ini_edits[0].tweaks[0].content.find("iAA=8") !=
           std::string::npos);
-  REQUIRE(unpacked.pack.patches.size() == 1);
-  REQUIRE(unpacked.pack.patches[0].mod_id == "enb");
-  REQUIRE(unpacked.pack.patches[0].target_path == "textures/example.dds");
-  REQUIRE(unpacked.pack.patches[0].archive_path == "patches/enb.json");
+  REQUIRE(unpacked.pack.patches.empty());
+  REQUIRE(unpacked.pack.mods.size() == 2);
 
-  // The patch really turns Clothes' file into ENB's.
-  const auto patch = unpacked.pack.patches[0];
-  std::vector<uint8_t> payload;
-  REQUIRE(gmmpack::base64_decode(patch.payload_base64, payload));
-  const std::string winner_bytes(4096, 'A');
-  std::vector<uint8_t> patched;
-  std::string error;
-  REQUIRE(gmmpack::bsdiff_apply(reinterpret_cast<const uint8_t *>(winner_bytes.data()),
-                                winner_bytes.size(), payload.data(), payload.size(),
-                                patched, error));
-  REQUIRE(std::string(patched.begin(), patched.end()) ==
-          std::string(4096, 'A') + std::string(4096, 'B'));
+  // What resolves the collision is the deploy order the tree carries: ENB
+  // comes after Clothes, so Clothes' copy of textures/example.dds wins.
+  REQUIRE(unpacked.pack.tree.nodes.size() == 2);
+  const auto *first  = std::get_if<gmmpack::ModNode>(&unpacked.pack.tree.nodes[0].data);
+  const auto *second = std::get_if<gmmpack::ModNode>(&unpacked.pack.tree.nodes[1].data);
+  REQUIRE(first != nullptr);
+  REQUIRE(second != nullptr);
+  REQUIRE(first->id == "clothes");
+  REQUIRE(second->id == "enb");
 }

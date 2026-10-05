@@ -14,8 +14,6 @@
 #include <type_traits>
 #include <unordered_set>
 
-#include "engine/gmmpack/bsdiff.h"
-#include "engine/gmmpack/codec.h"
 #include "engine/gmmpack/ini_edit_parser.h"
 #include "engine/gmmpack/sha256.h"
 #include "engine/gmmpack/tree_parser.h"
@@ -270,9 +268,8 @@ namespace {
   }
 
   // GMM's own bookkeeping at a mod's root (meta.ini, metadata.xml) is manager
-  // state, never mod content: it must not become a patch target or an INI
-  // tweak. The same file name deeper in the tree (data/foo/meta.ini) is real
-  // content and stays.
+  // state, never mod content: it must not become an INI tweak. The same file
+  // name deeper in the tree (data/foo/meta.ini) is real content and stays.
   bool is_manager_metadata(const std::string &relative) {
     if (relative.find('/') != std::string::npos)
       return false;
@@ -1062,119 +1059,14 @@ std::vector<IniEntry> build_ini_entries(const std::filesystem::path &mods_dir,
   return out;
 }
 
-// ---------------------------------------------------------------------------
-// build_patches
-// ---------------------------------------------------------------------------
-
-// A pack should not carry a base64 diff of a game-sized asset.
-static constexpr int64_t kMaxPatchFileBytes = 8 * 1024 * 1024;
-
-std::vector<PatchEntry> build_patches(const InstanceSnapshot &snapshot,
-                                      const std::filesystem::path &mods_dir,
-                                      const std::vector<ModEntry> &mods,
-                                      const PackCancel *cancel) {
-  if (mods_dir.empty() || mods.size() < 2)
-    return {};
-
-  // Mods in list order: the earlier one wins the conflict, every later one
-  // becomes an opt-in patch against it. mods[] is already list-ordered.
-  struct Owner {
-    std::string mod_id;
-    std::string name;
-    int32_t pos = 0;
-  };
-  std::unordered_map<std::string, std::vector<Owner>> by_path;  // relative path
-  report_stage(cancel, PackStage::Patches, static_cast<int>(mods.size()));
-  for (const auto &mod : mods) {
-    report_step(cancel, mod.name);
-    const auto it     = snapshot.mod_entries.find(mod.name);
-    const int32_t pos = it == snapshot.mod_entries.end()
-                            ? INT32_MAX
-                            : sort_pos(it->second.list_position);
-    for (const auto &rel : scan_files(mods_dir / mod.name)) {
-      if (is_manager_metadata(rel))
-        continue;
-      by_path[rel].push_back(Owner{mod.id, mod.name, pos});
-    }
-  }
-
-  // Per mod, its patches in discovery order become a contiguous chain
-  // (patches/<mod-id>-<N>.json); a single patch keeps the plain filename.
-  std::unordered_map<std::string, std::vector<PatchEntry>> by_mod;
-  std::vector<std::string> mod_order;
-  // The walk above is done, so the colliding paths are known: from here the unit
-  // is one file to binary-diff, which is the stage the time goes into.
-  int colliding = 0;
-  for (const auto &entry : by_path) {
-    if (entry.second.size() >= 2)
-      ++colliding;
-  }
-  report_stage(cancel, PackStage::Patches, colliding);
-  for (const auto &[rel, owners] : by_path) {
-    if (owners.size() < 2)
-      continue;
-    // One bsdiff per colliding file below: stop before starting the next.
-    if (pack_cancelled(cancel))
-      break;
-    report_step(cancel, rel);
-    auto sorted = owners;
-    std::sort(sorted.begin(), sorted.end(), [](const Owner &a, const Owner &b) {
-      return a.pos != b.pos ? a.pos < b.pos : a.mod_id < b.mod_id;
-    });
-    std::string base;
-    std::string base_hash;
-    for (size_t i = 0; i < sorted.size(); ++i) {
-      if (pack_cancelled(cancel))
-        break;
-      const std::filesystem::path file = mods_dir / sorted[i].name / rel;
-      std::error_code ec;
-      const auto size = std::filesystem::file_size(file, ec);
-      if (ec || size == 0 || size > static_cast<uintmax_t>(kMaxPatchFileBytes))
-        continue;
-      std::string content;
-      if (!read_file(file, content))
-        continue;
-      if (i == 0) {
-        base      = content;
-        base_hash = sha256_hex(content);
-        continue;
-      }
-      if (base == content)
-        continue;  // identical bytes: nothing to patch
-      std::vector<uint8_t> payload;
-      std::string error;
-      if (!bsdiff_create(reinterpret_cast<const uint8_t *>(base.data()), base.size(),
-                         reinterpret_cast<const uint8_t *>(content.data()),
-                         content.size(), payload, error)) {
-        continue;
-      }
-      PatchEntry p;
-      p.mod_id           = sorted[i].mod_id;
-      p.target_path      = rel;
-      p.base_file_sha256 = base_hash;
-      p.algorithm        = "bsdiff";
-      p.payload_base64   = base64_encode(payload);
-      if (!by_mod.contains(p.mod_id))
-        mod_order.push_back(p.mod_id);
-      by_mod[p.mod_id].push_back(std::move(p));
-    }
-  }
-  std::sort(mod_order.begin(), mod_order.end());
-
-  std::vector<PatchEntry> out;
-  for (const auto &mod_id : mod_order) {
-    auto &entries = by_mod[mod_id];
-    if (entries.size() == 1) {
-      out.push_back(std::move(entries.front()));
-      continue;
-    }
-    for (size_t i = 0; i < entries.size(); ++i) {
-      entries[i].sequence = static_cast<int>(i + 1);
-      out.push_back(std::move(entries[i]));
-    }
-  }
-  return out;
-}
+// Colliding paths are not a pack concern. A pack is a set of references - mod
+// ids, file ids, versions, URLs - so two mods shipping the same relative path
+// is an ordinary instance conflict that deploy order already decides: the
+// higher-priority mod's copy wins the whole file and the lower-priority mod's
+// copy is overwritten. Shipping a binary delta instead was a second, far
+// slower way of saying the same thing - on a 199-mod instance it ran 1,061
+// bsdiffs and took over 40 minutes, and one 47 MiB texture spent 194 s
+// producing a patch larger than the file it described.
 
 // ---------------------------------------------------------------------------
 // JSON serializers (reverse of unpacker.cpp parse_*)
@@ -1309,27 +1201,6 @@ nlohmann::json serialize_ini_entry(const IniEntry &entry) {
   return j;
 }
 
-// patches/<id>[-N].json - reverse of parse_patch_entry. The filename carries
-// the same mod id and sequence, which import cross-checks.
-nlohmann::json serialize_patch_entry(const PatchEntry &p) {
-  nlohmann::json j;
-  j["modId"] = p.mod_id;
-  if (p.sequence)
-    j["sequence"] = *p.sequence;
-  j["targetPath"]     = p.target_path;
-  j["baseFileSha256"] = p.base_file_sha256;
-  j["algorithm"]      = p.algorithm;
-  j["payloadBase64"]  = p.payload_base64;
-  return j;
-}
-
-std::string patch_archive_path(const PatchEntry &p) {
-  std::string name = "patches/" + p.mod_id;
-  if (p.sequence)
-    name += "-" + std::to_string(*p.sequence);
-  return name + ".json";
-}
-
 nlohmann::json serialize_executable_entry(const ExecutableEntry &e) {
   nlohmann::json j;
   j["id"]           = e.id;
@@ -1458,7 +1329,6 @@ Gmmpack build_gmmpack(const InstanceSnapshot &snapshot,
   pack.mods        = build_mod_entries(snapshot, mods_dir, options, cancel);
   pack.executables = build_executables(snapshot, mods_dir, options, cancel);
   pack.ini_edits   = build_ini_entries(mods_dir, pack.mods, cancel);
-  pack.patches     = build_patches(snapshot, mods_dir, pack.mods, cancel);
   pack.tree        = build_tree(snapshot, mods_dir, options, cancel);
   // Rules need both sides built: an executable needs its source mod on disk
   // before it can run, and executable ids share the mod id-space for
@@ -1556,9 +1426,6 @@ PackResult create_gmmpack(const InstanceSnapshot &snapshot,
   for (const auto &entry : pack.ini_edits) {
     files.emplace_back("ini/" + entry.target_file + ".json",
                        serialize_ini_entry(entry).dump(2));
-  }
-  for (const auto &patch : pack.patches) {
-    files.emplace_back(patch_archive_path(patch), serialize_patch_entry(patch).dump(2));
   }
   for (const auto &af : pack.payload) {
     result.embedded_file_count++;

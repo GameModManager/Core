@@ -812,8 +812,6 @@ ExportWizard::describe_progress(const engine::gmmpack::PackProgress &progress) c
     return tr("Resolving %1 (%2/%3 mods)").arg(name).arg(item).arg(total);
   case PackStage::Ini:
     return tr("Reading mod settings (%1/%2 mods)").arg(item).arg(total);
-  case PackStage::Patches:
-    return tr("Diffing %1 (%2/%3 files)").arg(name).arg(item).arg(total);
   case PackStage::Tree:
     return tr("Building the mod tree (%1/%2 mods)").arg(item).arg(total);
   case PackStage::Payload:
@@ -1073,22 +1071,6 @@ void ExportWizard::refresh_tree() {
     root->addChild(ini_folder);
   }
 
-  if (!pack.patches.empty()) {
-    auto *patch_folder = new QTreeWidgetItem({QStringLiteral("patches/")});
-    patch_folder->setIcon(0, folder_icon);
-    patch_folder->setToolTip(0, tr("Files several mods ship at the same path. Import "
-                                   "asks before applying any of them."));
-    for (const auto &patch : pack.patches) {
-      auto *item = new QTreeWidgetItem(
-          {QStringLiteral("%1 - %2")
-               .arg(QString::fromStdString(engine::gmmpack::patch_archive_path(patch)))
-               .arg(QString::fromStdString(patch.target_path))});
-      item->setIcon(0, file_icon);
-      patch_folder->addChild(item);
-    }
-    root->addChild(patch_folder);
-  }
-
   auto *tree_file = new QTreeWidgetItem({QStringLiteral("tree.json")});
   tree_file->setIcon(0, file_icon);
   root->addChild(tree_file);
@@ -1111,9 +1093,6 @@ void ExportWizard::refresh_tree() {
     }
     if (!pack.ini_edits.empty()) {
       summary += tr(", %1 INI files").arg(static_cast<int>(pack.ini_edits.size()));
-    }
-    if (!pack.patches.empty()) {
-      summary += tr(", %1 patches").arg(static_cast<int>(pack.patches.size()));
     }
     tree_summary_->setText(summary);
   }
@@ -1165,9 +1144,7 @@ void ExportWizard::refresh_review() {
     summary += tr("\n%1 of them bundled into the archive").arg(embedded);
   }
   if (!pack.ini_edits.empty()) {
-    summary += tr("\n%1 INI files, %2 patches")
-                   .arg(static_cast<int>(pack.ini_edits.size()))
-                   .arg(static_cast<int>(pack.patches.size()));
+    summary += tr("\n%1 INI files").arg(static_cast<int>(pack.ini_edits.size()));
   }
   if (dropped > 0) {
     summary += tr("\n%1 selected mods cannot be exported (missing folder or "

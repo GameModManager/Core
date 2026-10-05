@@ -707,8 +707,12 @@ void ModpackInstallWizard::build_steps() {
     StepState state;
     state.id    = id;
     state.title = step_title(id);
-    // Append mode reuses the existing instance: Paths already exist.
-    state.skipped = (id == Step::Paths && mode_ == Mode::Append);
+    // Append mode reuses the existing instance: Paths already exist. The
+    // binary-patch consent step is only offered for a pack that actually
+    // carries patches; a pack GMM exports never does, so there is no choice
+    // to consent to.
+    state.skipped = (id == Step::Paths && mode_ == Mode::Append) ||
+                    (id == Step::Patches && pack_.patches.empty());
     state.visited = state.skipped;
     steps_.push_back(state);
   }
