@@ -43,7 +43,7 @@ namespace {
 
   // Match a provider by either its source_type() ("nexus") or display_name()
   // ("Nexus Mods"), case-insensitive. Returns nullptr when no provider in the
-  // SourceRegistry matches - the caller is then expected to fall back to a
+  // Source::Registry matches - the caller is then expected to fall back to a
   // generic or placeholder panel.
   engine::Source::Interface *find_provider(const QString &name) {
     std::string low = name.trimmed().toStdString();
@@ -315,7 +315,7 @@ namespace {
   // -- Add-source dialog -----------------------------------------------------
 
   // A small modal dialog that lets the user pick a provider (Nexus / LoversLab
-  // / Steam / anything else in SourceRegistry) and supply the per-provider
+  // / Steam / anything else in Source::Registry) and supply the per-provider
   // identifier(s). On accept, writes the provider section + canonical source
   // keys to meta via the ModInfoData lambdas.
   //
@@ -399,7 +399,7 @@ namespace {
         entries.append(e);
       }
       // Git is not a download provider - nothing is fetched from a repository -
-      // so no SourceProvider is registered for it and the loop above cannot
+      // so no Source::Interface is registered for it and the loop above cannot
       // produce the entry. It is a source all the same: it owns the [Git]
       // section and its own tab. Offered directly, and skipped for a mod that
       // already has one (a .git in the folder, or a recorded [Git] section),

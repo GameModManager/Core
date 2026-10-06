@@ -15,9 +15,9 @@ The machine-readable schemas live one directory up, in [`../schemas/`](../schema
 | `tree.schema.json`                  | `tree.json`                         |
 
 GMM validates an archive against all six before it will open it
-(`engine/gmmpack/schema_validator.cpp`, driven by `unpack_gmmpack`), and the
-exporter runs the same validation on what it just built
-(`create_gmmpack` in `engine/gmmpack/packer.cpp`) so it cannot emit a pack its
-own importer would refuse. The schemas are installed to
+(`engine/modpack/gmmpack/schema_validator.cpp`, driven by `unpack_gmmpack`), and
+the exporter runs the same validation on what it just built
+(`create_gmmpack` in `engine/modpack/gmmpack/packer.cpp`) so it cannot emit a
+pack its own importer would refuse. The schemas are installed to
 `share/gamemodmanager/schemas/` next to the binary; `find_schema_dir()` in
-`engine/gmmpack/unpacker.cpp` is the single lookup both paths use.
+`engine/modpack/gmmpack/unpacker.cpp` is the single lookup both paths use.

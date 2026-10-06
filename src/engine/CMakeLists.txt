@@ -4,8 +4,10 @@
 # launch/multi_process) live under src/ui/ and are compiled into gmm_ui
 # instead, keeping this target Qt-free at the CMake level.
 #
-# Directory groups (issue/33): core/, mod/, source/, game/, pipeline/,
-# deploy/, platform/; sort/ and index/ stay at engine top level.
+# Directory groups (issue/33): mod/, source/, game/, pipeline/, deploy/,
+# modpack/, plugin_host/; sort/ and index/ stay at engine top level. The old
+# core/ group was hoisted into this directory; the old platform/ group moved
+# out to src/platform/, with theme/ and tools/ hoisted here.
 #
 # Dependency direction: engine -> runtime -> platform (all Qt-free).
 

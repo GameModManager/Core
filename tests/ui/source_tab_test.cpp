@@ -9,7 +9,7 @@
 // one is in flight must supersede the first cleanly: the stale result is
 // dropped (generation mismatch) and only the newer fetch's data lands in the
 // mod's meta (no torn write). Hermetic: no network, no real config (fake
-// provider registered in SourceRegistry, XDG_CONFIG_HOME pointed at a
+// provider registered in Source::Registry, XDG_CONFIG_HOME pointed at a
 // throwaway dir).
 #include "engine/mod/meta/mod_meta.h"
 #include "engine/source/nexus/provider.h"
