@@ -164,7 +164,7 @@ namespace {
   // Routing reuses engine::Collection's download router: Nexus entries consult
   // the stored account status (API key present = authenticated, premium tier
   // = auto-download), everything else routes on its declared resolution.
-  // Auto entries fetch through the SourceRegistry providers - the same
+  // Auto entries fetch through the Source::Registry providers - the same
   // Interface the main-window pipeline drives. Browser entries open the file
   // page for a manual fetch; external-client entries (Steam Workshop) install
   // outside GMM entirely.
@@ -344,7 +344,7 @@ namespace {
     return out;
   }
 
-  // The wizard runs outside MainWindow, so its SourceRegistry may not have
+  // The wizard runs outside MainWindow, so its Source::Registry may not have
   // providers yet. Register the fetch-capable set once (guarded - the main
   // window registers the same providers at startup).
   void ensure_download_providers() {
@@ -630,7 +630,7 @@ void ModpackInstallWizard::start_fetch(const QString &mod_id) {
   refresh_downloads_ui();
 
   // Callbacks marshal back onto this (UI) thread; the fetch runs on its
-  // own thread through the SourceRegistry provider.
+  // own thread through the Source::Registry provider.
   auto on_progress = [this, mod_id](int64_t downloaded, int64_t total) {
     QMetaObject::invokeMethod(
         this,
