@@ -1,7 +1,7 @@
 #include "engine/pipeline/fetch_stage.h"
 #include "engine/pipeline/pipeline.h"
 #include "engine/mod/model/mod.h"
-#include "engine/source/source_provider.h"
+#include "engine/source/registry.h"
 #include "engine/instance/instance.h"
 #include "engine/log/logger.h"
 #include "engine/source/modl/provider.h"
@@ -13,7 +13,7 @@ namespace engine {
 
 Source::Interface *fetch_provider_for(const Mod &mod) {
   if (auto *provider =
-          SourceRegistry::instance().provider_for(mod.download_source_type))
+          Source::Registry::instance().provider_for(mod.download_source_type))
     return provider;
   // No source, but the URL is already resolved: the transport takes it from
   // here. modl:// is the case that matters - it is a URI handler, so a link

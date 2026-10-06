@@ -25,7 +25,8 @@
 #include "engine/instance/instance_utils.h"
 #include "engine/plugin_host/plugin_loader.h"
 #include "engine/theme/theme_manager.h"
-#include "engine/source/source_provider.h"
+#include "engine/source/interface.h"
+#include "engine/source/registry.h"
 #include "ui/theme/style_manager.h"
 
 #include <QApplication>
@@ -57,7 +58,7 @@ void check(bool cond, const char *what) {
 
 // Minimal provider so the "provider entries never show a settings container
 // in the Plugins tab" path is exercised without shipping code.
-struct FakeProvider : engine::SourceProvider {
+struct FakeProvider : engine::Source::Interface {
   std::string source_type() const override { return "fakesrc"; }
   bool fetch(const engine::Mod &, engine::PipelineContext &,
              const std::filesystem::path &) override {
@@ -575,7 +576,7 @@ TEST_CASE("settings plugins tab", "[ui]") {
   check(true, "closing the dialog did not crash");
 
   // --- Provider entries + reopen with a registered provider. ---
-  engine::SourceRegistry::instance().register_provider(
+  engine::Source::Registry::instance().register_provider(
       std::make_unique<FakeProvider>());
 
   SettingsDialog dlg2(&style, "breeze", root, &loader);

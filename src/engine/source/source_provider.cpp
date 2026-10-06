@@ -1,17 +1,18 @@
-#include "engine/source/source_provider.h"
+#include "engine/source/registry.h"
 
 namespace engine {
 
-SourceRegistry &SourceRegistry::instance() {
-  static SourceRegistry reg;
+Source::Registry &Source::Registry::instance() {
+  static Source::Registry reg;
   return reg;
 }
 
-void SourceRegistry::register_provider(std::unique_ptr<SourceProvider> provider) {
+void Source::Registry::register_provider(std::unique_ptr<Source::Interface> provider) {
   providers_.push_back(std::move(provider));
 }
 
-SourceProvider *SourceRegistry::provider_for(const std::string &source_type) const {
+Source::Interface *
+Source::Registry::provider_for(const std::string &source_type) const {
   for (const auto &p : providers_) {
     if (p->source_type() == source_type)
       return p.get();
@@ -19,7 +20,7 @@ SourceProvider *SourceRegistry::provider_for(const std::string &source_type) con
   return nullptr;
 }
 
-std::vector<std::string> SourceRegistry::available_sources() const {
+std::vector<std::string> Source::Registry::available_sources() const {
   std::vector<std::string> out;
   for (const auto &p : providers_) {
     out.push_back(p->source_type());
@@ -27,8 +28,8 @@ std::vector<std::string> SourceRegistry::available_sources() const {
   return out;
 }
 
-std::vector<SourceProvider *> SourceRegistry::providers() const {
-  std::vector<SourceProvider *> out;
+std::vector<Source::Interface *> Source::Registry::providers() const {
+  std::vector<Source::Interface *> out;
   out.reserve(providers_.size());
   for (const auto &p : providers_) {
     out.push_back(p.get());
