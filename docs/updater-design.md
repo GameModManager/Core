@@ -9,11 +9,13 @@ and what the three orphaned updater settings are actually allowed to mean.
 
 ## 1. What already exists
 
-`projects/Core/src/engine/update/` is 2039 lines. That number flatters it.
-931 of those lines are `mod_update_db_client.{h,cpp}`, which is a different
-feature (per-mod update polling against a public dataset, has a test, unrelated
-to self-update). The self-updater subsystem proper is **1108 lines**, of which
-the design verdict is below.
+`projects/Core/src/engine/update/` is 1009 lines across 11 files. That number
+flatters it. 436 of those lines are `install_method.{h,cpp}`, a different feature
+(how the running install is laid out). A further 931 lines used to sit here as
+`mod_update_db_client.{h,cpp}`; phase 4 moved those to
+`engine/source/update/`, where they remain per-mod update polling against a
+public dataset (has a test, unrelated to self-update). The self-updater
+subsystem proper is **573 lines**, of which the design verdict is below.
 
 Nothing outside `self_updater.cpp` calls any of it. `SelfUpdater::create()` has
 never been invoked. The feature has never run once.
@@ -26,13 +28,13 @@ never been invoked. The feature has never run once.
 | `self_updater_p.h` | 20 | **fixable** | Private helper decl. Fine. |
 | `self_updater.cpp` | 238 | **fixable, three real bugs** | See below. `fetch_update_info`, `find_asset_url` and `parse_version` all have defects. The factory and `detect_distro_type` are structurally usable. |
 | `windows_self_updater.cpp` | 94 | **fixable, one fatal bug** | Runs the NSIS installer while our own exe is still running and locked. Will fail or prompt. Also cannot tell installer from portable. |
-| `linux_self_updater.cpp` | 90 | **dead. Delete.** | Downloads a `.tar.gz` to `/tmp/gmm_update`, chmods it, returns `success = true`. It never extracts and never replaces anything. It reports success having done nothing. Also has a stray no-op `exe.native();` at line 81. |
+| `linux_self_updater.cpp` | 90 | **deleted - verdict was applied** | Downloads a `.tar.gz` to `/tmp/gmm_update`, chmods it, returns `success = true`. It never extracts and never replaces anything. It reports success having done nothing. Also has a stray no-op `exe.native();` at line 81. Kept as the record of why it was wrong. |
 | `macos_self_updater.cpp` | 124 | **fixable, one fatal bug + two cases unhandled** | `cp -R "/Volumes/.../GameModManager.app" "/Applications/GameModManager.app"` nests the bundle inside the existing one on any second run. No read-only-volume check, no translocation check. |
-| `flatpak_updater.cpp` | 71 | **dead. Delete.** | Line 44 runs `std::system("flatpak update --assumeyes ...")` from inside a sandbox where the `flatpak` binary does not exist. It cannot work, ever. See section 6. |
+| `flatpak_updater.cpp` | 71 | **deleted - verdict was applied** | Line 44 runs `std::system("flatpak update --assumeyes ...")` from inside a sandbox where the `flatpak` binary does not exist. It cannot work, ever. See section 6. Kept as the record of why it was wrong. |
 | `appimage_updater.cpp` | 107 | **fixable, works, wrong mechanism** | The rename-over-the-running-AppImage is the right shape and is the documented `AppImageUpdate` behaviour. It ignores zsync entirely and ignores the `update-information` field embedded in the AppImage, which is the whole point of the format. |
-| `deb_rpm_updater.cpp` | 99 | **dead, and wrong on purpose** | `pkexec apt install -y` / `pkexec rpm -Uvh` asks the user for a root password because an application asked it to. Wrong shape, see section 4. |
-| `aur_updater.cpp` | 85 | **dead, and wrong on purpose** | `yay -S gamemodmanager --noconfirm` from inside a running game mod manager. Also shells out twice just to find the helper. |
-| 7 headers, one per updater | ~122 | **collapsible** | Six one-method subclasses with a factory `extern`-declaration dance. The subclasses carry no state worth the vtable. |
+| `deb_rpm_updater.cpp` | 99 | **deleted - verdict was applied** | `pkexec apt install -y` / `pkexec rpm -Uvh` asks the user for a root password because an application asked it to. Wrong shape, see section 4. Kept as the record of why it was wrong. |
+| `aur_updater.cpp` | 85 | **deleted - verdict was applied** | `yay -S gamemodmanager --noconfirm` from inside a running game mod manager. Also shells out twice just to find the helper. Kept as the record of why it was wrong. |
+| 3 platform headers, one per surviving updater | 51 | **collapsible** | Three one-method subclasses with a factory `extern`-declaration dance. The subclasses carry no state worth the vtable. |
 
 ### The three real bugs in `self_updater.cpp`
 
@@ -49,17 +51,21 @@ never been invoked. The feature has never run once.
    without fixing this.
 3. **`find_asset_url("")` matches the first asset, arbitrarily.** The empty-suffix
    call is an unconditional hit: a zero-length suffix compares equal to any name.
-   `flatpak_updater` and `aur_updater` both call `fetch_update_info("")`, so both
-   get whichever asset GitHub happens to list first.
+   `flatpak_updater` and `aur_updater` both called `fetch_update_info("")`, so
+   both got whichever asset GitHub happened to list first. Both files are now
+   deleted and no caller passes an empty suffix; `find_asset_url` refuses one
+   outright (`self_updater.cpp:34`), so this is the shape of the old defect
+   rather than a live call path.
 
 ### How much is real
 
-Roughly **250 lines of real value** out of 1108: the strategy interface shape,
-the `curl_download`-with-progress plumbing (which is the same four times over
-and should be one function), the version-compare intent, and the factory
-dispatch skeleton. Everything else is scaffolding written against a packaging
-plan that never landed, and two files (`linux_self_updater`, `flatpak_updater`)
-are worse than dead: they are plausible-looking code that cannot succeed.
+Roughly **250 lines of real value** out of the self-updater's original size: the
+strategy interface shape, the `curl_download`-with-progress plumbing (which is
+the same three times over and should be one function), the version-compare
+intent, and the factory dispatch skeleton. Everything else is scaffolding
+written against a packaging plan that never landed, and two files
+(`linux_self_updater`, `flatpak_updater`) were worse than dead: plausible-looking
+code that cannot succeed. Both are deleted now; the reasoning is kept above.
 
 ---
 
@@ -240,8 +246,8 @@ manager, a portal, or an external helper, and without asking for credentials.
 
 Three of these deserve their reasoning stated.
 
-**Package-managed Linux is a refusal, not an install.** The current
-`deb_rpm_updater` shells out to `pkexec apt install -y`, which means the running
+**Package-managed Linux is a refusal, not an install.** The deleted
+`deb_rpm_updater` shelled out to `pkexec apt install -y`, which means the running
 game mod manager asks the user for a root password in order to update itself.
 That is the behaviour of a malware sample, not a desktop application. The
 ecosystem rule is that the package manager owns the package, and
@@ -393,8 +399,8 @@ Sourced findings:
    inside the sandbox is `/app/bin:/usr/bin`, where `/usr` is the runtime, and
    the runtime does not carry the flatpak binary. So
    `std::system("flatpak update --assumeyes $FLATPAK_ID")`, which is exactly
-   what `flatpak_updater.cpp:44` does, fails 100 percent of the time. It has
-   never been run, so nobody has noticed.
+   what the now-deleted `flatpak_updater.cpp:44` did, fails 100 percent of the
+   time. It has never been run, so nobody has noticed.
 3. **`flatpak-spawn --host` is the wrong tool and is a Flathub problem.**
    `flatpak-spawn --host` routes to `org.freedesktop.Flatpak`, the
    `flatpak-session-helper` `Development.HostCommand` method, which is arbitrary
@@ -556,7 +562,10 @@ This is the phase that makes the Windows cases shippable.
   `check_for_updates` to match the cadence actually implemented.
 - Store and display `last_checked`.
 - Delete `linux_self_updater.cpp` and `flatpak_updater.cpp`, and their headers and
-  their `CMakeLists.txt` entries. Both are code that cannot succeed.
+  their `CMakeLists.txt` entries. Both are code that cannot succeed. **Done** -
+  all four dead updaters (`linux`, `flatpak`, `deb_rpm`, `aur`) are now gone;
+  what is left in `engine/update/` is `self_updater.{h,cpp}`,
+  `self_updater_p.h`, `install_method.{h,cpp}` and the three platform updaters.
 
 Outcome: the three checkboxes have readers, the version comparison is correct
 against a real feed, and detection is testable without running an installer.
@@ -632,7 +641,7 @@ Workspace files read:
   `linux/flatpak/CMakeLists.txt`, `windows/installer/CMakeLists.txt`,
   `windows/standalone/CMakeLists.txt`, `macos/dmg/CMakeLists.txt`
 - `projects/Core/CMakeLists.txt`, `projects/Core/src/engine/CMakeLists.txt`,
-  `projects/Core/src/engine/update/` (all 15 files),
+  `projects/Core/src/engine/update/` (all 11 files),
   `projects/Core/src/engine/github.{h,cpp}`,
   `projects/Core/src/engine/network/network_manager.cpp`,
   `projects/Core/src/ui/settings/settings.{h,cpp}`,

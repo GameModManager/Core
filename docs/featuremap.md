@@ -79,7 +79,7 @@ instead. See the USVFS note at the top of this file.
 | LD_PRELOAD intercept (Linux) | ❌ | 🚀 `PreloadInterceptor` - `preload_interceptor.h:23` | 🚀 · |
 | Case-insensitive path resolution | ❌ | 🚀 `resolve_regular_file_ci` - `fs_utils.h:80` | 🚀 · |
 | PathResolver registry | ❌ | 🚀 `PathResolverRegistry` - `path_resolver_registry.h:25` | 🚀 · |
-| FUSE-based VFS (Linux) | ❌ | 🚀 `Vfs` (FUSE) - `vfs.h:14` | 🚀 · |
+| FUSE-based VFS (Linux) | ❌ | ❌ gone with libfuse3; the Linux VFS we ship is OverlayFS - `overlay_launcher.h:14` | ❌ · |
 
 ## 2. Launch Pipeline
 
@@ -134,9 +134,9 @@ port - their cited GMM symbol names were invented, the features are not.
 | Blacklist warning dialog | ✅ `confirmBlacklisted` `spawn.cpp:361` | ⏳ blacklist is a VFS directive - Workspace-av1y | ⏳ ✔ [win] |
 | Crash dump type selection | ✅ `CrashDumpsType` `usvfsconnector.cpp:106` (Win32 minidump flavours) | ⚠️ no reader; handler writes one fixed backtrace - `settings.cpp:567` | ⚠️ ✔ |
 | USVFS child crash capture | ✅ `env::createMiniDump` `env.cpp:1200` (not the cited `usvfsCreateMiniDump`) | ⏳ planned port - Workspace-9nwe | ⏳ ✔ [win] |
-| Crash dump pruning | ✅ `cycleDiagnostics` (`mainwindow.cpp`) | ✅ `prune_old_dumps(max_core_dumps())` - `core.cpp:116` | ✅ ✔ |
+| Crash dump pruning | ✅ `cycleDiagnostics` (`mainwindow.cpp`) | ✅ `prune_old_dumps(max_core_dumps())` - `app/core.cpp:116` | ✅ ✔ |
 | USVFS log worker thread | ✅ `LogWorker` `usvfsconnector.h` (offloads USVFS log writes) | ⏳ second log stream does not exist yet - Workspace-3br4 | ⏳ ✔ [win] |
-| USVFS log file output | ✅ USVFS writes `logs/usvfs-<ts>.log` | ⏳ GMM writes one log - `core.cpp:64` | ⏳ ✔ [win] |
+| USVFS log file output | ✅ USVFS writes `logs/usvfs-<ts>.log` | ⏳ GMM writes one log - `app/core.cpp:63` | ⏳ ✔ [win] |
 | USVFS log viewer | ✅ `logDock` over the shared `MOBase::log` | ⏳ USVFS half only; our own log view ships - Workspace-myzy | ⏳ ✔ [win] |
 | EventLog service check | ✅ `eventLogNotRunning` `spawn.cpp:335` | 🚫 Windows service, exists for USVFS | 🚫 ✔ [win] |
 | Sanity checks on startup | ✅ `sanity::checkEnvironment` `sanitychecks.cpp:402` | 🚫 5 of 6 need modules, ACLs, GUIDs or ADS | 🚫 ✔ [win] |
@@ -168,7 +168,7 @@ port - their cited GMM symbol names were invented, the features are not.
 | Environment timezone collection | ✅ `Environment::timezone()` `env.h:190` | 🚫 a field of the environment dump above | 🚫 ✔ [win] |
 | Core dump creation (self + other process) | ✅ `env::coredump()` / `coredumpOther()` `env.cpp:1242` | ⚠️ self only: POSIX handler writes a backtrace - `crash_handler.cpp:166` | ⚠️ ✔ |
 | Log list (in-app viewer, 1000 entries) | ✅ `LogModel` + `LogList` `loglist.h`, `MaxLines = 1000` | ⚠️ `ConsolePanel` ships, now capped at 1000 - `console_panel.h` | ⚠️ ✔ |
-| Log initialization and configuration | ✅ `initLogging()` (`main.cpp`) | ✅ reads setting, calls `Logger::set_level`; local time - `core.cpp:170` | ✅ ✔ |
+| Log initialization and configuration | ✅ `initLogging()` (`main.cpp`) | ✅ reads setting, calls `Logger::set_level`; local time - `app/core.cpp:170` | ✅ ✔ |
 | Log blacklisting (privacy - username masking) | ✅ `log::getDefault().addToBlacklist()` | ✅ `Logger::sanitize()` rewrites home dir to `{USER}` - `logger.cpp:139` | ✅ ✔ |
 | Console attach/alloc (CLI) | ✅ `env::Console` (`AttachConsole`/`AllocConsole`) | 🚫 Win32 console API; `ConsolePanel` is a different thing | 🚫 ✔ [win] |
 | CopyEventFilter (Ctrl+C in views) | ✅ `copyeventfilter.h` event filter | ✅ Qt copies rows natively; explicit Copy too - `console_panel.cpp:39` | ✅ ✔ |
@@ -190,19 +190,19 @@ port - their cited GMM symbol names were invented, the features are not.
 | Skip file suffixes | ✅ `Settings::skipFileSuffixes` | ⚠️ line edit, no scanner reader - `settings_content_widget.cpp:1296` | ⚠️ ✔ |
 | Skip directories | ✅ `Settings::skipDirectories` | ⚠️ line edit, zero readers - `settings_content_widget.cpp:1297` | ⚠️ ✔ |
 | Force load libraries | ✅ `ExecutableForcedLoadSetting` | ⚠️ profile key copied, zero readers - `profile_creation.cpp:205` | ⚠️ ✔ |
-| USVFS log level | ✅ `Settings::logLevel` | ✅ Logger + console panel - `core.cpp:170`, `console_panel.cpp:53` | ✅ ✔ |
+| USVFS log level | ✅ `Settings::logLevel` | ✅ Logger + console panel - `app/core.cpp:170`, `console_panel.cpp:53` | ✅ ✔ |
 | USVFS spawn delay | ✅ `Settings::spawnDelay` | 🚫 Windows-shaped, no Linux subject | 🚫 ✔ |
 | Geometry persistence | ✅ `GeometrySettings` (window, splitter, toolbar) | ✅ 4 dialogs restore - `list_dialog.cpp:43`, `mod_info_dialog.cpp:333` | ✅ ✔ |
 | Widget state persistence | ✅ `WidgetSettings` (tree expand, combo, tab index) | ✅ splitters, headers - `settings_controller.cpp:869` | ✅ ✔ |
 | Color settings (conflict coloring) | ✅ `ColorSettings` (7 colors) | ⚠️ 5 of 7 read; 2 archive colors dead - `mod_list_model.cpp:2203` | ⚠️ ✔ |
-| Plugin blacklist | ✅ `Settings::blacklisted` | ✅ `disabled_plugins` reaches the loader - `core.cpp:248` | ✅ ✔ |
+| Plugin blacklist | ✅ `Settings::blacklisted` | ✅ `disabled_plugins` reaches the loader - `app/core.cpp:248` | ✅ ✔ |
 | Network settings (proxy, offline mode) | ✅ `NetworkSettings` | ⚠️ offline+proxy live; custom browser dead - `network_options_bridge.cpp:31` | ⚠️ ✔ |
 | Splash screen | ✅ `Settings::useSplash` | ⏳ cosmetic, no component | ⏳ ✔ |
 | Prerelease updates toggle | ✅ `Settings::usePrereleases` | ⚠️ checkbox; whole updater has no callers | ⚠️ ✔ |
 | Low-priority extraction | ✅ | 🚀 `pipeline_worker.cpp:199` `extraction_low_priority()` | 🚀 ✔ |
 | Full UI mode (tabs vs popups) | ❌ | 🚀 `settings_content_widget.cpp:120` `full_ui_mode()` | 🚀 ✔ |
 | Multi-core processing toggle | ❌ | 🚀 `settings.h:130` + `parallel::set_enabled` | 🚀 ✔ |
-| Language selection (i18n picker) | ✅ `InterfaceSettings::language()` | ⚠️ picker + loader live, help link absent - `core.cpp:137` | ⚠️ ✔ |
+| Language selection (i18n picker) | ✅ `InterfaceSettings::language()` | ⚠️ picker + loader live, help link absent - `app/core.cpp:137` | ⚠️ ✔ |
 | Style/Theme selection (QStyle + .qss) | ✅ `InterfaceSettings::styleName()` | ✅ theme, style, icon pack - `settings_controller.cpp:1203` | ✅ ✔ |
 | Collapsible separators settings | ✅ `InterfaceSettings` (ascending, descending, highlight, icons) | ⚠️ 9 keys, zero readers; fold state itself real - `settings.h:46` | ⚠️ ✔ |
 | Save filters toggle | ✅ `InterfaceSettings::saveFilters()` | ⚠️ dead; no mod list filter exists - `settings_content_widget.cpp:481` | ⚠️ ✔ |
@@ -229,8 +229,8 @@ port - their cited GMM symbol names were invented, the features are not.
 | Recent directories | ✅ `PathSettings::recent()` | ⏳ no setting | ⏳ ✔ |
 | Offline mode | ✅ `NetworkSettings::offlineMode()` | ✅ reaches NetworkOptions - `network_options_bridge.cpp:31` | ✅ ✔ |
 | Custom browser command | ✅ `NetworkSettings::customBrowserCommand()` | ⚠️ dead; every link uses QDesktopServices - `settings_content_widget.cpp:1260` | ⚠️ ✔ |
-| Download speed tracking per server | ✅ `NetworkSettings::setDownloadSpeed()` | 🚀 rolling average per mirror - `nexus_provider.cpp:322` | 🚀 ✔ |
-| Server preference list | ✅ `NetworkSettings::servers()` | 🚀 rank orders mirror selection - `nexus_provider.cpp:129` | 🚀 ✔ |
+| Download speed tracking per server | ✅ `NetworkSettings::setDownloadSpeed()` | 🚀 rolling average per mirror - `source/nexus/provider.cpp:441` | 🚀 ✔ |
+| Server preference list | ✅ `NetworkSettings::servers()` | 🚀 rank orders mirror selection - `source/nexus/provider.cpp:245` | 🚀 ✔ |
 | Nexus endorsement integration setting | ✅ `NexusSettings::endorsementIntegration()` | ✅ `settings.h:161` + applied `nexus_source_panel.cpp:41` | ✅ ✔ |
 | Nexus tracked integration setting | ✅ `NexusSettings::trackedIntegration()` | ✅ `settings.h:163` + applied `nexus_source_panel.cpp:46` | ✅ ✔ |
 | Nexus category mappings setting | ✅ `NexusSettings::categoryMappings()` | ⚠️ disabled "work in progress", never wired - `source_pages.cpp:275` | ⚠️ ✔ |
@@ -280,7 +280,7 @@ port - their cited GMM symbol names were invented, the features are not.
 | U149 Workarounds footer warning text | ✅ `settingsdialog.ui:2187` | ⏳ one static label | ⏳ ✔ |
 | U150 Diagnostics tab controls (log level, crash dumps, max dumps, LOOT log level, links) | ✅ `settingsdialog.ui:2197-2320`, `settingsdialogdiagnostics.cpp:22-90` | ⚠️ log level + max dumps real; LOOT level, links absent - `settings_content_widget.cpp:1324` | ⚠️ ✔ |
 | U151 Settings tabs use scroll areas with grouped GroupBoxes | ✅ `settingsdialog.ui:28`, `:1062` | ⏳ plain pages + GroupBoxes, no scroll areas | ⏳ ✔ |
-| U223 Per-plugin translators (every loaded plugin file basename) | ✅ `mainwindow.cpp:2930-2931` | ⏳ one translator from `language()`, none per plugin - `core.cpp:136` | ⏳ ✔ |
+| U223 Per-plugin translators (every loaded plugin file basename) | ✅ `mainwindow.cpp:2930-2931` | ⏳ one translator from `language()`, none per plugin - `app/core.cpp:136` | ⏳ ✔ |
 | U262 QuestionBoxMemory per-dialog choice persistence (.ui + IDs) | ✅ `questionboxmemory` (uibase) | ✅ `dialog_choices/` keys - `settings.cpp:360` | ✅ ✔ |
 | U263 FileDialogMemory::restore (remembers dir per named dialog) | ✅ `mainwindow.cpp:478` | ⏳ every QFileDialog opens in the field's own path | ⏳ ✔ |
 | U287 splash.png + useSplash display component | ✅ `src/splash.png` | ⏳ cosmetic, no component | ⏳ ✔ |
@@ -292,7 +292,7 @@ port - their cited GMM symbol names were invented, the features are not.
 | Custom executables list | ✅ `ExecutablesList` (CRUD) | ✅ `Entry` + `ExecControlsBar` - `executables_entry.h:26` | ✅ · |
 | Per-executable arguments | ✅ `Executable::arguments` | ✅ `Entry::arguments` - `executables_entry.h:30` | ✅ · |
 | Per-executable working directory | ✅ `Executable::workingDirectory` | ✅ `start_in_edit_` - `executables_content_widget.cpp:317` | ✅ · |
-| Per-executable Steam App ID | ✅ `Executable::steamAppID` | ⚠️ MO2 import only, not per-executable - `mo2_importer.cpp:220` | ⚠️ · |
+| Per-executable Steam App ID | ✅ `Executable::steamAppID` | ❌ no field on `Entry`; the MO2 importer that populated it is deleted - `executables_entry.h:24` | ❌ · |
 | Per-executable custom overwrite | ✅ `Executable::customOverwrites` | ❌ | ❌ · |
 | Per-executable forced libraries | ✅ `Executable::forcedLibraries` | ❌ | ❌ · |
 | Per-executable environment variables | ❌ | 🚀 `parse_environment_text` (KEY=VALUE) - `executables_content_widget.cpp:45` | 🚀 · |
@@ -694,7 +694,7 @@ port - their cited GMM symbol names were invented, the features are not.
 
 | Feature | MO2 | GMM | Status |
 |---------|-----|-----|--------|
-| NXM handler registration | ✅ `registerAsNXMHandler` | ✅ `nxm_router` + `nxm_ipc` - `nxm_router.h:14` | ✅ · |
+| NXM handler registration | ✅ `registerAsNXMHandler` | ✅ `Source::Router` + `nxm_ipc` - `source/router.h:46` | ✅ · |
 | Nexus account / auth | ✅ | ✅ `nexus_account` + `nexus_auth` - `nexus/auth.h:39` | ✅ · |
 | Nexus HTTP API | ✅ | ✅ `nexus_http` + `nexus_servers` - `nexus/http.h:15` | ✅ · |
 | Endorsement system | ✅ `ModInfo::endorse()` | ⚠️ UI + setting only, opens browser - `nexus_source_panel.cpp:41` | ⚠️ · |
@@ -744,7 +744,7 @@ port - their cited GMM symbol names were invented, the features are not.
 | LOVERS LAB | ❌ | 🚀 `LoversLabProvider` - `loverslab/provider.h:35` | 🚀 · |
 | Download manager | ✅ `DownloadManager` | ✅ `curl_download` - `download/curl_download.cpp` | ✅ · |
 | Remote cache | ✅ | ✅ `MasterlistManager` (24h TTL, temp-file download, offline cache reuse) - `sort/sorter/loot/masterlists.h:21` | ✅ · |
-| Steam Workshop client (Web API) | ❌ | 🚀 `WorkshopClient` (SQLite cache, dead IDs) - `workshop/workshop_client.h:29` | 🚀 · |
+| Steam Workshop client (Web API) | ❌ | 🚀 `WorkshopClient` (SQLite cache, dead IDs) - `steam/workshop_client.h:29` | 🚀 · |
 | LoversLab session-cookie auth | ❌ | 🚀 `LoversLabAuth` (Cloudflare stripping) - `loverslab/auth.h:41` | 🚀 · |
 | Managed games tracking | ❌ | 🚀 `ManagedGames` (source_id, website_url, nexus_domain) - `nxm/managed_games.h:23` | 🚀 · |
 | modl:// protocol handler (mod.pub / MO2 modlhandler) | ❌ | 🚀 `modl://` (Win registry + XDG desktop) - `nxm_router.cpp:239` | 🚀 · |
@@ -895,7 +895,7 @@ port - their cited GMM symbol names were invented, the features are not.
 | Hardlink strategy | ❌ | 🚫 never reachable, removed - the factory builds only overlayfs and symlink - `deploy/core.cpp:16` | 🚫 · |
 | Junction strategy (Windows) | ❌ | 🚫 removed - Windows-shaped with no Linux subject - `deploy/core.cpp:16` | 🚫 · |
 | OverlayFS deploy strategy | ❌ | 🚀 `OverlayFsDeploy` (O(1) reorder) - `overlay_fs_deploy.h:14` | 🚀 · |
-| FUSE VFS strategy | ❌ | 🚀 `VfsStrategy` (FUSE + file_map) - `strategy_vfs.h:7` | 🚀 · |
+| VFS deploy strategy (USVFS / OverlayFS) | ✅ `usvfsCreateVFS` | ⚠️ Linux `OverlayFsDeploy` - `overlay_fs_deploy.h:14`; Windows USVFS is a launcher stub, not written - `launcher.cpp:825` | ⚠️ · |
 | Deploy ledger (incremental tracking) | ❌ | 🚀 `DeployLedger` (diff for priority changes) - `deploy_ledger.h:8` | 🚀 · |
 | Parallel deploy (thread pool) | ❌ | 🚀 `deploy_all_enabled_mods_parallel()` - `deploy_utils.h:128` | 🚀 · |
 | Root override ([General] rootOverride) | ❌ | 🚀 `RootOverride` + `classify_registry_path()` - `root_override.h:34` | 🚀 · |
@@ -1035,7 +1035,7 @@ port - their cited GMM symbol names were invented, the features are not.
 | Instance TOML persistence | ❌ | 🚀 `parse_instance_toml()` + JSON-to-TOML repair - `toml_utils.h:18` | 🚀 · |
 | Instance scan + last-used | ❌ | 🚀 `scan_instances()` + `read/write_last_instance()` - `instance_utils.h:28` | 🚀 · |
 | Game icons (download-on-demand) | ❌ | 🚀 `GameIcons` (ensure_icon_cached) - `game_icons.h:30` | 🚀 · |
-| Masterlist fetch (GitHub cache) | ❌ | 🚀 `MasterlistFetch` - `masterlist_fetch.h:25` | 🚀 · |
+| Masterlist fetch (GitHub cache) | ❌ | 🚀 `ensure_masterlist_cached()` free functions, prefetched off-thread at startup - `masterlist_fetch.h:30`; the LOOT masterlist+prelude pair is a separate `MasterlistManager` - `sort/sorter/loot/masterlists.h:21` | 🚀 · |
 | Instance statistics dialog | ❌ | 🚀 `StatsContentWidget` (sizes + explorer) - `stats_content_widget.h:17` | 🚀 · |
 | Instance options panel | ❌ | 🚀 `instance_options_panel` - `instance_options_panel.h:28` | 🚀 · |
 | Create instance wizard (7-page) | ✅ `CreateInstanceDialog` (Intro, Type, Game, Variants, Name, Paths, Profiles, Nexus, Confirmation) | ❌ | ❌ · |
@@ -1177,7 +1177,7 @@ app can never end up unreachable - see `tray_decision.h:66`.
 | Secondary instance (allow multiple) | ✅ `MOMultiProcess::secondary()` | ❌ | ❌ · |
 | Message passing between instances | ✅ `sendMessage()` / `messageSent()` | ✅ `nxm_ipc` + generic URL forwarder - `nxm_ipc.h:44` | ✅ · |
 | Command-line global options (--pick, --multiple, --logs, -i, -p) | ✅ `CommandLine` global options | ❌ | ❌ · |
-| Forward to primary instance | ✅ `CommandLine::forwardToPrimary()` | ⚠️ URLs only, no general CLI-arg forward - `core.cpp:473` | ⚠️ · |
+| Forward to primary instance | ✅ `CommandLine::forwardToPrimary()` | ⚠️ URLs only, no general CLI-arg forward - `app/core.cpp:495` | ⚠️ · |
 | NXM/moshortcut:// link protocol parsing | ✅ `CommandLine` handles moshortcut:// and nxm:// | ⚠️ nxm:// + modl://, moshortcut:// absent - `command_line.cpp:30` | ⚠️ · |
 
 ## 35. Text Editor
@@ -1233,8 +1233,8 @@ app can never end up unreachable - see `tray_decision.h:66`.
 | Linux (cgroup v2) | ❌ | 🚀 `cgroup_is_empty` - `launcher.h:142` | 🚀 · |
 | Linux (subreaper) | ❌ | 🚀 `PR_SET_CHILD_SUBREAPER` - `launcher.cpp:193` | 🚀 · |
 | Linux (Proton/Wine) | ❌ | 🚀 `ProtonRuntime` - `runtime.h:45` | 🚀 · |
-| macOS | ❌ | ⚠️ platform_interface stubs - `macos_platform.h:30` | ⚠️ · |
-| PlatformInterface (XDG, Steam, Proton) | ❌ | 🚀 `platform_interface.h` (home_dir, temp_dir) - `platform.h:141` | 🚀 · |
+| macOS | ❌ | ⚠️ stub `Platform` impls - `macos_platform.h:30` | ⚠️ · |
+| Platform abstraction (XDG, Steam, Proton) | ❌ | 🚀 `Platform` base class (home_dir, temp_dir) - `platform.h:141` | 🚀 · |
 | PathResolver (canonical paths) | ❌ | 🚀 `PathResolver` + `PathResolverRegistry` - `path_resolver.h:34` | 🚀 · |
 | Keyring (OS-backed + file fallback) | ❌ | 🚀 `Keyring` + `FileKeyring` (XOR+base64) - `keyring.h:11` | 🚀 · |
 | Thread priority (low) | ❌ | 🚀 `set_low_priority()` - `thread_priority.h:16` | 🚀 · |
@@ -1377,11 +1377,11 @@ column.
 
 | Section | ✅ | ⚠️ | 🚀 | ❌ | 🚫 | ⏳ | `[win]` |
 |---------|---|---|---|---|---|---|---|
-| 1. Virtual Filesystem | 5 | 2 | 5 | 0 | 0 | 5 | 5 |
+| 1. Virtual Filesystem | 5 | 2 | 4 | 1 | 0 | 5 | 5 |
 | 2. Launch Pipeline | 6 | 5 | 5 | 14 | 0 | 2 | 17 |
 | 3. Error Handling & Diagnostics | 8 | 9 | 0 | 0 | 28 | 11 | 35 |
 | 4. Settings & Configuration | 23 | 32 | 6 | 1 | 12 | 24 | 0 |
-| 5. Executable Management | 8 | 6 | 4 | 9 | 0 | 0 | 0 |
+| 5. Executable Management | 8 | 5 | 4 | 10 | 0 | 0 | 0 |
 | 6. Mod Management | 22 | 5 | 8 | 11 | 0 | 0 | 1 |
 | 7. Mod Categories | 6 | 4 | 0 | 10 | 0 | 0 | 0 |
 | 8. Mod Conflict Detection | 4 | 2 | 3 | 7 | 0 | 0 | 0 |
@@ -1398,7 +1398,7 @@ column.
 | 19. Mod Context Menu | 14 | 4 | 0 | 14 | 0 | 0 | 0 |
 | 20. Plugin Context Menu | 2 | 2 | 0 | 8 | 0 | 0 | 0 |
 | 21. Archive & Installation | 10 | 3 | 4 | 2 | 0 | 0 | 0 |
-| 22. Deploy System | 0 | 0 | 12 | 0 | 0 | 0 | 0 |
+| 22. Deploy System | 0 | 1 | 9 | 0 | 2 | 0 | 0 |
 | 23. Overwrite System | 8 | 2 | 3 | 0 | 0 | 0 | 0 |
 | 24. Save Game System | 13 | 5 | 5 | 4 | 0 | 0 | 0 |
 | 25. Game Detection & Knowledge | 2 | 2 | 11 | 0 | 0 | 0 | 0 |
@@ -1428,21 +1428,21 @@ column.
 | 49. CLI Help Grammar | 0 | 0 | 0 | 2 | 0 | 0 | 0 |
 | 50. My Games Resolution | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
 | 51. Conflict Scan Refresh | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
-| **TOTAL** | **312** | **177** | **180** | **279** | **52** | **43** | **62** |
+| **TOTAL** | **312** | **177** | **176** | **281** | **54** | **43** | **62** |
 
 ### The arithmetic
 
 ```
-rows in file                          1094
-scored rows (ok + part + miss)         768
+rows in file                          1043
+scored rows (ok + part + miss)         770
 
-MO2 parity        ok   / scored        312 /  768  = 40.6%
-partial           part / scored        177 /  768  = 23.0%
-missing           miss / scored        279 /  768  = 36.3%
-GMM-exclusive     surp / all rows      180 / 1094  = 16.5%   (not scored)
+MO2 parity        ok   / scored        312 /  770  = 40.5%
+partial           part / scored        177 /  770  = 23.0%
+missing           miss / scored        281 /  770  = 36.5%
+GMM-exclusive     surp / all rows      176 / 1043  = 16.9%   (not scored)
 ```
 
-**Parity is 312 / 768 = 40.6%.** 279 rows are outright missing and 177 partial.
+**Parity is 312 / 770 = 40.5%.** 281 rows are outright missing and 177 partial.
 The largest untouched surfaces are **44. Tutorial** and **46. Notifications /
 Problems** (zero matched rows), then **16. Nexus** and **15. Downloads**, which
 carry the most missing rows in absolute terms.
@@ -1455,7 +1455,7 @@ absent features was never the real gap in that section.
 
 ### Confidence
 
-285 of 1094 rows carry `✔` (both sides re-read); the rest carry `·` and are
+285 of 1043 rows carry `✔` (both sides re-read); the rest carry `·` and are
 leads, not findings. The `✔` rows concentrate in sections 3, 4, 15, 21, 18 and
 30. Section 45's `TaskDialog` row is a stale `❌` corrected here; uibase's
 `taskdialog.ui` is not vendored under `references/`, so its MO2 half is still
