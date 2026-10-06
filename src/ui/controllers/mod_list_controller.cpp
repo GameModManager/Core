@@ -2077,7 +2077,7 @@ void ModListController::load_meta_for_mods() {
       }
 
       // "direct" was the modl transport provider, registered as a source only
-      // so a SourceRegistry lookup would succeed. It never carried provenance
+      // so a Source::Registry lookup would succeed. It never carried provenance
       // - the host it came from was never attributable - so a mod stamped with
       // it is exactly what "manual" means. Rewrite in place; there is no
       // provider section to re-derive, because a direct-URL install never

@@ -176,7 +176,7 @@ private:
 
   // Step 5 real download pipeline: one in-flight fetch at a time, driven
   // in phase order from download_queue_. The fetch itself runs on
-  // fetch_thread_ through the SourceRegistry providers (the same
+  // fetch_thread_ through the Source::Registry providers (the same
   // Interface the main-window pipeline uses); progress/completion come
   // back via queued invokes into the on_fetch_* slots.
   QThread *fetch_thread_ = nullptr;

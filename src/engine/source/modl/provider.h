@@ -13,7 +13,7 @@ namespace engine::Source::Modl {
 // and stamped on the mod before the pipeline runs (mod.pub -> "modpub",
 // anything else -> "manual").
 //
-// Deliberately NOT registered in the SourceRegistry: a registry entry is a
+// Deliberately NOT registered in the Source::Registry: a registry entry is a
 // user-attributable source, and this carries no provenance, no account and
 // no settings. transport() hands the object to FetchStage directly for a mod
 // that already holds a resolved download URL, which is a transport question
