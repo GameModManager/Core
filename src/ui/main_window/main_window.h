@@ -26,7 +26,6 @@
 #include "engine/index/conflict_engine.h"
 #include "engine/mod/meta/mod_meta.h"
 #include "engine/profile/profile.h"
-#include "engine/source/nxm/nxm_router.h"
 #include "engine/source/router.h"
 #include "platform/platform.h"
 #include "ui/ui_locker.h"

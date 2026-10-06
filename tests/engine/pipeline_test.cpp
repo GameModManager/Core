@@ -14,7 +14,8 @@
 #include "engine/pipeline/launch_stage.h"
 #include "engine/pipeline/sync_stage.h"
 #include "engine/mod/model/mod.h"
-#include "engine/source/source_provider.h"
+#include "engine/source/interface.h"
+#include "engine/source/registry.h"
 
 #include <cstdio>
 #include <filesystem>
@@ -132,7 +133,7 @@ private:
 
 // A provider that resolves download metadata without touching the network and
 // writes a trivial archive in fetch() - lets FetchStage be tested hermetically.
-class TestMetaProvider final : public SourceProvider {
+class TestMetaProvider final : public Source::Interface {
 public:
   std::string source_type() const override { return "test-meta"; }
   bool fetch(const Mod &, PipelineContext &,
@@ -140,8 +141,8 @@ public:
     std::ofstream(dest_path) << "archive";
     return true;
   }
-  SourceDownloadInfo resolve_download_info(const Mod &) const override {
-    SourceDownloadInfo info;
+  Source::SourceDownloadInfo resolve_download_info(const Mod &) const override {
+    Source::SourceDownloadInfo info;
     info.archive_name = "Real_Archive-198-489053.7z";
     info.display_name = "Real Mod Name";
     return info;
@@ -151,7 +152,7 @@ public:
 // Same, but resolve_download_info returns nothing (e.g. no API key / probe
 // failed) - FetchStage must fall back to the default names and report the
 // empty metadata so the UI keeps its placeholder.
-class TestBlankProvider final : public SourceProvider {
+class TestBlankProvider final : public Source::Interface {
 public:
   std::string source_type() const override { return "test-blank"; }
   bool fetch(const Mod &, PipelineContext &,
@@ -159,7 +160,9 @@ public:
     std::ofstream(dest_path) << "archive";
     return true;
   }
-  SourceDownloadInfo resolve_download_info(const Mod &) const override { return {}; }
+  Source::SourceDownloadInfo resolve_download_info(const Mod &) const override {
+    return {};
+  }
 };
 }  // namespace
 
@@ -1024,7 +1027,7 @@ TEST_CASE("pipeline", "[engine]") {
   // archive name + display name so the UI can replace its placeholder row
   // name immediately instead of waiting for download_complete.
   {
-    engine::SourceRegistry::instance().register_provider(
+    engine::Source::Registry::instance().register_provider(
         std::make_unique<TestMetaProvider>());
     TempDir tmp;
     auto mods = tmp.root / "mods";
@@ -1059,7 +1062,7 @@ TEST_CASE("pipeline", "[engine]") {
   // keeps its placeholder), mod.name is untouched, and the default
   // "<source_id>.zip" archive name is used.
   {
-    engine::SourceRegistry::instance().register_provider(
+    engine::Source::Registry::instance().register_provider(
         std::make_unique<TestBlankProvider>());
     TempDir tmp;
     auto mods = tmp.root / "mods";

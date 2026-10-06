@@ -2,7 +2,8 @@
 
 #include "engine/mod/meta/mod_meta.h"
 #include "engine/source/git/git_info.h"
-#include "engine/source/source_provider.h"
+#include "engine/source/interface.h"
+#include "engine/source/registry.h"
 #include "ui/modinfo/mod_info_data.h"
 #include "ui/modinfo/source_panels/generic_source_panel.h"
 #include "ui/modinfo/source_panels/git_source_panel.h"
@@ -44,11 +45,11 @@ namespace {
   // ("Nexus Mods"), case-insensitive. Returns nullptr when no provider in the
   // SourceRegistry matches - the caller is then expected to fall back to a
   // generic or placeholder panel.
-  engine::SourceProvider *find_provider(const QString &name) {
+  engine::Source::Interface *find_provider(const QString &name) {
     std::string low = name.trimmed().toStdString();
     for (auto &c : low)
       c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-    for (auto *provider : engine::SourceRegistry::instance().providers()) {
+    for (auto *provider : engine::Source::Registry::instance().providers()) {
       auto matches = [&low](const std::string &s) {
         std::string sl = s;
         for (auto &c : sl)
@@ -294,7 +295,7 @@ namespace {
     // scan has not rewritten yet.
     if (source_type == QLatin1String("direct"))
       return std::nullopt;
-    for (auto *provider : engine::SourceRegistry::instance().providers()) {
+    for (auto *provider : engine::Source::Registry::instance().providers()) {
       const QString pt = QString::fromStdString(provider->source_type()).toLower();
       if (pt == QLatin1String("steamworkshop")) {
         if (source_type == QLatin1String("steam")) {
@@ -381,7 +382,7 @@ namespace {
         return 5;
       };
       QList<Entry> entries;
-      for (auto *provider : engine::SourceRegistry::instance().providers()) {
+      for (auto *provider : engine::Source::Registry::instance().providers()) {
         Entry e;
         e.display  = QString::fromStdString(provider->display_name());
         QString pt = QString::fromStdString(provider->source_type()).toLower();

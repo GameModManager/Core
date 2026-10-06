@@ -69,7 +69,7 @@
 #include "engine/source/nexus/provider.h"
 #include "engine/source/nxm/managed_games.h"
 #include "engine/source/router.h"
-#include "engine/source/source_provider.h"
+#include "engine/source/registry.h"
 #include "ui/main_window/conflict_scan_worker.h"
 #include "ui/main_window/loot_sort_worker.h"
 #include "ui/main_window/mod_scan_worker.h"
@@ -2869,7 +2869,7 @@ ui::ModInfoData ModListController::build_mod_info_data(const ModEntry &mod) {
         live_id = sidecar_id;
     }
     auto *provider = dynamic_cast<engine::Source::Nexus::Provider *>(
-        engine::SourceRegistry::instance().provider_for("nexus"));
+        engine::Source::Registry::instance().provider_for("nexus"));
     if (!provider || domain.isEmpty() || live_id.isEmpty())
       return engine::Source::Nexus::ModInfoResult{};
     return provider->fetch_mod_info(domain.toStdString(), live_id.toStdString());
@@ -2897,7 +2897,7 @@ ui::ModInfoData ModListController::build_mod_info_data(const ModEntry &mod) {
         live_url = sidecar_url;
     }
     auto *provider = dynamic_cast<engine::Source::LoversLab::Provider *>(
-        engine::SourceRegistry::instance().provider_for("loverslab"));
+        engine::Source::Registry::instance().provider_for("loverslab"));
     if (!provider)
       return engine::Source::LoversLab::ModInfoResult{};
     // Prefer the full page URL when we have one - the slug survives the
@@ -2927,7 +2927,7 @@ ui::ModInfoData ModListController::build_mod_info_data(const ModEntry &mod) {
         live_url = sidecar_url;
     }
     auto *provider = dynamic_cast<engine::Source::ModPub::Provider *>(
-        engine::SourceRegistry::instance().provider_for("modpub"));
+        engine::Source::Registry::instance().provider_for("modpub"));
     if (!provider)
       return engine::ModPubModInfoResult{};
     // Prefer the full page URL when we have one - the JSON-LD `url`

@@ -13,7 +13,8 @@
 // throwaway dir).
 #include "engine/mod/meta/mod_meta.h"
 #include "engine/source/nexus/provider.h"
-#include "engine/source/source_provider.h"
+#include "engine/source/interface.h"
+#include "engine/source/registry.h"
 #include "ui/modinfo/description_renderer.h"
 #include "ui/modinfo/mod_info_dialog.h"
 #include "ui/modinfo/source_panels/git_source_panel.h"
@@ -54,7 +55,7 @@ void check(bool cond, const char *what) {
 // A Nexus-typed provider with no network surface; find_provider() in
 // source_tab.cpp matches its display name and source_type()=="nexus" routes
 // it to the full metadata form.
-struct FakeNexusProvider : engine::SourceProvider {
+struct FakeNexusProvider : engine::Source::Interface {
   std::string source_type() const override { return "nexus"; }
   bool fetch(const engine::Mod &, engine::PipelineContext &,
              const std::filesystem::path &) override {
@@ -169,7 +170,7 @@ TEST_CASE("source tab", "[ui]") {
   const std::filesystem::path mods_dir = instance / "mods";
   std::filesystem::create_directories(mods_dir);
 
-  engine::SourceRegistry::instance().register_provider(
+  engine::Source::Registry::instance().register_provider(
       std::make_unique<FakeNexusProvider>());
 
   // --- Scenario 1: a plain Refresh fetches off the main thread and lands. ---
@@ -348,7 +349,7 @@ TEST_CASE("source tab has_data and single source", "[ui]") {
 
   // Register the same fake Nexus provider the other scenario uses so
   // find_provider() can match "Test Nexus".
-  engine::SourceRegistry::instance().register_provider(
+  engine::Source::Registry::instance().register_provider(
       std::make_unique<FakeNexusProvider>());
 
   // --- Scenario 1: a manual mod shows the "Manual" placeholder, NOT
@@ -481,7 +482,7 @@ TEST_CASE("source tab add source flow", "[ui]") {
   const std::filesystem::path mods_dir = instance / "mods";
   std::filesystem::create_directories(mods_dir);
 
-  engine::SourceRegistry::instance().register_provider(
+  engine::Source::Registry::instance().register_provider(
       std::make_unique<FakeNexusProvider>());
 
   // Start from a manual mod with no source attribution.
@@ -563,7 +564,7 @@ TEST_CASE("git source coexists with a download source", "[ui]") {
   const std::filesystem::path mods_dir = root / "instances" / "Test" / "mods";
   std::filesystem::create_directories(mods_dir);
 
-  engine::SourceRegistry::instance().register_provider(
+  engine::Source::Registry::instance().register_provider(
       std::make_unique<FakeNexusProvider>());
 
   // --- Git + Nexus: two tabs, Git second, banner shown. ---
@@ -746,7 +747,7 @@ TEST_CASE("source tab icons", "[ui]") {
     return pm.isNull() ? QColor() : pm.toImage().pixelColor(0, 0);
   };
 
-  engine::SourceRegistry::instance().register_provider(
+  engine::Source::Registry::instance().register_provider(
       std::make_unique<FakeNexusProvider>());
 
   // --- Git + Nexus on github.com: the branded badge, and the Nexus tab keeps
@@ -1027,7 +1028,7 @@ TEST_CASE("source tab primary source", "[ui]") {
   const std::filesystem::path mods_dir = root / "instances" / "Test" / "mods";
   std::filesystem::create_directories(mods_dir);
 
-  engine::SourceRegistry::instance().register_provider(
+  engine::Source::Registry::instance().register_provider(
       std::make_unique<FakeNexusProvider>());
 
   // --- A mod with exactly one source is primary without being told. ---
@@ -1196,7 +1197,7 @@ TEST_CASE("source tab delete source", "[ui]") {
   const std::filesystem::path mods_dir = root / "instances" / "Test" / "mods";
   std::filesystem::create_directories(mods_dir);
 
-  engine::SourceRegistry::instance().register_provider(
+  engine::Source::Registry::instance().register_provider(
       std::make_unique<FakeNexusProvider>());
 
   const std::string id                = "DeleteMod";
@@ -1308,7 +1309,7 @@ TEST_CASE("git source renders its README as the description", "[ui]") {
   const std::filesystem::path mods_dir = root / "instances" / "Test" / "mods";
   std::filesystem::create_directories(mods_dir);
 
-  engine::SourceRegistry::instance().register_provider(
+  engine::Source::Registry::instance().register_provider(
       std::make_unique<FakeNexusProvider>());
 
   // The description text handed to the renderer, whatever the backend turned it

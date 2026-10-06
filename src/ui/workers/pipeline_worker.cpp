@@ -6,7 +6,6 @@
 #include "engine/source/download/manager.h"
 #include "engine/source/modpub/provider.h"
 #include "engine/source/router.h"
-#include "engine/source/source_provider.h"
 #include "engine/log/logger.h"
 #include "ui/settings/settings.h"
 
@@ -223,7 +222,8 @@ void PipelineWorker::install_mod(const std::string &id, const std::string &zip_p
   }
 }
 
-void PipelineWorker::download_mod(const std::string &id, const engine::NxmLink &link,
+void PipelineWorker::download_mod(const std::string &id,
+                                  const engine::Source::NxmLink &link,
                                   const std::string &game_id,
                                   const std::string &mods_dir) {
   (void)game_id;
