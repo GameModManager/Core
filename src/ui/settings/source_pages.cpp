@@ -6,7 +6,7 @@
 #include "engine/source/nexus/account.h"
 #include "engine/source/nexus/provider.h"
 #include "engine/source/nexus/servers.h"
-#include "engine/source/source_provider.h"
+#include "engine/source/interface.h"
 #include "engine/source/steam/provider.h"
 #include "ui/settings/settings.h"
 #include "ui/widgets/web_link.h"
@@ -663,7 +663,8 @@ QWidget *build_loverslab_page(QWidget *parent) {
   return page;
 }
 
-QWidget *build_source_settings_page(engine::SourceProvider *provider, QWidget *parent) {
+QWidget *build_source_settings_page(engine::Source::Interface *provider,
+                                    QWidget *parent) {
   if (provider == nullptr)
     return nullptr;
   if (provider->source_type() == "nexus") {

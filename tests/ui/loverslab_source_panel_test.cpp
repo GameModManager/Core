@@ -24,7 +24,8 @@
 // throwaway dir).
 #include "engine/mod/meta/mod_meta.h"
 #include "engine/source/loverslab/provider.h"
-#include "engine/source/source_provider.h"
+#include "engine/source/interface.h"
+#include "engine/source/registry.h"
 #include "ui/modinfo/description_renderer.h"
 #include "ui/modinfo/source_panels/loverslab_source_panel.h"
 #include "ui/modinfo/source_tab.h"
@@ -56,7 +57,7 @@ void check(bool cond, const char *what) {
 // A LoversLab-typed provider with no network surface; find_provider() in
 // source_tab.cpp matches its display name and source_type()=="loverslab"
 // routes it to the LoversLabSourcePanel.
-struct FakeLoversLabProvider : engine::SourceProvider {
+struct FakeLoversLabProvider : engine::Source::Interface {
   std::string source_type() const override { return "loverslab"; }
   bool fetch(const engine::Mod &, engine::PipelineContext &,
              const std::filesystem::path &) override {
@@ -124,7 +125,7 @@ TEST_CASE("loverslab source panel - refresh + out-of-date", "[ui]") {
   const std::filesystem::path mods_dir = instance / "mods";
   std::filesystem::create_directories(mods_dir);
 
-  engine::SourceRegistry::instance().register_provider(
+  engine::Source::Registry::instance().register_provider(
       std::make_unique<FakeLoversLabProvider>());
 
   // ---- Scenario 1: a basic Refresh writes [LoversLab] keys from the

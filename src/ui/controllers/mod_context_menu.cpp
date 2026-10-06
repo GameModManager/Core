@@ -20,7 +20,6 @@
 #include <system_error>
 
 #include "engine/game/detect/mod_scanner.h"
-#include "engine/source/source_provider.h"
 #include "ui/theme/icon_manager.h"
 
 namespace ui {

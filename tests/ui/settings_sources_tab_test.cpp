@@ -24,7 +24,8 @@
 #include "engine/plugin_host/plugin_loader.h"
 #include "engine/source/nexus/provider.h"
 #include "engine/source/nexus/servers.h"
-#include "engine/source/source_provider.h"
+#include "engine/source/interface.h"
+#include "engine/source/registry.h"
 #include "engine/source/steam/provider.h"
 #include "ui/theme/style_manager.h"
 #include "engine/theme/theme_manager.h"
@@ -59,7 +60,7 @@ void check(bool cond, const char *what) {
 
 // A provider with no UI page: its sub-tab must fall back to the
 // "no configurable settings" hint instead of showing a panel.
-struct FakeProvider : engine::SourceProvider {
+struct FakeProvider : engine::Source::Interface {
   std::string source_type() const override { return "fakesrc"; }
   bool fetch(const engine::Mod &, engine::PipelineContext &,
              const std::filesystem::path &) override {
@@ -124,12 +125,12 @@ TEST_CASE("settings sources tab", "[ui]") {
   auth.clear_user_info();
   engine::Source::Nexus::Servers::instance().clear_all();
 
-  engine::SourceRegistry::instance().register_provider(
+  engine::Source::Registry::instance().register_provider(
       std::make_unique<engine::Source::Nexus::Provider>());
-  engine::SourceRegistry::instance().register_provider(
+  engine::Source::Registry::instance().register_provider(
       std::make_unique<engine::Source::Steam::Provider>(
           "/tmp/gmm_sources_tab/workshop.db"));
-  engine::SourceRegistry::instance().register_provider(
+  engine::Source::Registry::instance().register_provider(
       std::make_unique<FakeProvider>());
 
   auto make_dialog = [&] {
