@@ -2,7 +2,6 @@
 
 #include "engine/mod/model/mod.h"
 #include "engine/pipeline/pipeline.h"
-#include "engine/source/nxm/nxm_router.h"
 #include "engine/source/router.h"
 
 #include <QObject>
@@ -111,7 +110,7 @@ public slots:
   // file from a paused download is continued via HTTP Range. Concurrent
   // downloads run on the fetch pool (kMaxConcurrentDownloads transfers in
   // parallel); excess downloads queue until a slot frees.
-  void download_mod(const std::string &id, const engine::NxmLink &link,
+  void download_mod(const std::string &id, const engine::Source::NxmLink &link,
                     const std::string &game_id, const std::string &mods_dir);
 
   // Download only, by pre-assembled URL (LoversLab and other no-API sites).

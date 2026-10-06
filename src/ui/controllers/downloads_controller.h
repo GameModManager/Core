@@ -58,7 +58,7 @@ public slots:
   void update_install_progress(const std::string &mod_id, int percent,
                                const std::string &status);
   void hide_install_progress();
-  void handle_nxm_download(const engine::NxmLink &link);
+  void handle_nxm_download(const engine::Source::NxmLink &link);
   void handle_modl_download(const engine::Source::ModlLink &link);
   void start_loverslab_download(const std::string &url);
 

@@ -1,5 +1,4 @@
-// Test for engine::NxmRouter::parse + Source::Router::parse_modl.
-#include "engine/source/nxm/nxm_router.h"
+// Test for engine::Source::Router::parse + Source::Router::parse_modl.
 #include "engine/source/router.h"
 
 #include <catch2/catch_test_macros.hpp>
@@ -10,7 +9,7 @@ namespace {
 
 void expect_link(const std::string &url, const std::string &domain, long long mod,
                  long long file, const std::string &key = "", long long expire = 0) {
-  const auto link = engine::NxmRouter::parse(url);
+  const auto link = engine::Source::Router::parse(url);
   INFO(url);
   REQUIRE(link.nexus_domain == domain);
   REQUIRE(link.mod_id == mod);
@@ -59,7 +58,8 @@ TEST_CASE("nxm router parse", "[engine]") {
               "skyrimspecialedition", 123, 456, "zz", 2);
 
   // Legacy NMM form (no game domain): domain stays "nexus", ids still parsed.
-  const auto legacy = engine::NxmRouter::parse("nxm://nexus/mods/68?key=abc&expire=1");
+  const auto legacy =
+      engine::Source::Router::parse("nxm://nexus/mods/68?key=abc&expire=1");
   REQUIRE(legacy.nexus_domain == "nexus");
   REQUIRE(legacy.mod_id == 68);
   REQUIRE(legacy.file_id == 0);
@@ -69,8 +69,9 @@ TEST_CASE("nxm router parse collection links", "[engine]") {
   // nxm://<game>/collections/<id>/revisions/<n> - the collection shape, named
   // after NXMUrl::collectionId/collectionRevision so the fields line up.
   {
-    const auto link = engine::NxmRouter::parse("nxm://skyrimspecialedition/collections/"
-                                               "hygge-for-lore-and-4096/revisions/7");
+    const auto link =
+        engine::Source::Router::parse("nxm://skyrimspecialedition/collections/"
+                                      "hygge-for-lore-and-4096/revisions/7");
     REQUIRE(link.valid());
     REQUIRE(link.nexus_domain == "skyrimspecialedition");
     REQUIRE(link.is_collection);
@@ -86,7 +87,7 @@ TEST_CASE("nxm router parse collection links", "[engine]") {
   // published revision.
   {
     const auto link =
-        engine::NxmRouter::parse("nxm://skyrimspecialedition/collections/abcd");
+        engine::Source::Router::parse("nxm://skyrimspecialedition/collections/abcd");
     REQUIRE(link.is_collection);
     REQUIRE(link.collection_id == "abcd");
     REQUIRE(link.collection_revision == 0);
@@ -95,7 +96,7 @@ TEST_CASE("nxm router parse collection links", "[engine]") {
   // Query strings ride on whichever segment carries them, and the literal
   // "nexus" authority is unwrapped the same way it is for mod links.
   {
-    const auto link = engine::NxmRouter::parse(
+    const auto link = engine::Source::Router::parse(
         "nxm://nexus/cyberpunk2077/collections/neon-noir/revisions/2?key=abc");
     REQUIRE(link.nexus_domain == "cyberpunk2077");
     REQUIRE(link.is_collection);
@@ -106,15 +107,15 @@ TEST_CASE("nxm router parse collection links", "[engine]") {
   // A mod link is not a collection, and a collection-looking path under an
   // unwrapped "nexus" authority keeps its real game domain.
   {
-    const auto mod =
-        engine::NxmRouter::parse("nxm://skyrimspecialedition/mods/184625/files/781833");
+    const auto mod = engine::Source::Router::parse(
+        "nxm://skyrimspecialedition/mods/184625/files/781833");
     REQUIRE_FALSE(mod.is_collection);
     REQUIRE(mod.collection_id.empty());
     REQUIRE(mod.mod_id == 184625);
   }
   {
     const auto link =
-        engine::NxmRouter::parse("nxm://nexus/collections/abcd/revisions/3");
+        engine::Source::Router::parse("nxm://nexus/collections/abcd/revisions/3");
     REQUIRE(link.nexus_domain == "nexus");
     REQUIRE(link.is_collection);
     REQUIRE(link.collection_id == "abcd");
@@ -124,7 +125,7 @@ TEST_CASE("nxm router parse collection links", "[engine]") {
   // A revision that is not a positive number stays 0 rather than becoming a
   // bogus pin - the collection adapter rejects it instead of guessing.
   {
-    const auto link = engine::NxmRouter::parse(
+    const auto link = engine::Source::Router::parse(
         "nxm://skyrimspecialedition/collections/abcd/revisions/abc");
     REQUIRE(link.is_collection);
     REQUIRE(link.collection_id == "abcd");

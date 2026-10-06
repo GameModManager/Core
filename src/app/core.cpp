@@ -30,7 +30,6 @@
 #include "engine/source/loverslab/auth.h"
 #include "engine/source/nexus/auth.h"
 #include "engine/source/nxm/managed_games.h"
-#include "engine/source/nxm/nxm_router.h"
 #include "engine/source/router.h"
 #include "platform/platform.h"
 #include "ui/app/multi_process.h"
@@ -463,7 +462,7 @@ int Application::run() {
 
   // -- Download URL handling: try IPC to running instance first --
   if (args.handle_nxm || args.handle_gmm) {
-    auto link = engine::NxmRouter::parse(pending_url_);
+    auto link = engine::Source::Router::parse(pending_url_);
     if (!link.valid()) {
       // Redact: a malformed nxm:// URL can still carry key= / expires=.
       engine::Logger::instance().error(
@@ -738,7 +737,8 @@ int Application::run() {
               main_window->handle_modl_download(
                   engine::Source::Router::parse_modl(pending_url_));
             } else {
-              main_window->handle_nxm_download(engine::NxmRouter::parse(pending_url_));
+              main_window->handle_nxm_download(
+                  engine::Source::Router::parse(pending_url_));
             }
             pending_url_.clear();
           }
@@ -851,7 +851,7 @@ int Application::run() {
     if (args.handle_modl) {
       window.handle_modl_download(engine::Source::Router::parse_modl(pending_url_));
     } else {
-      window.handle_nxm_download(engine::NxmRouter::parse(pending_url_));
+      window.handle_nxm_download(engine::Source::Router::parse(pending_url_));
     }
   }
 

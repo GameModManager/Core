@@ -2,7 +2,6 @@
 #include "engine/source/download/curl_download.h"
 #include "engine/mod/model/mod.h"
 #include "engine/pipeline/pipeline.h"
-#include "engine/source/nxm/nxm_router.h"
 #include "engine/log/logger.h"
 #include "engine/source/nexus/auth.h"
 #include "engine/source/nexus/account.h"
