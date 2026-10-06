@@ -38,7 +38,6 @@
 #include "engine/source/modpub/provider.h"
 #include "engine/source/nexus/provider.h"
 #include "engine/source/nxm/managed_games.h"
-#include "engine/source/nxm/nxm_router.h"
 #include "engine/source/registry.h"
 #include "engine/source/router.h"
 #include "engine/source/steam/provider.h"
@@ -297,7 +296,7 @@ void DownloadsController::setup_nxm_ipc() {
               // Try nxm first; fall back to modl (the protocol is a
               // generic URL forwarder, not nxm-specific - keep the signal
               // name for backward-compat with older builds).
-              auto nxm = engine::NxmRouter::parse(raw);
+              auto nxm = engine::Source::Router::parse(raw);
               if (nxm.valid()) {
                 engine::Logger::instance().debug(
                     "[NXM-Parse] Parsed NXM link: domain=" + nxm.nexus_domain +
@@ -661,7 +660,7 @@ void DownloadsController::hide_install_progress() {
     w_->install_progress_dialog_->hide();
 }
 
-void DownloadsController::handle_nxm_download(const engine::NxmLink &link) {
+void DownloadsController::handle_nxm_download(const engine::Source::NxmLink &link) {
   engine::Logger::instance().debug("[NXM-Download] handle_nxm_download called");
   if (!link.valid()) {
     engine::Logger::instance().warn(

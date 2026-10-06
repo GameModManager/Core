@@ -37,6 +37,7 @@
 #include "engine/pipeline/pipeline.h"
 #include "engine/source/interface.h"
 #include "engine/source/registry.h"
+#include "engine/source/router.h"
 
 #include <atomic>
 #include <chrono>
@@ -257,7 +258,7 @@ TEST_CASE("pipeline worker", "[ui]") {
   // A Nexus download via download_mod (real NxmLink path -> source_type
   // "nexus"). Distinct mod_ids keep the archive filenames unique.
   const auto start_nexus = [&](const std::string &id, int64_t mod_id) {
-    engine::NxmLink link;
+    engine::Source::NxmLink link;
     link.nexus_domain = "skyrimspecialedition";
     link.mod_id       = mod_id;
     link.file_id      = 1;
