@@ -54,6 +54,7 @@ private:
 // of the settings dialog. Each known source type contributes its own page
 // here (UI layer only - engine providers stay Qt-free so the headless tests
 // can compile them). Returns nullptr if the provider has nothing to configure.
-QWidget *build_source_settings_page(engine::SourceProvider *provider, QWidget *parent);
+QWidget *build_source_settings_page(engine::Source::Interface *provider,
+                                    QWidget *parent);
 
 }  // namespace ui

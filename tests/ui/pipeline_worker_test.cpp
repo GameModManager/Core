@@ -35,7 +35,9 @@
 #include "engine/log/logger.h"
 #include "engine/pipeline/extract_stage.h"
 #include "engine/pipeline/pipeline.h"
-#include "engine/source/source_provider.h"
+#include "engine/source/interface.h"
+#include "engine/source/registry.h"
+#include "engine/source/router.h"
 
 #include <atomic>
 #include <chrono>
@@ -67,7 +69,7 @@ void check(bool cond, const char *what) {
 // should_abort is polled per chunk, and an abort sets download_paused and KEEPS
 // the partial file. Optional 2-way barrier (set_barrier) holds every fetch
 // until release_barrier() so the concurrency assertions are deterministic.
-class FakeProvider : public engine::SourceProvider {
+class FakeProvider : public engine::Source::Interface {
 public:
   explicit FakeProvider(std::string source_type = "loverslab")
       : source_type_(std::move(source_type)) {}
@@ -226,13 +228,13 @@ TEST_CASE("pipeline worker", "[ui]") {
 
   auto provider      = std::make_unique<FakeProvider>("loverslab");
   FakeProvider *fake = provider.get();
-  engine::SourceRegistry::instance().register_provider(std::move(provider));
+  engine::Source::Registry::instance().register_provider(std::move(provider));
   // Second provider for the "nexus" source type so per-source queueing is
   // exercised through the real FetchStage routing (download_mod sets
   // download_source_type == "nexus"). Its barrier/counters are independent.
   auto nexus_provider = std::make_unique<FakeProvider>("nexus");
   FakeProvider *nfake = nexus_provider.get();
-  engine::SourceRegistry::instance().register_provider(std::move(nexus_provider));
+  engine::Source::Registry::instance().register_provider(std::move(nexus_provider));
 
   // Result collectors. Context = the app object so auto connections queue
   // signal delivery onto the main thread (no cross-thread vector writes).
@@ -256,7 +258,7 @@ TEST_CASE("pipeline worker", "[ui]") {
   // A Nexus download via download_mod (real NxmLink path -> source_type
   // "nexus"). Distinct mod_ids keep the archive filenames unique.
   const auto start_nexus = [&](const std::string &id, int64_t mod_id) {
-    engine::NxmLink link;
+    engine::Source::NxmLink link;
     link.nexus_domain = "skyrimspecialedition";
     link.mod_id       = mod_id;
     link.file_id      = 1;
@@ -554,10 +556,10 @@ TEST_CASE("pipeline worker", "[ui]") {
   {
     auto manual_provider = std::make_unique<FakeProvider>("manual");
     FakeProvider *mfake  = manual_provider.get();
-    engine::SourceRegistry::instance().register_provider(std::move(manual_provider));
+    engine::Source::Registry::instance().register_provider(std::move(manual_provider));
     auto modpub_provider = std::make_unique<FakeProvider>("modpub");
     FakeProvider *pfake  = modpub_provider.get();
-    engine::SourceRegistry::instance().register_provider(std::move(modpub_provider));
+    engine::Source::Registry::instance().register_provider(std::move(modpub_provider));
 
     const auto start_modl = [&](const std::string &id, const std::string &url) {
       engine::Source::ModlLink link;

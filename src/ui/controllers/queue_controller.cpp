@@ -7,7 +7,7 @@
 #include "engine/game/detect/mod_scanner.h"
 #include "engine/events/event_bus.h"
 #include "engine/log/logger.h"
-#include "engine/source/nxm/nxm_router.h"
+#include "engine/source/router.h"
 #include "engine/game/registry/game_knowledge.h"
 #include "ui/main_window/main_window.h"
 #include "ui/widgets/mod_list_model.h"
@@ -105,7 +105,7 @@ void QueueController::flush_pending_nxm() {
   if (w_->pending_nxm_url_.empty())
     return;
 
-  auto link = engine::NxmRouter::parse(w_->pending_nxm_url_);
+  auto link = engine::Source::Router::parse(w_->pending_nxm_url_);
   w_->pending_nxm_url_.clear();
 
   if (link.valid()) {

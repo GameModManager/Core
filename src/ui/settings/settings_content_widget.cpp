@@ -4,7 +4,8 @@
 #include "engine/log/logger.h"
 #include "engine/parallel/parallel.h"
 #include "engine/plugin_host/plugin_loader.h"
-#include "engine/source/source_provider.h"
+#include "engine/source/interface.h"
+#include "engine/source/registry.h"
 #include "engine/update/install_method.h"
 #include "ui/settings/instance_settings.h"
 #include "ui/settings/settings.h"
@@ -1009,7 +1010,7 @@ QWidget *SettingsContentWidget::build_sources_tab() {
   auto *page   = new QWidget(this);
   auto *layout = new QVBoxLayout(page);
 
-  const auto providers = engine::SourceRegistry::instance().providers();
+  const auto providers = engine::Source::Registry::instance().providers();
   if (providers.empty()) {
     layout->addWidget(new QLabel(tr("No download sources are available."), page));
   } else {
@@ -1049,7 +1050,7 @@ QWidget *SettingsContentWidget::build_plugins_tab() {
     bool enabled = true;
     // provider fields
     QString provider_type;
-    engine::SourceProvider *provider = nullptr;
+    engine::Source::Interface *provider = nullptr;
     // plugin-declared options (register_settings): key -> effective value
     std::vector<std::pair<QString, QString>> options;
     // P1.5: typed settings declared via register_settings_tab. Their keys
@@ -1106,7 +1107,7 @@ QWidget *SettingsContentWidget::build_plugins_tab() {
       state->entries.push_back(std::move(e));
     }
   }
-  for (auto *provider : engine::SourceRegistry::instance().providers()) {
+  for (auto *provider : engine::Source::Registry::instance().providers()) {
     Entry e;
     e.name          = QString::fromStdString(provider->display_name());
     e.is_plugin     = false;
