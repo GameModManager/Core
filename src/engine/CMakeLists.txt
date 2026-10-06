@@ -121,6 +121,7 @@ instance/mod_state.cpp
     mod/meta/category_set_registry.cpp
     mod/overwrite/overwrite_utils.cpp
 modpack/ini_edits.cpp
+modpack/collection_to_pack.cpp
 install/conflict_resolver.cpp
     modpack/incremental_update.cpp
     install/game_match_validator.cpp
