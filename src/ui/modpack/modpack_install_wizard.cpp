@@ -1080,14 +1080,13 @@ QWidget *ModpackInstallWizard::build_ini_page() {
   for (const auto &entry : pack_.ini_edits) {
     // Convert once at the boundary: the typed status and the optional source
     // come from the shared INI engine, never from the pack's raw status string.
-    const auto file   = engine::gmmpack::to_edit_file(entry);
-    auto *box         = new QGroupBox(QString::fromStdString(file.target_file), page);
-    auto *box_layout  = new QVBoxLayout(box);
+    const auto file  = engine::gmmpack::to_edit_file(entry);
+    auto *box        = new QGroupBox(QString::fromStdString(file.target_file), page);
+    auto *box_layout = new QVBoxLayout(box);
     for (const auto &tweak : file.tweaks) {
-      const QString tid = QString::fromStdString(tweak.id);
-      const bool required =
-          tweak.status == engine::modpack::TweakStatus::Required;
-      QString label = QString::fromStdString(tweak.name);
+      const QString tid   = QString::fromStdString(tweak.id);
+      const bool required = tweak.status == engine::modpack::TweakStatus::Required;
+      QString label       = QString::fromStdString(tweak.name);
       label += required ? tr(" (required)") : tr(" (recommended)");
       if (tweak.source_mod_id && !tweak.source_mod_id->empty()) {
         label += tr(" [from %1]").arg(mod_display_name(*tweak.source_mod_id));
