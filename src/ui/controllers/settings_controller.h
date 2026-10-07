@@ -8,7 +8,7 @@
 #include <string>
 
 #include "engine/instance/instance.h"
-#include "engine/modpack/gmmpack/types.h"
+#include "engine/modpack/model.h"
 #include "ui/main_window/main_window.h"
 
 namespace engine::Source {

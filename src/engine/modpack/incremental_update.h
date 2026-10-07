@@ -57,7 +57,7 @@
 #include <vector>
 
 #include "engine/instance/installed_pack_state.h"
-#include "engine/modpack/gmmpack/types.h"
+#include "engine/modpack/model.h"
 
 namespace engine::modpack {
 

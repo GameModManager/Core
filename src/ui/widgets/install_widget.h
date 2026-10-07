@@ -31,7 +31,7 @@
 
 #include "engine/modpack/collection/choice_groups.h"
 #include "engine/modpack/collection/manifest.h"
-#include "engine/modpack/gmmpack/types.h"
+#include "engine/modpack/model.h"
 #include "engine/modpack/incremental_update.h"
 
 class QButtonGroup;

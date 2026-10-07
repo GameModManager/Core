@@ -31,6 +31,8 @@
 
 #include "engine/modpack/collection/download_router.h"
 #include "engine/modpack/collection/nexus/adapter.h"
+#include "engine/modpack/gmmpack/ini_edit_parser.h"
+#include "engine/modpack/ini_edits.h"
 #include "engine/log/logger.h"
 #include "engine/modpack/gmmpack/unpacker.h"
 #include "engine/mod/model/mod.h"
@@ -1076,15 +1078,18 @@ QWidget *ModpackInstallWizard::build_ini_page() {
   auto *page   = new QWidget();
   auto *layout = new QVBoxLayout(page);
   for (const auto &entry : pack_.ini_edits) {
-    auto *box        = new QGroupBox(QString::fromStdString(entry.target_file), page);
+    // Convert once at the boundary: the typed status and the optional source
+    // come from the shared INI engine, never from the pack's raw status string.
+    const auto file  = engine::gmmpack::to_edit_file(entry);
+    auto *box        = new QGroupBox(QString::fromStdString(file.target_file), page);
     auto *box_layout = new QVBoxLayout(box);
-    for (const auto &tweak : entry.tweaks) {
+    for (const auto &tweak : file.tweaks) {
       const QString tid   = QString::fromStdString(tweak.id);
-      const bool required = tweak.status == "required";
+      const bool required = tweak.status == engine::modpack::TweakStatus::Required;
       QString label       = QString::fromStdString(tweak.name);
       label += required ? tr(" (required)") : tr(" (recommended)");
-      if (tweak.has_source_mod_id && !tweak.source_mod_id.empty()) {
-        label += tr(" [from %1]").arg(mod_display_name(tweak.source_mod_id));
+      if (tweak.source_mod_id && !tweak.source_mod_id->empty()) {
+        label += tr(" [from %1]").arg(mod_display_name(*tweak.source_mod_id));
       }
       auto *check = new QCheckBox(label, box);
       check->setProperty("tweak_id", tid);
