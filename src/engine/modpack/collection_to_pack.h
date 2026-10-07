@@ -18,6 +18,7 @@ namespace engine::modpack {
 // tools, rules, load order, choice groups, and per-mod source entries.
 // Nexus collections carry no patches, executables, INI tweaks, or tree data,
 // so those stay empty and the wizard shows its empty-state notes for them.
-[[nodiscard]] gmmpack::Gmmpack manifest_to_gmmpack(const Collection::Manifest &manifest);
+[[nodiscard]] gmmpack::Gmmpack
+manifest_to_gmmpack(const Collection::Manifest &manifest);
 
 }  // namespace engine::modpack
