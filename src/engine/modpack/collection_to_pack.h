@@ -10,7 +10,7 @@
 // Engine layer - Qt-free.
 
 #include "engine/modpack/collection/manifest.h"
-#include "engine/modpack/gmmpack/types.h"
+#include "engine/modpack/model.h"
 
 namespace engine::modpack {
 

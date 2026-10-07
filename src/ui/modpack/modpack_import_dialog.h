@@ -9,7 +9,7 @@
 #include <vector>
 
 #include "engine/modpack/collection/nexus/adapter.h"
-#include "engine/modpack/gmmpack/types.h"
+#include "engine/modpack/model.h"
 #include "ui/widgets/line_edit_clear.h"
 
 class QLabel;
