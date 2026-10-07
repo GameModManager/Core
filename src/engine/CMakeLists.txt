@@ -36,6 +36,7 @@ instance/mod_state.cpp
     util/fs_utils.cpp
     util/thread_priority.cpp
     vfs/game_file.h
+    filter/filter_combine.h
     vfs/path_resolver.h
     vfs/path_resolver.cpp
     vfs/path_resolver_registry.h
