@@ -199,7 +199,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
   // Ctrl+F / Escape for the filter bars - registered here because both bars
   // exist from this point on (the mod list's in setup_mod_list above, the
   // right panel's two lines down).
-  setup_filter_shortcuts();
+  setup_filter_shortcuts(left_panel);
 
   console_splitter_->addWidget(main_area);
 
@@ -373,24 +373,42 @@ MainWindow::~MainWindow() {
     engine::EventBus::instance().unsubscribe(game_finished_sub_);
 }
 
-void MainWindow::setup_filter_shortcuts() {
+void MainWindow::add_filter_shortcuts(QWidget *owner) {
+  auto *find_filter = new QShortcut(QKeySequence::Find, owner);
+  find_filter->setAutoRepeat(false);
+  // WidgetWithChildren, not the default WindowShortcut: MO2 hangs the pair
+  // off the list and its filter edit, so Ctrl+F and Escape act on the pane
+  // the keyboard is actually in. A window-wide pair fires with focus anywhere
+  // in the window, which is how Escape ends up clearing the mod-list filter
+  // while the user is in the plugins table.
+  find_filter->setContext(Qt::WidgetWithChildrenShortcut);
+  connect(find_filter, &QShortcut::activated, this, &MainWindow::focus_active_filter);
+
+  auto *clear_filter = new QShortcut(QKeySequence(Qt::Key_Escape), owner);
+  clear_filter->setAutoRepeat(false);
+  clear_filter->setContext(Qt::WidgetWithChildrenShortcut);
+  connect(clear_filter, &QShortcut::activated, this, &MainWindow::clear_active_filter);
+}
+
+void MainWindow::setup_filter_shortcuts(QWidget *left_pane) {
   // MO2 parity (G15). Nothing else in the UI claims Ctrl+F or Escape - the
   // menu bar binds New/Open/Preferences/Quit/SelectAll/Refresh plus a handful
   // of explicit Ctrl+<letter>s, and Escape is only handled by dialogs, which
-  // own their own window and so are outside a WindowShortcut context.
-  auto *find_filter = new QShortcut(QKeySequence::Find, this);
-  find_filter->setAutoRepeat(false);
-  connect(find_filter, &QShortcut::activated, this, &MainWindow::focus_active_filter);
-
-  auto *clear_filter = new QShortcut(QKeySequence(Qt::Key_Escape), this);
-  clear_filter->setAutoRepeat(false);
-  connect(clear_filter, &QShortcut::activated, this, &MainWindow::clear_active_filter);
+  // own their own window and so are outside a WidgetWithChildren context too.
+  //
+  // Two pairs, one per pane: the left pane owns the mod list and its filter
+  // bar, the right panel owns its tab contents and its own bar. Registering
+  // on the pane means whichever pane the focus is in is the one that answers,
+  // so focus_active_filter's "already in a bar, else the mod list" preference
+  // is now settled by focus rather than guessed.
+  add_filter_shortcuts(left_pane);
+  add_filter_shortcuts(right_panel_);
 }
 
 void MainWindow::focus_active_filter() {
   // MO2 gives each list its own pair of hooks (mainwindow.cpp:464-466); here
-  // one window-scoped pair serves both bars, so the bar the user is already
-  // in wins and the mod list is the fallback.
+  // one pair per pane serves that pane's bar, and the bar the user is already
+  // in wins while the mod list is the fallback.
   if (right_panel_ && right_panel_->filter_bar()->filter_has_focus())
     right_panel_->filter_bar()->focus_filter();
   else if (filter_bar_)
