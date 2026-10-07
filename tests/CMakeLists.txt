@@ -744,6 +744,16 @@ gmm_catch2_test(filter_shortcuts_test ui/filter_shortcuts_test.cpp
     UI
     LIBS gmm_ui Qt6::Test)
 
+# The wheel must not switch the group or the profile dropdown - both sit against
+# the mod list and an accidental switch hides rows or reloads a different
+# profile. Drives the REAL MainWindow offscreen and delivers the wheel through
+# QTest::wheelEvent (the platform dispatch path), so it covers both the block
+# and the fact that the combo is the widget Qt hands the wheel to. Carries an
+# unfiltered control combo that MUST move, so the check cannot pass vacuously.
+gmm_catch2_test(combo_wheel_test ui/combo_wheel_test.cpp
+    UI
+    LIBS gmm_ui Qt6::Test)
+
 # In-window log view retention. The panel is fed by engine::Logger for the
 # whole session, so the rendered document needs an on-screen window or it grows
 # without bound; this pins the window and that the tail is what survives.
