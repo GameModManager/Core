@@ -77,32 +77,19 @@ ExecutableEntry parse_executable_entry(const nlohmann::json &j);
 PatchEntry parse_patch_entry(const nlohmann::json &j);
 TreeRoot parse_tree(const nlohmann::json &j);
 
-// Mod lookup by id. Null when the pack has no such mod.
-const ModEntry *find_mod(const Gmmpack &pack, const std::string &mod_id);
+// Mod lookup, patch filename parsing and patch chain building are pure queries
+// over the model and live in engine/modpack/model.h; re-exported here so the
+// format layer and the engine tests keep one spelling of them.
+using engine::modpack::build_patch_chains;
+using engine::modpack::find_mod;
+using engine::modpack::parse_patch_filename;
 
 // Write an embedded mod's files/** payload into dest_dir. Every file's size
 // and sha256 are verified against the mod entry BEFORE anything is written, so
 // a tampered archive fails without leaving a half-extracted mod behind.
 // Fails when the mod is not an embedded source or its payload is missing.
+// This one stays format-side: it verifies archive hashes and writes to disk.
 bool extract_embedded_mod(const Gmmpack &pack, const std::string &mod_id,
                           const std::filesystem::path &dest_dir, std::string &error);
-
-// ---------------------------------------------------------------------------
-// Patch filename parsing and chain building
-// ---------------------------------------------------------------------------
-
-// Extract mod_id and optional sequence from a patch archive path.
-// Valid patterns: "patches/<mod_id>.json" (single) or "patches/<mod_id>-<N>.json"
-// (chain). Returns nullopt if the path doesn't match the expected pattern.
-std::optional<std::pair<std::string, int>>
-parse_patch_filename(const std::string &path);
-
-// Group patches by mod_id, sort each group by sequence ascending,
-// and validate contiguity (1, 2, 3...). Single patches (no sequence)
-// become a chain of one. A mod with both single and chained patches is
-// an error. Chains are always returned alongside diagnostics - callers
-// must refuse to apply when diagnostics contain errors.
-std::pair<std::vector<PatchChain>, Diagnostics>
-build_patch_chains(const std::vector<PatchEntry> &patches);
 
 }  // namespace engine::gmmpack
