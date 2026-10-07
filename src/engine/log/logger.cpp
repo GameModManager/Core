@@ -7,6 +7,7 @@
 #include <ctime>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
 
 #ifdef _WIN32
 #include <io.h>
@@ -104,7 +105,20 @@ void Logger::set_log_file(const std::string &path) {
   std::lock_guard lock(mutex_);
   if (log_fd_ >= 0)
     ::close(log_fd_);
+  log_file_path_ = path;
   log_fd_ = ::open(path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
+}
+
+std::string Logger::log_dir() const {
+  std::lock_guard lock(mutex_);
+  const std::filesystem::path parent =
+      std::filesystem::path(log_file_path_).parent_path();
+  return parent.empty() ? std::string() : parent.string();
+}
+
+std::vector<LogEntry> Logger::replayed() const {
+  std::lock_guard lock(mutex_);
+  return {replay_buffer_.begin(), replay_buffer_.end()};
 }
 
 void Logger::enable_console(bool color) {

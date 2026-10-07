@@ -39,6 +39,19 @@ public:
   void error(const std::string &msg) { log(LogLevel::Error, msg); }
 
   void set_log_file(const std::string &path);
+  // The path handed to set_log_file, and its parent directory. Empty before
+  // the first set_log_file. The log system owns where the log lives, so this
+  // is what "open the logs folder" opens - a caller that guesses the location
+  // is guessing at a path the log file does not have (it is the data dir, not
+  // the cache/crash-dump dir).
+  [[nodiscard]] const std::string &log_file_path() const { return log_file_path_; }
+  [[nodiscard]] std::string log_dir() const;
+  // The replay buffer as it stands now: every message logged so far that
+  // survived the kReplayLimit ring, oldest first. A subscriber that filters
+  // (a level-filtered log view) re-reads this after the filter changes, so
+  // raising the verbosity brings back the lines the previous level hid
+  // instead of only ever showing what arrives next.
+  [[nodiscard]] std::vector<LogEntry> replayed() const;
   void enable_console(bool color = true);
 
   // Fork-safe append: writes straight to the log file fd with NO mutex and
@@ -61,9 +74,12 @@ private:
   std::vector<Callback> callbacks_;
   std::vector<GroupCallback> group_callbacks_;
   std::deque<LogEntry> replay_buffer_;
-  std::mutex mutex_;
+  // Mutable so the const observers (log_dir, replayed) can take it; every
+  // read of the buffers below goes through it.
+  mutable std::mutex mutex_;
   int log_fd_ = -1;
   std::string home_dir_;
+  std::string log_file_path_;
 };
 
 }  // namespace engine
