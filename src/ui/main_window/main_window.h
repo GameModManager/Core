@@ -242,9 +242,17 @@ private:
   // while it holds focus, the mod-list bar otherwise. Registered after
   // setup_mod_list() and RightPanel's construction, which is where both bars
   // come into existence.
-  void setup_filter_shortcuts();
+  // `left_pane` and the right panel each get their own Ctrl+F / Escape pair
+  // (see add_filter_shortcuts). Called once, after both panes exist.
+  void setup_filter_shortcuts(QWidget *left_pane);
   void focus_active_filter();
   void clear_active_filter();
+  // One Ctrl+F / Escape pair scoped to `owner` and its children (MO2's
+  // setFilterShortcuts, which registers the pair on the list widget and its
+  // filter edit with WidgetWithChildrenShortcut). Scoping them to the pane
+  // rather than the window is what keeps Escape from clearing a filter the
+  // user is nowhere near.
+  void add_filter_shortcuts(QWidget *owner);
 
   // --- Shared state owned by the composer, used by the controllers ---
   AppMenuBar *menu_bar_     = nullptr;
