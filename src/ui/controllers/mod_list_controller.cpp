@@ -1,5 +1,4 @@
 #include "ui/controllers/mod_list_controller.h"
-#include "engine/log/crash_handler.h"
 #include "engine/profile/profile_creation.h"
 #include "ui/controllers/downloads_controller.h"
 #include "ui/controllers/launch_controller.h"
@@ -3931,7 +3930,10 @@ void ModListController::open_folder(ui::FolderKind kind) {
             .front();
     break;
   case ui::FolderKind::Logs:
-    target = engine::CrashHandler::default_dump_dir();
+    // The directory the logger was pointed at, i.e. the one holding
+    // gamemodmanager.log - not the crash-dump cache beside it. They are
+    // different directories on every platform.
+    target = engine::Logger::instance().log_dir();
     break;
   }
 
