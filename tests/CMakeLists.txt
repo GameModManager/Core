@@ -74,6 +74,10 @@ endfunction()
 # ---------------------------------------------------------------------------
 gmm_catch2_test(conflict_resolver_test engine/conflict_resolver_test.cpp)
 
+# The mod list's AND/OR filter join: a Qt-free predicate, so it is tested here
+# rather than through the widget that feeds it.
+gmm_catch2_test(filter_combine_test engine/filter_combine_test.cpp)
+
 # The crash handler, verified by crashing a forked child on purpose and
 # reading the dump back. dladdr() (inside backtrace_symbols) only sees .dynsym,
 # so the test can only assert on the crashing function's NAME when the
