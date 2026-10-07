@@ -106,7 +106,7 @@ void Logger::set_log_file(const std::string &path) {
   if (log_fd_ >= 0)
     ::close(log_fd_);
   log_file_path_ = path;
-  log_fd_ = ::open(path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
+  log_fd_        = ::open(path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
 }
 
 std::string Logger::log_dir() const {
