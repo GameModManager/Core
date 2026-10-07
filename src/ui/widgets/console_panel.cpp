@@ -59,7 +59,7 @@ ConsolePanel::ConsolePanel(QWidget *parent) : QFrame(parent) {
   const bool verbose     = gmm_debug_enabled();
   auto &settings         = Settings::instance();
   const bool panel_debug = verbose || settings.log_level() == "debug";
-  min_level_ = panel_debug ? engine::LogLevel::Debug : engine::LogLevel::Info;
+  min_level_   = panel_debug ? engine::LogLevel::Debug : engine::LogLevel::Info;
   auto &logger = engine::Logger::instance();
   logger.add_callback([guard](engine::LogLevel level, const std::string &timestamp,
                               const std::string &message) {
@@ -75,8 +75,7 @@ ConsolePanel::ConsolePanel(QWidget *parent) : QFrame(parent) {
         panel,
         [panel, lvl, ts = QString::fromStdString(timestamp),
          msg = QString::fromStdString(message)]() {
-          if (!panel ||
-              static_cast<engine::LogLevel>(lvl) < panel->min_level())
+          if (!panel || static_cast<engine::LogLevel>(lvl) < panel->min_level())
             return;
           panel->append_log(ConsolePanel::level_tag(lvl), ts, msg, lvl);
         },
@@ -147,7 +146,7 @@ void ConsolePanel::set_min_level(engine::LogLevel level) {
   Settings::instance().set_log_level(level == engine::LogLevel::Debug   ? "debug"
                                      : level == engine::LogLevel::Warn  ? "warn"
                                      : level == engine::LogLevel::Error ? "error"
-                                                                      : "info");
+                                                                        : "info");
   // Re-render from the logger's replay buffer rather than leaving the view as
   // it stands: the dropped lines never reached the document, so without this
   // raising the verbosity would only ever show what arrives afterwards, and
@@ -158,8 +157,7 @@ void ConsolePanel::set_min_level(engine::LogLevel level) {
       continue;
     append_log(level_tag(static_cast<int>(entry.level)),
                QString::fromStdString(entry.timestamp),
-               QString::fromStdString(entry.message),
-               static_cast<int>(entry.level));
+               QString::fromStdString(entry.message), static_cast<int>(entry.level));
   }
 }
 
@@ -184,8 +182,8 @@ void ConsolePanel::on_context_menu(const QPoint &pos) {
   menu.addSeparator();
   menu.addAction(tr("Clear"), this, &ConsolePanel::clear);
 
-  auto *folder_action = menu.addAction(tr("Open Logs Folder"), this,
-                                       &ConsolePanel::on_open_logs_folder);
+  auto *folder_action =
+      menu.addAction(tr("Open Logs Folder"), this, &ConsolePanel::on_open_logs_folder);
   folder_action->setEnabled(!engine::Logger::instance().log_dir().empty());
   menu.addSeparator();
 

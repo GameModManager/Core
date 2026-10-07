@@ -76,7 +76,9 @@ public:
   // the other filters.
   [[nodiscard]] QSet<Special> checked_specials() const;
   // True when at least one special filter is ticked.
-  [[nodiscard]] bool has_active_special() const { return !checked_specials().isEmpty(); }
+  [[nodiscard]] bool has_active_special() const {
+    return !checked_specials().isEmpty();
+  }
 
   // How the filters combine: And keeps a mod only when every ticked filter
   // matches it, Or when any one does (MO2 FilterAnd / FilterOr). And is the

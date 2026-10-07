@@ -4476,9 +4476,9 @@ void ModListController::apply_mod_filter() {
       w_->category_filter_panel_ ? w_->category_filter_panel_->checked_specials()
                                  : QSet<CategoryFilterPanel::Special>();
   const bool special_filter_active = !checked_specials.isEmpty();
-  const engine::filter::Mode mode =
-      w_->category_filter_panel_ ? w_->category_filter_panel_->filter_mode()
-                                 : engine::filter::Mode::And;
+  const engine::filter::Mode mode  = w_->category_filter_panel_
+                                         ? w_->category_filter_panel_->filter_mode()
+                                         : engine::filter::Mode::And;
 
   // Fold-hidden set (pure model computation): a folded separator band scope
   // or a folded mod subtree. Filtered-out rows inside a fold scope must stay
@@ -4563,8 +4563,8 @@ void ModListController::apply_mod_filter() {
         {category_filter_active, category_match},
         {special_filter_active, special_match},
     };
-    visible[row] = foreign_match &&
-                   engine::filter::matches(mode, criteria, std::size(criteria));
+    visible[row] =
+        foreign_match && engine::filter::matches(mode, criteria, std::size(criteria));
 
     // If an active fold scope (folded separator band or folded mod subtree)
     // hides w_ row, hide it too - fold overrides search.

@@ -23,6 +23,7 @@ class SyntaxHighlighter;
 
 namespace ui {
 
+class FindDialog;
 class LineNumberPlainTextEdit;
 
 // MO2's GenericFilesTab: a filterable list of files (matched by a subclass
@@ -62,12 +63,24 @@ private:
   void save_editor();
   bool maybe_flush_editor();
   void apply_theme();
+  // Find-in-text (MO2's MOBase::FindDialog). Ctrl+F opens the dialog; the
+  // tab does the searching, because it is the one that owns the editor.
+  void open_find_dialog();
+  // Search from `from` (or the dialog's origin when from < 0) and select the
+  // hit. Returns true when something matched, so the dialog can say so.
+  bool find_next(const QString &pattern, bool case_sensitive, int from);
 
   QSplitter *splitter_             = nullptr;
   QListView *list_                 = nullptr;
   QLineEdit *filter_               = nullptr;
   LineNumberPlainTextEdit *editor_ = nullptr;
   QPushButton *save_btn_           = nullptr;
+  // Enabled exactly when there is a file loaded to search; open_find_dialog
+  // also refuses with no file, so the two agree.
+  QPushButton *find_btn_ = nullptr;
+  // Built on the first Ctrl+F, reused after that: a fresh dialog each time
+  // would lose the pattern the user is stepping through.
+  FindDialog *find_dlg_ = nullptr;
 #ifdef GMM_HAS_SYNTAX_HIGHLIGHTING
   KSyntaxHighlighting::Repository *repository_         = nullptr;
   KSyntaxHighlighting::SyntaxHighlighter *highlighter_ = nullptr;

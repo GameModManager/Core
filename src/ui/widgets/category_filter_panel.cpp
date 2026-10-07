@@ -40,8 +40,7 @@ CategoryFilterPanel::CategoryFilterPanel(QWidget *parent) : QWidget(parent) {
     const char *tip;
   };
   static constexpr Entry kSpecials[] = {
-      {Special::Active, QT_TR_NOOP("Active"),
-       QT_TR_NOOP("Only mods that are enabled")},
+      {Special::Active, QT_TR_NOOP("Active"), QT_TR_NOOP("Only mods that are enabled")},
       {Special::Conflict, QT_TR_NOOP("Conflicted"),
        QT_TR_NOOP("Only mods that win or lose a file conflict")},
       {Special::HiddenFiles, QT_TR_NOOP("Hidden files"),
@@ -50,8 +49,9 @@ CategoryFilterPanel::CategoryFilterPanel(QWidget *parent) : QWidget(parent) {
   for (const auto &entry : kSpecials) {
     auto *box = new QCheckBox(tr(entry.label), this);
     box->setToolTip(tr(entry.tip));
-    connect(box, &QCheckBox::toggled, this,
-            [this](bool) { emit filters_changed(); });
+    connect(box, &QCheckBox::toggled, this, [this](bool) {
+      emit filters_changed();
+    });
     special_boxes_.emplace_back(entry.which, box);
     layout->addWidget(box);
   }
@@ -73,7 +73,9 @@ CategoryFilterPanel::CategoryFilterPanel(QWidget *parent) : QWidget(parent) {
   mode_group_->addButton(and_radio);
   mode_group_->addButton(or_radio);
   connect(mode_group_, &QButtonGroup::buttonToggled, this,
-          [this](QAbstractButton *, bool) { emit filters_changed(); });
+          [this](QAbstractButton *, bool) {
+            emit filters_changed();
+          });
   layout->addWidget(and_radio);
   layout->addWidget(or_radio);
 

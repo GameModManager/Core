@@ -1,5 +1,6 @@
 #include "ui/modinfo/generic_files_tab.h"
 
+#include "ui/widgets/find_dialog.h"
 #include "ui/widgets/line_number_edit.h"
 
 #ifdef GMM_HAS_SYNTAX_HIGHLIGHTING
@@ -19,6 +20,7 @@
 #include <QMessageBox>
 #include <QPlainTextEdit>
 #include <QPushButton>
+#include <QShortcut>
 #include <QSortFilterProxyModel>
 #include <QSplitter>
 #include <QStandardItemModel>
@@ -63,8 +65,21 @@ GenericFilesTab::GenericFilesTab(QWidget *parent) : ModInfoTab(parent) {
   save_btn_        = new QPushButton(tr("Save"), right);
   save_btn_->setEnabled(false);
   editor_bar->addWidget(save_btn_);
+  auto *find_btn = new QPushButton(tr("Find..."), right);
+  find_btn->setToolTip(tr("Search this file for text (Ctrl+F)"));
+  find_btn->setEnabled(false);
+  find_btn_ = find_btn;
+  editor_bar->addWidget(find_btn);
   editor_bar->addStretch(1);
   right_layout->addLayout(editor_bar);
+
+  // Ctrl+F on the tab, scoped to it and its children: a window-scoped pair
+  // would also claim the shortcut on every other tab of the mod info dialog.
+  auto *find_shortcut = new QShortcut(QKeySequence::Find, this);
+  find_shortcut->setContext(Qt::WidgetWithChildrenShortcut);
+  connect(find_shortcut, &QShortcut::activated, this,
+          &GenericFilesTab::open_find_dialog);
+  connect(find_btn, &QPushButton::clicked, this, &GenericFilesTab::open_find_dialog);
 
   splitter_->addWidget(left);
   splitter_->addWidget(right);
@@ -84,6 +99,7 @@ GenericFilesTab::GenericFilesTab(QWidget *parent) : ModInfoTab(parent) {
   connect(editor_, &QPlainTextEdit::textChanged, this, [this]() {
     editor_dirty_ = editor_->isEnabled() && editor_->toPlainText() != last_loaded_text_;
     save_btn_->setEnabled(editor_dirty_);
+    find_btn_->setEnabled(editor_->isEnabled());
   });
 }
 
@@ -99,6 +115,7 @@ void GenericFilesTab::set_mod(const ModInfoData &data) {
   editor_->clear();
   editor_->setEnabled(false);
   save_btn_->setEnabled(false);
+  find_btn_->setEnabled(false);
   editor_dirty_ = false;
   last_loaded_text_.clear();
 
@@ -187,6 +204,7 @@ void GenericFilesTab::load_editor(const QString &path) {
   editor_->setEnabled(true);
   editor_dirty_ = false;
   save_btn_->setEnabled(false);
+  find_btn_->setEnabled(true);
 }
 
 // Picks a KSyntaxHighlighting theme that matches the editor's palette so the
@@ -204,6 +222,58 @@ void GenericFilesTab::apply_theme() {
     highlighter_->rehighlight();
   }
 #endif
+}
+
+void GenericFilesTab::open_find_dialog() {
+  if (!editor_->isEnabled())
+    return;
+  if (!find_dlg_) {
+    find_dlg_ = new FindDialog(this);
+    // patternChanged is the live half: typing in the box lands on the first
+    // match at once, which is what makes a find box feel like find and not
+    // like a form with a submit button.
+    connect(find_dlg_, &FindDialog::patternChanged, this,
+            [this](const QString &pattern) {
+              find_next(pattern, find_dlg_->case_sensitive(), 0);
+            });
+    connect(find_dlg_, &FindDialog::findNext, this, [this]() {
+      // -1 asks the editor to continue from wherever it is, so Find Next
+      // advances instead of restarting the search at the top.
+      find_next(find_dlg_->pattern(), find_dlg_->case_sensitive(), -1);
+    });
+  }
+  find_dlg_->show();
+  find_dlg_->raise();
+  find_dlg_->activateWindow();
+}
+
+bool GenericFilesTab::find_next(const QString &pattern, bool case_sensitive, int from) {
+  if (pattern.isEmpty())
+    return false;
+  const QTextCursor cursor = editor_->textCursor();
+  // Resume past the hit the last search landed on, so Find Next advances
+  // instead of re-finding it; `from` is for the caller that wants a specific
+  // spot (the live search as the user types, which restarts at the top).
+  const int start =
+      from >= 0 ? from
+                : (cursor.hasSelection() ? cursor.selectionEnd() : cursor.position());
+  // No flag is case-INsensitive, which is the default worth having here.
+  QTextDocument::FindFlags flags;
+  if (case_sensitive)
+    flags |= QTextDocument::FindCaseSensitively;
+
+  QTextCursor found = editor_->document()->find(pattern, start, flags);
+  if (found.isNull() && start > 0) {
+    // Past the last hit: wrap, so Find Next cycles. Stalling at the end of the
+    // file reads as a failed search rather than as "wrapped".
+    found = editor_->document()->find(pattern, 0, flags);
+  }
+  if (found.isNull())
+    return false;
+  editor_->setTextCursor(found);
+  editor_->ensureCursorVisible();
+  editor_->setFocus();
+  return true;
 }
 
 bool GenericFilesTab::event(QEvent *event) {
