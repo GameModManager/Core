@@ -377,7 +377,7 @@ port - their cited GMM symbol names were invented, the features are not.
 | Category import/export | ✅ `CategoryImportDialog` | ❌ | ❌ · |
 | Multi-category assignment | ✅ `ModInfo::setCategories` | ✅ `category_ids` CSV + `set_category_ids` - `mod_list_model.h:65` | ✅ · |
 | Primary category | ✅ `ModInfo::primaryCategory` | ✅ first entry in category CSV - `mod_list_controller.cpp:2055` | ✅ · |
-| Special filter categories | ✅ `SpecialCategories` (Checked, UpdateAvailable, Conflict) | ❌ | ❌ · |
+| Special filter categories | ✅ `SpecialCategories` (Checked, UpdateAvailable, Conflict) | ⚠️ Active + Conflict + Has hidden files, `category_filter_panel.h:24` - UpdateAvailable has no mod-update data to filter on | ⚠️ · |
 | Category CRUD editor | ✅ | ✅ `CategoriesDialog` (full CRUD) - `categories_dialog.h:24` | ✅ · |
 | Category filter panel | ✅ | ✅ `CategoryFilterPanel` (checkable tree) - `category_filter_panel.h:21` | ✅ · |
 | Categories table view | ✅ `CategoriesTable` | ❌ | ❌ · |
@@ -770,7 +770,7 @@ port - their cited GMM symbol names were invented, the features are not.
 | Collapseable separators | ✅ `collapsibleSeparators` | ✅ 10+ settings - `settings.h:35` | ✅ · |
 | Auto-collapse on hover | ✅ `autoCollapseOnHover` | ✅ `auto_collapse_on_hover()` - `settings.h:33` | ✅ · |
 | Filter persistence | ✅ `saveFilters` | ✅ `save_filters()` - `settings.h:31` | ✅ · |
-| Filter AND/OR mode | ✅ `FilterAnd`/`FilterOr` | ❌ | ❌ · |
+| Filter AND/OR mode | ✅ `FilterAnd`/`FilterOr` | ✅ `engine::filter::Mode` + 2 radios - `filter_combine.h:14` | ✅ · |
 | Column visibility toggle | ✅ `setColumnVisible()` | ✅ `ColumnToggleHeaderView` - `column_toggle_header.h:7` | ✅ · |
 | Mod counter display | ✅ `ModCounters` (LCD) | ✅ QLCDNumber - `mod_list_controller.cpp:648` | ✅ · |
 | Create separator | ✅ | ✅ `create_separator()` / `create_separator_named()` - `mod_actions.h:63` | ✅ · |
@@ -786,10 +786,10 @@ port - their cited GMM symbol names were invented, the features are not.
 | ModList signals (showMessage, modRenamed, modUninstalled, fileMoved, modPrioritiesChanged) | ✅ `ModList` signals | ❌ | ❌ · |
 | ModListProxy / ModListByPriorityProxy | ✅ proxy models | ❌ | ❌ · |
 | U010 Ctrl+F focuses+selects filter (modList, espList, downloadView) | ✅ `mainwindow.cpp:217`, `:495-497` | ✅ one window-scoped `QShortcut`, same 3 surfaces - `main_window.cpp:348` | ✅ ✔ |
-| U011 Escape clears filter and returns focus to list | ✅ `mainwindow.cpp:224` | ⚠️ window-scoped `QShortcut`, fires outside the list - `main_window.cpp:352` | ⚠️ ✔ |
+| U011 Escape clears filter and returns focus to list | ✅ `mainwindow.cpp:224` | ✅ per-pane `WidgetWithChildrenShortcut`, focus decides which filter answers - `main_window.cpp:376` | ✅ ✔ |
 | Double-click maps the clicked column to a Mod Info tab | ✅ `modlistview.cpp` (Name→Source, Priority→Conflicts, Category→Categories) | ⚠️ Conflicts/Flags, Category, Source mapped; rest → last-used tab - `mod_list_controller.cpp:469` | ⚠️ ✔ |
 | Double-click a separator toggles its fold | ✅ `modlistview.cpp` | ✅ plus an anti-bounce guard - `mod_table_view.cpp:383` | ✅ ✔ |
-| U053 Wheel-scroll blocked on groupCombo/profileBox | ✅ `mainwindow.cpp:378-385` | ❌ | ❌ · |
+| U053 Wheel-scroll blocked on groupCombo/profileBox | ✅ `mainwindow.cpp:378-385` | ✅ `EventFilter` on both - `mod_filter_bar.cpp:63`, `profile_bar.cpp:46` | ✅ · |
 | U074 Row-with-children menu (Collapse all / others / Expand all) | ✅ `modlistcontextmenu.cpp:236-243` | ❌ | ❌ · |
 | U077 "Send to..." conditionality (priority-sort gating + First/Last conflict flags) | ✅ `modlistcontextmenu.cpp:273-332` | ⚠️ conditional send-to tree; conflict flags unproven - `mod_context_menu.cpp:280` | ⚠️ · |
 | U092 Mod-list cell tooltips per column (flags/conflicts/name/version/category/notes) | ✅ `modlist.cpp:384-480` | ⚠️ 5 of 6; Version and Notes need untracked data - `mod_list_model.cpp:194` | ⚠️ ✔ |
@@ -805,7 +805,7 @@ port - their cited GMM symbol names were invented, the features are not.
 | U163 Filter panel controls (Clear/Edit, And/Or radios, filters tree) | ✅ `mainwindow.ui:137-200`, `:505` | ❌ | ❌ · |
 | U164 openFolderMenu / listOptionsBtn / displayCategoriesBtn tooltips+roles | ✅ `mainwindow.ui:283-460` | ⚠️ folders menu only - `profile_bar.h:14` | ⚠️ · |
 | U165 LCD counters ("Active:" activeMods/activePlugins QLCDNumber) | ✅ `mainwindow.ui:354`, `:880` | ⚠️ counters exist, "Active:" labels unproven - `mod_list_controller.cpp:648` | ⚠️ · |
-| U232 Escape/Filter shortcut scope = WidgetWithChildren, autoRepeat off | ✅ `mainwindow.cpp:217-231` | ⚠️ `autoRepeat(false)` matches, scope is window-wide - `main_window.cpp:348` | ⚠️ ✔ |
+| U232 Escape/Filter shortcut scope = WidgetWithChildren, autoRepeat off | ✅ `mainwindow.cpp:217-231` | ✅ both, one pair per pane - `main_window.cpp:376` | ✅ ✔ |
 | U280 csvbuilder for exportModListCSV | ✅ `csvbuilder.cpp` | ❌ | ❌ · |
 
 ## 19. Mod Context Menu
@@ -946,11 +946,11 @@ port - their cited GMM symbol names were invented, the features are not.
 | Parallel save scan (parallel parse + provider indexing) | ❌ | 🚀 `parallel::for_each` + double-fire fix - `saves_scan_worker.h:52` | 🚀 · |
 | Disabled-but-present plugins excluded from missing assets | ✅ | ✅ enabled OR force_loaded check - `save_missing_assets.h:26` | ✅ · |
 | U105 Save hover widget fields (SE data, missing ESP/ESH/ESL lists + N more) | ✅ `gamebryosavegameinfowidget.cpp:78-161` | ⚠️ hover info exists, exact field list unproven - `saves_tab.h:27` | ⚠️ · |
-| U115 Saves list columns (display name "%1, #%2, Level %3, %4" + relative path) | ✅ `savestab.cpp:180-196` | ⚠️ scan/list exists, format + path column unproven - `saves_tab.h:27` | ⚠️ · |
+| U115 Saves list columns (display name "%1, #%2, Level %3, %4" + relative path) | ✅ `savestab.cpp:180-196` | ✅ format built in `display_name()` - `save_game.cpp:23`; File column is the path relative to the saves dir | ✅ · |
 | U159 Saves context menu (Fix enabled mods gating, Delete %n save(s), Open in Explorer) | ✅ `savestab.cpp:244-280` | ⚠️ fix path exists, gating/plural-delete unproven - `save_missing_assets.h:26` | ⚠️ · |
-| U160 Save delete confirm (first 10 names + recycle-bin note) | ✅ `savestab.cpp:205-235` | ❌ | ❌ · |
+| U160 Save delete confirm (first 10 names + recycle-bin note) | ✅ `savestab.cpp:205-235` | ✅ all three parts, Delete key + context menu - `saves_tab.cpp:515` | ✅ · |
 | U199 Save parsing error strings (open failed, wrong format) | ✅ `gamebryosavegame.cpp:102-112` | ❌ | ❌ · |
-| U227 Save list sorted by creation desc + streaming adds + relative path column | ✅ `savestab.cpp:180` | ❌ | ❌ · |
+| U227 Save list sorted by creation desc + streaming adds + relative path column | ✅ `savestab.cpp:180` | ✅ sort `save_scanner.cpp:104`, streaming binary insert `saves_tab.cpp:296` | ✅ · |
 | U239 SaveGameInfo feature (getMissingAssets used by saves Fix) | ✅ `savestab.cpp:244` | ✅ `SaveParserRegistry::parse_save` - `saves_tab.cpp:329` | ✅ · |
 
 ## 25. Game Detection & Knowledge
@@ -1124,7 +1124,7 @@ port - their cited GMM symbol names were invented, the features are not.
 |---------|-----|-----|--------|
 | Log model (QAbstractItemModel) | ✅ `LogModel` | ✅ `Logger` (callback-based, replay buffer) - `logger.h:20` | ✅ · |
 | Log copy to clipboard | ✅ `LogList::copyToClipboard()` | ✅ QShortcut Copy on output_ - `console_panel.cpp:37` | ✅ · |
-| Log open logs folder | ✅ `LogList::openLogsFolder()` | ❌ | ❌ · |
+| Log open logs folder | ✅ `LogList::openLogsFolder()` | ✅ menu item + profile-bar item, both to the logger's own dir - `console_panel.cpp:164` | ✅ · |
 | Log clear | ✅ `LogList::clear()` | ✅ `ConsolePanel::clear()` - `console_panel.h:18` | ✅ · |
 | Log highlighter | ✅ `LogHighlighter` | ❌ | ❌ · |
 | Log level filtering | ✅ | ✅ `Logger::set_level()` - `logger.h:27` | ✅ · |
@@ -1135,7 +1135,7 @@ port - their cited GMM symbol names were invented, the features are not.
 | Log to stdout (via Console attach) | ✅ `logToStdout()` | ✅ fprintf stdout - `logger.cpp:122` | ✅ · |
 | U020 View > Log checkable action toggles log dock | ✅ `mainwindow.cpp:816-819` | ✅ Show Console toggle - `menu_bar.cpp:122` | ✅ · |
 | U057 errorReported() scans newest log first 50000 lines for ERROR | ✅ `mainwindow.cpp:993-1022` | ❌ | ❌ · |
-| U157 Log list context menu (Copy/Copy all/Clear all/Open folder/Level submenu) | ✅ `loglist.cpp:250-290` | ⚠️ copy + level filter only, no menu - `console_panel.cpp:37` | ⚠️ · |
+| U157 Log list context menu (Copy/Copy all/Clear all/Open folder/Level submenu) | ✅ `loglist.cpp:250-290` | ✅ all five, level re-renders from the replay buffer - `console_panel.cpp:171` | ✅ · |
 | U158 Log file creation failure critical dialog | ✅ `loglist.cpp:384-385` | ❌ | ❌ · |
 | U294 logDock QDockWidget (area 8 bottom, View>Log toggle) | ✅ `mainwindow.ui:1510` | ⚠️ toggle exists, QDockWidget bottom area unproven - `menu_bar.cpp:122` | ⚠️ · |
 
@@ -1186,9 +1186,9 @@ app can never end up unreachable - see `tray_decision.h:66`.
 |---------|-----|-----|--------|
 | Text editor (line numbers, syntax, word wrap) | ✅ `TextEditor` | ✅ line numbers, KSyntaxHighlighting, edit+save - `generic_files_tab.cpp:49` | ✅ · |
 | HTML editor | ✅ `HTMLEditor` | ❌ QWebEngineView is a read-only viewer - `webview_description_renderer.h:5` | ❌ · |
-| U190 TextViewer (multi-tab, per-file writable, Find, Save-per-page, save prompt) | ✅ `textviewer.cpp:60-276` | ⚠️ multi-file tab + write warning, Find unproven - `generic_files_tab.cpp:49` | ⚠️ · |
-| U191 TextViewer read-only INI write TaskDialog (Clear flag / Allow once / Skip) | ✅ `textviewer.cpp:173-192` | ❌ | ❌ · |
-| U192 FindDialog (find-only, Find Next, Close) | ✅ `finddialog.ui` | ❌ | ❌ · |
+| U190 TextViewer (multi-tab, per-file writable, Find, Save-per-page, save prompt) | ✅ `textviewer.cpp:60-276` | ⚠️ multi-file tab + write warning + Find - `generic_files_tab.cpp:49` | ⚠️ · |
+| U191 TextViewer read-only INI write TaskDialog (Clear flag / Allow once / Skip) | ✅ `textviewer.cpp:173-192` | ❌ no read-only surface to gate: the only text editor lists files under the mod folder, all writable - `generic_files_tab.cpp:121` | ❌ · |
+| U192 FindDialog (find-only, Find Next, Close) | ✅ `finddialog.ui` | ✅ pattern + Match case + Find Next + Close, wraps - `find_dialog.h:22` | ✅ · |
 | U248 TextEditor toolbar per-file (Save, Word wrap toggle, Open in Explorer) + dirty flag | ✅ `texteditor.cpp:468-491` | ⚠️ save only, wrap/Explorer unproven - `generic_files_tab.cpp:63` | ⚠️ · |
 | U249 Line-number gutter + current-line highlight + TextEditorHighlighter | ✅ `texteditor.cpp:13-14` | ⚠️ highlighter + gutter, current-line unproven - `generic_files_tab.cpp:59` | ⚠️ · |
 | U250 TextViewer multi-file tabs w/ per-tab Save + Find | ✅ `textviewer.cpp` | ❌ | ❌ · |
@@ -1383,7 +1383,7 @@ column.
 | 4. Settings & Configuration | 23 | 32 | 6 | 1 | 12 | 24 | 0 |
 | 5. Executable Management | 8 | 5 | 4 | 10 | 0 | 0 | 0 |
 | 6. Mod Management | 24 | 5 | 9 | 8 | 0 | 0 | 1 |
-| 7. Mod Categories | 6 | 4 | 0 | 10 | 0 | 0 | 0 |
+| 7. Mod Categories | 6 | 5 | 0 | 9 | 0 | 0 | 0 |
 | 8. Mod Conflict Detection | 4 | 2 | 3 | 7 | 0 | 0 | 0 |
 | 9. Mod Content Analysis | 6 | 7 | 0 | 13 | 0 | 0 | 0 |
 | 10. Mod Info Dialog | 10 | 1 | 1 | 2 | 0 | 0 | 0 |
@@ -1394,24 +1394,24 @@ column.
 | 15. Download Management | 19 | 12 | 6 | 24 | 10 | 0 | 0 |
 | 16. Nexus Integration | 8 | 10 | 2 | 20 | 0 | 0 | 0 |
 | 17. Source Providers | 4 | 0 | 7 | 1 | 0 | 0 | 0 |
-| 18. Mod List Features | 18 | 14 | 3 | 16 | 0 | 0 | 0 |
+| 18. Mod List Features | 22 | 12 | 3 | 14 | 0 | 0 | 0 |
 | 19. Mod Context Menu | 14 | 4 | 0 | 14 | 0 | 0 | 0 |
 | 20. Plugin Context Menu | 2 | 2 | 0 | 8 | 0 | 0 | 0 |
 | 21. Archive & Installation | 10 | 3 | 4 | 2 | 0 | 0 | 0 |
 | 22. Deploy System | 0 | 1 | 9 | 0 | 2 | 0 | 0 |
 | 23. Overwrite System | 8 | 2 | 3 | 0 | 0 | 0 | 0 |
-| 24. Save Game System | 13 | 5 | 5 | 4 | 0 | 0 | 0 |
+| 24. Save Game System | 16 | 4 | 5 | 2 | 0 | 0 | 0 |
 | 25. Game Detection & Knowledge | 2 | 2 | 11 | 0 | 0 | 0 | 0 |
 | 26. Pipeline System | 0 | 0 | 16 | 0 | 0 | 0 | 0 |
 | 27. Plugin Host System | 0 | 1 | 12 | 3 | 0 | 0 | 0 |
 | 28. Sort System | 0 | 0 | 5 | 0 | 0 | 0 | 0 |
 | 29. Instance Management | 3 | 1 | 6 | 7 | 0 | 0 | 0 |
 | 30. UI Layer | 23 | 8 | 17 | 16 | 2 | 0 | 2 |
-| 31. Log System | 6 | 3 | 3 | 4 | 0 | 0 | 0 |
+| 31. Log System | 8 | 2 | 3 | 3 | 0 | 0 | 0 |
 | 32. System Tray | 4 | 1 | 0 | 0 | 0 | 0 | 0 |
 | 33. Self Updater | 2 | 3 | 0 | 4 | 0 | 0 | 0 |
 | 34. Multi-Process / IPC | 2 | 2 | 0 | 3 | 0 | 0 | 0 |
-| 35. Text Editor | 1 | 3 | 0 | 4 | 0 | 0 | 0 |
+| 35. Text Editor | 2 | 3 | 0 | 3 | 0 | 0 | 0 |
 | 36. Browser | 0 | 1 | 0 | 6 | 0 | 0 | 0 |
 | 37. Dialogs | 3 | 1 | 0 | 8 | 0 | 0 | 1 |
 | 38. Platform Abstraction | 2 | 1 | 14 | 1 | 0 | 0 | 0 |
@@ -1428,21 +1428,21 @@ column.
 | 49. CLI Help Grammar | 0 | 0 | 0 | 2 | 0 | 0 | 0 |
 | 50. My Games Resolution | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
 | 51. Conflict Scan Refresh | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
-| **TOTAL** | **315** | **176** | **177** | **278** | **54** | **43** | **62** |
+| **TOTAL** | **325** | **173** | **177** | **271** | **54** | **43** | **62** |
 
 ### The arithmetic
 
 ```
 rows in file                          1043
-scored rows (ok + part + miss)         770
+scored rows (ok + part + miss)         769
 
-MO2 parity        ok   / scored        315 /  769  = 41.0%
-partial           part / scored        176 /  769  = 22.9%
-missing           miss / scored        278 /  769  = 36.2%
+MO2 parity        ok   / scored        325 /  769  = 42.3%
+partial           part / scored        173 /  769  = 22.5%
+missing           miss / scored        271 /  769  = 35.2%
 GMM-exclusive     surp / all rows      177 / 1043  = 17.0%   (not scored)
 ```
 
-**Parity is 315 / 769 = 41.0%.** 278 rows are outright missing and 176 partial.
+**Parity is 325 / 769 = 42.3%.** 271 rows are outright missing and 173 partial.
 The largest untouched surfaces are **44. Tutorial** and **46. Notifications /
 Problems** (zero matched rows), then **16. Nexus** and **15. Downloads**, which
 carry the most missing rows in absolute terms.
