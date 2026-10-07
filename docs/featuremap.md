@@ -358,7 +358,7 @@ port - their cited GMM symbol names were invented, the features are not.
 | getByName/getByIndex/getByModID accessors | ✅ `ModInfo::getByName()` etc. | ❌ | ❌ · |
 | Import strategy (Merge/Overwrite/None) | ✅ `ImportStrategy` enum | ❌ | ❌ · |
 | Activate mods dialog (save-game asset resolution) | ✅ `ActivateModsDialog` | ❌ | ❌ · |
-| U055 5s periodic timer saving mod metas (saveModMetas) | ✅ `mainwindow.cpp:500-504` | ❌ | ❌ · |
+| U055 5s periodic timer saving mod metas (saveModMetas) | ✅ `mainwindow.cpp:500-504` | 🚀 `DelayedFileWriter` 5s debounce + flush-on-destruct, in-folder metas written sync - `delayed_file_writer.h:33` | 🚀 · |
 | U116 Rename toasts ("Invalid name", "Name is already in use") | ✅ `modlist.cpp:490-496` | ✅ 4 warnings wired through apply_rename - `mod_actions.cpp:627` | ✅ · |
 | U117 Mod remove confirmation dialog | ✅ `modlist.cpp:1233-1234` | ✅ 3/3 destructive paths confirm, trashes + restore note - `mod_actions.cpp:115` | ✅ · |
 | U201 meta.ini full key set (~29 keys incl. Endorsed/Abstained, tracked, nexus*) | ✅ `modinfo.cpp:80-330` | ⚠️ core keys only, 29-key set unproven - `mod_meta.cpp:117` | ⚠️ · |
@@ -610,7 +610,7 @@ port - their cited GMM symbol names were invented, the features are not.
 | U166 Profiles dialog full control set (3 checkables + 7 buttons w/ tooltips) | ✅ `profilesdialog.ui` | ⚠️ create/copy/rename/delete only - `profile_manager_dialog.h:13` | ⚠️ · |
 | U167 Profiles dialog messages (invalid name, active guards, broken profile) | ✅ `profilesdialog.cpp:78-300` | ❌ | ❌ · |
 | U173 ProfileInputDialog (name prompt + Default Game INI Settings checkbox) | ✅ `profileinputdialog.ui` | ⚠️ dialog exists, checkbox parity unproven - `profile_create_dialog.h:10` | ⚠️ · |
-| U214 Profile 7-file set + settingsByGroup arbitrary keys + meta timer | ✅ `profile.cpp` | ⚠️ 7 accessors proven, meta-save timer absent (U055) - `profile.h:212` | ⚠️ · |
+| U214 Profile 7-file set + settingsByGroup arbitrary keys + meta timer | ✅ `profile.cpp` | ✅ 7 accessors + 5s modlist debounce proven - `profile.h:81` | ✅ · |
 | U215 Profile initweaks / invalidation archive-list interactions | ✅ `mainwindow.cpp:2585-2603` | ⚠️ writers exist, invalidationActive toggling unproven - `profile_switching.cpp:76` | ⚠️ · |
 | U221 Archive list saved via DelayedFileWriter on modPrioritiesChanged | ✅ `mainwindow.cpp:564-566` | ❌ | ❌ · |
 
@@ -1382,7 +1382,7 @@ column.
 | 3. Error Handling & Diagnostics | 8 | 9 | 0 | 0 | 28 | 11 | 35 |
 | 4. Settings & Configuration | 23 | 32 | 6 | 1 | 12 | 24 | 0 |
 | 5. Executable Management | 8 | 5 | 4 | 10 | 0 | 0 | 0 |
-| 6. Mod Management | 24 | 5 | 8 | 9 | 0 | 0 | 1 |
+| 6. Mod Management | 24 | 5 | 9 | 8 | 0 | 0 | 1 |
 | 7. Mod Categories | 6 | 4 | 0 | 10 | 0 | 0 | 0 |
 | 8. Mod Conflict Detection | 4 | 2 | 3 | 7 | 0 | 0 | 0 |
 | 9. Mod Content Analysis | 6 | 7 | 0 | 13 | 0 | 0 | 0 |
@@ -1390,7 +1390,7 @@ column.
 | 11. Version & Update Management | 3 | 1 | 2 | 12 | 0 | 0 | 0 |
 | 12. Plugin Management | 27 | 8 | 3 | 13 | 0 | 0 | 0 |
 | 13. LOOT Integration | 10 | 2 | 1 | 7 | 0 | 0 | 0 |
-| 14. Profile Management | 26 | 6 | 3 | 6 | 0 | 0 | 0 |
+| 14. Profile Management | 27 | 5 | 3 | 6 | 0 | 0 | 0 |
 | 15. Download Management | 19 | 12 | 6 | 24 | 10 | 0 | 0 |
 | 16. Nexus Integration | 8 | 10 | 2 | 20 | 0 | 0 | 0 |
 | 17. Source Providers | 4 | 0 | 7 | 1 | 0 | 0 | 0 |
@@ -1428,7 +1428,7 @@ column.
 | 49. CLI Help Grammar | 0 | 0 | 0 | 2 | 0 | 0 | 0 |
 | 50. My Games Resolution | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
 | 51. Conflict Scan Refresh | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
-| **TOTAL** | **314** | **177** | **176** | **279** | **54** | **43** | **62** |
+| **TOTAL** | **315** | **176** | **177** | **278** | **54** | **43** | **62** |
 
 ### The arithmetic
 
@@ -1436,13 +1436,13 @@ column.
 rows in file                          1043
 scored rows (ok + part + miss)         770
 
-MO2 parity        ok   / scored        314 /  770  = 40.8%
-partial           part / scored        177 /  770  = 23.0%
-missing           miss / scored        279 /  770  = 36.2%
-GMM-exclusive     surp / all rows      176 / 1043  = 16.9%   (not scored)
+MO2 parity        ok   / scored        315 /  769  = 41.0%
+partial           part / scored        176 /  769  = 22.9%
+missing           miss / scored        278 /  769  = 36.2%
+GMM-exclusive     surp / all rows      177 / 1043  = 17.0%   (not scored)
 ```
 
-**Parity is 314 / 770 = 40.8%.** 279 rows are outright missing and 177 partial.
+**Parity is 315 / 769 = 41.0%.** 278 rows are outright missing and 176 partial.
 The largest untouched surfaces are **44. Tutorial** and **46. Notifications /
 Problems** (zero matched rows), then **16. Nexus** and **15. Downloads**, which
 carry the most missing rows in absolute terms.
