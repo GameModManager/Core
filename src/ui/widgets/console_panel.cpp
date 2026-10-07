@@ -5,12 +5,17 @@
 
 #include <QApplication>
 #include <QClipboard>
+#include <QDesktopServices>
+#include <QEvent>
+#include <QMenu>
 #include <QPlainTextEdit>
 #include <QPointer>
 #include <QScrollBar>
 #include <QShortcut>
+#include <QTextBlock>
 #include <QTextCharFormat>
 #include <QTextCursor>
+#include <QUrl>
 #include <QVBoxLayout>
 
 #include <cstdlib>
@@ -38,6 +43,9 @@ ConsolePanel::ConsolePanel(QWidget *parent) : QFrame(parent) {
   // being read. Same 1000-line window MO2's log list uses (loglist.cpp
   // MaxLines). The log FILE is never capped - only what is on screen.
   output_->setMaximumBlockCount(kMaxLines);
+  output_->setContextMenuPolicy(Qt::CustomContextMenu);
+  connect(output_, &QWidget::customContextMenuRequested, this,
+          &ConsolePanel::on_context_menu);
   layout->addWidget(output_);
 
   auto *copyShortcut = new QShortcut(QKeySequence::Copy, output_);
@@ -51,41 +59,42 @@ ConsolePanel::ConsolePanel(QWidget *parent) : QFrame(parent) {
   const bool verbose     = gmm_debug_enabled();
   auto &settings         = Settings::instance();
   const bool panel_debug = verbose || settings.log_level() == "debug";
-  auto &logger           = engine::Logger::instance();
-  logger.add_callback([guard, panel_debug](engine::LogLevel level,
-                                           const std::string &timestamp,
-                                           const std::string &message) {
-    if (!panel_debug && level < engine::LogLevel::Info)
-      return;
+  min_level_   = panel_debug ? engine::LogLevel::Debug : engine::LogLevel::Info;
+  auto &logger = engine::Logger::instance();
+  logger.add_callback([guard](engine::LogLevel level, const std::string &timestamp,
+                              const std::string &message) {
     auto *panel = guard.data();
     if (!panel)
       return;
-    int lvl = static_cast<int>(level);
+    const int lvl = static_cast<int>(level);
+    // The level test runs inside the queued lambda, i.e. on the panel's own
+    // thread: it reads min_level_, which the Level submenu can change, so a
+    // level switched in the menu takes effect on the very next line rather
+    // than on the next panel construction.
     QMetaObject::invokeMethod(
         panel,
         [panel, lvl, ts = QString::fromStdString(timestamp),
          msg = QString::fromStdString(message)]() {
-          if (!panel)
+          if (!panel || static_cast<engine::LogLevel>(lvl) < panel->min_level())
             return;
-          QString tag;
-          switch (static_cast<engine::LogLevel>(lvl)) {
-          case engine::LogLevel::Debug:
-            tag = "DBG";
-            break;
-          case engine::LogLevel::Info:
-            tag = "INF";
-            break;
-          case engine::LogLevel::Warn:
-            tag = "WRN";
-            break;
-          case engine::LogLevel::Error:
-            tag = "ERR";
-            break;
-          }
-          panel->append_log(tag, ts, msg, lvl);
+          panel->append_log(ConsolePanel::level_tag(lvl), ts, msg, lvl);
         },
         Qt::QueuedConnection);
   });
+}
+
+QString ConsolePanel::level_tag(int level) {
+  switch (static_cast<engine::LogLevel>(level)) {
+  case engine::LogLevel::Debug:
+    return QStringLiteral("DBG");
+  case engine::LogLevel::Info:
+    return QStringLiteral("INF");
+  case engine::LogLevel::Warn:
+    return QStringLiteral("WRN");
+  case engine::LogLevel::Error:
+    return QStringLiteral("ERR");
+  }
+  return QString();
 }
 
 void ConsolePanel::append_log(const QString &tag, const QString &timestamp,
@@ -128,6 +137,80 @@ void ConsolePanel::append_text(const QString &text) {
 
 void ConsolePanel::clear() {
   output_->clear();
+}
+
+void ConsolePanel::set_min_level(engine::LogLevel level) {
+  if (level == min_level_)
+    return;
+  min_level_ = level;
+  Settings::instance().set_log_level(level == engine::LogLevel::Debug   ? "debug"
+                                     : level == engine::LogLevel::Warn  ? "warn"
+                                     : level == engine::LogLevel::Error ? "error"
+                                                                        : "info");
+  // Re-render from the logger's replay buffer rather than leaving the view as
+  // it stands: the dropped lines never reached the document, so without this
+  // raising the verbosity would only ever show what arrives afterwards, and
+  // the error that made the user raise it would stay invisible.
+  output_->clear();
+  for (const auto &entry : engine::Logger::instance().replayed()) {
+    if (entry.level < min_level_)
+      continue;
+    append_log(level_tag(static_cast<int>(entry.level)),
+               QString::fromStdString(entry.timestamp),
+               QString::fromStdString(entry.message), static_cast<int>(entry.level));
+  }
+}
+
+void ConsolePanel::on_open_logs_folder() {
+  const std::string dir = engine::Logger::instance().log_dir();
+  if (dir.empty())
+    return;
+  QDesktopServices::openUrl(QUrl::fromLocalFile(QString::fromStdString(dir)));
+}
+
+void ConsolePanel::on_context_menu(const QPoint &pos) {
+  QMenu menu(this);
+
+  // A read-only text view has no selection until the user drags one, so Copy
+  // is enabled from the selection rather than always on.
+  const bool has_selection = output_->textCursor().hasSelection();
+  menu.addAction(tr("Copy"), output_, &QPlainTextEdit::copy)->setEnabled(has_selection);
+  menu.addAction(tr("Copy All"), this, [this]() {
+    output_->selectAll();
+    output_->copy();
+  });
+  menu.addSeparator();
+  menu.addAction(tr("Clear"), this, &ConsolePanel::clear);
+
+  auto *folder_action =
+      menu.addAction(tr("Open Logs Folder"), this, &ConsolePanel::on_open_logs_folder);
+  folder_action->setEnabled(!engine::Logger::instance().log_dir().empty());
+  menu.addSeparator();
+
+  // Level submenu (MO2's LogList level filter). Each entry is radio-checked
+  // against the level the view is currently showing.
+  auto *level_menu = menu.addMenu(tr("Level"));
+  struct LevelEntry {
+    engine::LogLevel level;
+    const char *label;
+    const char *stored;
+  };
+  static constexpr LevelEntry kLevels[] = {
+      {engine::LogLevel::Debug, QT_TR_NOOP("Debug"), "debug"},
+      {engine::LogLevel::Info, QT_TR_NOOP("Info"), "info"},
+      {engine::LogLevel::Warn, QT_TR_NOOP("Warnings"), "warn"},
+      {engine::LogLevel::Error, QT_TR_NOOP("Errors"), "error"},
+  };
+  for (const auto &entry : kLevels) {
+    auto *action = level_menu->addAction(tr(entry.label));
+    action->setCheckable(true);
+    action->setChecked(min_level_ == entry.level);
+    connect(action, &QAction::triggered, this, [this, entry]() {
+      set_min_level(entry.level);
+    });
+  }
+
+  menu.exec(output_->viewport()->mapToGlobal(pos));
 }
 
 }  // namespace ui

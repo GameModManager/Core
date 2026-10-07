@@ -3,8 +3,12 @@
 #include "engine/plugin_host/category_factory.h"
 #include "ui/settings/settings.h"
 
+#include <QButtonGroup>
+#include <QCheckBox>
 #include <QHBoxLayout>
+#include <QLabel>
 #include <QPushButton>
+#include <QRadioButton>
 #include <QShowEvent>
 #include <QTreeWidget>
 #include <QVBoxLayout>
@@ -19,13 +23,61 @@ CategoryFilterPanel::CategoryFilterPanel(QWidget *parent) : QWidget(parent) {
   layout->setContentsMargins(4, 2, 4, 2);
   layout->setSpacing(4);
 
-  setWhatsThis(tr("Narrow the mod list to the categories ticked here. The category "
-                  "list is global - \"Edit...\" opens the editor for it."));
+  setWhatsThis(tr("Narrow the mod list to the categories ticked here, to the "
+                  "special filters ticked above them, or to both at once. The "
+                  "category list is global - \"Edit...\" opens the editor for it."));
+
+  // Special filters (MO2's CategoryFactory::SpecialCategories rows that the
+  // mod list has data for). Their own group, above the category tree, so a
+  // tick never has to be distinguished from a category id.
+  auto *special_label = new QLabel(tr("Special filters:"), this);
+  special_label->setEnabled(false);
+  layout->addWidget(special_label);
+
+  struct Entry {
+    Special which;
+    const char *label;
+    const char *tip;
+  };
+  static constexpr Entry kSpecials[] = {
+      {Special::Active, QT_TR_NOOP("Active"), QT_TR_NOOP("Only mods that are enabled")},
+      {Special::Conflict, QT_TR_NOOP("Conflicted"),
+       QT_TR_NOOP("Only mods that win or lose a file conflict")},
+      {Special::HiddenFiles, QT_TR_NOOP("Hidden files"),
+       QT_TR_NOOP("Only mods that ship files hidden from the game")},
+  };
+  for (const auto &entry : kSpecials) {
+    auto *box = new QCheckBox(tr(entry.label), this);
+    box->setToolTip(tr(entry.tip));
+    connect(box, &QCheckBox::toggled, this, [this](bool) {
+      emit filters_changed();
+    });
+    special_boxes_.emplace_back(entry.which, box);
+    layout->addWidget(box);
+  }
 
   tree_ = new QTreeWidget(this);
   tree_->setHeaderHidden(true);
   tree_->setMinimumWidth(160);
   layout->addWidget(tree_, 1);
+
+  // AND/OR mode (MO2's filtersAnd / filtersOr radios). Applies to every
+  // filter on the mod list - text, group, categories and the special
+  // filters above - so it lives here, next to the filters it joins.
+  auto *and_radio = new QRadioButton(tr("Match all filters"), this);
+  and_radio->setToolTip(tr("Keep a mod only when every active filter matches it"));
+  and_radio->setChecked(true);
+  auto *or_radio = new QRadioButton(tr("Match any filter"), this);
+  or_radio->setToolTip(tr("Keep a mod when at least one active filter matches it"));
+  mode_group_ = new QButtonGroup(this);
+  mode_group_->addButton(and_radio);
+  mode_group_->addButton(or_radio);
+  connect(mode_group_, &QButtonGroup::buttonToggled, this,
+          [this](QAbstractButton *, bool) {
+            emit filters_changed();
+          });
+  layout->addWidget(and_radio);
+  layout->addWidget(or_radio);
 
   auto *buttons = new QHBoxLayout();
   buttons->setSpacing(4);
@@ -46,6 +98,32 @@ CategoryFilterPanel::CategoryFilterPanel(QWidget *parent) : QWidget(parent) {
 
   rebuild();
   restore_state();
+}
+
+QSet<CategoryFilterPanel::Special> CategoryFilterPanel::checked_specials() const {
+  QSet<Special> out;
+  for (const auto &[which, box] : special_boxes_) {
+    if (box->isChecked())
+      out.insert(which);
+  }
+  return out;
+}
+
+engine::filter::Mode CategoryFilterPanel::filter_mode() const {
+  // Button 0 is the And radio added first in the ctor, button 1 the Or one;
+  // an unchecked group (only possible before the ctor finishes) reads as And.
+  return mode_group_ && mode_group_->checkedId() == 1 ? engine::filter::Mode::Or
+                                                      : engine::filter::Mode::And;
+}
+
+void CategoryFilterPanel::set_filter_mode(engine::filter::Mode mode) {
+  if (!mode_group_)
+    return;
+  auto *want = mode_group_->button(mode == engine::filter::Mode::Or ? 1 : 0);
+  if (want && !want->isChecked()) {
+    want->setChecked(true);
+    emit filters_changed();
+  }
 }
 
 void CategoryFilterPanel::rebuild() {

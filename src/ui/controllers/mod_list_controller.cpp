@@ -1,5 +1,4 @@
 #include "ui/controllers/mod_list_controller.h"
-#include "engine/log/crash_handler.h"
 #include "engine/profile/profile_creation.h"
 #include "ui/controllers/downloads_controller.h"
 #include "ui/controllers/launch_controller.h"
@@ -736,6 +735,12 @@ void ModListController::setup_mod_list(QVBoxLayout *left_layout) {
           w_->category_filter_panel_, &QWidget::setVisible);
   connect(w_->category_filter_panel_, &CategoryFilterPanel::category_filter_changed,
           this, [this]() {
+            apply_mod_filter();
+          });
+  // Special filters and the AND/OR mode: same re-apply, but not persisted as
+  // remembered categories (only the category ticks are).
+  connect(w_->category_filter_panel_, &CategoryFilterPanel::filters_changed, this,
+          [this]() {
             apply_mod_filter();
           });
   connect(w_->category_filter_panel_, &CategoryFilterPanel::edit_categories_clicked,
@@ -3925,7 +3930,10 @@ void ModListController::open_folder(ui::FolderKind kind) {
             .front();
     break;
   case ui::FolderKind::Logs:
-    target = engine::CrashHandler::default_dump_dir();
+    // The directory the logger was pointed at, i.e. the one holding
+    // gamemodmanager.log - not the crash-dump cache beside it. They are
+    // different directories on every platform.
+    target = engine::Logger::instance().log_dir();
     break;
   }
 
@@ -4461,6 +4469,17 @@ void ModListController::apply_mod_filter() {
                                  : QSet<int>();
   const bool category_filter_active = !checked_categories.isEmpty();
 
+  // Special filters (MO2's CategoryFactory::SpecialCategories rows) and the
+  // AND/OR mode that joins them with the filters above. Read once here, not
+  // per row: filter_mode() is a widget query and this runs on every keystroke.
+  const QSet<CategoryFilterPanel::Special> checked_specials =
+      w_->category_filter_panel_ ? w_->category_filter_panel_->checked_specials()
+                                 : QSet<CategoryFilterPanel::Special>();
+  const bool special_filter_active = !checked_specials.isEmpty();
+  const engine::filter::Mode mode  = w_->category_filter_panel_
+                                         ? w_->category_filter_panel_->filter_mode()
+                                         : engine::filter::Mode::And;
+
   // Fold-hidden set (pure model computation): a folded separator band scope
   // or a folded mod subtree. Filtered-out rows inside a fold scope must stay
   // hidden and must never be re-shown by the ancestor propagation below.
@@ -4482,13 +4501,15 @@ void ModListController::apply_mod_filter() {
     // (declared vanilla plugins, stray plugin files in the game's Data dir,
     // registered unmanaged mod folders). With the setting off they leave the
     // list, exactly like a filtered-out row - and since separators only show
-    // when a child shows, a band left with nothing in it goes too.
+    // when a child shows, a band left with nothing in it goes too. This is a
+    // display setting, not a filter, so it gates the row on its own and never
+    // takes part in the AND/OR combination.
     const bool foreign_match =
         Settings::instance().display_foreign() || !m.is_game_native;
 
     // Text filter: match against name or id
-    bool text_match = text.isEmpty() || m.name.toLower().contains(text) ||
-                      m.id.toLower().contains(text);
+    const bool text_match = text.isEmpty() || m.name.toLower().contains(text) ||
+                            m.id.toLower().contains(text);
 
     // Group filter
     bool group_match = true;
@@ -4516,7 +4537,34 @@ void ModListController::apply_mod_filter() {
       }
     }
 
-    visible[row] = foreign_match && text_match && group_match && category_match;
+    // Special filters (OR semantics within the group, like the category
+    // rows): the mod matches when it satisfies any ticked special filter.
+    bool special_match = true;
+    if (special_filter_active) {
+      special_match = false;
+      for (auto special : checked_specials) {
+        if ((special == CategoryFilterPanel::Special::Active && m.enabled) ||
+            (special == CategoryFilterPanel::Special::Conflict &&
+             (m.conflict_wins > 0 || m.conflict_losses > 0)) ||
+            (special == CategoryFilterPanel::Special::HiddenFiles &&
+             m.has_hidden_files)) {
+          special_match = true;
+          break;
+        }
+      }
+    }
+
+    // AND/OR join. An untouched criterion stays out of it, so an empty
+    // filter box and an "All" group never read as filters that matched
+    // nothing.
+    const engine::filter::Criterion criteria[] = {
+        {!text.isEmpty(), text_match},
+        {group != "All", group_match},
+        {category_filter_active, category_match},
+        {special_filter_active, special_match},
+    };
+    visible[row] =
+        foreign_match && engine::filter::matches(mode, criteria, std::size(criteria));
 
     // If an active fold scope (folded separator band or folded mod subtree)
     // hides w_ row, hide it too - fold overrides search.
@@ -4532,7 +4580,7 @@ void ModListController::apply_mod_filter() {
 
     if (group == "Separators") {
       visible[row] = true;
-    } else if (text.isEmpty() && !category_filter_active &&
+    } else if (text.isEmpty() && !category_filter_active && !special_filter_active &&
                (group == "All" || group == "Enabled" || group == "Disabled" ||
                 group == "Conflicts")) {
       visible[row] = true;

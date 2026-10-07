@@ -150,5 +150,23 @@ TEST_CASE("filter bar: Ctrl+F focuses the filter, Escape clears it", "[ui][filte
     CHECK_FALSE(view->hasFocus());
   }
 
+  SECTION("Escape leaves the other pane's filter alone") {
+    // The shortcut pair is scoped to the pane the focus is in
+    // (Qt::WidgetWithChildrenShortcut, MO2 mainwindow.cpp:220,225). A
+    // window-scoped pair is the papercut: typing nowhere near the mod list
+    // and pressing Escape would wipe its filter and drag focus across the
+    // window. Asserted through real key routing, the same gesture the user
+    // makes.
+    mod_edit->setText("Sky");
+    const int filtered = visible_rows(view);
+    REQUIRE(filtered < all_rows);
+    right_edit->setFocus();
+    REQUIRE(right_edit->hasFocus());
+    QTest::keyClick(&w, Qt::Key_Escape);
+    CHECK(mod_edit->text() == "Sky");       // untouched
+    CHECK(visible_rows(view) == filtered);  // and so are the rows
+    CHECK_FALSE(view->hasFocus());          // focus did not jump panes
+  }
+
   std::filesystem::remove_all("/tmp/opencode/gmm_sds7_filter");
 }
