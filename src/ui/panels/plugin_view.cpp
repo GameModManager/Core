@@ -613,11 +613,13 @@ void PluginView::set_plugins(const std::vector<engine::GamePlugin> &plugins) {
   owners_.clear();
   rows_locked_.clear();
   rows_force_loaded_.clear();
+  rows_enabled_.clear();
   rows_type_.clear();
   names_.reserve(plugins.size());
   owners_.reserve(plugins.size());
   rows_locked_.reserve(plugins.size());
   rows_force_loaded_.reserve(plugins.size());
+  rows_enabled_.reserve(plugins.size());
   rows_type_.reserve(plugins.size());
   table_->setRowCount(static_cast<int>(plugins.size()));
 
@@ -630,6 +632,9 @@ void PluginView::set_plugins(const std::vector<engine::GamePlugin> &plugins) {
     owners_.push_back(p.owner_mod);
     rows_locked_.push_back(p.locked);
     rows_force_loaded_.push_back(p.force_loaded);
+    // As rendered by the checkbox block below: force rows are pinned.
+    rows_enabled_.push_back(p.force_loaded || p.force_enabled ||
+                            (!p.force_disabled && p.enabled));
     if (p.is_medium_flagged) {
       rows_type_.push_back(PluginType::Medium);
     } else if (p.has_light_ext || p.is_light_flagged) {
@@ -768,6 +773,8 @@ void PluginView::sync_enabled(const std::vector<engine::GamePlugin> &plugins) {
     QTableWidgetItem *item = table_->item(i, 0);
     if (!item || p.force_loaded || p.force_enabled || p.force_disabled)
       continue;
+    if (i < static_cast<int>(rows_enabled_.size()))
+      rows_enabled_[static_cast<size_t>(i)] = p.enabled;
     item->setCheckState(p.enabled ? Qt::Checked : Qt::Unchecked);
   }
   syncing_ = false;

@@ -34,10 +34,14 @@ PluginsTab::PluginsTab(QWidget *parent) : QWidget(parent) {
   connect(view_, &PluginView::mod_info_requested, this, &PluginsTab::mod_info_requested);
   connect(view_, &PluginView::reveal_requested, this, &PluginsTab::reveal_requested);
 
-  // Extracted context menu (lock/unlock actions).
+  // Extracted context menu (enable/disable, send-to, lock/unlock actions).
   context_menu_ = std::make_unique<engine::PluginDb::ContextMenu>(this);
   connect(context_menu_.get(), &engine::PluginDb::ContextMenu::lock_requested, this,
           &PluginsTab::lock_requested);
+  connect(context_menu_.get(), &engine::PluginDb::ContextMenu::toggle_requested, this,
+          &PluginsTab::toggle_requested);
+  connect(context_menu_.get(), &engine::PluginDb::ContextMenu::reorder_requested, this,
+          &PluginsTab::reorder_requested);
 
   // Right-click context menu on the table. The policy MUST be
   // Qt::CustomContextMenu or customContextMenuRequested never fires (regression
@@ -52,24 +56,34 @@ PluginsTab::PluginsTab(QWidget *parent) : QWidget(parent) {
 
 void PluginsTab::set_plugins(const std::vector<engine::GamePlugin> &plugins) {
   view_->set_plugins(plugins);
-  // Populate the extracted context menu with per-row metadata.
+  refresh_context_rows();
+}
+
+void PluginsTab::sync_enabled(const std::vector<engine::GamePlugin> &plugins) {
+  view_->sync_enabled(plugins);
+  // A toggle changes the row's enable state without a rebuild, and the menu
+  // labels its Enable/Disable action from it - so the cached rows go stale
+  // otherwise and the next right-click shows the wrong verb.
+  refresh_context_rows();
+}
+
+// Hand the view's per-row metadata to the extracted context menu.
+void PluginsTab::refresh_context_rows() {
   std::vector<engine::PluginDb::RowInfo> row_infos;
-  const auto &names  = view_->names();
-  const auto &locked = view_->rows_locked();
-  const auto &force  = view_->rows_force_loaded();
+  const auto &names   = view_->names();
+  const auto &locked  = view_->rows_locked();
+  const auto &force   = view_->rows_force_loaded();
+  const auto &enabled = view_->rows_enabled();
   row_infos.reserve(names.size());
   for (size_t i = 0; i < names.size(); ++i) {
     engine::PluginDb::RowInfo ri;
     ri.name         = names[i];
     ri.locked       = i < locked.size() && locked[i];
     ri.force_loaded = i < force.size() && force[i];
+    ri.enabled      = i < enabled.size() && enabled[i];
     row_infos.push_back(std::move(ri));
   }
   context_menu_->set_rows(std::move(row_infos));
-}
-
-void PluginsTab::sync_enabled(const std::vector<engine::GamePlugin> &plugins) {
-  view_->sync_enabled(plugins);
 }
 
 void PluginsTab::refresh_counters() {
