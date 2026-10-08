@@ -725,6 +725,49 @@ bool ModMeta::exists(const std::filesystem::path &mods_dir,
       mods_dir.parent_path() / "meta" / (folder_name + ".ini"), ec);
 }
 
+std::filesystem::path ModMeta::install_archive(
+    const std::filesystem::path &mods_dir, const std::string &folder_name,
+    const std::filesystem::path &downloads_dir, std::string *error) {
+  if (error)
+    *error = {};
+  if (mods_dir.empty() || folder_name.empty() || downloads_dir.empty()) {
+    if (error)
+      *error = "this instance has no downloads folder, so there is no archive to "
+               "reinstall from";
+    return {};
+  }
+
+  const auto meta = load(mods_dir, folder_name);
+  auto name       = meta.get("General", "installationFile");
+  if (name.empty())
+    name = meta.get("General", "installationfile");
+  if (name.empty()) {
+    if (error)
+      *error = "it was not installed from a downloaded archive, so there is "
+               "nothing to reinstall from";
+    return {};
+  }
+
+  // The recorded name is a bare filename; refuse anything that tries to climb
+  // out of the downloads dir.
+  const std::filesystem::path file(name);
+  if (file.filename() != name) {
+    if (error)
+      *error = "its recorded archive path \"" + name + "\" is not a plain file name";
+    return {};
+  }
+
+  const auto archive = downloads_dir / file;
+  std::error_code ec;
+  if (!std::filesystem::exists(archive, ec)) {
+    if (error)
+      *error = "the archive it was installed from (" + name +
+               ") is no longer in the downloads folder";
+    return {};
+  }
+  return archive;
+}
+
 // ---------------------------------------------------------------------------
 // MO2 detection
 // ---------------------------------------------------------------------------

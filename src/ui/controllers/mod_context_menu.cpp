@@ -16,6 +16,7 @@
 #include <QActionGroup>
 #include <QDesktopServices>
 #include <QMenu>
+#include <QStyle>
 #include <filesystem>
 #include <system_error>
 
@@ -359,6 +360,18 @@ void ModContextMenu::setup_mod_list_context_menu() {
         menu.addAction(engine::IconManager::instance().resolve_icon("document-edit"),
                        QObject::tr("Rename Mod..."), w_, [this, row]() {
                          actions_->rename_mod_inline(row);
+                       });
+
+        // MO2 modlistcontextmenu.cpp:509-511: "Reinstall Mod" sits directly
+        // under Rename. Re-runs the install pipeline on the archive this mod
+        // was installed from; the pipeline's overwrite query then offers
+        // Merge/Replace. Reports why when there is no archive. view-refresh is
+        // MO2's own key for this action (it ships in the MO2 pack); the
+        // standard reload icon is the fallback for themes without it.
+        menu.addAction(engine::IconManager::instance().resolve_icon(
+                           "view-refresh", QStyle::SP_BrowserReload),
+                       QObject::tr("Reinstall Mod"), w_, [this, mod_id]() {
+                         actions_->reinstall_mod(mod_id);
                        });
 
         // Tweaks submenu - per-mod deploy options (MO2's per-mod tweaks).

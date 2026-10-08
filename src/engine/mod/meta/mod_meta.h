@@ -142,6 +142,19 @@ public:
   static bool exists(const std::filesystem::path &mods_dir,
                      const std::string &folder_name);
 
+  // The archive this mod was installed from, resolved against
+  // `downloads_dir` - the file a reinstall (MO2 ModInfo::reinstallMod) feeds
+  // back through the install pipeline. Both key casings are read:
+  // write_game_metadata writes "installationFile", from_default writes
+  // "installationfile", and get() is case sensitive.
+  // Empty path when the mod records no archive (a manual folder, DLC, or an
+  // import) or when the archive is no longer in the downloads dir; `error`
+  // then carries a user-facing sentence naming which of the two it was.
+  static std::filesystem::path
+  install_archive(const std::filesystem::path &mods_dir, const std::string &folder_name,
+                  const std::filesystem::path &downloads_dir,
+                  std::string *error = nullptr);
+
   // --- MO2 detection ---
   static bool has_mo2_meta(const std::filesystem::path &mod_folder);
   static ModMeta import_mo2(const std::filesystem::path &mod_folder,
