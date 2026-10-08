@@ -517,15 +517,27 @@ QTableWidget *PluginView::table() const {
 PluginView::PluginView(QWidget *parent) : QWidget(parent) {
   auto *layout = new QVBoxLayout(this);
   layout->setContentsMargins(0, 0, 0, 0);
-  table_ = new PluginTable(0, 9, this);
-  // MO2 PluginList::getColumnName (pluginlist.cpp:88-106) has 8: Name,
-  // Priority, Mod Index, Flags, Form Version, Header Version, Author,
-  // Description. Ours keeps the shipped order and appends MO2's last four,
-  // plus our own Locked column after Mod Index.
+  table_ = new PluginTable(0, 5, this);
+  // MO2 PluginList::getColumnName also names Form Version, Header Version,
+  // Author and Description (pluginlist.cpp:88-106), and we used to give them
+  // columns. They are not columns here: HEDR is an optional record, so for
+  // most plugins all four read empty (form_version 0, no CNAM, no SNAM) and
+  // the columns bought width and nothing else. MO2 serves the same four
+  // values in the row tooltip - PluginList::tooltipData emits them at
+  // pluginlist.cpp:1512-1528 - which plugin_tooltip_html already matches, on
+  // every cell of the row.
   table_->setHorizontalHeaderLabels(
-      {tr("Plugin Name"), tr("Flags"), tr("Priority"), tr("Mod Index"), tr("Locked"),
-       tr("Form Version"), tr("Header Version"), tr("Author"), tr("Description")});
-  table_->horizontalHeader()->setStretchLastSection(true);
+      {tr("Plugin Name"), tr("Flags"), tr("Priority"), tr("Mod Index"), tr("Locked")});
+  // MO2 MainWindow::resizeLists (mainwindow.cpp:678-682), the fresh-profile
+  // path: fit every section to its contents and let the name column stretch.
+  // ResizeToContents is what keeps a section from ever being narrower than its
+  // own header label - QHeaderView clips a too-narrow label outright, it does
+  // not elide it, so an Interactive section dragged down to minimumSectionSize
+  // loses glyphs off the end of the word.
+  auto *hheader = table_->horizontalHeader();
+  for (int c = 0; c < table_->columnCount(); ++c)
+    hheader->setSectionResizeMode(c, QHeaderView::ResizeToContents);
+  hheader->setSectionResizeMode(0, QHeaderView::Stretch);
   table_->verticalHeader()->setVisible(false);
   table_->setItemDelegateForColumn(
       1, new ui::FlagsDelegate(PluginView::kPluginFlagsRole,
@@ -749,25 +761,6 @@ void PluginView::set_plugins(const std::vector<engine::GamePlugin> &plugins) {
       lock->setToolTip(locked_column_tooltip());
     }
     table_->setItem(i, 4, lock);
-
-    // MO2 PluginList::data (pluginlist.cpp:1398-1410): a form version of 0
-    // renders blank (the file records none), the header version always
-    // renders, author and description render raw. Same order as the header.
-    const QString meta_text[] = {
-        p.form_version != 0 ? QString::number(p.form_version) : QString(),
-        QString::number(p.header_version), QString::fromStdString(p.author),
-        QString::fromStdString(p.description)};
-    for (int c = 0; c < 4; ++c) {
-      auto *cell       = new QTableWidgetItem(meta_text[c]);
-      Qt::ItemFlags mf = Qt::ItemIsEnabled | Qt::ItemIsSelectable;
-      if (!p.force_loaded && !p.force_disabled && !p.locked)
-        mf |= Qt::ItemIsDragEnabled;
-      cell->setFlags(mf);
-      if (p.force_loaded)
-        cell->setForeground(fixed_color);
-      cell->setToolTip(tooltip);
-      table_->setItem(i, 5 + c, cell);
-    }
   }
   syncing_ = false;
   apply_highlights();
