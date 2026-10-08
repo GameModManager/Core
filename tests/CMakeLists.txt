@@ -744,12 +744,14 @@ gmm_catch2_test(filter_shortcuts_test ui/filter_shortcuts_test.cpp
     UI
     LIBS gmm_ui Qt6::Test)
 
-# The wheel must not switch the group or the profile dropdown - both sit against
-# the mod list and an accidental switch hides rows or reloads a different
-# profile. Drives the REAL MainWindow offscreen and delivers the wheel through
-# QTest::wheelEvent (the platform dispatch path), so it covers both the block
-# and the fact that the combo is the widget Qt hands the wheel to. Carries an
-# unfiltered control combo that MUST move, so the check cannot pass vacuously.
+# The wheel must not switch a CLOSED dropdown anywhere in the app: the two
+# beside the mod list hide rows or reload a different profile, the program
+# dropdown changes what Run launches. Drives the REAL MainWindow offscreen and
+# delivers the wheel through QTest::wheelEvent (the platform dispatch path), so
+# it covers both the block and the fact that the combo is the widget Qt hands
+# the wheel to. Covers a combo nobody wired a filter to by hand plus one outside
+# any app widget tree, and carries the guard-off control that MUST move, so
+# neither a dead dispatch nor a guard that stopped filtering can pass.
 gmm_catch2_test(combo_wheel_test ui/combo_wheel_test.cpp
     UI
     LIBS gmm_ui Qt6::Test)
