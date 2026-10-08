@@ -13,11 +13,14 @@
 // Hermetic: offscreen platform, throwaway /tmp tree.
 #include "ui/modinfo/config_files_tab.h"
 #include "ui/modinfo/text_files_tab.h"
+#include "ui/widgets/find_dialog.h"
 
 #include <QApplication>
+#include <QLabel>
 #include <QLineEdit>
 #include <QListView>
 #include <QPlainTextEdit>
+#include <QPushButton>
 #include <QStandardItemModel>
 
 #include <cstdio>
@@ -108,6 +111,39 @@ TEST_CASE("generic files tab", "[ui]") {
       check(editor->isEnabled(), "selecting a config file enables the editor");
       check(editor->toPlainText() == QStringLiteral("ini content\n"),
             "editor shows the selected config file's contents");
+
+      // --- Find: the dialog's status line is the only feedback a failed
+      // search produces. Driven through the real button, the real dialog and
+      // the real editor, so this asserts what the user would read.
+      const auto buttons = tab.findChildren<QPushButton *>();
+      QPushButton *find_button = nullptr;
+      for (auto *btn : buttons) {
+        if (btn->text().startsWith(QStringLiteral("Find"))) {
+          find_button = btn;
+          break;
+        }
+      }
+      check(find_button != nullptr, "the editor bar exposes a Find button");
+      if (find_button) {
+        find_button->click();
+        auto *dlg = tab.findChild<ui::FindDialog *>();
+        auto *pattern = dlg ? dlg->findChild<QLineEdit *>() : nullptr;
+        auto *status  = dlg ? dlg->findChild<QLabel *>() : nullptr;
+        check(dlg && pattern && status,
+              "Find opens a dialog carrying a pattern box and a status line");
+        if (pattern && status) {
+          pattern->setText(QStringLiteral("zzz-not-in-the-file"));
+          check(status->text().contains(QStringLiteral("No results")),
+                "a pattern that matches nothing says so instead of leaving the "
+                "view silently unchanged");
+          pattern->setText(QStringLiteral("ini"));
+          check(status->text().isEmpty(),
+                "a pattern that matches clears the failure notice");
+          pattern->clear();
+          check(status->text().isEmpty(),
+                "emptying the box is not reported as a failed search");
+        }
+      }
     }
   }
 
