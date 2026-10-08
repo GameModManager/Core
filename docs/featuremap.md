@@ -529,13 +529,13 @@ port - their cited GMM symbol names were invented, the features are not.
 | Plugin list highlight masters | ✅ `PluginList::highlightMasters()` | ❌ | ❌ · |
 | Plugin list ChangeBracket (RAII layout notifications) | ✅ `PluginList::ChangeBracket` | ❌ | ❌ · |
 | Plugin list view (filter, counter, keyboard nav) | ✅ `pluginlistview.h/cpp` (Space, Ctrl+Up/Down, Ctrl+Enter, Ctrl+F/Esc) | ⚠️ no plugin-side filter or keyboard handler - `plugin_view.cpp:519` | ⚠️ ✔ |
-| Plugin list context menu | ✅ `pluginlistcontextmenu.cpp:24-112` (9 groups incl. Send to, Open Origin) | ⚠️ 2 of 9: Lock / Unlock load order - `plugin_context_menu.cpp:24` | ⚠️ ✔ |
+| Plugin list context menu | ✅ `pluginlistcontextmenu.cpp:24-112` (9 groups incl. Send to, Open Origin) | ⚠️ 4 of 9: Enable/Disable selected, Send to..., Lock/Unlock load order - `plugin_context_menu.cpp:34`; Enable all/Disable all, Open Origin in Explorer, Open Origin Info absent | ⚠️ ✔ |
 | Plugin list model (metadata, type flags) | ✅ `pluginlist.h` (form/header version, author, description) | ✅ all parsed and rendered, in the tooltip not columns - `plugin_info.h:78` | ✅ ✔ |
 | U043 BSA enabled-in-INI warning | ✅ `mainwindow.cpp:2071` | ❌ | ❌ · |
 | U059 Filter shortcut wiring also on espList + downloadView | ✅ `mainwindow.cpp:495-497` | ❌ | ❌ · |
 | U090 Plugin tooltip full block (Loads Archives/INI, ESL/ESH, blueprint, dummy, force-disabled) | ✅ `pluginlist.cpp:1492-1662` | ⚠️ full field list unproven - `plugin_view.cpp:271` | ⚠️ · |
-| U107 Plugin list 8 columns (Name..Description) | ✅ `pluginlist.cpp:88-106` = Name, Priority, Mod Index, Flags, Form/Header Version, Author, Description | ⚠️ 5 shipped; 4 columns missing, data already parsed - `plugin_view.cpp:521` | ⚠️ ✔ |
-| U114 Plugin header tooltips (8 exact strings) | ✅ `pluginlist.cpp:114-133` | ⚠️ 5 shipped, 4 verbatim, Locked is ours - `right_panel.cpp:222` | ⚠️ ✔ |
+| U107 Plugin list 8 columns (Name..Description) | ✅ `pluginlist.cpp:88-106` = Name, Priority, Mod Index, Flags, Form/Header Version, Author, Description | ✅ all 8 shipped plus our own Locked column; order is ours, not MO2's - `plugin_view.cpp:521` | ✅ ✔ |
+| U114 Plugin header tooltips (8 exact strings) | ✅ `pluginlist.cpp:114-133` | ❌ no header tooltips on the plugin table; the cited `right_panel.cpp:222` has none either (the per-row rich tooltip and the Locked column's cell tooltip are cell, not header - `plugin_view.cpp:271` | ❌ ✔ |
 | Plugin list double-click opens the owning mod | ✅ `pluginlistview.cpp:310-330` | ✅ Ctrl+double-click reveals the mod folder - `plugin_view.cpp:447` | ✅ ✔ |
 | U197 Plugin invalid-names warning + Workarounds plugin settings dialogs | ✅ `gamebryogameplugins.cpp:131` | ❌ | ❌ · |
 | U198 PluginList reportError strings (5 exact) | ✅ `pluginlist.cpp:296`, `:513`, `:843` | ❌ | ❌ · |
@@ -814,7 +814,7 @@ port - their cited GMM symbol names were invented, the features are not.
 |---------|-----|-----|--------|
 | Visit on Nexus | ✅ `visitOnNexus` | ✅ `source_visit_info` (Nexus/LoversLab) - `mod_context_menu.cpp:398` | ✅ · |
 | Visit web page | ✅ `visitWebPage` | ✅ source-aware context menu - `mod_context_menu.cpp:402` | ✅ · |
-| Reinstall mod | ✅ `reinstallMod` | ❌ | ❌ · |
+| Reinstall mod | ✅ `reinstallMod` | ✅ re-runs the install pipeline on the archive the mod's meta records, resolved in the downloads dir - `ModMeta::install_archive` + `mod_context_menu.cpp:365` | ✅ · |
 | Create backup | ✅ `createBackup` | ⚠️ deploy-level only, no user action - `deploy_utils.cpp:165` | ⚠️ · |
 | Restore backup | ✅ `restoreBackup` | ⚠️ deploy-level only, no user action - `deploy_utils.cpp:195` | ⚠️ · |
 | Restore hidden files | ✅ `restoreHiddenFiles` | ❌ | ❌ · |
@@ -856,8 +856,8 @@ port - their cited GMM symbol names were invented, the features are not.
 | Send-to priority | ✅ `sendToPriority` | ❌ | ❌ · |
 | Lock/unlock plugin | ✅ `setESPLock` | ✅ Lock/Unlock load order - `plugin_context_menu.cpp:24` | ✅ · |
 | U085 Plugin "Enable all"/"Disable all" + confirm dialog | ✅ `pluginlistcontextmenu.cpp:36-48` | ⚠️ bulk enable + confirm unproven - `plugin_context_menu.cpp:24` | ⚠️ · |
-| U086 Lock/Unlock load-order labels conditional on lock state | ✅ `pluginlistcontextmenu.cpp:56-77` | ⚠️ labels not state-conditional - `plugin_context_menu.cpp:24` | ⚠️ · |
-| U087 Plugin Send to... (Top/Bottom/Priority QInputDialog) | ✅ `pluginlistcontextmenu.cpp:111-133` | ❌ | ❌ · |
+| U086 Lock/Unlock load-order labels conditional on lock state | ✅ `pluginlistcontextmenu.cpp:56-77` | ⚠️ labels are state-conditional, but only one per row: MO2 shows both Lock and Unlock when the selection spans locked and unlocked rows - `plugin_context_menu.cpp:60` | ⚠️ · |
+| U087 Plugin Send to... (Top/Bottom/Priority QInputDialog) | ✅ `pluginlistcontextmenu.cpp:111-133` | ✅ Top = row 0, Bottom = last row, Priority... asks 0..row count - `plugin_context_menu.cpp:42`; per right-clicked row, not the whole selection | ✅ · |
 | U088 "Open Origin in Explorer" gated on origin resolving | ✅ `pluginlistcontextmenu.cpp:80-95` | ❌ | ❌ · |
 | U089 "Open Origin Info..." default action (single non-foreign) | ✅ `pluginlistcontextmenu.cpp:96-107` | ❌ | ❌ · |
 | U228 Lock conditionals consider only enabled plugins | ✅ `pluginlistcontextmenu.cpp:56-77` | ❌ | ❌ · |
@@ -1174,9 +1174,9 @@ app can never end up unreachable - see `tray_decision.h:66`.
 |---------|-----|-----|--------|
 | Multi-process guard (shared memory) | ✅ `MOMultiProcess` (QSharedMemory + QLocalServer) | ✅ QLockFile + QLocalServer - `multi_process.h:9` | ✅ · |
 | Ephemeral process (forward download) | ✅ `MOMultiProcess::ephemeral()` | ❌ | ❌ · |
-| Secondary instance (allow multiple) | ✅ `MOMultiProcess::secondary()` | ❌ | ❌ · |
+| Secondary instance (allow multiple) | ✅ `MOMultiProcess::secondary()` | ✅ `--multiple` skips the singleton guard - `app/core.cpp:341` | ✅ · |
 | Message passing between instances | ✅ `sendMessage()` / `messageSent()` | ✅ `nxm_ipc` + generic URL forwarder - `nxm_ipc.h:44` | ✅ · |
-| Command-line global options (--pick, --multiple, --logs, -i, -p) | ✅ `CommandLine` global options | ❌ | ❌ · |
+| Command-line global options (--pick, --multiple, --logs, -i, -p) | ✅ `CommandLine` global options | ✅ all five parse and each has one consumer - `command_line.cpp:21` | ✅ · |
 | Forward to primary instance | ✅ `CommandLine::forwardToPrimary()` | ⚠️ URLs only, no general CLI-arg forward - `app/core.cpp:495` | ⚠️ · |
 | NXM/moshortcut:// link protocol parsing | ✅ `CommandLine` handles moshortcut:// and nxm:// | ⚠️ nxm:// + modl://, moshortcut:// absent - `command_line.cpp:30` | ⚠️ · |
 
@@ -1299,13 +1299,13 @@ app can never end up unreachable - see `tray_decision.h:66`.
 | CLI run command (executable with USVFS) | ✅ `cl::RunCommand` (-e name, -a args, -c cwd) | ⚠️ `--exe` only, no USVFS - `command_line.cpp:26` | ⚠️ · |
 | CLI reload-plugin command | ✅ `cl::ReloadPluginCommand` (hot-reload by name) | ❌ | ❌ · |
 | CLI download-file command | ✅ `cl::DownloadFileCommand` (URL + metadata, HTTPS validation) | ❌ | ❌ · |
-| CLI refresh command (F5 equivalent) | ✅ `cl::RefreshCommand` | ❌ | ❌ · |
+| CLI refresh command (F5 equivalent) | ✅ `cl::RefreshCommand` | ❌ MO2 forwards it to the running instance; without a general forward-to-primary path ours could only start a second GUI the guard discards | ❌ · |
 | CLI --help | ✅ `CommandLine::showHelp()` | ✅ `show_help` flag + rendered help - `command_line.cpp:46` | ✅ · |
-| CLI --multiple (allow multiple instances) | ✅ `CommandLine` --multiple flag | ❌ | ❌ · |
-| CLI --pick (show instance selector) | ✅ `CommandLine` --pick flag | ❌ | ❌ · |
-| CLI --logs (duplicate logs to stdout) | ✅ `CommandLine` --logs flag | ❌ stdout always on, no flag - `logger.cpp:122` | ❌ · |
-| CLI -i (instance selection) | ✅ `CommandLine` -i flag | ⚠️ `--instance` long option, no `-i` - `command_line.cpp:18` | ⚠️ · |
-| CLI -p (profile selection) | ✅ `CommandLine` -p flag | ❌ | ❌ · |
+| CLI --multiple (allow multiple instances) | ✅ `CommandLine` --multiple flag | ✅ skips the singleton guard - `app/core.cpp:341` | ✅ · |
+| CLI --pick (show instance selector) | ✅ `CommandLine` --pick flag | ✅ opens the instance selector after the window is up - `app/core.cpp:869` | ✅ · |
+| CLI --logs (duplicate logs to stdout) | ✅ `CommandLine` --logs flag | ✅ `Logger::enable_console()`; the prior "stdout always on" was wrong, it was headless-only - `app/core.cpp:334` | ✅ · |
+| CLI -i (instance selection) | ✅ `CommandLine` -i flag | ✅ short half of `--instance`, one option so both spellings resolve - `command_line.cpp:29` | ✅ · |
+| CLI -p (profile selection) | ✅ `CommandLine` -p flag | ✅ short half of `--profile`, runs the ordinary profile switch at startup - `app/core.cpp:876` | ✅ · |
 
 ## 44. Tutorial System
 
@@ -1388,15 +1388,15 @@ column.
 | 9. Mod Content Analysis | 6 | 7 | 0 | 13 | 0 | 0 | 0 |
 | 10. Mod Info Dialog | 10 | 1 | 1 | 2 | 0 | 0 | 0 |
 | 11. Version & Update Management | 3 | 1 | 2 | 12 | 0 | 0 | 0 |
-| 12. Plugin Management | 27 | 8 | 3 | 13 | 0 | 0 | 0 |
+| 12. Plugin Management | 28 | 6 | 3 | 14 | 0 | 0 | 0 |
 | 13. LOOT Integration | 10 | 2 | 1 | 7 | 0 | 0 | 0 |
 | 14. Profile Management | 27 | 5 | 3 | 6 | 0 | 0 | 0 |
 | 15. Download Management | 19 | 12 | 6 | 24 | 10 | 0 | 0 |
 | 16. Nexus Integration | 8 | 10 | 2 | 20 | 0 | 0 | 0 |
 | 17. Source Providers | 4 | 0 | 7 | 1 | 0 | 0 | 0 |
 | 18. Mod List Features | 22 | 12 | 3 | 14 | 0 | 0 | 0 |
-| 19. Mod Context Menu | 14 | 4 | 0 | 14 | 0 | 0 | 0 |
-| 20. Plugin Context Menu | 2 | 2 | 0 | 8 | 0 | 0 | 0 |
+| 19. Mod Context Menu | 15 | 4 | 0 | 13 | 0 | 0 | 0 |
+| 20. Plugin Context Menu | 3 | 2 | 0 | 7 | 0 | 0 | 0 |
 | 21. Archive & Installation | 10 | 3 | 4 | 2 | 0 | 0 | 0 |
 | 22. Deploy System | 0 | 1 | 9 | 0 | 2 | 0 | 0 |
 | 23. Overwrite System | 8 | 2 | 3 | 0 | 0 | 0 | 0 |
@@ -1410,7 +1410,7 @@ column.
 | 31. Log System | 8 | 2 | 3 | 3 | 0 | 0 | 0 |
 | 32. System Tray | 4 | 1 | 0 | 0 | 0 | 0 | 0 |
 | 33. Self Updater | 2 | 3 | 0 | 4 | 0 | 0 | 0 |
-| 34. Multi-Process / IPC | 2 | 2 | 0 | 3 | 0 | 0 | 0 |
+| 34. Multi-Process / IPC | 4 | 2 | 0 | 1 | 0 | 0 | 0 |
 | 35. Text Editor | 2 | 3 | 0 | 3 | 0 | 0 | 0 |
 | 36. Browser | 0 | 1 | 0 | 6 | 0 | 0 | 0 |
 | 37. Dialogs | 3 | 1 | 0 | 8 | 0 | 0 | 1 |
@@ -1419,7 +1419,7 @@ column.
 | 40. Event System | 0 | 0 | 4 | 0 | 0 | 0 | 0 |
 | 41. External Tool System | 0 | 0 | 3 | 4 | 0 | 0 | 0 |
 | 42. Packaging & Distribution | 0 | 2 | 0 | 7 | 0 | 1 | 1 |
-| 43. CLI Command System | 1 | 3 | 0 | 8 | 0 | 0 | 0 |
+| 43. CLI Command System | 6 | 2 | 0 | 4 | 0 | 0 | 0 |
 | 44. Tutorial System | 0 | 0 | 0 | 4 | 0 | 0 | 0 |
 | 45. TaskDialog Component | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
 | 46. Notifications / Problems System | 0 | 0 | 0 | 3 | 0 | 0 | 0 |
@@ -1428,7 +1428,7 @@ column.
 | 49. CLI Help Grammar | 0 | 0 | 0 | 2 | 0 | 0 | 0 |
 | 50. My Games Resolution | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
 | 51. Conflict Scan Refresh | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
-| **TOTAL** | **325** | **173** | **177** | **271** | **54** | **43** | **62** |
+| **TOTAL** | **335** | **170** | **177** | **264** | **54** | **43** | **62** |
 
 ### The arithmetic
 
@@ -1436,13 +1436,13 @@ column.
 rows in file                          1043
 scored rows (ok + part + miss)         769
 
-MO2 parity        ok   / scored        325 /  769  = 42.3%
-partial           part / scored        173 /  769  = 22.5%
-missing           miss / scored        271 /  769  = 35.2%
+MO2 parity        ok   / scored        335 /  769  = 43.6%
+partial           part / scored        170 /  769  = 22.1%
+missing           miss / scored        264 /  769  = 34.3%
 GMM-exclusive     surp / all rows      177 / 1043  = 17.0%   (not scored)
 ```
 
-**Parity is 325 / 769 = 42.3%.** 271 rows are outright missing and 173 partial.
+**Parity is 335 / 769 = 43.6%.** 264 rows are outright missing and 170 partial.
 The largest untouched surfaces are **44. Tutorial** and **46. Notifications /
 Problems** (zero matched rows), then **16. Nexus** and **15. Downloads**, which
 carry the most missing rows in absolute terms.
