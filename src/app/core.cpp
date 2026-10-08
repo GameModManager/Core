@@ -7,6 +7,7 @@
 #include <QStackedWidget>
 #include <QStyle>
 #include <QStyleFactory>
+#include <QTimer>
 #include <QTranslator>
 
 #include <cstdio>
@@ -81,6 +82,10 @@ void qt_message_filter(QtMsgType type, const QMessageLogContext &ctx,
 // constructor can already apply its per-instance settings. Returns empty
 // when no loadable instance is known yet (first run).
 fs::path resolve_startup_instance_root(const cli::ParsedArgs &args) {
+  // --pick opens the selector: no instance is chosen yet, so nothing may be
+  // pre-applied for one.
+  if (args.pick)
+    return {};
   if (args.headless) {
     if (args.instance_name.isEmpty())
       return {};
@@ -329,16 +334,23 @@ int Application::run() {
 
   const auto &args = command_line_.args();
 
+  // --logs (MO2 CommandLine::runEarly): duplicate the log stream to stdout.
+  // Applied before the guard so a second instance's "another instance running"
+  // line is visible too.
+  if (args.logs)
+    engine::Logger::instance().enable_console();
+
   // -- Single-instance fast path (plain GUI launch only) ------------------
   // Probe the singleton lock BEFORE instance scanning / URL handling so a
   // second plain launch exits in milliseconds via requestFocus(). Headless
-  // mode skips the guard entirely, and --handle-* launches skip it here:
+  // mode skips the guard entirely, --multiple skips it deliberately, and
+  // --handle-* launches skip it here:
   // they must forward the URL to the running instance first and only fall
   // through to the guard below when no instance is listening.
   engine::MultiProcess instance_guard;
   const bool needs_url_forwarding =
       args.handle_nxm || args.handle_gmm || args.handle_modl;
-  if (!args.headless && !needs_url_forwarding) {
+  if (!args.headless && !args.multiple && !needs_url_forwarding) {
     if (!instance_guard.tryAcquire(0)) {
       instance_guard.requestFocus();
       engine::Logger::instance().info("Another instance running - requesting focus");
@@ -852,6 +864,17 @@ int Application::run() {
 
   window.show();
   window.apply_initial_geometry();
+
+  // MO2 CommandLine::pick() / profile(): the startup flags run once the
+  // window is up, so the modal selector has a real parent and the profile
+  // switch writes over a fully built mod list.
+  if (args.pick) {
+    QTimer::singleShot(0, &window, [&window]() {
+      window.show_instance_switcher();
+    });
+  }
+  if (!args.profile_name.isEmpty())
+    window.switch_profile(args.profile_name);
 
   // If a download link was passed, queue it for the active instance
   if (!pending_url_.empty()) {

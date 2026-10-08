@@ -88,6 +88,16 @@ static QAction *action_with_text(QMenu &menu, const char *text) {
   return nullptr;
 }
 
+// The submenu whose title starts with `prefix` (menus have no plain-text
+// leaf action, so a prefix match is how "Send to..." is located).
+static QAction *find_action_with_prefix(QMenu &menu, const char *prefix) {
+  for (auto *a : menu.actions()) {
+    if (a->text().startsWith(QLatin1String(prefix)))
+      return a;
+  }
+  return nullptr;
+}
+
 // Expose the protected context-menu builder for direct driving (menu.exec() is
 // modal, so the full on_custom_context_menu flow is not exercised).
 struct TestPluginsTab : ui::PluginsTab {
@@ -172,9 +182,14 @@ TEST_CASE("plugins tab", "[ui]") {
   tab.set_plugins(plugins);
 
   check(table->rowCount() == 5, "five plugin rows");
-  check(table->columnCount() == 5, "five columns");
+  check(table->columnCount() == 9, "nine columns");
   check(table->horizontalHeaderItem(4)->text() == QLatin1String("Locked"),
         "Locked column header");
+  check(table->horizontalHeaderItem(5)->text() == QLatin1String("Form Version") &&
+            table->horizontalHeaderItem(6)->text() == QLatin1String("Header Version") &&
+            table->horizontalHeaderItem(7)->text() == QLatin1String("Author") &&
+            table->horizontalHeaderItem(8)->text() == QLatin1String("Description"),
+        "MO2's four metadata column headers");
   check(row_with_name(table, "Skyrim.esm") == 0, "native ESM first");
   check(row_with_name(table, "ccBGSSSE001-Fish.esm") == 1, "CC second");
   check(row_with_name(table, "SkyUI_SE.esp") == 2, "mod plugin after CC");
@@ -779,6 +794,87 @@ TEST_CASE("plugins tab", "[ui]") {
     check(menu3.actions().isEmpty(), "core row has no lock actions");
   }
 
+  // --- Enable/disable + Send to... (MO2 PluginListContextMenu parity) ---
+  // `moves` lives in the TEST_CASE scope, not in this block: the
+  // context-free connection outlives the block, and set_plugins() re-emits
+  // reorder_requested through apply_highlights() on every later rebuild, so a
+  // block-local vector would be a dangling capture. `toggles` and its
+  // connection already exist from the checkbox case above.
+  std::vector<std::pair<int, int>> moves;
+  {
+    // The menu labels its action from the row's current state, so a second
+    // context menu on the same row must offer the opposite verb - that is
+    // what sync_enabled has to keep the cached rows fresh for.
+    tab.set_plugins(plugins);
+
+    // Enabled user row: offers "Disable selected", not "Enable selected".
+    QMenu menu;
+    tab.add_context_menu_actions(menu, row_with_name(table, "SkyUI_SE.esp"));
+    auto *disable = action_with_text(menu, "Disable selected");
+    check(disable != nullptr, "enabled row offers Disable selected");
+    check(action_with_text(menu, "Enable selected") == nullptr,
+          "enabled row offers no Enable selected");
+    // set_plugins above re-emits through apply_highlights; start clean.
+    toggles.clear();
+    disable->trigger();
+    check(toggles.size() == 1 && toggles[0].first == "SkyUI_SE.esp" &&
+              !toggles[0].second,
+          "Disable action emits toggle_requested(name, false)");
+
+    // Disabled row (Broken.esp): the opposite verb, and it asks to enable.
+    QMenu menu_off;
+    tab.add_context_menu_actions(menu_off, row_with_name(table, "Broken.esp"));
+    auto *enable = action_with_text(menu_off, "Enable selected");
+    check(enable != nullptr, "disabled row offers Enable selected");
+    check(action_with_text(menu_off, "Disable selected") == nullptr,
+          "disabled row offers no Disable selected");
+    toggles.clear();
+    enable->trigger();
+    check(toggles.size() == 1 && toggles[0].first == "Broken.esp" && toggles[0].second,
+          "Enable action emits toggle_requested(name, true)");
+
+    // The label follows a toggle that did NOT rebuild the rows: sync_enabled
+    // is the only refresh on that path.
+    std::vector<engine::GamePlugin> disabled_after = plugins;
+    disabled_after[2].enabled                      = false;  // SkyUI_SE.esp
+    tab.sync_enabled(disabled_after);
+    QMenu menu_after;
+    tab.add_context_menu_actions(menu_after, row_with_name(table, "SkyUI_SE.esp"));
+    check(action_with_text(menu_after, "Enable selected") != nullptr,
+          "after sync_enabled the toggled row offers Enable selected");
+
+    // Send to... -> Top / Bottom / Priority... drive the move request.
+    QObject::connect(&tab, &ui::PluginsTab::reorder_requested, [&](int from, int to) {
+      moves.emplace_back(from, to);
+    });
+    const int skyui_row = row_with_name(table, "SkyUI_SE.esp");
+    auto *send_to       = find_action_with_prefix(menu_after, "Send to...");
+    check(send_to != nullptr, "Send to... submenu is offered");
+    const auto submenu = send_to->menu();
+    auto *top          = submenu ? action_with_text(*submenu, "Top") : nullptr;
+    check(top != nullptr, "Send to... offers Top");
+    moves.clear();
+    top->trigger();
+    check(moves.size() == 1 && moves[0].first == skyui_row && moves[0].second == 0,
+          "Top emits reorder_requested(row, 0)");
+    auto *bottom = submenu ? action_with_text(*submenu, "Bottom") : nullptr;
+    check(bottom != nullptr, "Send to... offers Bottom");
+    moves.clear();
+    bottom->trigger();
+    check(moves.size() == 1 && moves[0].first == skyui_row &&
+              moves[0].second == table->rowCount() - 1,
+          "Bottom emits reorder_requested(row, last row)");
+    check(submenu && action_with_text(*submenu, "Priority...") != nullptr,
+          "Send to... offers Priority...");
+    // "Priority..." opens a modal QInputDialog, so it is proven present but
+    // not triggered here.
+
+    // Core row: nothing at all (the engine refuses toggle, move and lock).
+    QMenu menu_core;
+    tab.add_context_menu_actions(menu_core, row_with_name(table, "Skyrim.esm"));
+    check(menu_core.actions().isEmpty(), "core row has no actions at all");
+  }
+
   // --- MO2-style plugin counter (PluginListView::updatePluginCount parity) ---
   // The header row above the table carries a Refresh button (left) and a
   // single counter (right) that shows enabled + filter-visible plugins, with
@@ -867,6 +963,47 @@ TEST_CASE("plugins tab", "[ui]") {
     QApplication::processEvents();
     check(refreshed, "Refresh button emits refresh_requested");
     tab.hide();
+  }
+
+  // --- MO2's four metadata columns (PluginList::data, pluginlist.cpp:1398) ---
+  // Form Version / Header Version / Author / Description, rendered from the
+  // parsed TES4 header. A form version of 0 means the file records none and
+  // renders blank (MO2 returns a null QString), so the bare row proves the
+  // rule rather than just the happy path.
+  {
+    engine::GamePlugin meta;  // every field present
+    meta.name           = "Meta.esp";
+    meta.enabled        = true;
+    meta.priority       = 0;
+    meta.form_version   = 1;
+    meta.header_version = 1.7f;
+    meta.author         = "Bethesda Game Studios";
+    meta.description    = "Plugin description";
+
+    engine::GamePlugin bare;  // no header records at all
+    bare.name     = "Bare.esp";
+    bare.enabled  = true;
+    bare.priority = 1;
+
+    tab.set_plugins({meta, bare});
+
+    const int m = row_with_name(table, "Meta.esp");
+    const int b = row_with_name(table, "Bare.esp");
+    check(m == 0 && b == 1, "the two metadata rows are the ones we set");
+    check(table->item(m, 5)->text() == QLatin1String("1"), "Form Version cell");
+    check(table->item(m, 6)->text() == QString::number(1.7f),
+          "Header Version cell renders the float MO2 renders");
+    check(table->item(m, 7)->text() == QLatin1String("Bethesda Game Studios"),
+          "Author cell");
+    check(table->item(m, 8)->text() == QLatin1String("Plugin description"),
+          "Description cell");
+
+    check(table->item(b, 5)->text().isEmpty(),
+          "a form version of 0 renders blank, not \"0\"");
+    check(table->item(b, 6)->text() == QString::number(0.0f),
+          "Header Version still renders when the file records none");
+    check(table->item(b, 7)->text().isEmpty(), "an absent author renders blank");
+    check(table->item(b, 8)->text().isEmpty(), "an absent description renders blank");
   }
 }
 

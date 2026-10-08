@@ -565,3 +565,73 @@ TEST_CASE("mod_meta_legacy_fallback_guards", "[engine]") {
     fs::remove_all(root);
   }
 }
+
+// ModMeta::install_archive - the archive a reinstall feeds back through the
+// install pipeline (MO2 ModInfo::installationFile() resolved against the
+// downloads dir). Both key casings, the two failure reasons, and the
+// path-escape guard.
+TEST_CASE("mod_meta_install_archive", "[engine]") {
+  using engine::ModMeta;
+
+  const fs::path root     = "/tmp/gmm_mod_meta_install_archive";
+  const fs::path mods_dir = root / "mods";
+  const fs::path dl_dir   = root / "downloads";
+  fs::create_directories(mods_dir);
+  fs::create_directories(dl_dir);
+
+  auto write_meta = [&](const std::string &folder, const std::string &body) {
+    fs::create_directories(mods_dir / folder);
+    std::ofstream out(mods_dir / folder / "meta.ini");
+    out << body;
+  };
+  auto write_archive = [&](const std::string &name) {
+    std::ofstream out(dl_dir / name);
+    out << "zip";
+  };
+
+  std::string why;
+
+  // Present archive, the casing write_game_metadata writes.
+  write_archive("SkyUI-1234.zip");
+  write_meta("SkyUI", "[General]\ninstallationFile=SkyUI-1234.zip\n");
+  auto got = ModMeta::install_archive(mods_dir, "SkyUI", dl_dir, &why);
+  require(got == dl_dir / "SkyUI-1234.zip", "resolved to the archive in downloads");
+  require(why.empty(), "no reason reported on success");
+
+  // The other casing (from_default writes all-lowercase) resolves the same.
+  write_meta("Lower", "[General]\ninstallationfile=SkyUI-1234.zip\n");
+  require(ModMeta::install_archive(mods_dir, "Lower", dl_dir, &why) ==
+              dl_dir / "SkyUI-1234.zip",
+          "lowercase installationfile resolves too");
+
+  // Recorded, but the archive is gone (downloads cleared, DLC moved).
+  write_meta("Gone", "[General]\ninstallationFile=Gone-1.zip\n");
+  got = ModMeta::install_archive(mods_dir, "Gone", dl_dir, &why);
+  require(got.empty(), "a missing archive resolves to nothing");
+  require(why.find("Gone-1.zip") != std::string::npos,
+          "the reason names the archive that is missing");
+
+  // No archive recorded at all: a manual folder, DLC, or an old import.
+  write_meta("Manual", "[General]\nversion=1.0\n");
+  got = ModMeta::install_archive(mods_dir, "Manual", dl_dir, &why);
+  require(got.empty(), "a mod with no installationFile resolves to nothing");
+  require(!why.empty(), "the reason explains there is nothing to reinstall from");
+
+  // Path escape: the recorded value is a bare file name, never a path. The
+  // file the escape points at really exists, so only the guard can reject it.
+  std::ofstream outside(root / "meta.ini");
+  outside << "not an archive";
+  outside.close();
+  write_meta("Escape", "[General]\ninstallationFile=../meta.ini\n");
+  got = ModMeta::install_archive(mods_dir, "Escape", dl_dir, &why);
+  require(got.empty(), "a traversing installationFile is refused");
+  require(!why.empty(), "the reason names the bad recorded path");
+
+  // No instance paths configured.
+  require(ModMeta::install_archive({}, "SkyUI", dl_dir, &why).empty(),
+          "no mods dir resolves to nothing");
+  require(ModMeta::install_archive(mods_dir, "SkyUI", {}, &why).empty(),
+          "no downloads dir resolves to nothing");
+
+  fs::remove_all(root);
+}

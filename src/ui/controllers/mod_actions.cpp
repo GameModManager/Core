@@ -6,10 +6,12 @@
 #include "engine/plugin_host/category_factory.h"
 #include "ui/main_window/main_window.h"
 #include "ui/settings/settings.h"
+#include "ui/widgets/error_popup.h"
 #include "ui/widgets/list_dialog.h"
 #include "ui/widgets/mod_list_model.h"
 #include "ui/widgets/mod_table_view.h"
 #include "ui/widgets/task_dialog.h"
+#include "ui/workers/pipeline_worker.h"
 
 #include <QColorDialog>
 #include <QDesktopServices>
@@ -381,6 +383,53 @@ void ModActions::toggle_root_override(const QList<int> &rows, bool on) {
   }
   if (refresh_data_tab_cb_)
     refresh_data_tab_cb_();
+}
+
+// MO2 ModListViewActions::reinstallMod: hand the archive the mod was
+// installed from back to the install pipeline, resolved in the instance
+// downloads dir. The pipeline's overwrite query then offers MO2's
+// Merge/Replace choice, exactly as MO2's installer does for a reinstall.
+//
+// Provenance is replayed from the mod's own meta, because InstallStage stamps
+// from_default's [GameModManager] keys over the existing meta: passing an
+// empty source_type would rewrite a Nexus mod as "manual". file_id and the
+// version stay empty/0 so the recorded [Nexusmods] ids and newestVersion -
+// the "update available" signal - survive the reinstall untouched.
+void ModActions::reinstall_mod(const QString &mod_id) {
+  const auto folder = mod_id.toStdString();
+
+  std::string why;
+  const auto archive = engine::ModMeta::install_archive(w_->mods_dir_path(), folder,
+                                                        w_->downloads_dir_path(), &why);
+  if (archive.empty()) {
+    ui::report_error(QObject::tr("Failed"), w_,
+                     QObject::tr("Cannot reinstall %1: %2")
+                         .arg(mod_id, QString::fromStdString(why)));
+    return;
+  }
+
+  if (!w_->pipeline_thread_) {
+    ui::report_error(QObject::tr("Failed"), w_,
+                     QObject::tr("Cannot reinstall %1: the install pipeline is "
+                                 "not running.")
+                         .arg(mod_id));
+    return;
+  }
+
+  const auto meta  = engine::ModMeta::load(w_->mods_dir_path(), folder);
+  auto source_type = meta.source_type();
+  auto source_id   = meta.source_id();
+
+  // One install at a time: the UI stays locked until install_complete /
+  // install_canceled, the same contract the Downloads tab uses.
+  w_->set_ui_enabled(false);
+  QMetaObject::invokeMethod(
+      w_->pipeline_thread_->worker(),
+      [this, archive, source_type, source_id, folder]() {
+        w_->pipeline_thread_->worker()->install_mod(folder, archive.string(),
+                                                    source_type, source_id, 0, folder);
+      },
+      Qt::QueuedConnection);
 }
 
 QString ModActions::create_separator_named(const QString &name, const QString &color) {
