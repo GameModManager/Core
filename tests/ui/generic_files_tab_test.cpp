@@ -115,7 +115,7 @@ TEST_CASE("generic files tab", "[ui]") {
       // --- Find: the dialog's status line is the only feedback a failed
       // search produces. Driven through the real button, the real dialog and
       // the real editor, so this asserts what the user would read.
-      const auto buttons = tab.findChildren<QPushButton *>();
+      const auto buttons       = tab.findChildren<QPushButton *>();
       QPushButton *find_button = nullptr;
       for (auto *btn : buttons) {
         if (btn->text().startsWith(QStringLiteral("Find"))) {
@@ -126,7 +126,7 @@ TEST_CASE("generic files tab", "[ui]") {
       check(find_button != nullptr, "the editor bar exposes a Find button");
       if (find_button) {
         find_button->click();
-        auto *dlg = tab.findChild<ui::FindDialog *>();
+        auto *dlg     = tab.findChild<ui::FindDialog *>();
         auto *pattern = dlg ? dlg->findChild<QLineEdit *>() : nullptr;
         auto *status  = dlg ? dlg->findChild<QLabel *>() : nullptr;
         check(dlg && pattern && status,
