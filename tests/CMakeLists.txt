@@ -636,6 +636,13 @@ gmm_catch2_test(settings_reset_choices_test ui/settings_reset_choices_test.cpp
     UI
     LIBS gmm_ui)
 
+# Sibling of the above: "Reset dialog sizes and positions" must clear the four
+# per-dialog geometry keys the dialogs restore from, not the unrelated
+# center_dialogs boolean that shared the group it used to remove.
+gmm_catch2_test(settings_reset_geometry_test ui/settings_reset_geometry_test.cpp
+    UI
+    LIBS gmm_ui)
+
 # Workspace-2zm: QSettings isolation. Two halves of the same proof.
 #   qsettings_sandbox_test       - the production QSettings objects land in a
 #     temp ini when the shared runner has flipped the default format, and
