@@ -14,8 +14,24 @@ CommandLine::CommandLine(int /*argc*/, char ** /*argv*/) {
   parser_.addOption(helpOpt);
   parser_.addOption(helpShort);
 
-  QCommandLineOption instanceOpt("instance", "Load specific instance by name", "name");
+  // MO2 CommandLine global options (commandline.cpp:317-329). -i and -p are
+  // the short halves of --instance and --profile, so each pair is ONE option.
+  QCommandLineOption multipleOpt("multiple",
+                                 "Allow multiple GameModManager processes to run");
+  QCommandLineOption pickOpt("pick",
+                             "Show the select instance dialog on startup");
+  QCommandLineOption logsOpt("logs", "Duplicate the log stream to stdout");
+  parser_.addOption(multipleOpt);
+  parser_.addOption(pickOpt);
+  parser_.addOption(logsOpt);
+
+  QCommandLineOption instanceOpt({"i", "instance"}, "Load specific instance by name",
+                                  "name");
   parser_.addOption(instanceOpt);
+
+  QCommandLineOption profileOpt({"p", "profile"}, "Load specific profile by name",
+                                 "name");
+  parser_.addOption(profileOpt);
 
   QCommandLineOption launchOpt("launch", "Launch game directly (headless mode)");
   parser_.addOption(launchOpt);
@@ -50,12 +66,18 @@ bool CommandLine::parse() {
 
   args_.show_help   = parser_.isSet("help") || parser_.isSet("h");
   args_.headless    = parser_.isSet("launch");
+  args_.multiple    = parser_.isSet("multiple");
+  args_.pick        = parser_.isSet("pick");
+  args_.logs        = parser_.isSet("logs");
   args_.handle_nxm  = parser_.isSet("handle-nxm");
   args_.handle_gmm  = parser_.isSet("handle-gmm");
   args_.handle_modl = parser_.isSet("handle-modl");
 
   if (parser_.isSet("instance"))
     args_.instance_name = parser_.value("instance");
+
+  if (parser_.isSet("profile"))
+    args_.profile_name = parser_.value("profile");
 
   if (parser_.isSet("exe"))
     args_.exe_path = parser_.value("exe");
@@ -137,8 +159,15 @@ bool CommandLine::parse() {
             D);
     fprintf(stdout, "  %s-v%s, %s--version%s       Show version information\n", G, D, O,
             D);
-    fprintf(stdout, "  %s--instance%s %s<path>%s   Instance path or name\n", O, D, B,
+    fprintf(stdout, "  %s-i%s, %s--instance%s %s<path>%s Instance path or name\n", G, D, O,
+            D, B, D);
+    fprintf(stdout, "  %s-p%s, %s--profile%s %s<name>%s   Profile to load at startup\n", G,
+            D, O, D, B, D);
+    fprintf(stdout, "  %s--multiple%s         Allow multiple GMM processes to run\n", O,
             D);
+    fprintf(stdout, "  %s--pick%s             Show the select instance dialog on startup\n",
+            O, D);
+    fprintf(stdout, "  %s--logs%s             Duplicate the log stream to stdout\n", O, D);
     fprintf(stdout, "  %s--launch%s            Launch game directly (headless)\n", O,
             D);
     fprintf(stdout,

@@ -1,6 +1,8 @@
-// Headless CLI launch args/env/cwd (Workspace-cch0).
+// Headless CLI launch args/env/cwd (Workspace-cch0), plus MO2's GUI-path
+// global options (--multiple / --pick / --logs / -i / -p).
 //   - Parser: --args/--env (repeatable)/--cwd land in ParsedArgs with
-//     explicit has_* flags; bare headless invocations set none.
+//     explicit has_* flags; bare headless invocations set none. The five
+//     global options parse into their own ParsedArgs fields.
 //   - Mapping: cli::build_launch_request assembles the LaunchPrepRequest from
 //     the instance.toml executables entry (GUI parity default) with explicit
 //     CLI flags winning per field; prepare_launch_params forwards the result
@@ -270,4 +272,35 @@ TEST_CASE("headless launch request empty regression", "[cli]") {
         "empty request stays empty at the launcher boundary");
 
   fs::remove_all(root);
+}
+
+// MO2's GUI-path global options (commandline.cpp:317-329): --multiple, --pick,
+// --logs and the -i / -p short halves. Parsed by the same CommandLine the app
+// builds; the consumers live in Application::run, which owns a QApplication
+// and the single-instance lock and cannot be driven from a test process, so
+// what is proven here is that each flag and value reaches ParsedArgs and that
+// a launch without them sets none.
+TEST_CASE("CLI global options parse", "[cli]") {
+  const auto args =
+      parse_argv({"gmm", "--multiple", "--pick", "--logs", "-i", "Skyrim", "-p",
+                  "Modding Plus"});
+  check(args.multiple, "--multiple sets multiple");
+  check(args.pick, "--pick sets pick");
+  check(args.logs, "--logs sets logs");
+  check(args.instance_name == "Skyrim", "-i sets instance_name");
+  check(args.profile_name == "Modding Plus", "-p sets profile_name");
+  check(!args.headless, "a global-option launch is not headless");
+
+  const auto long_form =
+      parse_argv({"gmm", "--instance", "Fallout", "--profile", "Vanilla"});
+  check(long_form.instance_name == "Fallout" && long_form.profile_name == "Vanilla",
+        "--instance / --profile are the same options as -i / -p");
+  check(!long_form.multiple && !long_form.pick && !long_form.logs,
+        "a launch without them sets none");
+
+  const auto bare = parse_argv({"gmm"});
+  check(!bare.multiple && !bare.pick && !bare.logs,
+        "multiple / pick / logs are off by default");
+  check(bare.instance_name.isEmpty() && bare.profile_name.isEmpty(),
+        "instance_name / profile_name are empty by default");
 }
