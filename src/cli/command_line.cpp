@@ -18,19 +18,18 @@ CommandLine::CommandLine(int /*argc*/, char ** /*argv*/) {
   // the short halves of --instance and --profile, so each pair is ONE option.
   QCommandLineOption multipleOpt("multiple",
                                  "Allow multiple GameModManager processes to run");
-  QCommandLineOption pickOpt("pick",
-                             "Show the select instance dialog on startup");
+  QCommandLineOption pickOpt("pick", "Show the select instance dialog on startup");
   QCommandLineOption logsOpt("logs", "Duplicate the log stream to stdout");
   parser_.addOption(multipleOpt);
   parser_.addOption(pickOpt);
   parser_.addOption(logsOpt);
 
   QCommandLineOption instanceOpt({"i", "instance"}, "Load specific instance by name",
-                                  "name");
+                                 "name");
   parser_.addOption(instanceOpt);
 
   QCommandLineOption profileOpt({"p", "profile"}, "Load specific profile by name",
-                                 "name");
+                                "name");
   parser_.addOption(profileOpt);
 
   QCommandLineOption launchOpt("launch", "Launch game directly (headless mode)");
@@ -159,15 +158,17 @@ bool CommandLine::parse() {
             D);
     fprintf(stdout, "  %s-v%s, %s--version%s       Show version information\n", G, D, O,
             D);
-    fprintf(stdout, "  %s-i%s, %s--instance%s %s<path>%s Instance path or name\n", G, D, O,
-            D, B, D);
-    fprintf(stdout, "  %s-p%s, %s--profile%s %s<name>%s   Profile to load at startup\n", G,
-            D, O, D, B, D);
+    fprintf(stdout, "  %s-i%s, %s--instance%s %s<path>%s Instance path or name\n", G, D,
+            O, D, B, D);
+    fprintf(stdout, "  %s-p%s, %s--profile%s %s<name>%s   Profile to load at startup\n",
+            G, D, O, D, B, D);
     fprintf(stdout, "  %s--multiple%s         Allow multiple GMM processes to run\n", O,
             D);
-    fprintf(stdout, "  %s--pick%s             Show the select instance dialog on startup\n",
-            O, D);
-    fprintf(stdout, "  %s--logs%s             Duplicate the log stream to stdout\n", O, D);
+    fprintf(stdout,
+            "  %s--pick%s             Show the select instance dialog on startup\n", O,
+            D);
+    fprintf(stdout, "  %s--logs%s             Duplicate the log stream to stdout\n", O,
+            D);
     fprintf(stdout, "  %s--launch%s            Launch game directly (headless)\n", O,
             D);
     fprintf(stdout,

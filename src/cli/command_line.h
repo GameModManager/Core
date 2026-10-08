@@ -14,9 +14,9 @@ struct ParsedArgs {
   bool handle_gmm   = false;
   bool handle_modl  = false;
   // MO2 CommandLine global options (commandline.cpp:317-329).
-  bool multiple     = false;  // skip the single-instance guard
-  bool pick         = false;  // open the instance selector instead of loading
-  bool logs         = false;  // duplicate the log stream to stdout
+  bool multiple = false;  // skip the single-instance guard
+  bool pick     = false;  // open the instance selector instead of loading
+  bool logs     = false;  // duplicate the log stream to stdout
   QString instance_name;
   QString profile_name;
   QString exe_path;

@@ -281,9 +281,8 @@ TEST_CASE("headless launch request empty regression", "[cli]") {
 // what is proven here is that each flag and value reaches ParsedArgs and that
 // a launch without them sets none.
 TEST_CASE("CLI global options parse", "[cli]") {
-  const auto args =
-      parse_argv({"gmm", "--multiple", "--pick", "--logs", "-i", "Skyrim", "-p",
-                  "Modding Plus"});
+  const auto args = parse_argv(
+      {"gmm", "--multiple", "--pick", "--logs", "-i", "Skyrim", "-p", "Modding Plus"});
   check(args.multiple, "--multiple sets multiple");
   check(args.pick, "--pick sets pick");
   check(args.logs, "--logs sets logs");
