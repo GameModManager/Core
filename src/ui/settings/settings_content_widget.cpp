@@ -13,6 +13,7 @@
 #include "ui/theme/icon_manager.h"
 #include "ui/theme/style_manager.h"
 #include "ui/widgets/line_edit_clear.h"
+#include "ui/widgets/web_link.h"
 
 #include <QAbstractItemView>
 #include <QApplication>
@@ -73,6 +74,13 @@ SettingsContentWidget::SettingsContentWidget(engine::StyleManager *style_manager
 
 // -- General ----------------------------------------------------------------
 
+namespace {
+  // The translations repo: where the .qm files the Language combo lists are
+  // produced, and where a new language is added. Same project's own address
+  // family as the Help menu's documentation and issue links.
+  constexpr auto kTranslateUrl = "https://github.com/GameModManager/i18n";
+}  // namespace
+
 // The read-only line under the app-update checkbox. It reads the stored
 // cadence and the last-checked timestamp, so ticking the checkbox changes what
 // the panel says rather than only what it stores - that is what gives the
@@ -120,8 +128,26 @@ QWidget *SettingsContentWidget::build_general_tab() {
       new QLabel(tr("Restart the application for the language change to take effect."),
                  lang_group);
   lang_hint->setWordWrap(true);
+  // "Help translate" (MO2 languageBox LinkLabel): where the .qm files this
+  // combo lists come from, and where a new one is added. Opens through the
+  // same WebLink the rest of the app uses, so the Custom Browser workaround
+  // applies here too.
+  auto *translate_link = new QLabel(
+      tr("<a href=\"%1\">Help translate</a>").arg(kTranslateUrl), lang_group);
+  translate_link->setTextFormat(Qt::RichText);
+  translate_link->setOpenExternalLinks(false);
+  translate_link->setToolTip(tr("Open the translation repository in a browser."));
+  // open() reports false when nothing handled the URL (no desktop handler, or
+  // a Custom Browser command that would not start). A link that fails silently
+  // is the dead control this whole change exists to avoid, so say so.
+  connect(translate_link, &QLabel::linkActivated, this, [this](const QString &url) {
+    if (!WebLink::open(url))
+      QMessageBox::warning(this, tr("Settings"),
+                           tr("Could not open a browser for this link."));
+  });
   lang_layout->addWidget(lang_combo);
   lang_layout->addWidget(lang_hint);
+  lang_layout->addWidget(translate_link);
   layout->addWidget(lang_group);
 
   connect(lang_combo, &QComboBox::currentIndexChanged, this,
