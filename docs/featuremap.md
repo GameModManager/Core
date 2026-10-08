@@ -534,7 +534,7 @@ port - their cited GMM symbol names were invented, the features are not.
 | U043 BSA enabled-in-INI warning | ✅ `mainwindow.cpp:2071` | ❌ | ❌ · |
 | U059 Filter shortcut wiring also on espList + downloadView | ✅ `mainwindow.cpp:495-497` | ❌ | ❌ · |
 | U090 Plugin tooltip full block (Loads Archives/INI, ESL/ESH, blueprint, dummy, force-disabled) | ✅ `pluginlist.cpp:1492-1662` | ⚠️ full field list unproven - `plugin_view.cpp:271` | ⚠️ · |
-| U107 Plugin list 8 columns (Name..Description) | ✅ `pluginlist.cpp:88-106` = Name, Priority, Mod Index, Flags, Form/Header Version, Author, Description | ✅ all 8 shipped plus our own Locked column; order is ours, not MO2's - `plugin_view.cpp:521` | ✅ ✔ |
+| U107 Plugin list 8 columns (Name..Description) | ✅ `pluginlist.cpp:88-106` = Name, Priority, Mod Index, Flags, Form/Header Version, Author, Description | ⚠️ 5 ship (ours plus Locked); the four metadata columns are deliberately not columns - HEDR is optional so form version reads 0 and CNAM/SNAM are absent for most plugins, i.e. width and no information. Their values are in the row tooltip, which is where MO2 also emits them (`pluginlist.cpp:1512-1528`) - `plugin_view.cpp:520` | ⚠️ ✔ |
 | U114 Plugin header tooltips (8 exact strings) | ✅ `pluginlist.cpp:114-133` | ❌ no header tooltips on the plugin table; the cited `right_panel.cpp:222` has none either (the per-row rich tooltip and the Locked column's cell tooltip are cell, not header - `plugin_view.cpp:271` | ❌ ✔ |
 | Plugin list double-click opens the owning mod | ✅ `pluginlistview.cpp:310-330` | ✅ Ctrl+double-click reveals the mod folder - `plugin_view.cpp:447` | ✅ ✔ |
 | U197 Plugin invalid-names warning + Workarounds plugin settings dialogs | ✅ `gamebryogameplugins.cpp:131` | ❌ | ❌ · |
@@ -1388,7 +1388,7 @@ column.
 | 9. Mod Content Analysis | 6 | 7 | 0 | 13 | 0 | 0 | 0 |
 | 10. Mod Info Dialog | 10 | 1 | 1 | 2 | 0 | 0 | 0 |
 | 11. Version & Update Management | 3 | 1 | 2 | 12 | 0 | 0 | 0 |
-| 12. Plugin Management | 28 | 6 | 3 | 14 | 0 | 0 | 0 |
+| 12. Plugin Management | 27 | 7 | 3 | 14 | 0 | 0 | 0 |
 | 13. LOOT Integration | 10 | 2 | 1 | 7 | 0 | 0 | 0 |
 | 14. Profile Management | 27 | 5 | 3 | 6 | 0 | 0 | 0 |
 | 15. Download Management | 19 | 12 | 6 | 24 | 10 | 0 | 0 |
@@ -1428,7 +1428,7 @@ column.
 | 49. CLI Help Grammar | 0 | 0 | 0 | 2 | 0 | 0 | 0 |
 | 50. My Games Resolution | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
 | 51. Conflict Scan Refresh | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
-| **TOTAL** | **335** | **170** | **177** | **264** | **54** | **43** | **62** |
+| **TOTAL** | **334** | **171** | **177** | **264** | **54** | **43** | **62** |
 
 ### The arithmetic
 
@@ -1436,13 +1436,13 @@ column.
 rows in file                          1043
 scored rows (ok + part + miss)         769
 
-MO2 parity        ok   / scored        335 /  769  = 43.6%
-partial           part / scored        170 /  769  = 22.1%
+MO2 parity        ok   / scored        334 /  769  = 43.4%
+partial           part / scored        171 /  769  = 22.2%
 missing           miss / scored        264 /  769  = 34.3%
 GMM-exclusive     surp / all rows      177 / 1043  = 17.0%   (not scored)
 ```
 
-**Parity is 335 / 769 = 43.6%.** 264 rows are outright missing and 170 partial.
+**Parity is 334 / 769 = 43.4%.** 264 rows are outright missing and 171 partial.
 The largest untouched surfaces are **44. Tutorial** and **46. Notifications /
 Problems** (zero matched rows), then **16. Nexus** and **15. Downloads**, which
 carry the most missing rows in absolute terms.
