@@ -1025,6 +1025,46 @@ QWidget *SettingsContentWidget::build_paths_tab() {
     layout->addLayout(base_form);
   }
 
+  // Writability footer. Every path on this tab is typed by hand and can point
+  // anywhere, and an unwritable one stays silent until a deploy fails or an
+  // instance cannot be created - the one failure with a message about some
+  // other folder. Report each path that is configured but not writable.
+  // QFileInfo::isWritable is the permission-bit check Qt uses for this; it does
+  // not attempt a write, so opening this tab never touches the filesystem.
+  {
+    auto *footer = new QLabel(page);
+    footer->setWordWrap(true);
+    auto describe = [this](const QString &label, const QString &raw,
+                           const QString &fallback) {
+      const QString dir = raw.trimmed().isEmpty() ? fallback : raw.trimmed();
+      if (dir.isEmpty())
+        return QString();
+      const QFileInfo info(dir);
+      if (!info.exists())
+        return tr("%1: not created yet (%2)").arg(label, dir);
+      if (!info.isWritable())
+        return tr("%1: NOT writable (%2)").arg(label, dir);
+      return QString();
+    };
+    QStringList bad;
+    bad << describe(tr("Instances Directory"), s.instances_dir(),
+                    QString::fromStdString(engine::default_instances_dir().string()));
+    if (!instance_root_.empty()) {
+      auto inst = engine::Instance::installed(instance_root_.filename().string(),
+                                              instance_root_.parent_path());
+      QString game_mods;
+      if (inst.read_toml() && !inst.info().game_mods_dir.empty())
+        game_mods = QString::fromStdString(inst.info().game_mods_dir.string());
+      bad << describe(tr("Base Directory"),
+                      QString::fromStdString(instance_root_.string()), QString());
+      bad << describe(tr("Game mods Directory"), game_mods, QString());
+    }
+    bad.removeAll(QString());
+    footer->setText(bad.isEmpty() ? tr("All configured paths are writable.")
+                                  : tr("Writable check: %1").arg(bad.join(' ')));
+    layout->addWidget(footer);
+  }
+
   layout->addStretch(1);
   return page;
 }
