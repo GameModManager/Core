@@ -42,6 +42,7 @@
 #include <QAction>
 #include <QApplication>
 #include <QEventLoop>
+#include <QHeaderView>
 #include <QIcon>
 #include <QLCDNumber>
 #include <QList>
@@ -182,14 +183,17 @@ TEST_CASE("plugins tab", "[ui]") {
   tab.set_plugins(plugins);
 
   check(table->rowCount() == 5, "five plugin rows");
-  check(table->columnCount() == 9, "nine columns");
+  check(table->columnCount() == 5, "five columns");
+  check(table->horizontalHeaderItem(0)->text() == QLatin1String("Plugin Name"),
+        "Plugin Name is the first column");
   check(table->horizontalHeaderItem(4)->text() == QLatin1String("Locked"),
         "Locked column header");
-  check(table->horizontalHeaderItem(5)->text() == QLatin1String("Form Version") &&
-            table->horizontalHeaderItem(6)->text() == QLatin1String("Header Version") &&
-            table->horizontalHeaderItem(7)->text() == QLatin1String("Author") &&
-            table->horizontalHeaderItem(8)->text() == QLatin1String("Description"),
-        "MO2's four metadata column headers");
+  // MO2 MainWindow::resizeLists (mainwindow.cpp:678-682) makes column 0
+  // Stretch on a fresh profile. That is what keeps the identifying column
+  // visible at the left instead of squeezed off by wider columns - the
+  // regression that shipped four mostly-empty metadata columns on top of it.
+  check(table->horizontalHeader()->sectionResizeMode(0) == QHeaderView::Stretch,
+        "the Plugin Name column stretches, so it cannot be squeezed off the left");
   check(row_with_name(table, "Skyrim.esm") == 0, "native ESM first");
   check(row_with_name(table, "ccBGSSSE001-Fish.esm") == 1, "CC second");
   check(row_with_name(table, "SkyUI_SE.esp") == 2, "mod plugin after CC");
@@ -963,47 +967,6 @@ TEST_CASE("plugins tab", "[ui]") {
     QApplication::processEvents();
     check(refreshed, "Refresh button emits refresh_requested");
     tab.hide();
-  }
-
-  // --- MO2's four metadata columns (PluginList::data, pluginlist.cpp:1398) ---
-  // Form Version / Header Version / Author / Description, rendered from the
-  // parsed TES4 header. A form version of 0 means the file records none and
-  // renders blank (MO2 returns a null QString), so the bare row proves the
-  // rule rather than just the happy path.
-  {
-    engine::GamePlugin meta;  // every field present
-    meta.name           = "Meta.esp";
-    meta.enabled        = true;
-    meta.priority       = 0;
-    meta.form_version   = 1;
-    meta.header_version = 1.7f;
-    meta.author         = "Bethesda Game Studios";
-    meta.description    = "Plugin description";
-
-    engine::GamePlugin bare;  // no header records at all
-    bare.name     = "Bare.esp";
-    bare.enabled  = true;
-    bare.priority = 1;
-
-    tab.set_plugins({meta, bare});
-
-    const int m = row_with_name(table, "Meta.esp");
-    const int b = row_with_name(table, "Bare.esp");
-    check(m == 0 && b == 1, "the two metadata rows are the ones we set");
-    check(table->item(m, 5)->text() == QLatin1String("1"), "Form Version cell");
-    check(table->item(m, 6)->text() == QString::number(1.7f),
-          "Header Version cell renders the float MO2 renders");
-    check(table->item(m, 7)->text() == QLatin1String("Bethesda Game Studios"),
-          "Author cell");
-    check(table->item(m, 8)->text() == QLatin1String("Plugin description"),
-          "Description cell");
-
-    check(table->item(b, 5)->text().isEmpty(),
-          "a form version of 0 renders blank, not \"0\"");
-    check(table->item(b, 6)->text() == QString::number(0.0f),
-          "Header Version still renders when the file records none");
-    check(table->item(b, 7)->text().isEmpty(), "an absent author renders blank");
-    check(table->item(b, 8)->text().isEmpty(), "an absent description renders blank");
   }
 }
 
