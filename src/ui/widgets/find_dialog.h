@@ -28,6 +28,11 @@ public:
   [[nodiscard]] QString pattern() const;
   // True when the match is case-sensitive. Off by default, like MO2.
   [[nodiscard]] bool case_sensitive() const;
+  // The status line under the pattern box. The dialog cannot search, so the
+  // editor that owns the text writes the outcome here; an empty string clears
+  // it. Without a writer this label was dead UI, and a search that matched
+  // nothing looked like a Find Next that had broken.
+  void set_status(const QString &text);
 
 signals:
   void patternChanged(const QString &pattern);
