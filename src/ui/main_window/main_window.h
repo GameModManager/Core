@@ -221,6 +221,14 @@ public:
   // already visible - it is then just a raise and an activate.
   void restore_window();
 
+  // Startup hooks for the command line (MO2 CommandLine::pick/profile).
+  // show_instance_switcher() opens the modal instance selector - the same
+  // path the Settings menu item takes. switch_profile() runs the normal
+  // profile switch (save current, load target, re-scan), so a -p at startup
+  // is indistinguishable from picking the profile by hand afterwards.
+  void show_instance_switcher();
+  void switch_profile(const QString &profile);
+
 protected:
   void closeEvent(QCloseEvent *event) override;
   bool eventFilter(QObject *obj, QEvent *event) override;
