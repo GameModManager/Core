@@ -517,9 +517,14 @@ QTableWidget *PluginView::table() const {
 PluginView::PluginView(QWidget *parent) : QWidget(parent) {
   auto *layout = new QVBoxLayout(this);
   layout->setContentsMargins(0, 0, 0, 0);
-  table_ = new PluginTable(0, 5, this);
+  table_ = new PluginTable(0, 9, this);
+  // MO2 PluginList::getColumnName (pluginlist.cpp:88-106) has 8: Name,
+  // Priority, Mod Index, Flags, Form Version, Header Version, Author,
+  // Description. Ours keeps the shipped order and appends MO2's last four,
+  // plus our own Locked column after Mod Index.
   table_->setHorizontalHeaderLabels(
-      {tr("Plugin Name"), tr("Flags"), tr("Priority"), tr("Mod Index"), tr("Locked")});
+      {tr("Plugin Name"), tr("Flags"), tr("Priority"), tr("Mod Index"), tr("Locked"),
+       tr("Form Version"), tr("Header Version"), tr("Author"), tr("Description")});
   table_->horizontalHeader()->setStretchLastSection(true);
   table_->verticalHeader()->setVisible(false);
   table_->setItemDelegateForColumn(
@@ -613,11 +618,13 @@ void PluginView::set_plugins(const std::vector<engine::GamePlugin> &plugins) {
   owners_.clear();
   rows_locked_.clear();
   rows_force_loaded_.clear();
+  rows_enabled_.clear();
   rows_type_.clear();
   names_.reserve(plugins.size());
   owners_.reserve(plugins.size());
   rows_locked_.reserve(plugins.size());
   rows_force_loaded_.reserve(plugins.size());
+  rows_enabled_.reserve(plugins.size());
   rows_type_.reserve(plugins.size());
   table_->setRowCount(static_cast<int>(plugins.size()));
 
@@ -630,6 +637,9 @@ void PluginView::set_plugins(const std::vector<engine::GamePlugin> &plugins) {
     owners_.push_back(p.owner_mod);
     rows_locked_.push_back(p.locked);
     rows_force_loaded_.push_back(p.force_loaded);
+    // As rendered by the checkbox block below: force rows are pinned.
+    rows_enabled_.push_back(p.force_loaded || p.force_enabled ||
+                            (!p.force_disabled && p.enabled));
     if (p.is_medium_flagged) {
       rows_type_.push_back(PluginType::Medium);
     } else if (p.has_light_ext || p.is_light_flagged) {
@@ -739,6 +749,25 @@ void PluginView::set_plugins(const std::vector<engine::GamePlugin> &plugins) {
       lock->setToolTip(locked_column_tooltip());
     }
     table_->setItem(i, 4, lock);
+
+    // MO2 PluginList::data (pluginlist.cpp:1398-1410): a form version of 0
+    // renders blank (the file records none), the header version always
+    // renders, author and description render raw. Same order as the header.
+    const QString meta_text[] = {
+        p.form_version != 0 ? QString::number(p.form_version) : QString(),
+        QString::number(p.header_version), QString::fromStdString(p.author),
+        QString::fromStdString(p.description)};
+    for (int c = 0; c < 4; ++c) {
+      auto *cell       = new QTableWidgetItem(meta_text[c]);
+      Qt::ItemFlags mf = Qt::ItemIsEnabled | Qt::ItemIsSelectable;
+      if (!p.force_loaded && !p.force_disabled && !p.locked)
+        mf |= Qt::ItemIsDragEnabled;
+      cell->setFlags(mf);
+      if (p.force_loaded)
+        cell->setForeground(fixed_color);
+      cell->setToolTip(tooltip);
+      table_->setItem(i, 5 + c, cell);
+    }
   }
   syncing_ = false;
   apply_highlights();
@@ -768,6 +797,8 @@ void PluginView::sync_enabled(const std::vector<engine::GamePlugin> &plugins) {
     QTableWidgetItem *item = table_->item(i, 0);
     if (!item || p.force_loaded || p.force_enabled || p.force_disabled)
       continue;
+    if (i < static_cast<int>(rows_enabled_.size()))
+      rows_enabled_[static_cast<size_t>(i)] = p.enabled;
     item->setCheckState(p.enabled ? Qt::Checked : Qt::Unchecked);
   }
   syncing_ = false;

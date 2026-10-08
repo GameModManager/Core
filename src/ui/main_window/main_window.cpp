@@ -599,6 +599,14 @@ void MainWindow::restore_window() {
   activateWindow();
 }
 
+void MainWindow::show_instance_switcher() {
+  settings_->show_instance_switcher();
+}
+
+void MainWindow::switch_profile(const QString &profile) {
+  mod_list_->switch_profile(profile);
+}
+
 void MainWindow::closeEvent(QCloseEvent *event) {
   // Minimize-to-tray is decided before anything destructive runs: the app
   // keeps running, so the manifest, settings and mod order must not be written

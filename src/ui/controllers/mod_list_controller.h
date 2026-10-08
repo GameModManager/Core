@@ -193,15 +193,16 @@ public slots:
   // instance load and after the profile manager mutates the list.
   void refresh_profiles();
 
-private:
   // Applies a profile switch via engine::profile::switch_profile (g08): the
   // current profile is saved (modlist flush, plugins, archives, settings),
   // the new profile's state is restored, the UI views are refreshed through
   // the callbacks, and the P1.3 kProfileChanged event is dispatched by the
   // engine. On success the active profile name, window title and selector
-  // are updated.
+  // are updated. Public because MainWindow forwards the -p command line flag
+  // here at startup.
   void switch_profile(const QString &profile);
 
+private:
   // Recomputes the enabled-mod count and updates the mod-list QLCDNumber
   // (w_->mod_count_enabled_). Called on dataChanged (toggles) and
   // mod_list_changed (add/remove/move/load).

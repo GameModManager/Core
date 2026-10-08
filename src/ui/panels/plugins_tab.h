@@ -66,6 +66,9 @@ protected:
 
 private:
   void on_custom_context_menu(const QPoint &pos);
+  // Hand the view's per-row metadata to the extracted context menu. Called
+  // from set_plugins and sync_enabled so the menu's state labels stay live.
+  void refresh_context_rows();
 
   PluginView *view_ = nullptr;
   std::unique_ptr<engine::PluginDb::ContextMenu> context_menu_;

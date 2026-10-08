@@ -69,8 +69,10 @@
 #include <QHelpEvent>
 #include <QItemSelectionModel>
 #include <QLCDNumber>
+#include <QLabel>
 #include <QMenu>
 #include <QModelIndex>
+#include <QPlainTextEdit>
 #include <QPushButton>
 #include <QTabBar>
 #include <QTabWidget>
@@ -663,6 +665,120 @@ TEST_CASE("MainWindow: mod delete moves folder to trash", "[ui][harness]") {
       fs::path(qgetenv("XDG_DATA_HOME").toStdString()) / "Trash";
   CHECK(fs::exists(trash_root / "files" / "Foo_mod"));
   CHECK(fs::exists(trash_root / "info" / "Foo_mod.trashinfo"));
+
+  fs::remove_all(root);
+}
+
+// Reinstall Mod (MO2 ModListViewActions::reinstallMod): the action is on the
+// real mod context menu and its missing-archive guard reports the reason
+// through the shared error dialog instead of starting an install. The
+// install-itself half needs a live pipeline thread, a real archive and the
+// FOMOD/overwrite dialogs - covered by pipeline_worker_test and the install
+// stage tests; what is proven here is that the control is reachable and that
+// it refuses, loudly and without touching the mod, when there is no archive.
+TEST_CASE("MainWindow: Reinstall Mod reports a missing archive", "[ui][harness]") {
+  const fs::path root     = make_case_root("gmm_qs50_reinstall");
+  const fs::path inst_dir = root / "instances";
+
+  qputenv("QT_QPA_PLATFORM", "offscreen");
+  int app_argc     = 1;
+  char app_argv0[] = "main_window_harness_test";
+  char *app_argv[] = {app_argv0, nullptr};
+  QApplication app(app_argc, app_argv);
+  QCoreApplication::setOrganizationName("GameModManager");
+  QCoreApplication::setApplicationName("GameModManager");
+
+  auto inst           = engine::Instance::installed("TestGame", inst_dir);
+  inst.info().game_id = "testgame";
+  REQUIRE(inst.create_directories());
+  REQUIRE(inst.write_toml());
+  const fs::path inst_root = inst.info().root;
+  const auto instance      = engine::Instance::from_root(inst_root);
+  const fs::path mods_dir  = instance.path_for(engine::InstanceKind::Mods);
+  fs::create_directories(instance.path_for(engine::InstanceKind::Downloads));
+  fs::create_directories(mods_dir / "Foo_mod");
+  // Records an archive that is NOT in the downloads dir (the mod was
+  // installed, then the downloads folder was cleared).
+  write_file(mods_dir / "Foo_mod" / "meta.ini",
+             "[General]\ninstallationFile=Foo-42.zip\n");
+
+  engine::GameKnowledge knowledge;
+  knowledge.set("testgame", "mods_subpath", "Mods");
+
+  ui::MainWindow w;
+  w.set_game_knowledge(&knowledge);
+  w.show();
+  w.set_game_info("testgame", "Test Game", "Default", {}, inst_root);
+  REQUIRE(pump_until([&w] {
+    return !w.is_loading();
+  }));
+
+  auto *view = w.mod_view();
+  REQUIRE(view != nullptr);
+  REQUIRE(pump_until([&] {
+    return find_mod_row(view, QStringLiteral("Foo_mod")) >= 0;
+  }));
+  const int row = find_mod_row(view, QStringLiteral("Foo_mod"));
+  view->scrollTo(view->model()->index(row, 0));
+  QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
+  const QRect cell = view->visualRect(view->model()->index(row, 0));
+  REQUIRE(cell.isValid());
+
+  QTimer::singleShot(10000, [] {
+    if (auto *popup = QApplication::activePopupWidget())
+      popup->close();
+    if (auto *modal = QApplication::activeModalWidget())
+      modal->close();
+  });
+
+  // Armed BEFORE the menu opens: it fires inside QMenu::exec's nested loop,
+  // triggers Reinstall, then reads + closes the error dialog raised by
+  // ui::report_error inside the action's own modal exec loop.
+  bool menu_seen = false;
+  QString reported;
+  QTimer::singleShot(0, [&] {
+    auto *menu = qobject_cast<QMenu *>(QApplication::activePopupWidget());
+    if (!menu)
+      return;
+    menu_seen          = true;
+    QAction *reinstall = nullptr;
+    for (auto *a : menu->actions()) {
+      if (a->text() == QStringLiteral("Reinstall Mod")) {
+        reinstall = a;
+        break;
+      }
+    }
+    if (!reinstall) {
+      menu->close();
+      return;
+    }
+    QTimer::singleShot(0, [&] {
+      auto *dlg = QApplication::activeModalWidget();
+      if (!dlg)
+        return;
+      QStringList texts;
+      for (const auto *label : dlg->findChildren<QLabel *>())
+        texts << label->text();
+      // TaskDialog renders .details() into a QPlainTextEdit, not a label.
+      for (const auto *edit : dlg->findChildren<QPlainTextEdit *>())
+        texts << edit->toPlainText();
+      reported = texts.join(QLatin1Char(' '));
+      dlg->close();
+    });
+    reinstall->trigger();
+  });
+
+  QContextMenuEvent ctx(QContextMenuEvent::Mouse, cell.center(),
+                        view->viewport()->mapToGlobal(cell.center()));
+  QCoreApplication::sendEvent(view->viewport(), &ctx);
+
+  REQUIRE(menu_seen);
+  // The reason reaches the user verbatim, naming the archive that is gone.
+  CHECK(reported.contains(QStringLiteral("Foo-42.zip")));
+  CHECK(reported.contains(QStringLiteral("downloads")));
+  // Nothing was installed and nothing was removed.
+  CHECK(fs::exists(mods_dir / "Foo_mod"));
+  CHECK(find_mod_row(view, QStringLiteral("Foo_mod")) >= 0);
 
   fs::remove_all(root);
 }
