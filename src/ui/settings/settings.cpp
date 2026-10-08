@@ -398,10 +398,9 @@ void Settings::reset_dialog_geometry() {
   // silently switched off "Center dialogs on screen" and every dialog came back
   // at the size and place the user had just reset. Clearing through the setters
   // keeps the key list in one place with the getters.
-  set_fomod_window_geometry({});
-  set_modinfo_window_geometry({});
-  set_listdialog_window_geometry({});
-  set_saveinfo_window_geometry({});
+  settings_.beginGroup("geometry");
+  settings_.remove("");
+  settings_.endGroup();
 }
 
 namespace {

@@ -152,9 +152,9 @@ void ConsolePanel::set_min_level(engine::LogLevel level) {
   // re-clicking the already-checked Debug is the one call that has to move it.
   // Lines already dropped cannot be recovered - only what is logged from here
   // on.
-  engine::Logger::instance().set_level(level);
   if (level == min_level_)
     return;
+  engine::Logger::instance().set_level(level);
   min_level_ = level;
   Settings::instance().set_log_level(level == engine::LogLevel::Debug   ? "debug"
                                      : level == engine::LogLevel::Warn  ? "warn"
