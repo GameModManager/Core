@@ -35,7 +35,9 @@ public:
   // is what set_min_level re-renders from.
   [[nodiscard]] engine::LogLevel min_level() const { return min_level_; }
   // Re-filter the whole view at `level` and persist it to diagnostics/log_level,
-  // so the choice survives a restart like every other verbosity setting.
+  // so the choice survives a restart like every other verbosity setting. Also
+  // moves Logger's floor, so a level picked here is logged from now on instead
+  // of being dropped at the source.
   void set_min_level(engine::LogLevel level);
 
 private:

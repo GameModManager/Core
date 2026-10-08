@@ -5,8 +5,10 @@
 // The text view is reached through findChild, so the assertions read the real
 // rendered document rather than a mirrored counter. No filesystem, no engine
 // logging, no network; lines are pushed through the same public append path
-// the Logger callback uses. QT_QPA_PLATFORM=offscreen comes from the test
-// property.
+// the Logger callback uses. The level test does drive engine::Logger, but only
+// in memory - no log file is opened. QT_QPA_PLATFORM=offscreen comes from the
+// test property.
+#include "ui/settings/settings.h"
 #include "ui/widgets/console_panel.h"
 
 #include <QApplication>
@@ -51,6 +53,20 @@ int lines_on_screen(ui::ConsolePanel &panel) {
 // with its own character format).
 void push(ui::ConsolePanel &panel, const QString &message) {
   panel.append_log("INF", "12:00:00", message, 1 /* LogLevel::Info */);
+}
+
+// Did `message` survive into the Logger's replay buffer? The buffer is what the
+// level menu re-renders from, and log() drops a line below Logger's own floor
+// before it gets there - so this answers "did the Logger arm itself", which is
+// the difference between a working level menu and one that only re-filters the
+// document.
+bool buffered(const QString &message) {
+  const std::string needle = message.toStdString();
+  for (const auto &entry : engine::Logger::instance().replayed()) {
+    if (entry.message == needle)
+      return true;
+  }
+  return false;
 }
 
 }  // namespace
@@ -100,5 +116,70 @@ TEST_CASE("ConsolePanel bounds the on-screen log", "[ui][console]") {
     check(lines_on_screen(*panel) == 0, "clear() resets the view");
   }
 
+  delete panel;
+}
+
+TEST_CASE("ConsolePanel's level choice arms the Logger, not just the view",
+          "[ui][console]") {
+  test_app();
+  auto &logger = engine::Logger::instance();
+  // A fresh message per step: the replay buffer is a 256-entry ring that
+  // nothing evicts early, so reusing one probe would find the previous step's
+  // line still in it and pass whatever the floor does.
+  const auto probe = [](int step) {
+    return QStringLiteral("console level probe %1").arg(step);
+  };
+  const auto say_debug = [&logger](const QString &message) {
+    logger.debug(message.toStdString());
+  };
+
+  // Stand in for the session this fixes: a persisted diagnostics/log_level of
+  // warn leaves Logger at Warn, so a Debug line is dropped before the buffer.
+  logger.set_level(engine::LogLevel::Warn);
+  say_debug(probe(1));
+  check(!buffered(probe(1)),
+        "a Debug line under a Warn floor is dropped at the source");
+
+  auto *panel = new ui::ConsolePanel();
+  panel->set_min_level(engine::LogLevel::Debug);
+  say_debug(probe(2));
+  check(buffered(probe(2)),
+        "picking Debug in the menu arms the Logger for the session");
+
+  // Also the re-clicked case: the panel can already sit at Debug while the
+  // Logger floor is still the persisted level (GMM_DEBUG=1), and that call is
+  // the one an early-return guard would swallow.
+  panel->set_min_level(engine::LogLevel::Warn);
+  say_debug(probe(3));
+  check(!buffered(probe(3)), "picking Warnings arms the Logger down again");
+  panel->set_min_level(engine::LogLevel::Debug);
+  say_debug(probe(4));
+  check(buffered(probe(4)),
+        "re-picking Debug arms it back, even when already selected");
+
+  logger.set_level(engine::LogLevel::Debug);
+  delete panel;
+}
+
+TEST_CASE("the level menu arms the Logger even at the level already shown",
+          "[ui][console]") {
+  test_app();
+  auto &logger = engine::Logger::instance();
+  logger.set_level(engine::LogLevel::Warn);
+  // GMM_DEBUG=1 (or a persisted diagnostics/log_level of debug) opens the VIEW
+  // at Debug while the Logger floor is still the persisted level. The level the
+  // user then picks is the one already shown, which is exactly the call an
+  // early-return guard would swallow - so this is the state where "re-filter
+  // the view" alone leaves Debug inert.
+  Settings::instance().set_log_level("debug");
+  auto *panel = new ui::ConsolePanel();
+  check(panel->min_level() == engine::LogLevel::Debug, "the panel opens at Debug");
+
+  const QString probe = QStringLiteral("console level probe at shown level");
+  panel->set_min_level(engine::LogLevel::Debug);
+  logger.debug(probe.toStdString());
+  check(buffered(probe), "re-picking the shown Debug level still arms the Logger");
+
+  logger.set_level(engine::LogLevel::Debug);
   delete panel;
 }
