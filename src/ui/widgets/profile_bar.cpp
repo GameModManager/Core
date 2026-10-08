@@ -1,10 +1,8 @@
 #include "ui/widgets/profile_bar.h"
 
 #include "ui/theme/icon_manager.h"
-#include "ui/widgets/event_filter.h"
 
 #include <QComboBox>
-#include <QEvent>
 #include <QHBoxLayout>
 #include <QIcon>
 #include <QLabel>
@@ -40,13 +38,10 @@ ProfileBar::ProfileBar(QWidget *parent) : QWidget(parent) {
   profile_combo_->setMinimumWidth(120);
   layout->addWidget(profile_combo_, 1);
 
-  // Do not let the wheel switch profile (MO2 parity, mainwindow.cpp:378-385).
-  // Switching by accident reloads a different mod list and a different plugin
-  // load order, so it is not something a stray scroll should be able to do.
-  auto *no_wheel = new EventFilter(this, [](QObject *, QEvent *event) -> bool {
-    return event->type() == QEvent::Wheel;
-  });
-  profile_combo_->installEventFilter(no_wheel);
+  // The wheel must not switch profile (MO2 parity, mainwindow.cpp:378-380):
+  // switching by accident reloads a different mod list and a different plugin
+  // load order. Every combo in the app gets that from the one application-wide
+  // guard, install_combo_wheel_guard().
 
   // One separator between the profile selector and the button group; the
   // three buttons themselves rely on the uniform layout spacing (4 px) so

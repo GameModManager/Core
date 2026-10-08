@@ -1,9 +1,6 @@
 #include "ui/widgets/mod_filter_bar.h"
 
-#include "ui/widgets/event_filter.h"
-
 #include <QComboBox>
-#include <QEvent>
 #include <QHBoxLayout>
 #include <QLineEdit>
 #include <QToolButton>
@@ -56,14 +53,12 @@ ModFilterBar::ModFilterBar(QWidget *parent) : QWidget(parent) {
   connect(group_combo_, &QComboBox::currentTextChanged, this,
           &ModFilterBar::group_changed);
 
-  // Do not let the wheel change the group (MO2 parity, mainwindow.cpp:378-385).
-  // A combo this close to the mod list gets a wheel event by accident while
-  // the user is scrolling the list, and an accidental switch to "Disabled" or
-  // "Conflicts" looks like the mod list lost rows.
-  auto *no_wheel = new EventFilter(this, [](QObject *, QEvent *event) -> bool {
-    return event->type() == QEvent::Wheel;
-  });
-  group_combo_->installEventFilter(no_wheel);
+  // The wheel must not change the group either (MO2 parity, mainwindow.cpp:378-380).
+  // A combo this close to the mod list gets a wheel event by accident while the
+  // user is scrolling the list, and an accidental switch to "Disabled" or
+  // "Conflicts" looks like the mod list lost rows. This combo, like every other
+  // one, is covered by the single application-wide guard installed in
+  // install_combo_wheel_guard().
 }
 
 QString ModFilterBar::filter_text() const {
