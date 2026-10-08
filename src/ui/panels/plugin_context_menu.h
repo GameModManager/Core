@@ -15,6 +15,7 @@ struct RowInfo {
   std::string name;
   bool locked       = false;
   bool force_loaded = false;
+  bool enabled      = false;
 };
 
 // Context menu for the plugin table (MO2 PluginListContextMenu parity).
@@ -33,6 +34,11 @@ public:
 
 signals:
   void lock_requested(const std::string &name, bool locked);
+  // "Enable selected" / "Disable selected": flip one plugin's state.
+  void toggle_requested(const std::string &name, bool enabled);
+  // "Send to... Top / Bottom / Priority...": move one plugin to a new row.
+  // Same signal the table's drag reorder uses, so one handler serves both.
+  void reorder_requested(int from_row, int to_row);
 
 private:
   std::vector<RowInfo> rows_;

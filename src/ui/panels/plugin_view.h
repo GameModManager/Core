@@ -57,6 +57,9 @@ public:
   [[nodiscard]] const std::vector<bool> &rows_force_loaded() const {
     return rows_force_loaded_;
   }
+  // Per-row enable state as rendered (core rows count as enabled). The
+  // context menu labels its Enable/Disable action from this.
+  [[nodiscard]] const std::vector<bool> &rows_enabled() const { return rows_enabled_; }
 
   /// Mod folder providing row `row`, "" for a game-Data (unowned) plugin or
   /// an out-of-range row. Parallel to names(), same order as the table rows.
@@ -116,6 +119,7 @@ private:
   std::vector<std::string> owners_;
   std::vector<bool> rows_locked_;
   std::vector<bool> rows_force_loaded_;
+  std::vector<bool> rows_enabled_;
   std::vector<PluginType> rows_type_;
   QSet<QString> contained_names_;
   QSet<QString> master_names_;
