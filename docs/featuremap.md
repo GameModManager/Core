@@ -264,19 +264,19 @@ port - their cited GMM symbol names were invented, the features are not.
 | U046 Network proxy activation progress dialog | ✅ `mainwindow.cpp:2115-2140` | ⏳ bridge applies options instantly, no wait | ⏳ ✔ |
 | U047 Downgrade notice after version drop | ✅ `mainwindow.cpp:2219` | ⏳ no last-version value to compare | ⏳ ✔ |
 | U061 dataTabShowFromArchives gated on archiveParsing setting | ✅ `mainwindow.cpp:532-542` | ⏳ data tab has no archives sub-filter | ⏳ ✔ |
-| U129 General > Language group (languageBox + "Help translate" LinkLabel) | ✅ `settingsdialog.ui:68-124` | ⚠️ picker works, "Help translate" link absent - `settings_content_widget.cpp:78` | ⚠️ ✔ |
+| U129 General > Language group (languageBox + "Help translate" LinkLabel) | ✅ `settingsdialog.ui:68-124` | ✅ picker + restart hint + "Help translate" link to the i18n repo, opened via WebLink so Custom Browser applies - `settings_content_widget.cpp:121` | ✅ ✔ |
 | U130 General > Download List group (4 checkboxes + MODL associate button) | ✅ `settingsdialog.ui:125-197` | ⚠️ compact only; hide-installed is on the downloads tab | ⚠️ ✔ |
 | U133 General > Miscellaneous checkboxes (center dialogs, instance-change confirm, Alt menubar, previews on double-click) | ✅ `settingsdialog.ui:264-325` | ⚠️ 1 of 4: previews on double-click - `settings_content_widget.cpp:137` | ⚠️ ✔ |
 | U134 General buttons (Reset Dialog Choices, Configure Mod Categories) | ✅ `settingsdialog.ui:343-372` | ✅ both: reset at `:232`, categories dialog `categories_dialog.h:21` | ✅ ✔ |
-| U138 Paths tab (7 path rows + %BASE_DIR% hint + writability footer) | ✅ `settingsdialog.ui:846-1054` | ⚠️ 7 rows + hint + working variable expansion, no footer | ⚠️ ✔ |
+| U138 Paths tab (7 path rows + %BASE_DIR% hint + writability footer) | ✅ `settingsdialog.ui:846-1054` | ✅ 7 rows + hint + working variable expansion + footer naming every configured path that is missing or read-only - `settings_content_widget.cpp:1035` | ✅ ✔ |
 | U139 Paths error strings (create failed, invalid game install) | ✅ `settingsdialogpaths.cpp:100-101`, `:236-237` | ⏳ commits silently, no mkdir, no warning | ⏳ ✔ |
 | U140 Nexus settings tab full page (account, statistics, connection, options, servers groups) (NEXUS-LENS: genericize/provider-scope) | ✅ `settingsdialog.ui:1056-1504` | ⚠️ Sources tab stands in - `settings_content_widget.cpp:65` | ⚠️ ✔ |
 | U142 Nexus custom browser picker file dialog | ✅ `settingsdialognexus.cpp:500-510` | ⏳ downstream of the dead custom-browser feature | ⏳ ✔ |
-| U143 Settings > Plugins tab (plugin details, Enabled 3-state tooltip, settings table, blacklist) | ✅ `settingsdialog.ui:1506-1746` | ⚠️ details, table, blacklist real; 3-state tooltip absent - `settings_content_widget.cpp:894` | ⚠️ ✔ |
-| U145 Workarounds options (force-enable game files, archives parsing, lock GUI) | ✅ `settingsdialog.ui:1810-1860` | ⚠️ 0 of 3: both checkboxes dead, lock GUI absent - `settings_content_widget.cpp:1307` | ⚠️ ✔ |
+| U143 Settings > Plugins tab (plugin details, Enabled 3-state tooltip, settings table, blacklist) | ✅ `settingsdialog.ui:1506-1746` | ⚠️ details, table, blacklist real. MO2's 3-state checkbox has no counterpart here: `Enabled` is a real 2-state box over a per-instance override with global fallback, and its tooltip states that - `settings_content_widget.cpp:1250` | ⚠️ ✔ |
+| U145 Workarounds options (force-enable game files, archives parsing, lock GUI) | ✅ `settingsdialog.ui:1810-1860` | ⚠️ 2 of 3: force-enable game files drives deploy (`mod_list_controller.cpp:1452`); archives parsing has no consumer by construction and says so in its tooltip; lock GUI absent - `settings_content_widget.cpp:1492` | ⚠️ ✔ |
 | U146 Workarounds > Steam group (AppID/username/password + log blacklist) | ✅ `settingsdialog.ui:1864-1928`, `settingsdialogworkarounds.cpp:17-30` | 🚫 Windows credential store, no Linux subject | 🚫 ✔ |
-| U147 Workarounds > Network group (offline mode, system proxy, custom browser) | ✅ `settingsdialog.ui:1931-2010` | ⚠️ 2 of 3; custom browser dead - `settings_content_widget.cpp:1259` | ⚠️ ✔ |
-| U148 Workarounds buttons (Reset Geometries, Back-date BSAs, Executables Blacklist, Skip Suffixes/Directories) | ✅ `settingsdialog.ui:2035-2144`, `settingsdialogworkarounds.cpp:96-200` | ⚠️ 1 of 5: Reset Geometries; 3 dead line edits, no back-date | ⚠️ ✔ |
+| U147 Workarounds > Network group (offline mode, system proxy, custom browser) | ✅ `settingsdialog.ui:1931-2010` | ✅ all 3; the custom browser is read by every WebLink open, including the Settings links - `web_link.cpp:46` | ✅ ✔ |
+| U148 Workarounds buttons (Reset Geometries, Back-date BSAs, Executables Blacklist, Skip Suffixes/Directories) | ✅ `settingsdialog.ui:2035-2144`, `settingsdialogworkarounds.cpp:96-200` | ⚠️ 2 of 5: Reset Geometries and all 3 line edits are wired (skip lists via `Settings::apply_workarounds`, blacklist via `launch_controller.cpp:386`); no back-date BSA | ⚠️ ✔ |
 | U149 Workarounds footer warning text | ✅ `settingsdialog.ui:2187` | ⏳ one static label | ⏳ ✔ |
 | U150 Diagnostics tab controls (log level, crash dumps, max dumps, LOOT log level, links) | ✅ `settingsdialog.ui:2197-2320`, `settingsdialogdiagnostics.cpp:22-90` | ⚠️ log level + max dumps real; LOOT level, links absent - `settings_content_widget.cpp:1324` | ⚠️ ✔ |
 | U151 Settings tabs use scroll areas with grouped GroupBoxes | ✅ `settingsdialog.ui:28`, `:1062` | ⏳ plain pages + GroupBoxes, no scroll areas | ⏳ ✔ |
@@ -1350,7 +1350,7 @@ app can never end up unreachable - see `tray_decision.h:66`.
 
 | Feature | MO2 | GMM | Status |
 |---------|-----|-----|--------|
-| U233 Full CommandLine grammar (visible options, -i list mode, positional subargs, help layout, error paths) | ✅ `commandline.cpp:311-465` | ❌ help text, error paths, -i list mode all absent | ❌ · |
+| U233 Full CommandLine grammar (visible options, -i list mode, positional subargs, help layout, error paths) | ✅ `commandline.cpp:311-465` | ⚠️ 18 visible options + colourised Usage/Examples/Options help block + Qt's own unknown-option error path; no `-i` list mode, no positional subargs, no custom error messages - `command_line.cpp:104` | ⚠️ ✔ |
 | U234 cl:: commands grammar (crashdump/launch/run/reload-plugin/download/refresh + options/errors/forwarding) | ✅ `commandline.cpp:591-940` | ❌ options/errors/forwarding help unproven | ❌ · |
 
 ## 50. My Games Resolution
@@ -1380,7 +1380,7 @@ column.
 | 1. Virtual Filesystem | 5 | 2 | 4 | 1 | 0 | 5 | 5 |
 | 2. Launch Pipeline | 6 | 5 | 5 | 14 | 0 | 2 | 17 |
 | 3. Error Handling & Diagnostics | 8 | 9 | 0 | 0 | 28 | 11 | 35 |
-| 4. Settings & Configuration | 23 | 32 | 6 | 1 | 12 | 24 | 0 |
+| 4. Settings & Configuration | 26 | 29 | 6 | 1 | 12 | 24 | 0 |
 | 5. Executable Management | 8 | 5 | 4 | 10 | 0 | 0 | 0 |
 | 6. Mod Management | 24 | 5 | 9 | 8 | 0 | 0 | 1 |
 | 7. Mod Categories | 6 | 5 | 0 | 9 | 0 | 0 | 0 |
@@ -1425,10 +1425,10 @@ column.
 | 46. Notifications / Problems System | 0 | 0 | 0 | 3 | 0 | 0 | 0 |
 | 47. Backup / Restore (Load Order + Mod List) | 0 | 0 | 3 | 0 | 0 | 0 | 0 |
 | 48. File Tree Menu Protocol | 0 | 2 | 0 | 1 | 0 | 0 | 0 |
-| 49. CLI Help Grammar | 0 | 0 | 0 | 2 | 0 | 0 | 0 |
+| 49. CLI Help Grammar | 0 | 1 | 0 | 1 | 0 | 0 | 0 |
 | 50. My Games Resolution | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
 | 51. Conflict Scan Refresh | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
-| **TOTAL** | **334** | **171** | **177** | **264** | **54** | **43** | **62** |
+| **TOTAL** | **337** | **169** | **177** | **263** | **54** | **43** | **62** |
 
 ### The arithmetic
 
@@ -1436,22 +1436,25 @@ column.
 rows in file                          1043
 scored rows (ok + part + miss)         769
 
-MO2 parity        ok   / scored        334 /  769  = 43.4%
-partial           part / scored        171 /  769  = 22.2%
-missing           miss / scored        264 /  769  = 34.3%
+MO2 parity        ok   / scored        337 /  769  = 43.8%
+partial           part / scored        169 /  769  = 22.0%
+missing           miss / scored        263 /  769  = 34.2%
 GMM-exclusive     surp / all rows      177 / 1043  = 17.0%   (not scored)
 ```
 
-**Parity is 334 / 769 = 43.4%.** 264 rows are outright missing and 171 partial.
+**Parity is 337 / 769 = 43.8%.** 263 rows are outright missing and 169 partial.
 The largest untouched surfaces are **44. Tutorial** and **46. Notifications /
 Problems** (zero matched rows), then **16. Nexus** and **15. Downloads**, which
 carry the most missing rows in absolute terms.
 
 **4. Settings** was re-verified row by row and is no longer a missing-row
-surface: 57 `❌` became 1. What it actually holds is 26 `⚠️` rows where a
-control is visible and correct but nothing reads the value, plus 24 `⏳` rows
-that are real MO2 features with no GMM consumer to attach to. The count of
-absent features was never the real gap in that section.
+surface: 57 `❌` became 1. An audit of every `Settings` getter followed: each
+one whose only reader was the widget that writes it is either wired to a
+consumer (`apply_workarounds` for the skip lists, `launch_controller` for the
+executable blacklist, `web_link` for the custom browser) or ships a tooltip
+stating exactly why it does nothing. The remaining 29 `⚠️` rows are partial
+completions - a missing column, a missing link - not unread settings - and 24
+`⏳` rows are real MO2 features with no GMM consumer to attach to.
 
 ### Confidence
 
