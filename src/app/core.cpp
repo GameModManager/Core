@@ -40,6 +40,7 @@
 #include "ui/settings/settings.h"
 #include "ui/theme/icon_manager.h"
 #include "ui/theme/style_manager.h"
+#include "ui/widgets/event_filter.h"
 #include "ui/widgets/game_icon_cache.h"
 
 #ifdef GMM_HAS_QTKEYCHAIN
@@ -114,6 +115,12 @@ Application::Application(int &argc, char **argv)
   // UI or engine setup, so crashes during startup are captured too.
   engine::install_crash_handler();
   engine::CrashHandler::prune_old_dumps(Settings::instance().max_core_dumps());
+
+  // One application-wide guard, before anything builds a widget: the wheel must
+  // never change a closed dropdown's selection anywhere in the app. Installed
+  // per combo this misses every combo that is not one of the two it was written
+  // for, including every combo added later.
+  ui::install_combo_wheel_guard(&app_);
 
   app_.setApplicationName("GameModManager");
   app_.setApplicationVersion(VERSION);
