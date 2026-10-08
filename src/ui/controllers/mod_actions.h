@@ -59,6 +59,11 @@ public:
   void mirror_selected_mods();
   void unmirror_selected_mods();
 
+  // Reinstall: re-run the install pipeline on the archive this mod was
+  // installed from (MO2 ModListViewActions::reinstallMod). Reports why when
+  // there is no archive to reinstall from.
+  void reinstall_mod(const QString &mod_id);
+
   // Resolve the live external source folder for a mod row: content_dir
   // when it is still a directory, else the game's external mods dir.
   // Empty when neither exists (not an external mod, or its source is
