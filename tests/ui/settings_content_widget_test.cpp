@@ -21,6 +21,7 @@
 #include <QGridLayout>
 #include <QGroupBox>
 #include <QHash>
+#include <QLabel>
 #include <QSignalSpy>
 #include <QTabWidget>
 
@@ -307,4 +308,45 @@ TEST_CASE("general grid toggles still write through to their consumer", "[ui]") 
   app.processEvents();
   check(engine::parallel::enabled() == before,
         "restoring the toggle restores the flag");
+}
+
+TEST_CASE("paths tab footer reports a path that is not writable", "[ui]") {
+  qputenv("QT_QPA_PLATFORM", "offscreen");
+  int test_argc     = 1;
+  char test_argv0[] = "test";
+  char *test_argv[] = {test_argv0, nullptr};
+  QApplication app(test_argc, test_argv);
+  QCoreApplication::setOrganizationName("GameModManager");
+  QCoreApplication::setApplicationName("GameModManager");
+
+  Harness h;
+  // A real directory the process cannot write: the instance root's parent with
+  // every permission bit cleared. The footer reads it through QFileInfo exactly
+  // as a user would hit it - a path that only fails once a deploy tries.
+  const QString locked =
+      QDir(QString::fromStdString(h.instance_root().parent_path().string()))
+          .filePath("locked");
+  QDir().mkpath(locked);
+  std::filesystem::permissions(locked.toStdString(),
+                               std::filesystem::perms::owner_read |
+                                   std::filesystem::perms::owner_exec);
+
+  Settings::instance().set_instances_dir(locked);
+
+  ui::SettingsContentWidget content(&h.style, "breeze", h.instance_root(), &h.loader);
+
+  // The footer is the last QLabel on the Paths tab (tab 3).
+  QString footer_text;
+  for (auto *label : content.tab_widget()->widget(3)->findChildren<QLabel *>())
+    footer_text = label->text();
+  check(!footer_text.isEmpty(), "the Paths tab shows a writability footer");
+  check(footer_text.contains(QStringLiteral("NOT writable")),
+        "the footer flags the read-only instances directory");
+  check(footer_text.contains(locked), "the footer names the path that is not writable");
+
+  // Restore: a chmod'd dir and a redirected instances_dir would leak into the
+  // other cases in this binary.
+  std::filesystem::permissions(locked.toStdString(), std::filesystem::perms::owner_all);
+  QDir(locked).removeRecursively();
+  Settings::instance().set_instances_dir(QString());
 }

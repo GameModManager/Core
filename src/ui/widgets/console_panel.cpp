@@ -55,7 +55,9 @@ ConsolePanel::ConsolePanel(QWidget *parent) : QFrame(parent) {
 
   QPointer<ConsolePanel> guard(this);
   // Console panel verbosity: GMM_DEBUG=1 forces Debug; otherwise the
-  // diagnostics/log_level setting applies. Log file always full.
+  // diagnostics/log_level setting applies. The log file honours the same floor,
+  // so it is not always full: log() returns before the write for a line the
+  // Logger has dropped.
   const bool verbose     = gmm_debug_enabled();
   auto &settings         = Settings::instance();
   const bool panel_debug = verbose || settings.log_level() == "debug";
@@ -140,6 +142,17 @@ void ConsolePanel::clear() {
 }
 
 void ConsolePanel::set_min_level(engine::LogLevel level) {
+  // Sync the Logger's own floor, not just the view's, and do it before the
+  // early-return guard. log() drops anything below Logger::min_level_ before
+  // the line reaches replay_buffer_ or the file, so with the session having
+  // started at Warn/Error (a persisted diagnostics/log_level) picking Debug
+  // filtered nothing and nothing new was ever buffered: the menu looked inert
+  // until the next launch. Above the guard because GMM_DEBUG=1 starts the
+  // *view* at Debug while the Logger floor is still the persisted level, so
+  // re-clicking the already-checked Debug is the one call that has to move it.
+  // Lines already dropped cannot be recovered - only what is logged from here
+  // on.
+  engine::Logger::instance().set_level(level);
   if (level == min_level_)
     return;
   min_level_ = level;

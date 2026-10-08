@@ -13,6 +13,7 @@
 #include "ui/theme/icon_manager.h"
 #include "ui/theme/style_manager.h"
 #include "ui/widgets/line_edit_clear.h"
+#include "ui/widgets/web_link.h"
 
 #include <QAbstractItemView>
 #include <QApplication>
@@ -73,6 +74,13 @@ SettingsContentWidget::SettingsContentWidget(engine::StyleManager *style_manager
 
 // -- General ----------------------------------------------------------------
 
+namespace {
+  // The translations repo: where the .qm files the Language combo lists are
+  // produced, and where a new language is added. Same project's own address
+  // family as the Help menu's documentation and issue links.
+  constexpr auto kTranslateUrl = "https://github.com/GameModManager/i18n";
+}  // namespace
+
 // The read-only line under the app-update checkbox. It reads the stored
 // cadence and the last-checked timestamp, so ticking the checkbox changes what
 // the panel says rather than only what it stores - that is what gives the
@@ -120,8 +128,26 @@ QWidget *SettingsContentWidget::build_general_tab() {
       new QLabel(tr("Restart the application for the language change to take effect."),
                  lang_group);
   lang_hint->setWordWrap(true);
+  // "Help translate" (MO2 languageBox LinkLabel): where the .qm files this
+  // combo lists come from, and where a new one is added. Opens through the
+  // same WebLink the rest of the app uses, so the Custom Browser workaround
+  // applies here too.
+  auto *translate_link = new QLabel(
+      tr("<a href=\"%1\">Help translate</a>").arg(kTranslateUrl), lang_group);
+  translate_link->setTextFormat(Qt::RichText);
+  translate_link->setOpenExternalLinks(false);
+  translate_link->setToolTip(tr("Open the translation repository in a browser."));
+  // open() reports false when nothing handled the URL (no desktop handler, or
+  // a Custom Browser command that would not start). A link that fails silently
+  // is the dead control this whole change exists to avoid, so say so.
+  connect(translate_link, &QLabel::linkActivated, this, [this](const QString &url) {
+    if (!WebLink::open(url))
+      QMessageBox::warning(this, tr("Settings"),
+                           tr("Could not open a browser for this link."));
+  });
   lang_layout->addWidget(lang_combo);
   lang_layout->addWidget(lang_hint);
+  lang_layout->addWidget(translate_link);
   layout->addWidget(lang_group);
 
   connect(lang_combo, &QComboBox::currentIndexChanged, this,
@@ -997,6 +1023,46 @@ QWidget *SettingsContentWidget::build_paths_tab() {
     });
 
     layout->addLayout(base_form);
+  }
+
+  // Writability footer. Every path on this tab is typed by hand and can point
+  // anywhere, and an unwritable one stays silent until a deploy fails or an
+  // instance cannot be created - the one failure with a message about some
+  // other folder. Report each path that is configured but not writable.
+  // QFileInfo::isWritable is the permission-bit check Qt uses for this; it does
+  // not attempt a write, so opening this tab never touches the filesystem.
+  {
+    auto *footer = new QLabel(page);
+    footer->setWordWrap(true);
+    auto describe = [this](const QString &label, const QString &raw,
+                           const QString &fallback) {
+      const QString dir = raw.trimmed().isEmpty() ? fallback : raw.trimmed();
+      if (dir.isEmpty())
+        return QString();
+      const QFileInfo info(dir);
+      if (!info.exists())
+        return tr("%1: not created yet (%2)").arg(label, dir);
+      if (!info.isWritable())
+        return tr("%1: NOT writable (%2)").arg(label, dir);
+      return QString();
+    };
+    QStringList bad;
+    bad << describe(tr("Instances Directory"), s.instances_dir(),
+                    QString::fromStdString(engine::default_instances_dir().string()));
+    if (!instance_root_.empty()) {
+      auto inst = engine::Instance::installed(instance_root_.filename().string(),
+                                              instance_root_.parent_path());
+      QString game_mods;
+      if (inst.read_toml() && !inst.info().game_mods_dir.empty())
+        game_mods = QString::fromStdString(inst.info().game_mods_dir.string());
+      bad << describe(tr("Base Directory"),
+                      QString::fromStdString(instance_root_.string()), QString());
+      bad << describe(tr("Game mods Directory"), game_mods, QString());
+    }
+    bad.removeAll(QString());
+    footer->setText(bad.isEmpty() ? tr("All configured paths are writable.")
+                                  : tr("Writable check: %1").arg(bad.join(' ')));
+    layout->addWidget(footer);
   }
 
   layout->addStretch(1);

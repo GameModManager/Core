@@ -248,8 +248,13 @@ void GenericFilesTab::open_find_dialog() {
 }
 
 bool GenericFilesTab::find_next(const QString &pattern, bool case_sensitive, int from) {
-  if (pattern.isEmpty())
+  if (pattern.isEmpty()) {
+    // An emptied box is not a failed search: it clears the stale "no results"
+    // from the previous pattern instead of reporting one.
+    if (find_dlg_)
+      find_dlg_->set_status(QString());
     return false;
+  }
   const QTextCursor cursor = editor_->textCursor();
   // Resume past the hit the last search landed on, so Find Next advances
   // instead of re-finding it; `from` is for the caller that wants a specific
@@ -268,11 +273,19 @@ bool GenericFilesTab::find_next(const QString &pattern, bool case_sensitive, int
     // file reads as a failed search rather than as "wrapped".
     found = editor_->document()->find(pattern, 0, flags);
   }
-  if (found.isNull())
+  if (found.isNull()) {
+    // Say so. The dialog cannot search, so this is the only place the outcome
+    // is known, and with nothing written the view just sat there unchanged -
+    // which reads as a broken Find Next rather than as an exhausted search.
+    if (find_dlg_)
+      find_dlg_->set_status(tr("No results"));
     return false;
+  }
   editor_->setTextCursor(found);
   editor_->ensureCursorVisible();
   editor_->setFocus();
+  if (find_dlg_)
+    find_dlg_->set_status(QString());
   return true;
 }
 

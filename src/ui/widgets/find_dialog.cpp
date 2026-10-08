@@ -79,6 +79,10 @@ bool FindDialog::case_sensitive() const {
   return case_box_->isChecked();
 }
 
+void FindDialog::set_status(const QString &text) {
+  status_->setText(text);
+}
+
 void FindDialog::find_next() {
   if (pattern_edit_->text().isEmpty())
     return;
