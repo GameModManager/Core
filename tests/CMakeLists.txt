@@ -22,6 +22,7 @@
 # they link Qt themselves (gmm_ui / Qt6::Core in LIBS), so the Qt-free engine
 # tests stay Qt-free at compile time.
 add_library(gmm_test_support STATIC support/test_main.cpp)
+target_include_directories(gmm_test_support PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/support)
 target_link_libraries(gmm_test_support
     PUBLIC Catch2::Catch2
     PRIVATE Qt6::Core)
@@ -46,6 +47,24 @@ add_test(NAME platform_abstraction_test
         ${CMAKE_CURRENT_SOURCE_DIR}/platform_abstraction_scan.py
         --src ${PROJECT_SOURCE_DIR}/src
         --baseline ${CMAKE_CURRENT_SOURCE_DIR}/platform_abstraction_baseline.txt)
+
+# ---------------------------------------------------------------------------
+# Platform contract: pure virtual coverage + OS-arm completeness
+# ---------------------------------------------------------------------------
+# Only one of Linux/Windows/macOS is ever compiled, so a pure virtual that an
+# uncompiled adaptor does not override - or a GMM_PLATFORM chain missing an OS
+# arm - cannot fail any build we run. That is exactly how app/core.cpp shipped a
+# null Platform* on macOS. This checks both structurally:
+#   1. every pure virtual on Platform and FileTypeDispatcher is overridden by
+#      all three adaptors, with a body in the header or a definition in the .cpp
+#   2. every multi-arm GMM_PLATFORM chain ends in a populated #else, and a
+#      chain that names a concrete adaptor class names all three OSes
+# Pure text with no OS dependence, so it runs everywhere. Run it by hand with
+#   python3 tests/platform_contract_scan.py --src src --verbose
+add_test(NAME platform_contract_test
+    COMMAND ${Python3_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/platform_contract_scan.py
+        --src ${PROJECT_SOURCE_DIR}/src)
 
 # gmm_catch2_test(<name> <sources...>
 #     [UI]

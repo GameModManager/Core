@@ -8,12 +8,9 @@
 #include "engine/source/nexus/servers.h"
 #include "engine/source/interface.h"
 #include "engine/source/steam/provider.h"
+#include "platform/platform.h"
 #include "ui/settings/settings.h"
 #include "ui/widgets/web_link.h"
-
-#ifdef GMM_PLATFORM_LINUX
-#include "platform/linux/linux_platform.h"
-#endif
 
 #include <QAbstractItemView>
 #include <QApplication>
@@ -427,11 +424,8 @@ void NexusPanel::refresh_buttons() {
   // connect_btn_ stays permanently disabled: validate_nexus_account() soft-crashes
   // the app (see implementation.md Log 2026-08-01).
   disconnect_btn_->setEnabled(has_key);
-#ifdef GMM_PLATFORM_LINUX
-  associate_btn_->setEnabled(!engine::LinuxPlatform::is_nxm_handler_registered());
-#else
-  associate_btn_->setEnabled(false);
-#endif
+  associate_btn_->setEnabled(
+      !engine::is_protocol_handler_registered(engine::ProtocolHandler::Nxm));
 }
 
 QListWidgetItem *
@@ -515,25 +509,21 @@ void NexusPanel::disconnect_from_nexus() {
 }
 
 void NexusPanel::associate_with_nxm() {
-#ifdef GMM_PLATFORM_LINUX
   const auto app_path =
       std::filesystem::path(QCoreApplication::applicationFilePath().toStdString());
-  if (engine::LinuxPlatform::register_nxm_handler(app_path)) {
-    if (engine::LinuxPlatform::register_gmm_handler(app_path)) {
+  if (engine::register_protocol_handler(engine::ProtocolHandler::Nxm, app_path)) {
+    if (engine::register_protocol_handler(engine::ProtocolHandler::Gmm, app_path)) {
       // modl:// rides along with the nxm/gmm registration so a single
       // user opt-in covers every protocol GameModManager owns.
-      (void)engine::LinuxPlatform::register_modl_handler(app_path);
+      (void)engine::register_protocol_handler(engine::ProtocolHandler::Modl, app_path);
       Settings::instance().set_nxm_handler_check("dont_ask");
     } else
       engine::Logger::instance().error(
-          "Failed to register GameModManager as an x-scheme-handler for nxm://");
+          "Failed to register GameModManager as the handler for gmm://");
     add_log(tr("Associated GameModManager with \"Download with manager\" links."));
   } else {
     add_log(tr("Failed to register the nxm:// handler."));
   }
-#else
-  add_log(tr("nxm:// registration is not supported on this platform."));
-#endif
   refresh_buttons();
 }
 

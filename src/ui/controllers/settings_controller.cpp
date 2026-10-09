@@ -28,6 +28,7 @@
 #include "engine/events/event_bus.h"
 #include "engine/instance/instance.h"
 #include "engine/instance/instance_snapshot.h"
+#include "platform/platform.h"
 #include "engine/instance/instance_utils.h"
 #include "engine/log/logger.h"
 #include "engine/trace/trace_recorder.h"
@@ -95,7 +96,6 @@
 
 #ifdef GMM_PLATFORM_LINUX
 #include "engine/deploy/launch/overlay_launcher.h"
-#include "platform/linux/linux_platform.h"
 #endif
 
 namespace ui {
@@ -1156,13 +1156,12 @@ void SettingsController::ensure_nxm_handler_default() {
     return;
   w_->nxm_handler_check_done_ = true;
 
-#ifdef GMM_PLATFORM_LINUX
   // Respect a permanent "don't ask again" choice
   if (Settings::instance().nxm_handler_check() == "dont_ask")
     return;
 
   // Self-heal: if we're still the default handler, nothing to do
-  if (engine::LinuxPlatform::is_nxm_handler_registered()) {
+  if (engine::is_protocol_handler_registered(engine::ProtocolHandler::Nxm)) {
     engine::Logger::instance().debug(
         "nxm:// handler check: GameModManager is the default");
     return;
@@ -1172,8 +1171,9 @@ void SettingsController::ensure_nxm_handler_default() {
       std::filesystem::path(QCoreApplication::applicationFilePath().toStdString());
 
   // Get the current runtime default handler for display
-  std::string runtime_default = engine::LinuxPlatform::nxm_runtime_default_handler();
-  QString current_handler     = QString::fromStdString(runtime_default);
+  std::string runtime_default =
+      engine::current_protocol_handler(engine::ProtocolHandler::Nxm);
+  QString current_handler = QString::fromStdString(runtime_default);
   if (current_handler.isEmpty())
     current_handler = tr("unknown");
 
@@ -1196,9 +1196,9 @@ void SettingsController::ensure_nxm_handler_default() {
   msg.exec();
 
   if (msg.clickedButton() == yes) {
-    (void)engine::LinuxPlatform::register_nxm_handler(app_path);
-    (void)engine::LinuxPlatform::register_gmm_handler(app_path);
-    (void)engine::LinuxPlatform::register_modl_handler(app_path);
+    (void)engine::register_protocol_handler(engine::ProtocolHandler::Nxm, app_path);
+    (void)engine::register_protocol_handler(engine::ProtocolHandler::Gmm, app_path);
+    (void)engine::register_protocol_handler(engine::ProtocolHandler::Modl, app_path);
     engine::Logger::instance().info("nxm:// handler registered: GameModManager");
   } else if (msg.clickedButton() == dont_show) {
     Settings::instance().set_nxm_handler_check("dont_ask");
@@ -1208,9 +1208,6 @@ void SettingsController::ensure_nxm_handler_default() {
     engine::Logger::instance().debug(
         "nxm:// handler check declined; will ask next launch");
   }
-#else
-  (void)0;
-#endif
 }
 
 void SettingsController::show_settings_dialog() {

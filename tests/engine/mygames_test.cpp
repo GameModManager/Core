@@ -3,6 +3,7 @@
 // platform so no Steam install or prefix is needed. Uses temp dirs only.
 #include "engine/game/registry/game_knowledge.h"
 #include "platform/platform.h"
+#include "test_platform.h"
 
 #include <catch2/catch_test_macros.hpp>
 #include <filesystem>
@@ -18,7 +19,7 @@ void require(bool cond, const std::string &msg) {
   REQUIRE(cond);
 }
 
-class StubPlatform : public engine::Platform {
+class StubPlatform : public gmm_test::InertPlatform {
 public:
   std::string os = "linux";
   fs::path native_docs;
@@ -26,21 +27,11 @@ public:
   fs::path userdata;
 
   [[nodiscard]] std::string platform_name() const override { return os; }
-  [[nodiscard]] fs::path data_dir() const override { return {}; }
-  [[nodiscard]] fs::path config_dir() const override { return {}; }
-  [[nodiscard]] fs::path cache_dir() const override { return {}; }
-  [[nodiscard]] fs::path find_steam_root() const override { return {}; }
   [[nodiscard]] fs::path native_documents_dir() const override { return native_docs; }
   [[nodiscard]] fs::path game_documents_dir(uint32_t /*steam_appid*/) const override {
     return prefix_docs;
   }
   [[nodiscard]] fs::path steam_userdata_dir() const override { return userdata; }
-  [[nodiscard]] bool
-  launch_executable(const fs::path & /*executable*/,
-                    const std::vector<std::string> & /*args*/ = {}) const override {
-    return false;
-  }
-  [[nodiscard]] fs::path home_dir() const override { return {}; }
   [[nodiscard]] fs::path temp_dir() const override { return fs::temp_directory_path(); }
 };
 

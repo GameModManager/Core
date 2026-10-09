@@ -53,6 +53,10 @@
 #include "platform/linux/linux_platform.h"
 #elif defined(GMM_PLATFORM_WINDOWS)
 #include "platform/windows/windows_platform.h"
+#elif defined(GMM_PLATFORM_MACOS)
+#include "platform/macos/macos_platform.h"
+#else
+#error "no GMM_PLATFORM_* token: add the new OS arm to app/core.cpp"
 #endif
 
 namespace fs = std::filesystem;
@@ -176,6 +180,10 @@ Application::Application(int &argc, char **argv)
   platform_ = std::make_unique<engine::LinuxPlatform>();
 #elif defined(GMM_PLATFORM_WINDOWS)
   platform_ = std::make_unique<engine::WindowsPlatform>();
+#elif defined(GMM_PLATFORM_MACOS)
+  platform_ = std::make_unique<engine::MacOSPlatform>();
+#else
+#error "no GMM_PLATFORM_* token: add the new OS arm to app/core.cpp"
 #endif
 
   // Apply app settings that affect startup behavior.

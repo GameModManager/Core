@@ -28,6 +28,7 @@
 #include "engine/game/registry/game_capabilities.h"
 #include "engine/game/registry/game_knowledge.h"
 #include "platform/platform.h"
+#include "test_platform.h"
 #include "ui/controllers/backup_actions.h"
 #include "ui/controllers/mod_list_controller.h"
 #include "ui/main_window/main_window.h"
@@ -94,7 +95,7 @@ bool pump_until(Fn pred, int timeout_ms = 20000) {
   return true;
 }
 
-class FakePlatform : public engine::Platform {
+class FakePlatform : public gmm_test::InertPlatform {
 public:
   explicit FakePlatform(fs::path data_dir) : data_dir_(std::move(data_dir)) {}
   std::string platform_name() const override { return "fake"; }
@@ -103,11 +104,6 @@ public:
   fs::path cache_dir() const override { return data_dir_; }
   fs::path home_dir() const override { return data_dir_; }
   fs::path temp_dir() const override { return data_dir_; }
-  fs::path find_steam_root() const override { return {}; }
-  bool launch_executable(const fs::path &,
-                         const std::vector<std::string> &) const override {
-    return false;
-  }
 
 private:
   fs::path data_dir_;
