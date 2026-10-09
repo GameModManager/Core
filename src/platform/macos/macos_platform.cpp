@@ -6,6 +6,7 @@
 
 #include <cerrno>
 #include <cstdio>
+#include <cstdint>
 #include <cstdlib>
 #include <cstring>
 #include <ctime>
@@ -16,11 +17,16 @@
 #include <string>
 #include <vector>
 
+#include <dlfcn.h>
 #include <fcntl.h>
 #include <sys/resource.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
 #include <unistd.h>
+
+// _NSGetExecutablePath, the only supported way to learn the running binary's
+// path on macOS (readlink on /proc/self/exe is Linux-only).
+#include <mach-o/dyld.h>
 
 // LaunchServices + the CoreFoundation string/URL wrappers it takes. These are
 // the only macOS frameworks the adaptor needs.
@@ -503,6 +509,130 @@ std::optional<std::int64_t> file_birth_time(const std::filesystem::path &path) {
   if (::stat(path.c_str(), &st) != 0 || st.st_birthtimespec.tv_sec == 0)
     return std::nullopt;
   return static_cast<std::int64_t>(st.st_birthtimespec.tv_sec);
+}
+
+std::filesystem::path current_executable_path() {
+  std::uint32_t size = 0;
+  _NSGetExecutablePath(nullptr, &size);
+  if (size == 0)
+    return {};
+  std::string buf(size, '\0');
+  if (_NSGetExecutablePath(buf.data(), &size) != 0)
+    return {};
+  buf.resize(std::strlen(buf.c_str()));
+  std::error_code ec;
+  return std::filesystem::weakly_canonical(std::filesystem::path(buf), ec);
+}
+
+std::filesystem::path home_dir_or_empty() {
+  const char *home = std::getenv("HOME");
+  return (home && home[0] != '\0') ? std::filesystem::path(home)
+                                   : std::filesystem::path{};
+}
+
+bool path_is_writable(const std::filesystem::path &dir) {
+  if (dir.empty())
+    return false;
+  return ::access(dir.c_str(), W_OK) == 0;
+}
+
+std::filesystem::path volume_root_of(const std::filesystem::path &p) {
+  if (p.empty())
+    return {};
+  // Walk up to the first ancestor that is a mount point, so the answer does
+  // not depend on the bundle sitting at a fixed depth below /Volumes. Compared
+  // by st_dev against the parent, which is the definition of a mount point and
+  // does not need std::filesystem::is_mount_point.
+  struct stat here{};
+  if (::stat(p.c_str(), &here) != 0)
+    return {};
+  const auto parent = p.parent_path();
+  struct stat up{};
+  if (::stat(parent.empty() ? "/" : parent.c_str(), &up) != 0)
+    return {};
+  if (here.st_dev == up.st_dev)
+    return p;
+  for (auto dir = p; !dir.empty() && dir != dir.root_path(); dir = dir.parent_path()) {
+    struct stat d{};
+    if (::stat(dir.c_str(), &d) != 0)
+      break;
+    struct stat dparent{};
+    if (::stat(dir.parent_path().c_str(), &dparent) != 0)
+      break;
+    if (d.st_dev != dparent.st_dev)
+      return dir;
+  }
+  return p;
+}
+
+std::filesystem::path recorded_install_location() {
+  // macOS has no registry and no install method that records one, so there is
+  // nothing to read. Empty is the honest answer; a caller that treats it as
+  // "not an installer install" is doing the right thing.
+  return {};
+}
+
+void *load_shared_library(const std::filesystem::path &path) {
+  // RTLD_LOCAL for the same reason as every other OS: a GMM plugin's symbols
+  // must not interpose on another plugin's. RTLD_LAZY so a plugin that only
+  // resolves a symbol on a rarely-taken path still loads.
+  return ::dlopen(path.c_str(), RTLD_LAZY | RTLD_LOCAL);
+}
+
+void *shared_library_symbol(void *handle, const char *name) {
+  return handle ? ::dlsym(handle, name) : nullptr;
+}
+
+void unload_shared_library(void *handle) noexcept {
+  if (handle)
+    ::dlclose(handle);
+}
+
+const char *dlerror_message() {
+  const char *msg = ::dlerror();
+  return msg ? msg : "";
+}
+
+std::int64_t spawn_detached_process(const std::filesystem::path &executable,
+                                    const std::vector<std::string> &argv,
+                                    const std::filesystem::path &work_dir,
+                                    bool shell_fallback) {
+  if (argv.empty() || executable.empty())
+    return -1;
+
+  // Built before the fork: no allocation in the child, where it could deadlock
+  // against a malloc lock the parent was holding at fork time.
+  std::vector<char *> args;
+  args.reserve(argv.size() + 1);
+  for (const auto &a : argv)
+    args.push_back(const_cast<char *>(a.c_str()));
+  args.push_back(nullptr);
+  const std::string exe(executable.string());
+
+  const pid_t pid = fork();
+  if (pid < 0)
+    return -1;
+  if (pid == 0) {
+    ::setsid();
+    if (!work_dir.empty())
+      ::chdir(work_dir.c_str());
+    std::freopen("/dev/null", "r", stdin);
+    // execvp, not execv: a bare name resolves through PATH, a path containing
+    // a separator is exec'd directly, which is what the Proton path needs.
+    ::execvp(exe.c_str(), args.data());
+    if (shell_fallback) {
+      std::vector<char *> sh_args;
+      sh_args.reserve(args.size() + 2);
+      sh_args.push_back(const_cast<char *>("sh"));
+      sh_args.push_back(args[0]);
+      for (std::size_t i = 1; args[i] != nullptr; ++i)
+        sh_args.push_back(args[i]);
+      sh_args.push_back(nullptr);
+      ::execv("/bin/sh", sh_args.data());
+    }
+    ::_exit(1);
+  }
+  return static_cast<std::int64_t>(pid);
 }
 
 int open_truncated_write_fd(const std::string &path) {
