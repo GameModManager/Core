@@ -9,15 +9,20 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cerrno>
 #include <cstdio>
 #include <cstdlib>
+#include <ctime>
 #include <filesystem>
 #include <fstream>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <vector>
 
+#include <fcntl.h>
 #include <sys/resource.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
 namespace engine {
@@ -1195,6 +1200,194 @@ bool is_protocol_handler_registered(ProtocolHandler protocol) {
 
 std::string current_protocol_handler(ProtocolHandler protocol) {
   return LinuxPlatform().current_protocol_handler(protocol);
+}
+
+// --- OS primitives that have no Platform instance to hang off ---
+
+std::tm local_time(std::time_t t) {
+  std::tm out{};
+  if (!localtime_r(&t, &out))
+    return {};
+  return out;
+}
+
+std::tm utc_time(std::time_t t) {
+  std::tm out{};
+  if (!gmtime_r(&t, &out))
+    return {};
+  return out;
+}
+
+long current_process_id() {
+  return static_cast<long>(getpid());
+}
+
+void set_thread_low_priority() {
+  LinuxPlatform().set_thread_low_priority();
+}
+
+bool atomic_replace(const std::filesystem::path &from,
+                    const std::filesystem::path &to) {
+  std::error_code ec;
+  std::filesystem::rename(from, to, ec);
+  return !ec;
+}
+
+bool create_truncated_file(const std::filesystem::path &path, std::error_code &ec) {
+  ec.clear();
+  const int fd = ::open(path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
+  if (fd < 0) {
+    ec.assign(errno, std::generic_category());
+    return false;
+  }
+  ::close(fd);
+  return true;
+}
+
+// Percent-encode a filesystem path for a freedesktop .trashinfo file.
+std::string url_encode_path(const std::filesystem::path &path) {
+  const std::string in = path.string();
+  std::string out;
+  out.reserve(in.size() + 8);
+  for (unsigned char c : in) {
+    if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') ||
+        c == '/' || c == '.' || c == '-' || c == '_' || c == '~') {
+      out += static_cast<char>(c);
+    } else {
+      char buf[4];
+      std::snprintf(buf, sizeof(buf), "%%%02X", c);
+      out += buf;
+    }
+  }
+  return out;
+}
+
+std::filesystem::path trash_root() {
+  if (const char *data_home = std::getenv("XDG_DATA_HOME"); data_home && *data_home)
+    return std::filesystem::path(data_home) / "Trash";
+  return LinuxPlatform().home_dir() / ".local" / "share" / "Trash";
+}
+
+// freedesktop.org Trash spec (home.trashinfo is the per-volume fallback; the
+// home trash covers every path the user can delete from the UI, which is all
+// this is ever asked to handle).
+bool move_to_recycle_bin(const std::filesystem::path &path) {
+  const auto trash = trash_root();
+  if (trash.empty())
+    return false;
+
+  const auto files_dir = trash / "files";
+  const auto info_dir  = trash / "info";
+
+  std::error_code ec;
+  std::filesystem::create_directories(files_dir, ec);
+  std::filesystem::create_directories(info_dir, ec);
+  if (ec)
+    return false;
+
+  // Collision-free name: name, name.1, name.2, ...
+  const auto base = path.filename();
+  auto target     = files_dir / base;
+  int n           = 0;
+  for (;;) {
+    ec.clear();
+    if (!std::filesystem::exists(target, ec))
+      break;
+    target = files_dir / (base.string() + "." + std::to_string(++n));
+  }
+
+  std::error_code move_ec;
+  std::filesystem::rename(path, target, move_ec);
+  if (move_ec) {
+    // Cross-device fallback: copy recursively, then remove the source.
+    std::error_code copy_ec;
+    std::filesystem::copy(path, target,
+                          std::filesystem::copy_options::recursive |
+                              std::filesystem::copy_options::copy_symlinks,
+                          copy_ec);
+    if (copy_ec)
+      return false;
+    std::filesystem::remove_all(path, ec);
+    if (ec)
+      return false;
+  }
+
+  // The .trashinfo sidecar is what makes the entry restorable rather than just
+  // a file in a folder: it records the original absolute path and the time.
+  char date_buf[32];
+  char offset_buf[16];
+  const auto now   = std::time(nullptr);
+  const std::tm tm = local_time(now);
+  std::strftime(date_buf, sizeof(date_buf), "%Y-%m-%dT%H:%M:%S", &tm);
+  std::strftime(offset_buf, sizeof(offset_buf), "%z", &tm);  // +HHMM / -HHMM
+  std::string offset(offset_buf);
+  if (offset.size() == 5 && (offset[0] == '+' || offset[0] == '-'))
+    offset = offset.substr(0, 3) + ":" + offset.substr(3);
+
+  const auto info_path = info_dir / (target.filename().string() + ".trashinfo");
+  std::ofstream info(info_path);
+  if (!info)
+    return false;
+  info << "[Trash Info]\n"
+       << "Path=" << url_encode_path(std::filesystem::absolute(path)) << "\n"
+       << "DeletionDate=" << date_buf << offset << "\n";
+  return true;
+}
+
+bool path_is_executable(const std::filesystem::path &path) {
+  return ::access(path.c_str(), X_OK) == 0;
+}
+
+bool filesystem_is_case_insensitive() {
+  // The build target is Linux; the filesystem could still be NTFS via ntfs-3g
+  // or exFAT via a driver, so this is not a compile-time constant in
+  // principle. In practice every path index here is built per-game-directory
+  // on an ext4/btrfs/XFS volume, and answering "false" is the conservative
+  // choice: a case-sensitive index on a case-insensitive volume still resolves
+  // every path it can see, while the reverse silently misses files.
+  return false;
+}
+
+std::string machine_id() {
+  // /etc/machine-id is the systemd location and is authoritative on a current
+  // install; /var/lib/dbus/machine-id is the older dbus copy of the same value
+  // and is all a non-systemd system has.
+  for (const char *const path : {"/etc/machine-id", "/var/lib/dbus/machine-id"}) {
+    std::ifstream f(path);
+    std::string id;
+    f >> id;
+    if (!id.empty())
+      return id;
+  }
+  return {};
+}
+
+std::optional<std::int64_t> file_birth_time(const std::filesystem::path &path) {
+  struct statx stx{};
+  // statx is Linux-only and only available from glibc 2.28 / kernel 4.11.
+  // Without it the caller falls back to mtime, which is what it did before.
+  if (::statx(AT_FDCWD, path.c_str(), 0, STATX_BTIME, &stx) != 0 ||
+      !(stx.stx_mask & STATX_BTIME))
+    return std::nullopt;
+  return static_cast<std::int64_t>(stx.stx_btime.tv_sec);
+}
+
+int open_truncated_write_fd(const std::string &path) {
+  return ::open(path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
+}
+
+void write_raw_fd(int fd, const char *data, std::size_t size) {
+  while (size > 0) {
+    const auto n = ::write(fd, data, size);
+    if (n <= 0)
+      return;
+    data += n;
+    size -= static_cast<std::size_t>(n);
+  }
+}
+
+void close_raw_fd(int fd) {
+  ::close(fd);
 }
 
 }  // namespace engine
