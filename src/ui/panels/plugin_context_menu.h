@@ -35,7 +35,15 @@ public:
 
   // Fill `menu` with actions for the given row index.
   // Split out so tests can drive it without exec()-ing a modal menu.
-  void add_actions(QMenu &menu, int row);
+  //
+  // `selection` is the plugin table's selected rows (MO2 PluginListContextMenu
+  // takes the selection model and falls back to the clicked row when nothing is
+  // selected, pluginlistcontextmenu.cpp:17-20). Empty means "the clicked row
+  // alone", which is what the menu falls back to in MO2 too, so a caller that
+  // has no selection model wired can pass nothing and still get MO2's
+  // behaviour for a single row. Only the lock pair reads it - MO2's Enable /
+  // Disable and Send to... act on the clicked row in ours by design.
+  void add_actions(QMenu &menu, int row, const std::vector<int> &selection = {});
 
 signals:
   void lock_requested(const std::string &name, bool locked);

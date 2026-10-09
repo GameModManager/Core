@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "engine/game/saves/save_reader.h"
+#include "engine/log/logger.h"
 #include "engine/parallel/parallel.h"
 
 namespace engine {
@@ -131,9 +132,16 @@ void scan_saves_streaming(const std::filesystem::path &dir,
   for (const auto &path : paths) {
     try {
       on_entry(parse_fn(path));
-    } catch (const SaveParseError &) {
-      // Skip unparseable files (.skse co-save, corrupt) - same as
-      // scan_saves.
+    } catch (const SaveParseError &e) {
+      // Skip unparseable files (.skse co-save, corrupt) - same as scan_saves -
+      // but say so. MO2 throws the same two messages from its reader
+      // (gamebryosavegame.cpp:102-112, "failed to open %1" / "wrong file
+      // format - expected %1 got %2 for %3") and the caller logs them, so a
+      // save that does not appear in the list has an explanation somewhere.
+      // Swallowing it, as this did, left a save that vanished from the tab
+      // indistinguishable from one that was never there - the user has no way
+      // to tell a corrupt save from a missing one.
+      Logger::instance().error("save scan: " + path.string() + ": " + e.what());
     }
   }
 }
