@@ -8,6 +8,7 @@
 #include <QTimer>
 
 class QFrame;
+class QProgressBar;
 class QToolButton;
 
 namespace ui {
@@ -29,6 +30,14 @@ public:
   void set_context(const QString &text);
   // Show a transient message. Restores the context text when it expires.
   void set_status(const QString &text);
+
+  // Determinacy bar for a multi-step operation (MO2 StatusBar::setProgress,
+  // statusbar.cpp:58-70). `percent` outside 0..99 hides the bar and gives the
+  // left-hand label back to the context text; inside it, the bar shows the
+  // percentage and the label reads "Loading...".
+  void set_progress(int percent);
+  // 0-100 when the bar is showing, -1 when it is hidden.
+  [[nodiscard]] int progress() const;
 
   // Configure what the status bar shows for the current game. Only sources
   // that meter a request budget get a label - see SourceRateLimit.
@@ -57,8 +66,12 @@ private:
   QMap<QString, QLabel *> source_labels_by_name_;
   QFrame *separator_            = nullptr;
   QToolButton *pipeline_button_ = nullptr;
-  QTimer *pipeline_timer_       = nullptr;
-  QTimer *status_timer_         = nullptr;
+  // MO2 statusbar.cpp:31-37: 0-100, percent visible, capped at 300px wide so
+  // it cannot crowd the meters beside it. Hidden until set_progress() is
+  // called, so it never advertises work that is not running.
+  QProgressBar *progress_ = nullptr;
+  QTimer *pipeline_timer_ = nullptr;
+  QTimer *status_timer_   = nullptr;
 };
 
 }  // namespace ui

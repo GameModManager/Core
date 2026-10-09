@@ -9,6 +9,7 @@
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QIcon>
+#include <QKeyEvent>
 #include <QLabel>
 #include <QMenu>
 #include <QMimeData>
@@ -513,6 +514,20 @@ void MainWindow::resizeEvent(QResizeEvent *event) {
     game_lock_overlay_->setGeometry(rect());
   if (drop_overlay_ && drop_overlay_->isVisible())
     drop_overlay_->setGeometry(rect());
+}
+
+void MainWindow::keyReleaseEvent(QKeyEvent *event) {
+  // MO2 MainWindow::keyReleaseEvent (references/modorganizer/src/mainwindow.cpp:4054):
+  // an Alt release re-shows a hidden menu bar. Qt's own Alt handling is the
+  // window manager's job on some platforms and does nothing on others, so
+  // without this the View > Show Menu Bar toggle can strand the user with no
+  // menus at all. The View checkbox follows the bar, not the other way round.
+  if (event->key() == Qt::Key_Alt && menu_bar_ != nullptr &&
+      !menu_bar_->isVisible()) {
+    menu_bar_->show();
+    menu_bar_->set_menu_bar_checked(true);
+  }
+  QMainWindow::keyReleaseEvent(event);
 }
 
 namespace {

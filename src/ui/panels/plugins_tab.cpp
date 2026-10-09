@@ -44,6 +44,17 @@ PluginsTab::PluginsTab(QWidget *parent) : QWidget(parent) {
           &PluginsTab::reorder_requested);
   connect(context_menu_.get(), &engine::PluginDb::ContextMenu::set_all_requested, this,
           &PluginsTab::set_all_requested);
+  // Ctrl+Up / Ctrl+Down keyboard shift, forwarded from the view.
+  connect(view_, &PluginView::shift_requested, this, &PluginsTab::shift_requested);
+  // "Open Origin in Explorer" / "Open Origin Info..." reuse the pair the
+  // view already emits for a double-click on the same row, so one controller
+  // handler serves both routes to a mod.
+  connect(context_menu_.get(),
+          &engine::PluginDb::ContextMenu::open_origin_explorer_requested, this,
+          &PluginsTab::reveal_requested);
+  connect(context_menu_.get(),
+          &engine::PluginDb::ContextMenu::open_origin_info_requested, this,
+          &PluginsTab::mod_info_requested);
 
   // Right-click context menu on the table. The policy MUST be
   // Qt::CustomContextMenu or customContextMenuRequested never fires (regression
@@ -83,6 +94,7 @@ void PluginsTab::refresh_context_rows() {
     ri.locked       = i < locked.size() && locked[i];
     ri.force_loaded = i < force.size() && force[i];
     ri.enabled      = i < enabled.size() && enabled[i];
+    ri.owner_mod    = view_->owner_mod_at(static_cast<int>(i));
     row_infos.push_back(std::move(ri));
   }
   context_menu_->set_rows(std::move(row_infos));

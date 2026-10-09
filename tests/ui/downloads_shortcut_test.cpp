@@ -20,6 +20,7 @@
 #include <QApplication>
 #include <QCheckBox>
 #include <QKeyEvent>
+#include <QProgressBar>
 #include <QTableWidget>
 #include <QTableWidgetItem>
 
@@ -408,4 +409,45 @@ TEST_CASE("a renamed download's hover text follows the new name", "[ui][mo2-pari
   check(!tip.contains("Before.zip"), "and not the stale one");
 
   std::filesystem::remove_all(dir, ec);
+}
+
+// MO2 renders the progress bar as "%p% - speed - ~remaining"
+// (DownloadManager::downloadProgress, downloadmanager.cpp:1747-1750). The
+// estimate is dropped when it cannot be made, so a just-started row does not
+// claim "~0s" - MOBase::localizedTimeRemaining on a sub-second remainder is
+// noise and the whole segment is omitted instead.
+TEST_CASE("download progress text carries a remaining-time estimate",
+          "[ui][mo2-parity]") {
+  // Pure mapping: largest unit that fits, and no output at all when no
+  // estimate is possible.
+  check(ui::format_remaining_time(0, 100.0).isEmpty(), "nothing left to fetch");
+  check(ui::format_remaining_time(100, 0.0).isEmpty(), "zero speed, no estimate");
+  check(ui::format_remaining_time(1, 100.0).isEmpty(), "sub-second remainder is noise");
+  check(ui::format_remaining_time(45, 1.0) == "45s", "seconds");
+  check(ui::format_remaining_time(180, 1.0) == "3m", "minutes");
+  check(ui::format_remaining_time(7200, 1.0) == "2h", "hours");
+  check(ui::format_remaining_time(4 * 86400, 1.0) == "4d", "days");
+
+  // Consumer reaches control: a real row's progress bar format must carry the
+  // estimate, not just the free function.
+  AppGuard guard;
+  ui::DownloadsTab tab;
+  tab.add_download("id-eta", "Big.zip", "Manual");
+  tab.update_progress("id-eta", 0, 1000, 100.0);
+  auto *table   = table_of(&tab);
+  const int row = row_named(table, "Big.zip");
+  REQUIRE(row >= 0);
+  auto *bar =
+      qobject_cast<QProgressBar *>(table->cellWidget(row, ui::DownloadsTab::Status));
+  REQUIRE(bar != nullptr);
+  const QString with_eta = bar->format();
+  check(with_eta.contains("~10s"),
+        ("progress bar shows the remaining time, got: " + with_eta)
+            .toStdString()
+            .c_str());
+
+  // A paused/no-speed row must not claim an estimate it cannot make.
+  tab.update_progress("id-eta", 500, 1000, 0.0);
+  check(!bar->format().contains("~"),
+        ("no speed, no estimate, got: " + bar->format()).toStdString().c_str());
 }

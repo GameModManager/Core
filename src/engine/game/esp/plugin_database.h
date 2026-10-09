@@ -96,6 +96,23 @@ namespace PluginDb {
     // Returns false with *error set on failure.
     bool move_plugin(int from_row, int to_row, std::string *error = nullptr);
 
+    // Shift a set of plugin rows by `offset` places (MO2
+    // PluginList::shiftPluginsPriority, pluginlist.cpp:604-621, driven by the
+    // plugin list's Ctrl+Up / Ctrl+Down keyboard move). Every row moves one
+    // slot further than the row above it, so a multi-row selection swaps as a
+    // block instead of collapsing onto itself; `offset` < 0 walks toward row
+    // 0, `offset` > 0 toward the last row.
+    //
+    // A row that would leave the list is dropped, which is what MO2 does by
+    // testing `newPriority` against rowCount(). Locked and force-loaded rows
+    // are skipped rather than failing the whole shift: they are pinned, so
+    // moving them is impossible, but the rest of the selection is still
+    // movable and a keyboard nudge must not become a no-op because one row in
+    // it is locked.
+    //
+    // Returns the rows that actually moved.
+    std::vector<int> shift_priorities(const std::vector<int> &rows, int offset);
+
     // Pin/unpin a plugin at its current position (MO2 lock load order). A
     // locked plugin can never move again: move_plugin rejects it and any
     // auto-sort (sort_load_order, LOOT) re-places it at its locked priority.

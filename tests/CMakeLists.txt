@@ -455,9 +455,22 @@ gmm_catch2_test(downloads_tab_state_test ui/downloads_tab_state_test.cpp
     UI
     LIBS gmm_ui)
 
+gmm_catch2_test(downloads_batch_test ui/downloads_batch_test.cpp
+    UI
+    LIBS gmm_ui)
+
 gmm_catch2_test(downloads_shortcut_test ui/downloads_shortcut_test.cpp
     UI
     LIBS gmm_ui)
+
+gmm_catch2_test(conflict_send_test ui/conflict_send_test.cpp
+    UI
+    LIBS gmm_ui)
+
+gmm_catch2_test(plugin_keys_test ui/plugin_keys_test.cpp
+    UI
+    DEFINES GMM_TEST_RESOURCES_DIR="${PROJECT_SOURCE_DIR}/resources"
+    LIBS gmm_ui Qt6::Test)
 
 gmm_catch2_test(exec_steam_app_id_test ui/exec_steam_app_id_test.cpp
     UI
@@ -825,6 +838,13 @@ gmm_catch2_test(console_panel_test ui/console_panel_test.cpp
 gmm_catch2_test(menu_parity_test ui/menu_parity_test.cpp
     UI
     LIBS gmm_ui)
+
+# The Show Menu Bar toggle hides the bar the View menu lives in, so the restore
+# is a key event on the real window (MO2 MainWindow::keyReleaseEvent). Needs
+# Qt6::Test to synthesize the Alt release.
+gmm_catch2_test(menu_bar_restore_test ui/menu_bar_restore_test.cpp
+    UI
+    LIBS gmm_ui Qt6::Test)
 
 # ---------------------------------------------------------------------------
 # LD_PRELOAD intercept smoke tests — Linux-only, C (plain executables, not

@@ -35,6 +35,7 @@
 #include <QEvent>
 #include <QEventLoop>
 #include <QFrame>
+#include <QProgressBar>
 #include <QLabel>
 #include <QThread>
 #include <QTimer>
@@ -380,4 +381,61 @@ TEST_CASE("transient status gives the left-hand label back to the context", "[ui
   bar.set_context("Other Game - OtherInstance - Alt");
   CHECK(left_label(bar)->text() == "Debug mode enabled");
   REQUIRE(wait_for_left_label(bar, "Other Game - OtherInstance - Alt"));
+}
+
+// MO2 StatusBar::setProgress (statusbar.cpp:58-70). The bar exists so a
+// long-running step-wise operation can say how far along it is; this file's
+// driver is the LOOT sort, whose worker reports stages 1..8.
+TEST_CASE("progress bar tracks an operation and comes down when it ends", "[ui]") {
+  CaseSetup setup;
+
+  ui::StatusBar bar;
+  bar.set_context("Test Game - TestGame - Default");
+  auto *bar_widget = bar.findChild<QProgressBar *>("statusProgress");
+  REQUIRE(bar_widget != nullptr);
+  // isHidden(), not isVisible(): this bar is never shown on screen, and the
+  // question is whether set_progress() hid it, which isVisible() cannot answer
+  // through an undisplayed parent.
+  auto shown = [bar_widget] {
+    return !bar_widget->isHidden();
+  };
+  auto *timer = bar.findChild<QTimer *>("statusTimeout");
+  REQUIRE(timer != nullptr);
+  timer->setInterval(1);
+
+  // Resting: no bar, and the label is the context, not "Loading...".
+  CHECK_FALSE(shown());
+  CHECK(bar.progress() == -1);
+
+  // What ModListController::on_loot_progress sends: stage * 100 / 8.
+  bar.set_progress(1 * 100 / 8);
+  CHECK(shown());
+  CHECK(bar_widget->value() == 12);
+  CHECK(bar.progress() == 12);
+  CHECK(left_label(bar)->text() == "Loading...");
+
+  bar.set_progress(5 * 100 / 8);
+  CHECK(bar.progress() == 62);
+  CHECK(left_label(bar)->text() == "Loading...");
+
+  // The expiry timer must not steal the label back mid-operation: MO2 calls
+  // showMessage() with the bar's own text and no timeout race.
+  QElapsedTimer tick;
+  tick.start();
+  while (tick.elapsed() < timer->interval() + 60)
+    QCoreApplication::processEvents(QEventLoop::AllEvents, 10);
+  CHECK(left_label(bar)->text() == "Loading...");
+
+  // on_loot_finished calls set_progress(-1) on every path, including failure.
+  bar.set_progress(-1);
+  CHECK_FALSE(shown());
+  CHECK(bar.progress() == -1);
+  CHECK(left_label(bar)->text() == "Test Game - TestGame - Default");
+
+  // 100 counts as finished, not as a full bar (MO2: percent >= 100 hides).
+  bar.set_progress(50);
+  REQUIRE(shown());
+  bar.set_progress(100);
+  CHECK_FALSE(shown());
+  CHECK(bar.progress() == -1);
 }

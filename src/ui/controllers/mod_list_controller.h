@@ -159,6 +159,8 @@ public slots:
   void send_to_lowest_priority(const QString &id);
   void send_to_highest_in_separator(const QString &id);
   void send_to_lowest_in_separator(const QString &id);
+  void send_to_first_conflict(const QString &id);
+  void send_to_last_conflict(const QString &id);
   void priority_move_selected(int step);
   void toggle_selected_mods(bool enabled);
   // "Treat mod as root dir" (Tweaks menu).

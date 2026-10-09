@@ -326,6 +326,37 @@ void ModContextMenu::setup_mod_list_context_menu() {
                                actions_->send_to_lowest_in_separator(mod_id);
                              });
         }
+        // First/Last Conflict (MO2 modlistcontextmenu.cpp:326-334) are offered
+        // only when the mod actually has partners in that direction - MO2
+        // gates on its overwrite/overwritten sets being non-empty, and an
+        // action that could not move the row would be a dead control. The
+        // gate asks the same mapper the action uses, so a partner the model
+        // does not list cannot produce a visible-but-inert entry.
+        auto conflict_target = [&](bool first) {
+          const auto &pairs = w_->mod_model_->conflict_pairs();
+          auto it           = pairs.constFind(mod_id);
+          if (it == pairs.constEnd())
+            return -1;
+          auto *model = w_->mod_model_;
+          return conflict_send_target(
+              *it,
+              [model](const QString &other) {
+                return model->priority_of(other);
+              },
+              first);
+        };
+        if (conflict_target(true) >= 0)
+          send_to->addAction(engine::IconManager::instance().resolve_icon("go-up"),
+                             QObject::tr("Send to First Conflict"), w_,
+                             [this, mod_id]() {
+                               actions_->send_to_first_conflict(mod_id);
+                             });
+        if (conflict_target(false) >= 0)
+          send_to->addAction(engine::IconManager::instance().resolve_icon("go-down"),
+                             QObject::tr("Send to Last Conflict"), w_,
+                             [this, mod_id]() {
+                               actions_->send_to_last_conflict(mod_id);
+                             });
 
         menu.addAction(engine::IconManager::instance().resolve_icon("list-add"),
                        QObject::tr("Create Separator"), w_, [this, row]() {

@@ -188,6 +188,27 @@ TEST_CASE("plugins tab", "[ui]") {
         "Plugin Name is the first column");
   check(table->horizontalHeaderItem(4)->text() == QLatin1String("Locked"),
         "Locked column header");
+  // MO2 PluginList::getColumnToolTip (pluginlist.cpp:110-133) explains each
+  // column on hover. Without these the Priority column in particular is
+  // guesswork: its direction is the opposite of the mod list's.
+  check(table->horizontalHeaderItem(0)->toolTip() ==
+            QLatin1String("Name of the plugin"),
+        "Plugin Name header explains itself");
+  check(table->horizontalHeaderItem(1)->toolTip() ==
+            QLatin1String("Emblems to highlight things that might require attention."),
+        "Flags header explains itself");
+  check(
+      table->horizontalHeaderItem(2)->toolTip() ==
+          QLatin1String("Load priority of plugins. The higher, the more \"important\" "
+                        "it is and thus overwrites data from plugins with lower "
+                        "priority."),
+      "Priority header states which direction wins");
+  check(table->horizontalHeaderItem(3)->toolTip() ==
+            QLatin1String(
+                "Determines the formids of objects originating from this mods."),
+        "Mod Index header explains itself");
+  check(!table->horizontalHeaderItem(4)->toolTip().isEmpty(),
+        "Locked header explains itself");
   // MO2 MainWindow::resizeLists (mainwindow.cpp:678-682) makes column 0
   // Stretch on a fresh profile. That is what keeps the identifying column
   // visible at the left instead of squeezed off by wider columns - the
@@ -806,6 +827,43 @@ TEST_CASE("plugins tab", "[ui]") {
           "core row has no per-row toggle");
     check(action_with_text(menu3, "Send to...") == nullptr,
           "core row has no Send to...");
+
+    // "Open Origin in Explorer" / "Open Origin Info..."
+    // (MO2 pluginlistcontextmenu.cpp:89-112). Both are gated on the row's
+    // origin resolving to a mod, and both carry that mod's id.
+    QMenu menu4;
+    tab.set_plugins(plugins);
+    tab.add_context_menu_actions(menu4, row_with_name(table, "SkyUI_SE.esp"));
+    auto *explore_act = action_with_text(menu4, "Open Origin in Explorer");
+    auto *info_act    = action_with_text(menu4, "Open Origin Info...");
+    check(explore_act != nullptr, "a mod-owned row offers Open Origin in Explorer");
+    check(info_act != nullptr, "a mod-owned row offers Open Origin Info...");
+    check(menu4.defaultAction() == info_act,
+          "Open Origin Info... is the default action, as in MO2");
+
+    std::vector<std::string> revealed, infos;
+    QObject::connect(&tab, &ui::PluginsTab::reveal_requested,
+                     [&](const std::string &owner) {
+                       revealed.push_back(owner);
+                     });
+    QObject::connect(&tab, &ui::PluginsTab::mod_info_requested,
+                     [&](const std::string &owner) {
+                       infos.push_back(owner);
+                     });
+    explore_act->trigger();
+    info_act->trigger();
+    check(revealed.size() == 1 && revealed[0] == "SkyUI",
+          "the explorer action carries the owning mod");
+    check(infos.size() == 1 && infos[0] == "SkyUI",
+          "the info action carries the owning mod");
+
+    // A game-Data row owns no mod, so neither entry may appear: MO2 hides
+    // the pair when origin() does not resolve.
+    QMenu menu5;
+    tab.add_context_menu_actions(menu5, row_with_name(table, "Skyrim.esm"));
+    check(action_with_text(menu5, "Open Origin in Explorer") == nullptr &&
+              action_with_text(menu5, "Open Origin Info...") == nullptr,
+          "an unowned game-Data row offers neither Open Origin action");
   }
 
   // --- Enable/disable + Send to... (MO2 PluginListContextMenu parity) ---

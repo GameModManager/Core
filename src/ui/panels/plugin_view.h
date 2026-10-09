@@ -13,6 +13,7 @@
 #include <string>
 #include <vector>
 
+class QKeyEvent;
 class QLCDNumber;
 class QPushButton;
 class QTableWidget;
@@ -77,6 +78,11 @@ public:
   // Parallel role: per-emblem hover text (QStringList).
   static constexpr int kPluginFlagTooltipsRole = Qt::UserRole + 61;
 
+  // Column order (setHorizontalHeaderLabels in the ctor). Named so the rest
+  // of the UI talks about columns by name rather than a bare integer, the way
+  // MO2 does (PluginList::COL_PRIORITY).
+  enum Col { ColName = 0, ColFlags, ColPriority, ColModIndex, ColLocked };
+
 signals:
   void toggle_requested(const std::string &name, bool enabled);
   void reorder_requested(int from_row, int to_row);
@@ -95,6 +101,11 @@ signals:
   /// Ctrl+Double-clicked a plugin row: ask to reveal (open the OS file
   /// manager at) the folder of the mod owning it.
   void reveal_requested(const std::string &owner_mod);
+  /// Ctrl+Up / Ctrl+Down on the plugin table: shift every row in `rows` one
+  /// place in the load order (MO2 PluginList::shiftPluginsPriority). The
+  /// view has no load order of its own, so it reports the rows and the
+  /// offset; the controller moves them and refreshes.
+  void shift_requested(const std::vector<int> &rows, int offset);
 
 protected:
   void showEvent(QShowEvent *event) override;
@@ -102,6 +113,8 @@ protected:
 private:
   void apply_highlights();
   void relayout_flag_rows();
+  // MO2 PluginListView::event keyboard routing; true = key consumed.
+  bool handle_key(QKeyEvent *event);
 
   // MO2 plugin classification for the counter.
   enum class PluginType { Regular, Master, Light, Medium };
