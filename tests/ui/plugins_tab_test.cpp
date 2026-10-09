@@ -806,6 +806,43 @@ TEST_CASE("plugins tab", "[ui]") {
           "core row has no per-row toggle");
     check(action_with_text(menu3, "Send to...") == nullptr,
           "core row has no Send to...");
+
+    // "Open Origin in Explorer" / "Open Origin Info..."
+    // (MO2 pluginlistcontextmenu.cpp:89-112). Both are gated on the row's
+    // origin resolving to a mod, and both carry that mod's id.
+    QMenu menu4;
+    tab.set_plugins(plugins);
+    tab.add_context_menu_actions(menu4, row_with_name(table, "SkyUI_SE.esp"));
+    auto *explore_act = action_with_text(menu4, "Open Origin in Explorer");
+    auto *info_act    = action_with_text(menu4, "Open Origin Info...");
+    check(explore_act != nullptr, "a mod-owned row offers Open Origin in Explorer");
+    check(info_act != nullptr, "a mod-owned row offers Open Origin Info...");
+    check(menu4.defaultAction() == info_act,
+          "Open Origin Info... is the default action, as in MO2");
+
+    std::vector<std::string> revealed, infos;
+    QObject::connect(&tab, &ui::PluginsTab::reveal_requested,
+                     [&](const std::string &owner) {
+                       revealed.push_back(owner);
+                     });
+    QObject::connect(&tab, &ui::PluginsTab::mod_info_requested,
+                     [&](const std::string &owner) {
+                       infos.push_back(owner);
+                     });
+    explore_act->trigger();
+    info_act->trigger();
+    check(revealed.size() == 1 && revealed[0] == "SkyUI",
+          "the explorer action carries the owning mod");
+    check(infos.size() == 1 && infos[0] == "SkyUI",
+          "the info action carries the owning mod");
+
+    // A game-Data row owns no mod, so neither entry may appear: MO2 hides
+    // the pair when origin() does not resolve.
+    QMenu menu5;
+    tab.add_context_menu_actions(menu5, row_with_name(table, "Skyrim.esm"));
+    check(action_with_text(menu5, "Open Origin in Explorer") == nullptr &&
+              action_with_text(menu5, "Open Origin Info...") == nullptr,
+          "an unowned game-Data row offers neither Open Origin action");
   }
 
   // --- Enable/disable + Send to... (MO2 PluginListContextMenu parity) ---
