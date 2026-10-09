@@ -15,6 +15,7 @@
 #include <QIcon>
 #include <QLCDNumber>
 #include <QList>
+#include <QKeyEvent>
 #include <QMouseEvent>
 #include <QPainter>
 #include <QPair>
@@ -398,11 +399,25 @@ public:
   std::function<std::string(int)> owner_of_row;
   std::function<void(const std::string &)> on_mod_info;
   std::function<void(const std::string &)> on_reveal;
+  // Keyboard routing (MO2 PluginListView::event, pluginlistview.cpp:382-410):
+  // Space flips every selected row's enable checkbox, Ctrl+Up / Ctrl+Down
+  // shift the selected rows one place in the load order, and Ctrl+Return
+  // reveals the single selected row's owning mod. Each handler owns its own
+  // precondition and reports whether it consumed the key, so the caller
+  // passes anything else to QTableWidget.
+  std::function<bool(QKeyEvent *)> on_key;
 
   // Anti-bounce guard (Workspace-8fy, shared with ModView).
   [[nodiscard]] bool checkbox_toggle_recent() const { return bounce_guard_.recent(); }
 
 protected:
+  void keyPressEvent(QKeyEvent *event) override {
+    if (on_key && on_key(event)) {
+      event->accept();
+      return;
+    }
+    QTableWidget::keyPressEvent(event);
+  }
   void dropEvent(QDropEvent *event) override {
     const int from = currentRow();
     if (from < 0) {
@@ -567,6 +582,9 @@ PluginView::PluginView(QWidget *parent) : QWidget(parent) {
   };
   table_->on_reveal = [this](const std::string &owner) {
     emit reveal_requested(owner);
+  };
+  table_->on_key = [this](QKeyEvent *event) {
+    return handle_key(event);
   };
   connect(table_, &QTableWidget::itemChanged, this, [this](QTableWidgetItem *item) {
     if (syncing_ || !item || item->column() != 0)
@@ -917,6 +935,72 @@ QStringList PluginView::selected_plugin_names() const {
       names << item->text();
   }
   return names;
+}
+
+// MO2 PluginListView::event (pluginlistview.cpp:382-410). Returns true only
+// when the key was one of ours and was consumed.
+bool PluginView::handle_key(QKeyEvent *event) {
+  if (!event || !table_ || !table_->selectionModel())
+    return false;
+
+  // Ctrl+Return / Ctrl+Enter: reveal the owning mod of a single selected row.
+  // MO2 requires exactly one selected row and drops the key otherwise, so the
+  // normal Enter behaviour (edit the cell) is left alone on a multi-selection.
+  if (event->modifiers() == Qt::ControlModifier &&
+      (event->key() == Qt::Key_Return || event->key() == Qt::Key_Enter)) {
+    const auto rows = table_->selectionModel()->selectedRows();
+    if (rows.count() != 1)
+      return false;
+    const std::string owner = owner_mod_at(rows.first().row());
+    // A game-Data plugin owns no mod, so there is nothing to reveal.
+    if (owner.empty())
+      return false;
+    emit reveal_requested(owner);
+    return true;
+  }
+
+  // Space: flip every selected row's enabled state (MO2
+  // PluginListView::toggleSelectionState). Rows are read out first - the
+  // toggle handler can rebuild the table and invalidate any item pointer.
+  if (event->key() == Qt::Key_Space && event->modifiers() == Qt::NoModifier) {
+    const auto rows = table_->selectionModel()->selectedRows();
+    if (rows.isEmpty())
+      return false;
+    for (const auto &idx : rows) {
+      const int r = idx.row();
+      if (r < 0 || r >= static_cast<int>(names_.size()))
+        continue;
+      auto *item = table_->item(r, 0);
+      if (!item)
+        continue;
+      emit toggle_requested(names_[static_cast<size_t>(r)],
+                            item->checkState() != Qt::Checked);
+    }
+    return true;
+  }
+
+  // Ctrl+Up / Ctrl+Down: shift the selected rows one place. MO2 gates these on
+  // the table being sorted by Priority or Mod Index
+  // (pluginlistview.cpp:401-403), because in MO2 the plugin list can be
+  // sorted by other columns and Up/Down then means "move the selection"
+  // rather than "move the load order". This table is never sorted by a user
+  // choice - row order IS the load order - so the gate would only ever make
+  // the shortcut dead. The keys are therefore unconditionally ours.
+  if (event->modifiers() == Qt::ControlModifier &&
+      (event->key() == Qt::Key_Up || event->key() == Qt::Key_Down)) {
+    const auto rows = table_->selectionModel()->selectedRows();
+    if (rows.isEmpty())
+      return false;
+    std::vector<int> sel;
+    sel.reserve(static_cast<size_t>(rows.size()));
+    for (const auto &idx : rows)
+      sel.push_back(idx.row());
+    const int offset = event->key() == Qt::Key_Up ? -1 : 1;
+    emit shift_requested(sel, offset);
+    return true;
+  }
+
+  return false;
 }
 
 }  // namespace ui

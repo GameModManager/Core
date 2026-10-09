@@ -44,6 +44,8 @@ PluginsTab::PluginsTab(QWidget *parent) : QWidget(parent) {
           &PluginsTab::reorder_requested);
   connect(context_menu_.get(), &engine::PluginDb::ContextMenu::set_all_requested, this,
           &PluginsTab::set_all_requested);
+  // Ctrl+Up / Ctrl+Down keyboard shift, forwarded from the view.
+  connect(view_, &PluginView::shift_requested, this, &PluginsTab::shift_requested);
 
   // Right-click context menu on the table. The policy MUST be
   // Qt::CustomContextMenu or customContextMenuRequested never fires (regression

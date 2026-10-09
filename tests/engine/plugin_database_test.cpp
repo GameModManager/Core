@@ -471,6 +471,128 @@ void run_synthetic_fixture() {
   const int nl = order_of(db3, "Lights.esl");
   require(db3.move_plugin(nl, nl), "self-move is a no-op");
 
+  // shift_priorities (MO2 PluginList::shiftPluginsPriority, pluginlist.cpp:
+  // 604-621): the plugin list's Ctrl+Up / Ctrl+Down. Runs on its own copy so
+  // the ordering assertions above are not disturbed.
+  {
+    PluginDatabase dbs;
+    require(dbs.refresh(game, mods, "", "Skyrim.esm,Update.esm,Dawnguard.esm"),
+            "refresh for the shift fixture");
+    dbs.load_creation_club(game);
+    dbs.sort_load_order();
+    dbs.set_all_enabled();
+
+    auto order = [&dbs]() {
+      std::string s;
+      for (const auto &p : dbs.plugins())
+        s += (s.empty() ? "" : ",") + p.name;
+      return s;
+    };
+
+    // +1 walks toward the last row.
+    const std::string before_down = order();
+    const int skyui_r             = order_of(dbs, "SkyUI_SE.esp");
+    require(skyui_r >= 0, "SkyUI row known for the shift");
+    const auto moved_down = dbs.shift_priorities({skyui_r}, 1);
+    require(moved_down.size() == 1 && moved_down[0] == skyui_r,
+            "the shifted row is reported");
+    require(order_of(dbs, "SkyUI_SE.esp") == skyui_r + 1,
+            "a +1 shift moved the row one place down");
+    require(order() != before_down, "the order really changed");
+
+    // The last row cannot go lower, and a zero offset is a no-op.
+    const std::string after_down = order();
+    const int last               = static_cast<int>(dbs.plugins().size()) - 1;
+    require(dbs.shift_priorities({last}, 1).empty(),
+            "a row at the bottom reports nothing for +1");
+    require(order() == after_down, "the bottom row did not move");
+    require(dbs.shift_priorities({skyui_r}, 0).empty(), "a zero offset is a no-op");
+
+    // -1 from the top of the user band is clamped: the force-loaded rows
+    // above it must never be displaced (MO2 tests newPriority >= 0).
+    const std::string before_up = order();
+    int band_top                = 0;
+    while (band_top < static_cast<int>(dbs.plugins().size()) &&
+           dbs.plugins()[static_cast<size_t>(band_top)].force_loaded)
+      ++band_top;
+    require(band_top > 0 && band_top < static_cast<int>(dbs.plugins().size()),
+            "the fixture has a user band below the fixed rows");
+    require(dbs.shift_priorities({band_top}, -1).empty(),
+            "the top user row cannot shift up into the fixed band");
+    require(order() == before_up, "the fixed band held");
+
+    // A multi-row selection swaps as a block: the selected rows keep their
+    // relative order, each lands one place lower, and the row below the
+    // selection moves up. Nothing collapses onto anything.
+    const int a             = band_top;
+    const int b             = band_top + 1;
+    const std::string na    = dbs.plugins()[static_cast<size_t>(a)].name;
+    const std::string nb    = dbs.plugins()[static_cast<size_t>(b)].name;
+    const std::string third = dbs.plugins()[static_cast<size_t>(b + 1)].name;
+    require(dbs.shift_priorities({a, b}, 1).size() == 2, "both rows moved");
+    require(dbs.plugins()[static_cast<size_t>(a)].name == third,
+            "the row below the selection moved up into the vacated slot");
+    require(dbs.plugins()[static_cast<size_t>(a + 1)].name == na,
+            "the upper selected row moved down one place");
+    require(dbs.plugins()[static_cast<size_t>(a + 2)].name == nb,
+            "the lower selected row moved down one place, keeping its order");
+
+    // Priorities are renumbered after a shift.
+    for (size_t i = 0; i < dbs.plugins().size(); ++i)
+      require(static_cast<int>(i) == dbs.plugins()[i].priority,
+              "shift renumbers priority to the row index");
+
+    // A core (force-loaded) row never moves.
+    const std::string pre_core = order();
+    require(dbs.shift_priorities({0}, 1).empty(), "a core row reports nothing");
+    require(order() == pre_core, "a core row did not move");
+  }
+
+  {
+    // Locked rows are skipped, not fatal: the rest of the selection still
+    // moves, so a keyboard nudge is not a no-op because one row is pinned.
+    const fs::path b = base / "shiftlock";
+    const fs::path g = b / "game";
+    const fs::path m = b / "mods";
+    fs::create_directories(g / "Data", ec);
+    fs::create_directories(m, ec);
+    write_esp(g / "Data" / "Skyrim.esm", true, {});
+    fs::create_directories(m / "ModA", ec);
+    write_esp(m / "ModA" / "ModA.esp", false, {"Skyrim.esm"});
+    fs::create_directories(m / "ModB", ec);
+    write_esp(m / "ModB" / "ModB.esp", false, {"Skyrim.esm"});
+    fs::create_directories(m / "ModC", ec);
+    write_esp(m / "ModC" / "ModC.esp", false, {"Skyrim.esm"});
+
+    PluginDatabase dbsl;
+    require(dbsl.refresh(g, m, "", "Skyrim.esm"), "refresh shift-lock fixture");
+    dbsl.sort_load_order();
+    dbsl.set_all_enabled();
+    require(dbsl.set_locked("ModA.esp", true), "lock ModA");
+
+    const int a = order_of(dbsl, "ModA.esp");
+    const int c = order_of(dbsl, "ModB.esp");
+    require(a == 1 && c == 2, "ModA sits above ModB in the user band");
+    const auto moved = dbsl.shift_priorities({a, c}, 1);
+    require(moved.size() == 1 && moved[0] == c, "only the unlocked row moved");
+    require(order_of(dbsl, "ModB.esp") == c + 1, "ModB went down");
+    require(order_of(dbsl, "ModA.esp") == a, "the locked row stayed pinned");
+
+    // Shifting ONTO a locked row would displace the pin: refused outright.
+    PluginDatabase dbsd;
+    require(dbsd.refresh(g, m, "", "Skyrim.esm"), "refresh shift-lock-dest fixture");
+    dbsd.sort_load_order();
+    dbsd.set_all_enabled();
+    require(dbsd.set_locked("ModB.esp", true), "lock the destination row");
+    const int src = order_of(dbsd, "ModA.esp");
+    const int dst = order_of(dbsd, "ModB.esp");
+    require(src >= 0 && dst == src + 1, "the locked row is directly below");
+    require(dbsd.shift_priorities({src}, 1).empty(),
+            "a shift that would land on a locked row moves nothing");
+    require(order_of(dbsd, "ModA.esp") == src, "the unlocked row stayed put");
+    require(order_of(dbsd, "ModB.esp") == dst, "the pinned row was not displaced");
+  }
+
   // Locked plugins: pinned, immovable, sort-proof, and persisted through a
   // profile round-trip (MO2 lockedorder.txt parity).
   {
