@@ -7,6 +7,7 @@
 #include "engine/sort/sorter/loot/masterlists.h"
 #include "engine/sort/sorter/loot/sorter.h"
 #include "platform/platform.h"
+#include "test_platform.h"
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -30,7 +31,7 @@ namespace fs = std::filesystem;
 
 namespace {
 
-class FakePlatform : public engine::Platform {
+class FakePlatform : public gmm_test::InertPlatform {
 public:
   explicit FakePlatform(fs::path data_dir) : data_dir_(std::move(data_dir)) {}
   std::string platform_name() const override { return "fake"; }
@@ -39,11 +40,6 @@ public:
   fs::path cache_dir() const override { return data_dir_; }
   fs::path home_dir() const override { return data_dir_; }
   fs::path temp_dir() const override { return data_dir_; }
-  fs::path find_steam_root() const override { return {}; }
-  bool launch_executable(const fs::path &,
-                         const std::vector<std::string> &) const override {
-    return false;
-  }
 
 private:
   fs::path data_dir_;

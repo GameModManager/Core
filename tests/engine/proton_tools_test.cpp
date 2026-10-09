@@ -6,6 +6,7 @@
 // fork+execvp orchestrations over platform discovery — not unit-tested here.
 #include "engine/deploy/launch/proton_tools.h"
 #include "platform/platform.h"
+#include "test_platform.h"
 
 #include <catch2/catch_test_macros.hpp>
 #include <cstdio>
@@ -25,7 +26,7 @@ void require(bool cond, const char *msg) {
 }  // namespace
 
 // --- Stub platform: controllable proton discovery ---
-class StubPlatform : public engine::Platform {
+class StubPlatform : public gmm_test::InertPlatform {
 public:
   std::string platform_name() const override { return "test"; }
   fs::path data_dir() const override { return "/tmp/gmm_proton_test_data"; }
@@ -33,11 +34,6 @@ public:
   fs::path cache_dir() const override { return "/tmp/gmm_proton_test_cache"; }
   fs::path home_dir() const override { return data_dir(); }
   fs::path temp_dir() const override { return data_dir(); }
-  fs::path find_steam_root() const override { return {}; }
-  bool launch_executable(const fs::path &,
-                         const std::vector<std::string> &) const override {
-    return false;
-  }
 
   fs::path named_result;    // returned by find_proton_named
   fs::path default_result;  // returned by find_proton / find_proton_for_game
