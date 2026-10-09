@@ -188,6 +188,27 @@ TEST_CASE("plugins tab", "[ui]") {
         "Plugin Name is the first column");
   check(table->horizontalHeaderItem(4)->text() == QLatin1String("Locked"),
         "Locked column header");
+  // MO2 PluginList::getColumnToolTip (pluginlist.cpp:110-133) explains each
+  // column on hover. Without these the Priority column in particular is
+  // guesswork: its direction is the opposite of the mod list's.
+  check(table->horizontalHeaderItem(0)->toolTip() ==
+            QLatin1String("Name of the plugin"),
+        "Plugin Name header explains itself");
+  check(table->horizontalHeaderItem(1)->toolTip() ==
+            QLatin1String("Emblems to highlight things that might require attention."),
+        "Flags header explains itself");
+  check(
+      table->horizontalHeaderItem(2)->toolTip() ==
+          QLatin1String("Load priority of plugins. The higher, the more \"important\" "
+                        "it is and thus overwrites data from plugins with lower "
+                        "priority."),
+      "Priority header states which direction wins");
+  check(table->horizontalHeaderItem(3)->toolTip() ==
+            QLatin1String(
+                "Determines the formids of objects originating from this mods."),
+        "Mod Index header explains itself");
+  check(!table->horizontalHeaderItem(4)->toolTip().isEmpty(),
+        "Locked header explains itself");
   // MO2 MainWindow::resizeLists (mainwindow.cpp:678-682) makes column 0
   // Stretch on a fresh profile. That is what keeps the identifying column
   // visible at the left instead of squeezed off by wider columns - the
