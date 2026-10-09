@@ -553,6 +553,21 @@ PluginView::PluginView(QWidget *parent) : QWidget(parent) {
   for (int c = 0; c < table_->columnCount(); ++c)
     hheader->setSectionResizeMode(c, QHeaderView::ResizeToContents);
   hheader->setSectionResizeMode(0, QHeaderView::Stretch);
+  // MO2 PluginList::getColumnToolTip (pluginlist.cpp:110-133) explains each
+  // column on hover. The four it names that we also have are verbatim; Locked
+  // is our own column and says what the pin does.
+  if (auto *hh = table_->horizontalHeaderItem(ColName))
+    hh->setToolTip(tr("Name of the plugin"));
+  if (auto *hh = table_->horizontalHeaderItem(ColFlags))
+    hh->setToolTip(tr("Emblems to highlight things that might require attention."));
+  if (auto *hh = table_->horizontalHeaderItem(ColPriority))
+    hh->setToolTip(tr("Load priority of plugins. The higher, the more \"important\" it "
+                      "is and thus overwrites data from plugins with lower priority."));
+  if (auto *hh = table_->horizontalHeaderItem(ColModIndex))
+    hh->setToolTip(tr("Determines the formids of objects originating from this mods."));
+  if (auto *hh = table_->horizontalHeaderItem(ColLocked))
+    hh->setToolTip(tr("Pins the plugin at this position: auto-sort and manual moves "
+                      "cannot move it."));
   table_->verticalHeader()->setVisible(false);
   table_->setItemDelegateForColumn(
       1, new ui::FlagsDelegate(PluginView::kPluginFlagsRole,
