@@ -618,6 +618,42 @@ void Database::set_all_enabled() {
   }
 }
 
+bool Database::set_all_user_enabled(bool enabled) {
+  bool changed = false;
+  for (auto &p : plugins_) {
+    if (p.force_loaded)
+      continue;
+    // The same guard set_enabled() applies: a plugin whose master is not in
+    // the list at all could not be loaded by the game, so enabling it would
+    // only advertise a broken load order. Disable-all has no such guard -
+    // MO2's Disable all turns every row off regardless of dependents, which
+    // is the point of it.
+    if (enabled) {
+      bool masters_present = true;
+      for (const auto &master : p.masters) {
+        if (by_name_ci_.find(to_lower(master)) == by_name_ci_.end()) {
+          masters_present = false;
+          break;
+        }
+      }
+      if (!masters_present)
+        continue;
+    }
+    if (p.enabled == enabled)
+      continue;
+    p.enabled = enabled;
+    changed   = true;
+  }
+  if (changed) {
+    // Indexes are derived from the enabled set, so they have to be rebuilt -
+    // the same order the load path applies after set_enabled().
+    apply_locked_order();
+    set_missing_masters();
+    generate_mod_indexes();
+  }
+  return changed;
+}
+
 void Database::set_missing_masters() {
   // Pass 1 (absent-only): a master that is not in the list at all. Feeds the
   // missing_master flag (enable-blocking).

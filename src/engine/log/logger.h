@@ -38,7 +38,13 @@ public:
   void warn(const std::string &msg) { log(LogLevel::Warn, msg); }
   void error(const std::string &msg) { log(LogLevel::Error, msg); }
 
-  void set_log_file(const std::string &path);
+  // Point the logger at `path`, creating or truncating it. Returns false when
+  // the file could not be opened: every later log line is then dropped on the
+  // floor with nothing on screen to say why (MO2 parity - loglist.cpp's
+  // createAndMakeWritable raises a critical dialog in the same case).
+  // The path is still recorded either way, so log_dir() keeps answering for
+  // "open the logs folder".
+  bool set_log_file(const std::string &path);
   // The path handed to set_log_file, and its parent directory. Empty before
   // the first set_log_file. The log system owns where the log lives, so this
   // is what "open the logs folder" opens - a caller that guesses the location

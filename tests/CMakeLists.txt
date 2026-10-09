@@ -415,6 +415,14 @@ gmm_catch2_test(downloads_tab_state_test ui/downloads_tab_state_test.cpp
     UI
     LIBS gmm_ui)
 
+gmm_catch2_test(downloads_shortcut_test ui/downloads_shortcut_test.cpp
+    UI
+    LIBS gmm_ui)
+
+gmm_catch2_test(exec_steam_app_id_test ui/exec_steam_app_id_test.cpp
+    UI
+    LIBS gmm_ui)
+
 gmm_catch2_test(pipeline_worker_test ui/pipeline_worker_test.cpp
     LIBS gmm_ui Qt6::Core)
 

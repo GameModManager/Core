@@ -49,6 +49,8 @@ signals:
   void toggle_requested(const std::string &name, bool enabled);
   void reorder_requested(int from_row, int to_row);
   void lock_requested(const std::string &name, bool locked);
+  // Forwarded from the context menu's bulk Enable all / Disable all pair.
+  void set_all_requested(bool enabled);
   void refresh_requested();
   // Forwarded from PluginView: the backup / restore pair beside the "Active:"
   // counter. Both are manual-only actions.

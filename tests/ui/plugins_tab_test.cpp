@@ -792,10 +792,20 @@ TEST_CASE("plugins tab", "[ui]") {
     check(locks.size() == 1 && locks[0].first == "Locked2.esp" && !locks[0].second,
           "Unlock action emits lock_requested(name, false)");
 
-    // Core row (force_loaded): no lock actions at all.
+    // Core row (force_loaded): no per-row actions at all. The bulk Enable all /
+    // Disable all pair is NOT per-row - MO2 adds it unconditionally
+    // (pluginlistcontextmenu.cpp:36-49) - so the check is that no
+    // row-specific action appears.
     QMenu menu3;
     tab.add_context_menu_actions(menu3, row_with_name(table, "Skyrim.esm"));
-    check(menu3.actions().isEmpty(), "core row has no lock actions");
+    check(action_with_text(menu3, "Lock load order") == nullptr &&
+              action_with_text(menu3, "Unlock load order") == nullptr,
+          "core row has no lock actions");
+    check(action_with_text(menu3, "Enable selected") == nullptr &&
+              action_with_text(menu3, "Disable selected") == nullptr,
+          "core row has no per-row toggle");
+    check(action_with_text(menu3, "Send to...") == nullptr,
+          "core row has no Send to...");
   }
 
   // --- Enable/disable + Send to... (MO2 PluginListContextMenu parity) ---
@@ -873,10 +883,52 @@ TEST_CASE("plugins tab", "[ui]") {
     // "Priority..." opens a modal QInputDialog, so it is proven present but
     // not triggered here.
 
-    // Core row: nothing at all (the engine refuses toggle, move and lock).
+    // Core row: no per-row action (the engine refuses toggle, move and lock).
+    // The bulk pair is deliberately present here - MO2 adds it before the
+    // per-row block with no row guard.
     QMenu menu_core;
     tab.add_context_menu_actions(menu_core, row_with_name(table, "Skyrim.esm"));
-    check(menu_core.actions().isEmpty(), "core row has no actions at all");
+    check(action_with_text(menu_core, "Disable selected") == nullptr &&
+              action_with_text(menu_core, "Enable selected") == nullptr,
+          "core row has no per-row toggle");
+  }
+
+  // --- Enable all / Disable all (MO2 pluginlistcontextmenu.cpp:37-49) ---
+  // The bulk pair is on every row's menu AND on a menu opened over empty
+  // space below the last row, because MO2 gates it on nothing. It emits one
+  // set_all_requested, which the controller answers after confirming.
+  {
+    std::vector<bool> bulk;
+    QObject::connect(&tab, &ui::PluginsTab::set_all_requested, [&](bool enabled) {
+      bulk.push_back(enabled);
+    });
+
+    tab.set_plugins(plugins);
+    QMenu menu;
+    tab.add_context_menu_actions(menu, row_with_name(table, "SkyUI_SE.esp"));
+    auto *enable_all  = action_with_text(menu, "Enable all");
+    auto *disable_all = action_with_text(menu, "Disable all");
+    check(enable_all != nullptr, "a row menu offers Enable all");
+    check(disable_all != nullptr, "a row menu offers Disable all");
+
+    bulk.clear();
+    disable_all->trigger();
+    check(bulk.size() == 1 && !bulk[0], "Disable all emits set_all_requested(false)");
+    bulk.clear();
+    enable_all->trigger();
+    check(bulk.size() == 1 && bulk[0], "Enable all emits set_all_requested(true)");
+
+    // No row at all (right-click below the last row, row == -1): MO2 still
+    // offers them, and so must we - that is the only place they are reachable
+    // when the filter has hidden every row.
+    QMenu menu_empty;
+    tab.add_context_menu_actions(menu_empty, -1);
+    check(action_with_text(menu_empty, "Enable all") != nullptr &&
+              action_with_text(menu_empty, "Disable all") != nullptr,
+          "the bulk pair survives an empty-space click with no row under it");
+    bulk.clear();
+    action_with_text(menu_empty, "Enable all")->trigger();
+    check(bulk.size() == 1 && bulk[0], "and still emits from there");
   }
 
   // --- MO2-style plugin counter (PluginListView::updatePluginCount parity) ---

@@ -225,6 +225,7 @@ toml::table exec_entry_to_toml(const Executables::Entry &e) {
     env.push_back(v.toStdString());
   t.emplace("env", std::move(env));
   t.emplace("elev", e.elevation.toStdString());
+  t.emplace("steam", e.steam_app_id.toStdString());
   t.is_inline(true);
   return t;
 }
@@ -633,17 +634,23 @@ void LaunchController::launch_with_executable(
   // starts means there is no concurrency issue.
   flush_deferred_disable_queue();
 
-  // Read steam_appid from game plugin hooks - 0 if not registered
-  uint32_t steam_appid = 0;
+  // Read steam_appid from game plugin hooks - 0 if not registered. A
+  // per-executable override (MO2 Executable::steamAppID) wins over it; a
+  // non-numeric one falls back rather than failing the launch (the resolver
+  // says so in the log).
+  uint32_t game_steam_appid = 0;
   if (w_->knowledge_) {
     auto id_str = w_->knowledge_->get(w_->current_game_id_, "steam_appid", "");
     if (!id_str.empty()) {
       try {
-        steam_appid = std::stoul(id_str);
+        game_steam_appid = std::stoul(id_str);
       } catch (...) {
       }
     }
   }
+  const uint32_t steam_appid = Executables::steam_app_id_for_path(
+      w_->right_panel_->exec_controls()->executable_entries(), w_->current_game_dir_,
+      full_path, game_steam_appid);
 
   // Build a launch-prep snapshot and run the deploy on the worker thread
   // (P8.4). engine::prepare_launch_params deploys all enabled mods into

@@ -1842,6 +1842,23 @@ void ModList::set_all_separators_folded(bool folded) {
   emit mod_list_changed();  // ONE persistence write
 }
 
+void ModList::set_all_separators_folded_except(bool folded, int except_row) {
+  bool changed = false;
+  for (int i = 0; i < mods_.size(); ++i) {
+    if (!mods_[i].is_separator || i == except_row)
+      continue;
+    if (mods_[i].folded == folded)
+      continue;  // already in target state
+    mods_[i].folded = folded;
+    emit dataChanged(index(i, Fold), index(i, Name), {Qt::DisplayRole});
+    changed = true;
+  }
+  if (!changed)
+    return;
+  apply_fold_state();       // ONE repaint
+  emit mod_list_changed();  // ONE persistence write
+}
+
 void ModList::hover_expand_separator(int row) {
   QString open;
   if (Settings::instance().auto_collapse_on_hover() && row >= 0 && row < mods_.size() &&
