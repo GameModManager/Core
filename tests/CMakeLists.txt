@@ -839,6 +839,13 @@ gmm_catch2_test(menu_parity_test ui/menu_parity_test.cpp
     UI
     LIBS gmm_ui)
 
+# The Show Menu Bar toggle hides the bar the View menu lives in, so the restore
+# is a key event on the real window (MO2 MainWindow::keyReleaseEvent). Needs
+# Qt6::Test to synthesize the Alt release.
+gmm_catch2_test(menu_bar_restore_test ui/menu_bar_restore_test.cpp
+    UI
+    LIBS gmm_ui Qt6::Test)
+
 # ---------------------------------------------------------------------------
 # LD_PRELOAD intercept smoke tests — Linux-only, C (plain executables, not
 # Catch2 — they are C and test the interposer shared libraries directly)

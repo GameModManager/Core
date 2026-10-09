@@ -233,6 +233,11 @@ protected:
   void closeEvent(QCloseEvent *event) override;
   bool eventFilter(QObject *obj, QEvent *event) override;
   void resizeEvent(QResizeEvent *event) override;
+  // MO2 MainWindow::keyReleaseEvent (references/modorganizer/src/mainwindow.cpp:4054-4068):
+  // a hidden menu bar is brought back on an Alt key RELEASE. Without this the
+  // View > Show Menu Bar toggle is a one-way door - the only way out is the
+  // window manager's own Alt behaviour, which not every WM provides.
+  void keyReleaseEvent(QKeyEvent *event) override;
   // .gmmpack/.zip drops anywhere on the window open the Import Modpack
   // flow with the file pre-selected (Workspace-pi2p).
   void dragEnterEvent(QDragEnterEvent *event) override;

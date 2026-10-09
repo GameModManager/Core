@@ -30,6 +30,10 @@ public:
   void set_toolbar_checked(bool checked);
   void set_status_bar_checked(bool checked);
   void set_console_checked(bool checked);
+  // The menu bar's own checkbox, synced from MainWindow::keyReleaseEvent when
+  // Alt brings a hidden bar back - the toggle cannot stay unchecked while the
+  // bar is on screen.
+  void set_menu_bar_checked(bool checked);
   // Sync the Checkerboard submenu checked state (0=off, 1=light, 2=medium,
   // 3=dark) without re-emitting checkerboard_style_requested.
   void set_checkerboard_style(int style);
