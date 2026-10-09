@@ -1210,6 +1210,16 @@ bool DownloadsTab::eventFilter(QObject *watched, QEvent *event) {
   if (watched == table_ && event->type() == QEvent::KeyPress) {
     auto *key     = static_cast<QKeyEvent *>(event);
     const int row = table_->currentRow();
+    // A row the filters hid is not a row the user is standing on, so the key
+    // must not reach it. Qt leaves currentRow() naming a row that
+    // setRowHidden has just hidden, so without this guard a keypress would
+    // install / pause / remove a download that is no longer on screen.
+    // on_custom_context_menu never had this problem: it hit-tests with
+    // itemAt(pos), and a hidden row has no visual extent, so itemAt returns
+    // nullptr and the handler bails before it reads downloads_. Resolve the
+    // target the same way here - a hidden row is simply not reachable.
+    if (row < 0 || table_->isRowHidden(row))
+      return QWidget::eventFilter(watched, event);
     // Copy the id out before acting: every action below can delete the entry
     // (and with it the map row), so holding a reference across it would
     // dangle.

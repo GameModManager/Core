@@ -18,6 +18,7 @@
 #include "ui/panels/tab_panels.h"
 
 #include <QApplication>
+#include <QCheckBox>
 #include <QKeyEvent>
 #include <QTableWidget>
 #include <QTableWidgetItem>
@@ -183,6 +184,91 @@ TEST_CASE("download keys reach the pause / resume / install signals",
   check(installs == 1, "Enter on a finished row installs it");
   check(pauses == 1, "and does not pause");
   check(resumes == 1, "and does not resume");
+
+  std::filesystem::remove_all(dir, ec);
+}
+
+// A row the filter has hidden is not a row the user is on.
+//
+// The context menu can never act on a hidden row: it hit-tests with
+// table_->itemAt(pos), and a hidden row has no visual extent, so itemAt
+// returns nullptr and on_custom_context_menu bails before it ever looks at
+// downloads_. The keyboard path had no such guard - it trusted
+// table_->currentRow() and scanned downloads_ for a matching entry.row.
+// Qt does not clear the current row when setRowHidden hides it, so after
+// "Hide installed" hid the row the user was standing on, currentRow() still
+// named it and a keypress acted on a download that was no longer on screen.
+//
+// Enter is the key used here because it emits install_requested directly,
+// where Delete opens a modal TaskDialog and would block the test.
+//
+// Reproduces the bug: the installed row below is hidden while it is the
+// current row, and Enter must not reach it. Reverting the fix makes the
+// "nothing installed" assertion red.
+TEST_CASE("download keys never act on a row the filter has hidden",
+          "[ui][mo2-parity]") {
+  AppGuard guard;
+  std::error_code ec;
+  const std::filesystem::path dir =
+      std::filesystem::temp_directory_path() / "gmm_dl_shortcut_hidden";
+  std::filesystem::remove_all(dir, ec);
+  std::filesystem::create_directories(dir, ec);
+  const auto done_zip = dir / "Done.zip";
+  const auto live_zip = dir / "Live.zip";
+  write_file(done_zip, 64);
+  write_file(live_zip, 64);
+
+  ui::DownloadsTab tab;
+
+  // The tab's only QCheckBox is the "Hide installed" toggle; checking it
+  // fires the same toggled handler the UI does.
+  auto *hide_cb = tab.findChild<QCheckBox *>();
+  REQUIRE(hide_cb != nullptr);
+
+  tab.add_download("id-done", "Done.zip", "Manual", done_zip);
+  tab.add_download("id-live", "Live.zip", "Manual", live_zip);
+  tab.mark_complete("id-done", true);
+  tab.mark_complete("id-live", true);
+  auto *table        = table_of(&tab);
+  const int done_row = row_named(table, "Done.zip");
+  const int live_row = row_named(table, "Live.zip");
+  REQUIRE(done_row >= 0);
+  REQUIRE(live_row >= 0);
+
+  // The user is standing on the row that is about to be hidden - the exact
+  // state Qt is in after a download installs itself under "Hide installed".
+  table->setCurrentCell(done_row, ui::DownloadsTab::Name);
+  REQUIRE(table->currentRow() == done_row);
+
+  hide_cb->setChecked(true);
+  tab.mark_installed("id-done");
+  REQUIRE(table->isRowHidden(done_row));
+  // The precondition this test turns on: hiding a row does NOT move Qt's
+  // current row, so currentRow() still names a row with no extent on screen.
+  REQUIRE(table->currentRow() == done_row);
+
+  // Captured by id, not by count: the bug is "wrong entry", so the assertion
+  // has to name the entry that was wrongly installed.
+  std::vector<std::string> installed;
+  QObject::connect(&tab, &ui::DownloadsTab::install_requested,
+                   [&installed](const std::string &id, const std::filesystem::path &,
+                                const std::string &, const std::string &, int,
+                                const std::string &, const std::string &) {
+                     installed.push_back(id);
+                   });
+
+  QKeyEvent enter(QEvent::KeyPress, Qt::Key_Enter, Qt::NoModifier);
+  QApplication::sendEvent(table, &enter);
+  check(installed.empty(),
+        "Enter on a filter-hidden row must not install anything the user "
+        "cannot see");
+
+  // And the row the user can actually see still works, so the fix is not
+  // "ignore keys whenever a filter is on".
+  table->setCurrentCell(live_row, ui::DownloadsTab::Name);
+  QApplication::sendEvent(table, &enter);
+  check(installed.size() == 1 && installed.front() == "id-live",
+        "Enter still installs the visible row the user is on");
 
   std::filesystem::remove_all(dir, ec);
 }
