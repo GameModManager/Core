@@ -11,6 +11,15 @@
 
 namespace engine {
 
+// URL schemes GameModManager can register itself as the system handler for.
+// Every OS implements this differently, so nothing outside src/platform/ may
+// name a concrete adaptor's registrars.
+enum class ProtocolHandler {
+  Nxm,  // nxm://  - Nexus Mods "download with mod manager" links
+  Gmm,  // gmm://  - our own deep links
+  Modl  // modl:// - mod.pub / MO2 modlhandler
+};
+
 // Platform abstraction layer. Each OS provides its own implementation.
 // The engine never calls OS-specific APIs directly - always through this
 // interface.
@@ -123,6 +132,33 @@ public:
   // Returns path to wine binary, empty if unavailable.
   [[nodiscard]] virtual std::filesystem::path find_wine() const { return {}; }
 
+  // --- Protocol handler registration ---
+  //
+  // GameModManager registers itself as the system handler for the schemes in
+  // `ProtocolHandler` so "download with mod manager" links open here. The
+  // mechanism differs per OS (XDG desktop files + xdg-mime, the
+  // HKCU\Software\Classes registry, LaunchServices), so the UI goes through
+  // these and never through a concrete adaptor.
+
+  // Point `protocol` at the manager binary `exe_path`. False when the OS
+  // refused the registration.
+  [[nodiscard]] virtual bool
+  register_protocol_handler(ProtocolHandler protocol,
+                            const std::filesystem::path &exe_path) const = 0;
+
+  // Hand `protocol` back to the OS default.
+  [[nodiscard]] virtual bool
+  unregister_protocol_handler(ProtocolHandler protocol) const = 0;
+
+  // True when GameModManager is the current default handler for `protocol`.
+  [[nodiscard]] virtual bool
+  is_protocol_handler_registered(ProtocolHandler protocol) const = 0;
+
+  // Human-readable name of whatever currently handles `protocol`, for the
+  // "current handler: <name>" line. Empty when it cannot be determined.
+  [[nodiscard]] virtual std::string
+  current_protocol_handler(ProtocolHandler protocol) const = 0;
+
   // Launch a game executable. Platform handles the actual process creation.
   [[nodiscard]] virtual bool
   launch_executable(const std::filesystem::path &executable,
@@ -169,6 +205,16 @@ public:
 // Wine binary for running Windows games without Proton. Same value as
 // Platform::find_wine(); empty when Wine is not installed.
 [[nodiscard]] std::filesystem::path find_wine();
+
+// Protocol handler registration, free-function form. The UI holds no Platform
+// pointer here, so these forward to the virtuals above exactly like
+// find_steam_root() does - same forwarding, same "one implementation per OS"
+// guarantee. They exist so the UI never names LinuxPlatform/WindowsPlatform.
+[[nodiscard]] bool register_protocol_handler(ProtocolHandler protocol,
+                                             const std::filesystem::path &exe_path);
+[[nodiscard]] bool unregister_protocol_handler(ProtocolHandler protocol);
+[[nodiscard]] bool is_protocol_handler_registered(ProtocolHandler protocol);
+[[nodiscard]] std::string current_protocol_handler(ProtocolHandler protocol);
 
 // Centralized home dir lookup for code paths without a Platform pointer.
 inline std::filesystem::path safe_home_dir() {

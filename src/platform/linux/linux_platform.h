@@ -39,6 +39,16 @@ public:
   [[nodiscard]] std::filesystem::path find_wine() const override;
 
   [[nodiscard]] bool
+  register_protocol_handler(ProtocolHandler protocol,
+                            const std::filesystem::path &exe_path) const override;
+  [[nodiscard]] bool
+  unregister_protocol_handler(ProtocolHandler protocol) const override;
+  [[nodiscard]] bool
+  is_protocol_handler_registered(ProtocolHandler protocol) const override;
+  [[nodiscard]] std::string
+  current_protocol_handler(ProtocolHandler protocol) const override;
+
+  [[nodiscard]] bool
   launch_executable(const std::filesystem::path &executable,
                     const std::vector<std::string> &args = {}) const override;
 

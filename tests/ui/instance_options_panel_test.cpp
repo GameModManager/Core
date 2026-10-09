@@ -8,6 +8,7 @@
 // the wine.json shipped with the Skyrim plugin is exercised.
 #include "engine/plugin_host/plugin_loader.h"
 #include "platform/platform.h"
+#include "test_platform.h"
 #include "ui/instance_options/instance_options_panel.h"
 
 #include <QApplication>
@@ -30,7 +31,7 @@ void require(bool cond, const char *msg) {
 }
 }  // namespace
 
-class StubPlatform : public engine::Platform {
+class StubPlatform : public gmm_test::InertPlatform {
 public:
   std::string platform_name() const override { return "test"; }
   fs::path data_dir() const override { return "/tmp/gmm_instance_options_panel_data"; }
@@ -42,12 +43,8 @@ public:
   }
   fs::path home_dir() const override { return data_dir(); }
   fs::path temp_dir() const override { return data_dir(); }
-  fs::path find_steam_root() const override { return {}; }
-  bool launch_executable(const fs::path &,
-                         const std::vector<std::string> &) const override {
-    return false;
-  }
-  std::vector<ProtonVersionInfo> enumerate_proton_versions() const override {
+  std::vector<engine::Platform::ProtonVersionInfo>
+  enumerate_proton_versions() const override {
     return {
         {"Proton 10.0", "/steam/Proton 10.0/proton"},
         {"Proton - Experimental", "/steam/Proton - Experimental/proton"},

@@ -30,9 +30,7 @@
 #include "ui/theme/style_manager.h"
 #include "engine/theme/theme_manager.h"
 
-#ifdef GMM_PLATFORM_LINUX
-#include "platform/linux/linux_platform.h"
-#endif
+#include "platform/platform.h"
 
 #include <QAbstractItemView>
 #include <QApplication>
@@ -230,11 +228,8 @@ TEST_CASE("settings sources tab", "[ui]") {
               manual_btn->isEnabled() && disconnect_btn && !disconnect_btn->isEnabled(),
           "Connect/Disconnect disabled without a stored key, Manual enabled");
 
-#ifdef GMM_PLATFORM_LINUX
-    const bool associate_expected = !engine::LinuxPlatform::is_nxm_handler_registered();
-#else
-    const bool associate_expected = false;
-#endif
+    const bool associate_expected =
+        !engine::is_protocol_handler_registered(engine::ProtocolHandler::Nxm);
     auto *associate =
         nexus ? nexus->findChild<QPushButton *>("associateButton") : nullptr;
     check(associate != nullptr, "associate button present");

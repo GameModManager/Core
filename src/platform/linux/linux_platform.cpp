@@ -1115,6 +1115,61 @@ std::string LinuxPlatform::modl_file_based_default_handler() {
   return default_for_scheme("x-scheme-handler/modl");
 }
 
+// --- Platform protocol handler virtuals ---
+//
+// Thin dispatch onto the per-protocol statics above. The statics stay public
+// because the XDG mimeapps tests exercise them directly; everything outside
+// src/platform/ goes through here so no OS branch leaks into the UI.
+
+bool LinuxPlatform::register_protocol_handler(
+    ProtocolHandler protocol, const std::filesystem::path &exe_path) const {
+  switch (protocol) {
+  case ProtocolHandler::Nxm:
+    return register_nxm_handler(exe_path);
+  case ProtocolHandler::Gmm:
+    return register_gmm_handler(exe_path);
+  case ProtocolHandler::Modl:
+    return register_modl_handler(exe_path);
+  }
+  return false;
+}
+
+bool LinuxPlatform::unregister_protocol_handler(ProtocolHandler protocol) const {
+  switch (protocol) {
+  case ProtocolHandler::Nxm:
+    return unregister_nxm_handler();
+  case ProtocolHandler::Gmm:
+    return unregister_gmm_handler();
+  case ProtocolHandler::Modl:
+    return unregister_modl_handler();
+  }
+  return false;
+}
+
+bool LinuxPlatform::is_protocol_handler_registered(ProtocolHandler protocol) const {
+  switch (protocol) {
+  case ProtocolHandler::Nxm:
+    return is_nxm_handler_registered();
+  case ProtocolHandler::Gmm:
+    return is_gmm_handler_registered();
+  case ProtocolHandler::Modl:
+    return is_modl_handler_registered();
+  }
+  return false;
+}
+
+std::string LinuxPlatform::current_protocol_handler(ProtocolHandler protocol) const {
+  switch (protocol) {
+  case ProtocolHandler::Nxm:
+    return nxm_runtime_default_handler();
+  case ProtocolHandler::Gmm:
+    return gmm_runtime_default_handler();
+  case ProtocolHandler::Modl:
+    return modl_runtime_default_handler();
+  }
+  return {};
+}
+
 // --- Free-function forms (see platform.h) ---
 
 std::string platform_id() { return LinuxPlatform().platform_name(); }
@@ -1124,5 +1179,22 @@ std::filesystem::path find_steam_root() { return LinuxPlatform().find_steam_root
 std::filesystem::path default_cache_dir() { return LinuxPlatform().cache_dir(); }
 
 std::filesystem::path find_wine() { return LinuxPlatform().find_wine(); }
+
+bool register_protocol_handler(ProtocolHandler protocol,
+                               const std::filesystem::path &exe_path) {
+  return LinuxPlatform().register_protocol_handler(protocol, exe_path);
+}
+
+bool unregister_protocol_handler(ProtocolHandler protocol) {
+  return LinuxPlatform().unregister_protocol_handler(protocol);
+}
+
+bool is_protocol_handler_registered(ProtocolHandler protocol) {
+  return LinuxPlatform().is_protocol_handler_registered(protocol);
+}
+
+std::string current_protocol_handler(ProtocolHandler protocol) {
+  return LinuxPlatform().current_protocol_handler(protocol);
+}
 
 }  // namespace engine
