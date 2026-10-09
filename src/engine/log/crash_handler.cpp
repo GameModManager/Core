@@ -38,31 +38,13 @@ std::string CrashHandler::dump_dir_;
 // ---------------------------------------------------------------------------
 // Default dump directory
 //
-// Mirrors Platform::cache_dir() / "crash_dumps" on every platform so
-// crash dumps land next to the rest of the app's cached data. Falls back to
-// safe_home_dir() when the platform-specific environment variable is unset.
+// Platform::cache_dir() / "crash_dumps" on every OS so crash dumps land next
+// to the rest of the app's cached data. The cache dir itself is resolved by
+// the platform layer (the free-function form, because the crash handler has
+// no Platform instance and must stay usable from a signal handler).
 // ---------------------------------------------------------------------------
 std::string CrashHandler::default_dump_dir() {
-#ifdef _WIN32
-  std::filesystem::path base;
-  if (const wchar_t *la = _wgetenv(L"LOCALAPPDATA"); la && la[0] != L'\0') {
-    base = la;
-  } else {
-    base = safe_home_dir() / L"AppData" / L"Local";
-  }
-  return (base / L"gamemodmanager" / L"cache" / L"crash_dumps").string();
-#elif defined(__APPLE__)
-  return (safe_home_dir() / "Library" / "Caches" / "GameModManager" / "crash_dumps")
-      .string();
-#else
-  std::filesystem::path base;
-  if (const char *xdg = std::getenv("XDG_CACHE_HOME"); xdg && xdg[0] != '\0') {
-    base = xdg;
-  } else {
-    base = safe_home_dir() / ".cache";
-  }
-  return (base / "GameModManager" / "crash_dumps").string();
-#endif
+  return (engine::default_cache_dir() / "crash_dumps").string();
 }
 
 // ---------------------------------------------------------------------------

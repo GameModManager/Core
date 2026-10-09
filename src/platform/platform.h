@@ -147,6 +147,29 @@ public:
   virtual void set_thread_low_priority() const {}
 };
 
+// --- Free-function forms -----------------------------------------------------
+//
+// Code paths that hold no Platform pointer (static utilities, the crash
+// handler, anything running before the app shell exists) must not re-implement
+// OS logic - the duplicate Steam-root scans and the three wine path lists that
+// used to live in engine/ came from exactly this gap. These three forward to
+// the virtuals above and resolve to the one implementation CMake compiles for
+// this OS.
+
+// "linux", "windows" or "macos".
+[[nodiscard]] std::string platform_id();
+
+// Steam install root, validated by steamapps/libraryfolders.vdf. Empty when
+// Steam is not installed.
+[[nodiscard]] std::filesystem::path find_steam_root();
+
+// Per-user cache dir. Same value as Platform::cache_dir().
+[[nodiscard]] std::filesystem::path default_cache_dir();
+
+// Wine binary for running Windows games without Proton. Same value as
+// Platform::find_wine(); empty when Wine is not installed.
+[[nodiscard]] std::filesystem::path find_wine();
+
 // Centralized home dir lookup for code paths without a Platform pointer.
 inline std::filesystem::path safe_home_dir() {
 #ifdef _WIN32

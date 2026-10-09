@@ -117,7 +117,6 @@ public slots:
   void launch_toolbar_shortcut(const QString &rel_path);
   void add_shortcut_to_desktop();
   void on_add_entry_requested();
-  static bool validate_linux_executable(const QString &path);
   void check_running_process();
   void on_deploy_progress(int files_done, int files_total);
   void do_capture_overwrite(std::filesystem::file_time_type capture_time);
