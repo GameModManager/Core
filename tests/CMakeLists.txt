@@ -467,6 +467,11 @@ gmm_catch2_test(conflict_send_test ui/conflict_send_test.cpp
     UI
     LIBS gmm_ui)
 
+gmm_catch2_test(plugin_keys_test ui/plugin_keys_test.cpp
+    UI
+    DEFINES GMM_TEST_RESOURCES_DIR="${PROJECT_SOURCE_DIR}/resources"
+    LIBS gmm_ui Qt6::Test)
+
 gmm_catch2_test(exec_steam_app_id_test ui/exec_steam_app_id_test.cpp
     UI
     LIBS gmm_ui)

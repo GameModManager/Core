@@ -3122,6 +3122,19 @@ void ModListController::refresh_plugins_tab(bool write_back) {
             &ModListController::on_plugin_reorder);
     connect(pt, &ui::PluginsTab::lock_requested, this,
             &ModListController::on_plugin_lock);
+    // Ctrl+Up / Ctrl+Down on the plugin table: shift the selected rows one
+    // place (MO2 PluginList::shiftPluginsPriority). The engine skips rows it
+    // cannot move (locked, core, or off the end of the list), so an
+    // impossible shift reports nothing rather than erroring.
+    connect(pt, &ui::PluginsTab::shift_requested, this,
+            [this](const std::vector<int> &rows, int offset) {
+              const auto moved = w_->plugins_db_.shift_priorities(rows, offset);
+              if (moved.empty())
+                return;
+              refresh_plugins_tab();
+              if (w_->right_panel_)
+                w_->right_panel_->reapply_current_filter();
+            });
     connect(pt, &ui::PluginsTab::set_all_requested, this,
             &ModListController::on_plugin_set_all);
     connect(pt, &ui::PluginsTab::refresh_requested, this, [this]() {
