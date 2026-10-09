@@ -23,6 +23,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QKeyEvent>
 #include <QLineEdit>
 #include <QLocale>
 #include <QMenu>
@@ -130,6 +131,34 @@ static std::string loverslab_drop_url(const QMimeData *data) {
 }
 
 // --- DownloadsTab ---
+
+DownloadShortcut download_shortcut_for(DownloadState state, int qt_key) {
+  switch (state) {
+  case DownloadState::Complete:
+  case DownloadState::Installed:
+    if (qt_key == Qt::Key_Enter || qt_key == Qt::Key_Return)
+      return DownloadShortcut::Install;
+    if (qt_key == Qt::Key_Delete)
+      return DownloadShortcut::Remove;
+    break;
+  case DownloadState::Downloading:
+    if (qt_key == Qt::Key_Delete)
+      return DownloadShortcut::Remove;
+    if (qt_key == Qt::Key_Space)
+      return DownloadShortcut::Pause;
+    break;
+  case DownloadState::Paused:
+  case DownloadState::Failed:
+    if (qt_key == Qt::Key_Delete)
+      return DownloadShortcut::Remove;
+    if (qt_key == Qt::Key_Space)
+      return DownloadShortcut::Resume;
+    break;
+  case DownloadState::Removed:
+    break;
+  }
+  return DownloadShortcut::None;
+}
 
 // MO2's header labels (downloadlist.cpp:76-91) for the columns we carry.
 QString DownloadsTab::column_name(int column) {
@@ -241,6 +270,10 @@ DownloadsTab::DownloadsTab(QWidget *parent) : QWidget(parent) {
   table_->setContextMenuPolicy(Qt::CustomContextMenu);
   connect(table_, &QTableWidget::customContextMenuRequested, this,
           &DownloadsTab::on_custom_context_menu);
+  // Enter / Delete / Space on the selected row (MO2
+  // DownloadListView::keyPressEvent). The table is the watched object, so
+  // arrow keys and editing still reach Qt.
+  table_->installEventFilter(this);
   connect(hide_installed_, &QCheckBox::toggled, this, [this](bool checked) {
     Settings::instance().set_hide_installed_downloads(checked);
     apply_installed_filter();
@@ -386,6 +419,7 @@ bool DownloadsTab::add_download(const std::string &id, const std::string &name,
   entry.filetime_item->setTextAlignment(Qt::AlignCenter);
   table_->setItem(entry.row, Filetime, entry.filetime_item);
   update_filetime(entry);
+  update_tooltip(entry);
 
   // Nexus ID: the parent mod page id. Only Nexus downloads carry one, so
   // every other source leaves this cell blank.
@@ -404,6 +438,29 @@ bool DownloadsTab::add_download(const std::string &id, const std::string &name,
 
   table_->setRowHeight(entry.row, row_height());
   return true;
+}
+
+void DownloadsTab::update_tooltip(DownloadEntry &entry) {
+  if (!entry.name_item)
+    return;
+  QStringList lines;
+  if (entry.state == DownloadState::Downloading && entry.file_path.empty()) {
+    // MO2's pendingDownload branch (downloadlist.cpp:214-216).
+    lines << tr("Pending download");
+  } else {
+    lines << (entry.name_item->text());
+  }
+  if (!entry.page_url.empty())
+    lines << QString::fromStdString(entry.page_url);
+  else if (!entry.nexus_domain.empty() && !entry.parent_mod_id.empty()) {
+    lines << QString::fromStdString("https://www.nexusmods.com/" + entry.nexus_domain +
+                                    "/mods/" + entry.parent_mod_id);
+  }
+  // The on-disk location is the part the columns never show, and it is what
+  // "Show in Folder" opens.
+  if (!entry.file_path.empty())
+    lines << QString::fromStdString(entry.file_path.string());
+  entry.name_item->setToolTip(lines.join('\n'));
 }
 
 void DownloadsTab::update_filetime(DownloadEntry &entry) {
@@ -447,6 +504,7 @@ void DownloadsTab::rename_download(const std::string &id, const std::string &new
   if (entry.name_item) {
     entry.name_item->setText(QString::fromStdString(new_name));
     table_->setRowHeight(entry.row, row_height());
+    update_tooltip(entry);
   }
 }
 
@@ -648,6 +706,7 @@ void DownloadsTab::set_file_path(const std::string &id,
   // The archive only exists now, so this is the first moment Filetime has
   // something to show.
   update_filetime(entry);
+  update_tooltip(entry);
 }
 
 void DownloadsTab::set_downloads_dir(const std::filesystem::path &dir) {
@@ -1129,18 +1188,73 @@ void DownloadsTab::add_context_menu_actions(QMenu &menu, const std::string &id) 
 
   menu.addSeparator();
   menu.addAction(icon_for("edit-delete", QStyle::SP_TrashIcon), tr("Remove"), this,
-                 [this, id, entry]() {
-                   const QString file_name =
-                       entry.file_path.empty()
-                           ? QString::fromStdString(id)
-                           : QString::fromStdString(
-                                 entry.file_path.filename().string());
-                   TaskDialog dlg(this, {});
-                   configure_remove_download_dialog(dlg, file_name);
-                   if (dlg.exec() != QMessageBox::Yes)
-                     return;
-                   remove_entry(id);
+                 [this, id]() {
+                   confirm_and_remove(id);
                  });
+}
+
+void DownloadsTab::confirm_and_remove(const std::string &id) {
+  const auto &entry = downloads_.at(id);
+  const QString file_name =
+      entry.file_path.empty()
+          ? QString::fromStdString(id)
+          : QString::fromStdString(entry.file_path.filename().string());
+  TaskDialog dlg(this, {});
+  configure_remove_download_dialog(dlg, file_name);
+  if (dlg.exec() != QMessageBox::Yes)
+    return;
+  remove_entry(id);
+}
+
+bool DownloadsTab::eventFilter(QObject *watched, QEvent *event) {
+  if (watched == table_ && event->type() == QEvent::KeyPress) {
+    auto *key     = static_cast<QKeyEvent *>(event);
+    const int row = table_->currentRow();
+    // A row the filters hid is not a row the user is standing on, so the key
+    // must not reach it. Qt leaves currentRow() naming a row that
+    // setRowHidden has just hidden, so without this guard a keypress would
+    // install / pause / remove a download that is no longer on screen.
+    // on_custom_context_menu never had this problem: it hit-tests with
+    // itemAt(pos), and a hidden row has no visual extent, so itemAt returns
+    // nullptr and the handler bails before it reads downloads_. Resolve the
+    // target the same way here - a hidden row is simply not reachable.
+    if (row < 0 || table_->isRowHidden(row))
+      return QWidget::eventFilter(watched, event);
+    // Copy the id out before acting: every action below can delete the entry
+    // (and with it the map row), so holding a reference across it would
+    // dangle.
+    std::string id;
+    DownloadState state = DownloadState::Removed;
+    bool found          = false;
+    for (const auto &[candidate, entry] : downloads_) {
+      if (entry.row == row) {
+        id    = candidate;
+        state = entry.state;
+        found = true;
+        break;
+      }
+    }
+    if (found) {
+      switch (download_shortcut_for(state, key->key())) {
+      case DownloadShortcut::Install:
+        // Same primitive the double-click uses, so one code path installs.
+        on_cell_double_clicked(row, 0);
+        return true;
+      case DownloadShortcut::Remove:
+        confirm_and_remove(id);
+        return true;
+      case DownloadShortcut::Pause:
+        emit pause_requested(id);
+        return true;
+      case DownloadShortcut::Resume:
+        emit resume_requested(id);
+        return true;
+      case DownloadShortcut::None:
+        break;
+      }
+    }
+  }
+  return QWidget::eventFilter(watched, event);
 }
 
 void configure_remove_download_dialog(TaskDialog &dlg, const QString &file_name) {
@@ -1333,6 +1447,7 @@ void DownloadsTab::deserialize(const std::string &json,
     entry.filetime_item->setTextAlignment(Qt::AlignCenter);
     table_->setItem(entry.row, Filetime, entry.filetime_item);
     update_filetime(entry);
+    update_tooltip(entry);
 
     auto *nexus_id_item = new QTableWidgetItem(QString::fromStdString(parent_mod_id));
     nexus_id_item->setFlags(nexus_id_item->flags() & ~Qt::ItemIsEditable);
