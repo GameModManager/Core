@@ -1427,25 +1427,32 @@ column.
 | 48. File Tree Menu Protocol | 0 | 2 | 0 | 1 | 0 | 0 | 0 |
 | 49. CLI Help Grammar | 0 | 1 | 0 | 1 | 0 | 0 | 0 |
 | 50. My Games Resolution | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
-| 51. Conflict Scan Refresh | 1 | 1 | 0 | 0 | 0 | 0 | 0 |
-| **TOTAL** | **355** | **169** | **177** | **246** | **54** | **43** | **62** |
+| 51. Conflict Scan Refresh | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
+| **TOTAL** | **355** | **168** | **177** | **246** | **54** | **43** | **62** |
 
 ### The arithmetic
 
 ```
-rows in file                          1044
-scored rows (ok + part + miss)         770
+rows in file                          1043
+scored rows (ok + part + miss)         769
 
-MO2 parity        ok   / scored        355 /  770  = 46.1%
-partial           part / scored        169 /  770  = 22.0%
-missing           miss / scored        246 /  770  = 31.9%
-GMM-exclusive     surp / all rows      177 / 1044  = 17.0%   (not scored)
+MO2 parity        ok   / scored        355 /  769  = 46.2%
+partial           part / scored        168 /  769  = 21.9%
+missing           miss / scored        246 /  769  = 32.0%
+GMM-exclusive     surp / all rows      177 / 1043  = 17.0%   (not scored)
 ```
 
-**Parity is 355 / 770 = 46.1%.** 246 rows are outright missing and 169 partial.
+**Parity is 355 / 769 = 46.2%.** 246 rows are outright missing and 168 partial.
 The largest untouched surfaces are **44. Tutorial** and **46. Notifications /
 Problems** (zero matched rows), then **16. Nexus** and **15. Downloads**, which
 carry the most missing rows in absolute terms.
+
+**Correction.** An earlier commit here claimed two inherited summary errors:
+that category 51 held a partial row, and that the TOTAL understated partial by
+one against "173 actual". Neither was true. Category 51 holds a single `✅`
+row, so its cell is `1 | 0`, and `main` reconciled exactly at 172 partial. The
+figures above are recounted from the rows: all 51 categories match the TOTAL in
+every column, and the six disposition columns sum to 1043.
 
 **4. Settings** was re-verified row by row and is no longer a missing-row
 surface: 57 `❌` became 1. An audit of every `Settings` getter followed: each
@@ -1458,7 +1465,7 @@ completions - a missing column, a missing link - not unread settings - and 24
 
 ### Confidence
 
-295 of 1044 rows carry `✔` (both sides re-read); the rest carry `·` and are
+295 of 1043 rows carry `✔` (both sides re-read); the rest carry `·` and are
 leads, not findings. The `✔` rows concentrate in sections 3, 4, 15, 21, 18 and
 30. Section 45's `TaskDialog` row is a stale `❌` corrected here; uibase's
 `taskdialog.ui` is not vendored under `references/`, so its MO2 half is still
