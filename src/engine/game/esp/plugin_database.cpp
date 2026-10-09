@@ -829,6 +829,57 @@ bool Database::set_enabled(const std::string &name, bool enabled, std::string *e
   return true;
 }
 
+std::vector<int> Database::shift_priorities(const std::vector<int> &rows, int offset) {
+  std::vector<int> moved;
+  if (offset == 0 || rows.empty())
+    return moved;
+
+  const int n = static_cast<int>(plugins_.size());
+  // First row of the user band: one past the fixed (force-loaded) rows.
+  int band_top = 0;
+  while (band_top < n && plugins_[band_top].force_loaded)
+    ++band_top;
+
+  // Walk the selection in the direction that leaves each destination free: a
+  // downward shift must process the bottom row first (or the row below it
+  // would already have been vacated wrongly) and vice versa. MO2 sorts for
+  // the same reason (pluginlist.cpp:609-613).
+  std::vector<int> ordered = rows;
+  std::sort(ordered.begin(), ordered.end(), [offset](int a, int b) {
+    return offset > 0 ? a > b : a < b;
+  });
+
+  for (const int row : ordered) {
+    if (row < 0 || row >= n)
+      continue;
+    if (plugins_[row].force_loaded || plugins_[row].locked)
+      continue;
+    int dest = row + offset;
+    if (dest < band_top || dest >= n)
+      continue;
+    // Landing on a locked row would displace a pinned plugin.
+    if (plugins_[dest].locked)
+      continue;
+    if (dest == row)
+      continue;
+
+    GamePlugin shifted = std::move(plugins_[row]);
+    plugins_.erase(plugins_.begin() + row);
+    plugins_.insert(plugins_.begin() + dest, std::move(shifted));
+    moved.push_back(row);
+  }
+
+  if (moved.empty())
+    return moved;
+
+  rebuild_index();
+  for (size_t i = 0; i < plugins_.size(); ++i)
+    plugins_[i].priority = static_cast<int>(i);
+  generate_mod_indexes();
+  reassert_band();
+  return moved;
+}
+
 bool Database::move_plugin(int from_row, int to_row, std::string *error) {
   const int n = static_cast<int>(plugins_.size());
   if (from_row < 0 || from_row >= n) {

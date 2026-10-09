@@ -44,6 +44,11 @@ public:
   void send_to_lowest_priority(const QString &id);
   void send_to_highest_in_separator(const QString &id);
   void send_to_lowest_in_separator(const QString &id);
+  // MO2 "Send to First/Last Conflict": move the mod to the lowest priority
+  // among the mods it wins against, or the highest among the mods that win
+  // against it. No-op when it conflicts with nothing in that direction.
+  void send_to_first_conflict(const QString &id);
+  void send_to_last_conflict(const QString &id);
   void priority_move_selected(int step);
   void toggle_selected_mods(bool enabled);
   void toggle_root_override(const QList<int> &rows, bool on);

@@ -30,6 +30,10 @@ public:
   void set_toolbar_checked(bool checked);
   void set_status_bar_checked(bool checked);
   void set_console_checked(bool checked);
+  // The menu bar's own checkbox, synced from MainWindow::keyReleaseEvent when
+  // Alt brings a hidden bar back - the toggle cannot stay unchecked while the
+  // bar is on screen.
+  void set_menu_bar_checked(bool checked);
   // Sync the Checkerboard submenu checked state (0=off, 1=light, 2=medium,
   // 3=dark) without re-emitting checkerboard_style_requested.
   void set_checkerboard_style(int style);
@@ -69,8 +73,14 @@ signals:
   void toggle_toolbar(bool visible);
   void toggle_status_bar(bool visible);
   void toggle_console(bool visible);
+  // MO2 actionMainMenuToggle (mainwindow.ui:menuToolbars) - the third
+  // visibility toggle in that menu, and the only one of the three missing.
+  void toggle_menu_bar(bool visible);
   void pipeline_requested();
   void icon_size_requested(int size);
+  // MO2 actionToolBarIconsOnly / TextOnly / IconsAndText: how toolbar buttons
+  // render, as a Qt::ToolButtonStyle value.
+  void tool_button_style_requested(int style);
   void checkerboard_style_requested(int style);
   void refresh_requested();
 
@@ -111,6 +121,10 @@ private:
   QAction *toggle_toolbar_action_    = nullptr;
   QAction *toggle_status_bar_action_ = nullptr;
   QAction *toggle_console_action_    = nullptr;
+  QAction *toggle_menu_bar_action_   = nullptr;
+  // Toolbar button style group (Icons Only / Text Only / Icons and Text) for
+  // sync; the chosen style is also what the group reports back.
+  QActionGroup *tool_button_style_group_ = nullptr;
   // Checkerboard submenu actions (Off/Light/Medium/Dark) for sync.
   QActionGroup *checkerboard_group_ = nullptr;
   std::string current_game_id_;

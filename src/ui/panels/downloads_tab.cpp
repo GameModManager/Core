@@ -160,6 +160,55 @@ DownloadShortcut download_shortcut_for(DownloadState state, int qt_key) {
   return DownloadShortcut::None;
 }
 
+QString format_remaining_time(int64_t remaining_bytes, double bytes_per_second) {
+  // No speed measured yet, nothing left to fetch, or a nonsensical input:
+  // there is no estimate to show.
+  if (bytes_per_second <= 0.0 || remaining_bytes <= 0)
+    return {};
+
+  const auto seconds = static_cast<int64_t>(remaining_bytes / bytes_per_second);
+  // Below a second the estimate is noise and would render as "0s".
+  if (seconds < 1)
+    return {};
+
+  // Largest unit that fits, so the cell never grows past four characters.
+  if (seconds >= 86400)
+    return QString::number(seconds / 86400) + "d";
+  if (seconds >= 3600)
+    return QString::number(seconds / 3600) + "h";
+  if (seconds >= 60)
+    return QString::number(seconds / 60) + "m";
+  return QString::number(seconds) + "s";
+}
+
+bool download_in_batch(DownloadState state, DownloadBatch batch) {
+  if (state == DownloadState::Removed)
+    return false;
+  if (batch == DownloadBatch::All)
+    return true;
+  // An in-flight row has not finished, so it is neither installed nor
+  // uninstalled - MO2's issueDeleteCompleted / issueDeleteUninstalled skip
+  // anything below STATE_READY.
+  if (state == DownloadState::Downloading || state == DownloadState::Paused)
+    return false;
+  const bool installed = state == DownloadState::Installed;
+  return batch == DownloadBatch::Installed ? installed : !installed;
+}
+
+QString download_batch_label(DownloadBatch batch, bool remove) {
+  switch (batch) {
+  case DownloadBatch::Installed:
+    return remove ? QObject::tr("Delete Installed Downloads...")
+                  : QObject::tr("Hide Installed...");
+  case DownloadBatch::Uninstalled:
+    return remove ? QObject::tr("Delete Uninstalled Downloads...")
+                  : QObject::tr("Hide Uninstalled...");
+  case DownloadBatch::All:
+    return remove ? QObject::tr("Delete All Downloads...") : QObject::tr("Hide All...");
+  }
+  return {};
+}
+
 // MO2's header labels (downloadlist.cpp:76-91) for the columns we carry.
 QString DownloadsTab::column_name(int column) {
   switch (column) {
@@ -537,7 +586,14 @@ void DownloadsTab::update_progress(const std::string &id, int64_t downloaded,
   if (speed > 0.0) {
     QString speed_str = format_size(static_cast<int64_t>(speed)) + "/s";
     if (total > 0) {
-      entry.progress_bar->setFormat("%p% - " + speed_str);
+      // MO2 renders "%p% - speed - ~remaining"
+      // (downloadmanager.cpp:1747-1750). The estimate is dropped when it
+      // cannot be made, so a just-started row does not claim "~0s".
+      QString format    = "%p% - " + speed_str;
+      const QString eta = format_remaining_time(total - downloaded, speed);
+      if (!eta.isEmpty())
+        format += " - ~" + eta;
+      entry.progress_bar->setFormat(format);
     } else {
       entry.progress_bar->setFormat(format_size(downloaded) + " - " + speed_str);
     }
@@ -966,6 +1022,14 @@ void DownloadsTab::apply_installed_filter() {
   const bool hide    = hide_installed_->isChecked();
   const QString text = current_filter_text_;
   for (const auto &[id, entry] : downloads_) {
+    // A row the user hid through the batch actions stays hidden until
+    // "Un-Hide All..." clears the flag. This runs first and `continue`s,
+    // because every branch below ends in setRowHidden(.., false) and would
+    // otherwise resurrect the row on the next filter pass.
+    if (entry.hidden) {
+      table_->setRowHidden(entry.row, true);
+      continue;
+    }
     // "Hide installed" always wins over the text filter.
     if (hide && entry.state == DownloadState::Installed) {
       table_->setRowHidden(entry.row, true);
@@ -996,6 +1060,81 @@ void DownloadsTab::set_filter_text(const QString &text) {
 
 void DownloadsTab::reapply_installed_filter() {
   apply_installed_filter();
+}
+
+void DownloadsTab::apply_hidden_rows() {
+  apply_installed_filter();
+}
+
+void DownloadsTab::apply_batch(DownloadBatch batch, bool hide) {
+  if (hide)
+    hide_batch(batch, /*unhide=*/false);
+  else
+    remove_batch(batch);
+}
+
+void DownloadsTab::hide_batch(DownloadBatch batch, bool unhide) {
+  // Copy the ids out first: the loop below only writes a flag, but the
+  // manifest round-trip that follows reads the whole map, and keeping the
+  // loop free of anything that can insert or erase keeps that trivially safe.
+  std::vector<std::string> targets;
+  for (const auto &[id, entry] : downloads_) {
+    // Un-Hide All covers every row regardless of state; the Hide actions take
+    // the batch's own scope.
+    if (unhide || download_in_batch(entry.state, batch))
+      targets.push_back(id);
+  }
+
+  int changed = 0;
+  for (const auto &id : targets) {
+    auto it = downloads_.find(id);
+    if (it == downloads_.end())
+      continue;
+    const bool want = !unhide;
+    if (it->second.hidden == want)
+      continue;
+    it->second.hidden = want;
+    ++changed;
+  }
+  if (changed == 0)
+    return;
+
+  // Nothing was deleted, so the manifest must be rewritten through the normal
+  // row-changed path rather than entry_removed.
+  apply_installed_filter();
+  emit entries_changed();
+}
+
+void DownloadsTab::remove_batch(DownloadBatch batch) {
+  // Collect first: remove_entry() mutates downloads_ and reindexes rows, so
+  // iterating the map while removing would invalidate the iterator.
+  std::vector<std::string> targets;
+  for (const auto &[id, entry] : downloads_) {
+    if (download_in_batch(entry.state, batch))
+      targets.push_back(id);
+  }
+  if (targets.empty())
+    return;
+
+  const QString what =
+      batch == DownloadBatch::Installed
+          ? tr("%n installed download(s)", "", static_cast<int>(targets.size()))
+          : (batch == DownloadBatch::Uninstalled
+                 ? tr("%n uninstalled download(s)", "",
+                      static_cast<int>(targets.size()))
+                 : tr("%n download(s)", "", static_cast<int>(targets.size())));
+  TaskDialog dlg(this, {});
+  dlg.title(tr("Remove Downloads"))
+      .main(what)
+      .content(tr("The archives stay in the system trash and can be restored."))
+      .icon(QMessageBox::Question)
+      .add_button({tr("Yes"), "", QMessageBox::Yes})
+      .add_button({tr("No"), "", QMessageBox::No});
+  if (dlg.exec() != QMessageBox::Yes)
+    return;
+
+  for (const auto &id : targets)
+    remove_entry(id);
 }
 
 void DownloadsTab::on_cell_double_clicked(int row, int column) {
@@ -1191,6 +1330,38 @@ void DownloadsTab::add_context_menu_actions(QMenu &menu, const std::string &id) 
                  [this, id]() {
                    confirm_and_remove(id);
                  });
+
+  // Batch actions (MO2 DownloadListView::downloadContextMenu,
+  // downloadlistview.cpp:300-325). Every row in scope, not just the one under
+  // the cursor, so these sit below the per-row Remove.
+  const bool any_hidden =
+      std::any_of(downloads_.begin(), downloads_.end(), [](const auto &kv) {
+        return kv.second.hidden;
+      });
+  menu.addSeparator();
+  for (auto batch :
+       {DownloadBatch::Installed, DownloadBatch::Uninstalled, DownloadBatch::All}) {
+    const auto label = download_batch_label(batch, /*remove=*/true);
+    menu.addAction(icon_for("edit-delete", QStyle::SP_TrashIcon), label, this,
+                   [this, batch]() {
+                     remove_batch(batch);
+                   });
+  }
+  if (any_hidden) {
+    menu.addAction(icon_for("dialog-cancel", QStyle::SP_DialogResetButton),
+                   tr("Un-Hide All..."), this, [this]() {
+                     hide_batch(DownloadBatch::All, /*unhide=*/true);
+                   });
+  } else {
+    for (auto batch :
+         {DownloadBatch::Installed, DownloadBatch::Uninstalled, DownloadBatch::All}) {
+      menu.addAction(icon_for("view-conceal", QStyle::SP_DialogResetButton),
+                     download_batch_label(batch, /*remove=*/false), this,
+                     [this, batch]() {
+                       hide_batch(batch, /*unhide=*/false);
+                     });
+    }
+  }
 }
 
 void DownloadsTab::confirm_and_remove(const std::string &id) {
@@ -1317,6 +1488,7 @@ std::string DownloadsTab::serialize() const {
     obj["domain"]        = QString::fromStdString(entry.nexus_domain);
     obj["category"]      = QString::fromStdString(entry.category);
     obj["page_url"]      = QString::fromStdString(entry.page_url);
+    obj["hidden"]        = entry.hidden;
     arr.append(obj);
   }
   QJsonDocument doc(arr);
@@ -1426,6 +1598,7 @@ void DownloadsTab::deserialize(const std::string &json,
     entry.nexus_domain  = nexus_domain;
     entry.category      = obj["category"].toString().toStdString();
     entry.page_url      = page_url;
+    entry.hidden        = obj["hidden"].toBool();
 
     table_->insertRow(entry.row);
 

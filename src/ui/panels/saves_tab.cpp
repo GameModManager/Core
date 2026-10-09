@@ -260,6 +260,11 @@ const std::vector<engine::SaveMissingAsset> *SavesTab::missing_at(int row) const
   return &saves_.entries[row].missing;
 }
 
+int SavesTab::missing_count_at(int row) const {
+  const auto *missing = missing_at(row);
+  return missing ? static_cast<int>(missing->size()) : 0;
+}
+
 void SavesTab::request_scan(SavesScanRequest request) {
   if (scanning_) {
     // Coalesce: the in-flight scan will pick up the latest request when it
@@ -572,6 +577,17 @@ void SavesTab::on_context_menu(const QPoint &pos) {
   menu.addSeparator();
   menu.addAction(tr("Delete %n save(s)", "", selected.size()), this,
                  &SavesTab::on_delete_key);
+
+  // "Fix enabled mods..." (MO2 SavesTab::onContextMenu, savestab.cpp:255-262).
+  // Offered but disabled rather than hidden, exactly as MO2 does, and only
+  // meaningful for a single row that actually has something missing - MO2
+  // computes getMissingAssets for the one selected row and enables on a
+  // non-empty result.
+  auto *fix_action =
+      menu.addAction(tr("Fix enabled mods..."), this, &SavesTab::on_fix_enabled_mods);
+  fix_action->setEnabled(selected.size() == 1 &&
+                         missing_count_at(selected.first().row()) > 0);
+
   menu.addAction(tr("Open in file manager"), this, [this] {
     const auto sel = table_->selectionModel()->selectedRows();
     if (sel.isEmpty())
@@ -593,6 +609,18 @@ void SavesTab::on_information_action() {
   // the screenshot here too - the dialog renders it from save_at(row).
   ensure_heavy_data(sel.first().row());
   emit information_requested(sel.first().row());
+}
+
+void SavesTab::on_fix_enabled_mods() {
+  const auto sel = table_->selectionModel()->selectedRows();
+  if (sel.size() != 1)
+    return;
+  const int row = sel.first().row();
+  // Nothing missing is nothing to fix. The menu action is already disabled in
+  // that case, so this is the guard for the other ways in.
+  if (missing_count_at(row) == 0)
+    return;
+  emit fix_missing_requested(row);
 }
 
 }  // namespace ui

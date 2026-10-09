@@ -6,6 +6,7 @@
 
 #include <QCoreApplication>
 #include <QFrame>
+#include <QProgressBar>
 #include <QToolButton>
 
 namespace ui {
@@ -66,6 +67,17 @@ StatusBar::StatusBar(QWidget *parent) : QWidget(parent) {
 
   layout_->addStretch();
 
+  // MO2 statusbar.cpp:31-37 and :45 (setProgress(-1) at startup): a bar that
+  // stays hidden until an operation reports progress, so the resting bar never
+  // claims work that is not running.
+  progress_ = new QProgressBar(this);
+  progress_->setObjectName("statusProgress");
+  progress_->setTextVisible(true);
+  progress_->setRange(0, 100);
+  progress_->setMaximumWidth(300);
+  progress_->setVisible(false);
+  layout_->addWidget(progress_);
+
   // Pipeline activity indicator - click to open the pipeline window
   pipeline_button_ = new QToolButton(this);
   pipeline_button_->setObjectName("pipelineIndicator");
@@ -103,6 +115,29 @@ void StatusBar::set_context(const QString &text) {
 void StatusBar::set_status(const QString &text) {
   status_label_->setText(text);
   status_timer_->start();
+}
+
+// MO2 StatusBar::setProgress (statusbar.cpp:58-70): a percent outside 0-99
+// means "no operation running", so the bar goes away and the label is handed
+// back rather than left reading "Loading..." forever.
+void StatusBar::set_progress(int percent) {
+  const bool showing = percent >= 0 && percent < 100;
+  progress_->setVisible(showing);
+  if (!showing) {
+    // clearMessage() in MO2: the transient status is over.
+    status_timer_->stop();
+    status_label_->setText(context_);
+    return;
+  }
+  progress_->setValue(percent);
+  status_label_->setText(tr("Loading..."));
+  status_timer_->stop();
+}
+
+int StatusBar::progress() const {
+  // isHidden(), not isVisible(): the question is whether set_progress() put
+  // the bar away, which is true regardless of whether this bar is on screen.
+  return progress_->isHidden() ? -1 : progress_->value();
 }
 
 QStringList StatusBar::source_names() const {

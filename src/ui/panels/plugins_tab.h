@@ -61,6 +61,8 @@ signals:
   // which never emit.
   void mod_info_requested(const std::string &owner_mod);
   void reveal_requested(const std::string &owner_mod);
+  // Forwarded from PluginView's Ctrl+Up / Ctrl+Down handler.
+  void shift_requested(const std::vector<int> &rows, int offset);
 
 protected:
   void add_context_menu_actions(QMenu &menu, int row);

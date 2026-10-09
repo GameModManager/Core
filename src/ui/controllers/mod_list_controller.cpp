@@ -3122,6 +3122,19 @@ void ModListController::refresh_plugins_tab(bool write_back) {
             &ModListController::on_plugin_reorder);
     connect(pt, &ui::PluginsTab::lock_requested, this,
             &ModListController::on_plugin_lock);
+    // Ctrl+Up / Ctrl+Down on the plugin table: shift the selected rows one
+    // place (MO2 PluginList::shiftPluginsPriority). The engine skips rows it
+    // cannot move (locked, core, or off the end of the list), so an
+    // impossible shift reports nothing rather than erroring.
+    connect(pt, &ui::PluginsTab::shift_requested, this,
+            [this](const std::vector<int> &rows, int offset) {
+              const auto moved = w_->plugins_db_.shift_priorities(rows, offset);
+              if (moved.empty())
+                return;
+              refresh_plugins_tab();
+              if (w_->right_panel_)
+                w_->right_panel_->reapply_current_filter();
+            });
     connect(pt, &ui::PluginsTab::set_all_requested, this,
             &ModListController::on_plugin_set_all);
     connect(pt, &ui::PluginsTab::refresh_requested, this, [this]() {
@@ -3268,9 +3281,19 @@ void ModListController::on_loot_progress(int stage, const QString &) {
     return;
   if (stage >= 0 && stage < kStageNames.size() && !kStageNames.at(stage).isEmpty())
     w_->status_bar_->set_status(kStageNames.at(stage));
+  // MO2 StatusBar::setProgress drives its bar from a step counter exactly
+  // like this. Stages 1..8 are the whole run, so stage 8 is 100% and hides
+  // the bar again; anything below 0 leaves it alone.
+  if (stage >= 0 && stage < kStageNames.size())
+    w_->status_bar_->set_progress(stage * 100 / (kStageNames.size() - 1));
 }
 
 void ModListController::on_loot_finished(engine::Sorter::Loot::Result result) {
+  // The run is over on every path below, failure included, so the bar comes
+  // down here rather than at each exit. The message that replaces it is set
+  // by whichever branch is taken.
+  if (w_->status_bar_)
+    w_->status_bar_->set_progress(-1);
   if (!result.ok) {
     engine::Logger::instance().warn("LOOT sort failed: " + result.error);
     if (w_->status_bar_)
@@ -3617,6 +3640,14 @@ void ModListController::send_to_highest_in_separator(const QString &id) {
 
 void ModListController::send_to_lowest_in_separator(const QString &id) {
   mod_actions_->send_to_lowest_in_separator(id);
+}
+
+void ModListController::send_to_first_conflict(const QString &id) {
+  mod_actions_->send_to_first_conflict(id);
+}
+
+void ModListController::send_to_last_conflict(const QString &id) {
+  mod_actions_->send_to_last_conflict(id);
 }
 
 void ModListController::priority_move_selected(int step) {

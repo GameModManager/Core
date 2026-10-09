@@ -312,6 +312,36 @@ void ModActions::send_to_lowest_in_separator(const QString &id) {
   w_->mod_model_->move_mod(id, target - 1);
 }
 
+void ModActions::send_to_first_conflict(const QString &id) {
+  auto *model = w_->mod_model_;
+  auto it     = model->conflict_pairs().constFind(id);
+  if (it == model->conflict_pairs().constEnd())
+    return;
+  const int target = conflict_send_target(
+      *it,
+      [model](const QString &other) {
+        return model->priority_of(other);
+      },
+      true);
+  if (target >= 0)
+    model->move_mod(id, target);
+}
+
+void ModActions::send_to_last_conflict(const QString &id) {
+  auto *model = w_->mod_model_;
+  auto it     = model->conflict_pairs().constFind(id);
+  if (it == model->conflict_pairs().constEnd())
+    return;
+  const int target = conflict_send_target(
+      *it,
+      [model](const QString &other) {
+        return model->priority_of(other);
+      },
+      false);
+  if (target >= 0)
+    model->move_mod(id, target);
+}
+
 void ModActions::priority_move_selected(int step) {
   auto sel = w_->mod_view_->selectionModel()->selectedRows();
   if (sel.isEmpty())

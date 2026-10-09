@@ -5,6 +5,7 @@
 #include "ui/fomod/fomod_wizard_dialog.h"
 #include "ui/install/install_name_dialog.h"
 #include "ui/overwrite/query_overwrite_dialog.h"
+#include "ui/widgets/task_dialog.h"
 
 #include <QAbstractButton>
 #include <QMessageBox>
@@ -509,6 +510,9 @@ void DownloadsController::wire_downloads_tab() {
                                           engine::json_obj({{"id", id}}));
     save_download_manifest();
   });
+  connect(dt, &DownloadsTab::entries_changed, this, [this]() {
+    save_download_manifest();
+  });
 }
 
 void DownloadsController::wire_saves_tab() {
@@ -545,6 +549,8 @@ void DownloadsController::wire_saves_tab() {
           &DownloadsController::on_saves_delete_requested);
   connect(st, &ui::SavesTab::information_requested, this,
           &DownloadsController::on_save_information_requested);
+  connect(st, &ui::SavesTab::fix_missing_requested, this,
+          &DownloadsController::on_save_fix_missing_requested);
   // On-demand fill: the tab emits this once when first shown (plus the
   // delete flow below re-scans directly). No eager scan at game load -
   // most sessions never open the Saves tab.
@@ -615,6 +621,80 @@ void DownloadsController::on_save_information_requested(int row) {
                          missing ? *missing : std::vector<engine::SaveMissingAsset>{},
                          w_);
   dlg.exec();
+}
+
+// MO2 SavesTab::fixMods (savestab.cpp:280-305): show what the save needs,
+// then enable every plugin that can be enabled and say plainly which cannot.
+//
+// MO2's ActivateModsDialog also activates the missing mods; installing a mod
+// is a download, and this action cannot do that, so anything with no
+// providing mod installed is reported instead of being quietly skipped.
+void DownloadsController::on_save_fix_missing_requested(int row) {
+  auto *st = w_->right_panel_->saves_tab();
+  if (!st)
+    return;
+  const std::vector<engine::SaveMissingAsset> *missing = st->missing_at(row);
+  if (!missing || missing->empty())
+    return;
+
+  QStringList enable_now;     // in the load order but switched off
+  QStringList not_installed;  // no mod on disk provides them
+  QStringList blocked;        // a plugin we depend on is off, so this cannot be on
+  for (const auto &asset : *missing) {
+    if (asset.providing_mods.empty()) {
+      not_installed << QString::fromStdString(asset.plugin_name);
+    } else if (asset.inactive) {
+      enable_now << QString::fromStdString(asset.plugin_name);
+    } else {
+      blocked << QString::fromStdString(asset.plugin_name);
+    }
+  }
+
+  QString body;
+  if (!enable_now.isEmpty())
+    body += tr("Enable these plugins, which this save needs:\n  %1\n\n")
+                .arg(enable_now.join("\n  "));
+  if (!not_installed.isEmpty())
+    body += tr("These are not provided by any installed mod. Install a mod that "
+               "provides them:\n  %1\n\n")
+                .arg(not_installed.join("\n  "));
+  if (!blocked.isEmpty())
+    body += tr("These are in the load order but cannot be enabled yet, because a "
+               "plugin they depend on is off. Fix that first:\n  %1\n")
+                .arg(blocked.join("\n  "));
+
+  if (enable_now.isEmpty()) {
+    QMessageBox::information(w_, tr("Fix enabled mods"), body.trimmed());
+    return;
+  }
+
+  TaskDialog dlg(w_, tr("Fix enabled mods"));
+  dlg.main(tr("Fix this save"));
+  dlg.content(body.trimmed());
+  dlg.add_button({tr("Enable"), QString(), QMessageBox::Ok});
+  if (dlg.exec() != QMessageBox::Ok)
+    return;
+
+  QStringList failed;
+  for (const auto &name : enable_now) {
+    std::string err;
+    if (!w_->plugins_db_.set_enabled(name.toStdString(), true, &err)) {
+      failed << QStringLiteral("%1 (%2)").arg(name, QString::fromStdString(err));
+    }
+  }
+  w_->plugins_db_.save_profile(w_->profiles_dir_path(), w_->current_profile_name_);
+  if (auto *pt = w_->right_panel_->plugins_tab())
+    pt->sync_enabled(w_->plugins_db_.plugins());
+
+  if (!failed.isEmpty()) {
+    QMessageBox::warning(
+        w_, tr("Fix enabled mods"),
+        tr("These could not be enabled:\n  %1").arg(failed.join("\n  ")));
+  }
+  // The save's missing list is now stale: it was computed against the load
+  // order this action just changed. A re-scan is what makes the column and
+  // the menu gate tell the truth again.
+  on_saves_refresh_requested();
 }
 
 void DownloadsController::update_install_progress(const std::string &mod_id,
