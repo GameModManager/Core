@@ -3281,9 +3281,19 @@ void ModListController::on_loot_progress(int stage, const QString &) {
     return;
   if (stage >= 0 && stage < kStageNames.size() && !kStageNames.at(stage).isEmpty())
     w_->status_bar_->set_status(kStageNames.at(stage));
+  // MO2 StatusBar::setProgress drives its bar from a step counter exactly
+  // like this. Stages 1..8 are the whole run, so stage 8 is 100% and hides
+  // the bar again; anything below 0 leaves it alone.
+  if (stage >= 0 && stage < kStageNames.size())
+    w_->status_bar_->set_progress(stage * 100 / (kStageNames.size() - 1));
 }
 
 void ModListController::on_loot_finished(engine::Sorter::Loot::Result result) {
+  // The run is over on every path below, failure included, so the bar comes
+  // down here rather than at each exit. The message that replaces it is set
+  // by whichever branch is taken.
+  if (w_->status_bar_)
+    w_->status_bar_->set_progress(-1);
   if (!result.ok) {
     engine::Logger::instance().warn("LOOT sort failed: " + result.error);
     if (w_->status_bar_)
