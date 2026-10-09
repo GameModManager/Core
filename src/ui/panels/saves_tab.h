@@ -66,6 +66,9 @@ public:
   // Row's save at `row`, or nullptr when out of range.
   [[nodiscard]] const engine::SaveGame *save_at(int row) const;
   [[nodiscard]] const std::vector<engine::SaveMissingAsset> *missing_at(int row) const;
+  // How many plugins this save needs but the load order cannot satisfy. 0 for
+  // an out-of-range row, which is what keeps the context-menu action off it.
+  [[nodiscard]] int missing_count_at(int row) const;
 
   // Underlying scan worker (test-only: lets QSignalSpy observe
   // entryReady / finished). Production callers don't need this.
@@ -102,6 +105,11 @@ signals:
   // Lazy-scan trigger (Workspace-ugm3): emitted once when the tab is first
   // shown. The controller answers by building a scan request.
   void scan_requested();
+  // "Fix enabled mods..." on a single row that has missing assets (MO2
+  // SavesTab::fixMods, savestab.cpp:280-305). The tab carries the missing
+  // asset list it already computed for the scan; the controller owns the
+  // plugin database and the mod list, which is where the fix lands.
+  void fix_missing_requested(int row);
 
 protected:
   // Lazy load (Workspace-ugm3): the tab is created at game load but only
@@ -109,6 +117,9 @@ protected:
   void showEvent(QShowEvent *event) override;
   // Drop the hover info panel when the pointer leaves or the window blurs.
   bool eventFilter(QObject *object, QEvent *event) override;
+  // Protected (not private like the other menu slots) so a test can drive the
+  // fix flow: on_context_menu runs menu.exec(), which blocks offscreen.
+  void on_fix_enabled_mods();
 
 private:
   // Streaming scan's final "done" signal: the worker emits entryReady per
