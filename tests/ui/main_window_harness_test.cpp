@@ -33,6 +33,7 @@
 #include "engine/game/registry/game_knowledge.h"
 #include "engine/source/update/mod_update_db_client.h"
 #include "platform/platform.h"
+#include "test_platform.h"
 #include "ui/controllers/downloads_controller.h"
 #include "ui/controllers/mod_list_controller.h"
 #include "ui/main_window/main_window.h"
@@ -127,7 +128,7 @@ void pump_ms(int ms) {
     QThread::msleep(2);
   }
 }
-class FakePlatform : public engine::Platform {
+class FakePlatform : public gmm_test::InertPlatform {
 public:
   explicit FakePlatform(fs::path data_dir) : data_dir_(std::move(data_dir)) {}
   std::string platform_name() const override { return "fake"; }
@@ -136,11 +137,6 @@ public:
   fs::path cache_dir() const override { return data_dir_; }
   fs::path home_dir() const override { return data_dir_; }
   fs::path temp_dir() const override { return data_dir_; }
-  fs::path find_steam_root() const override { return {}; }
-  bool launch_executable(const fs::path &,
-                         const std::vector<std::string> &) const override {
-    return false;
-  }
 
 private:
   fs::path data_dir_;

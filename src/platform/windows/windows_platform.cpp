@@ -325,6 +325,140 @@ bool WindowsPlatform::is_modl_handler_registered() {
   return cmd.find(L"--handle-modl") != std::wstring::npos;
 }
 
+// --- Platform protocol handler virtuals ---
+//
+// Windows has one registry shape for every scheme: a per-user
+// HKCU\Software\Classes\<scheme> key carrying "URL Protocol" plus a
+// shell\open\command value. The per-protocol registrars above predate this
+// table and stay for their existing callers; everything else goes through here.
+
+namespace {
+
+  struct SchemeSpec {
+    const wchar_t *scheme;
+    const wchar_t *flag;  // argv flag only our own registration writes
+    const wchar_t *desc;  // default value of the scheme key
+  };
+
+  SchemeSpec spec_for(ProtocolHandler protocol) {
+    switch (protocol) {
+    case ProtocolHandler::Nxm:
+      return {L"nxm", L"--handle-nxm", L"URL:NXM Protocol"};
+    case ProtocolHandler::Gmm:
+      return {L"gmm", L"--handle-gmm", L"URL:GMM Protocol"};
+    case ProtocolHandler::Modl:
+      return {L"modl", L"--handle-modl", L"URL:MODL Protocol"};
+    }
+    return {nullptr, nullptr, nullptr};
+  }
+
+  // "Software\Classes\nxm" plus an optional sub-path tail.
+  std::wstring class_key(ProtocolHandler protocol, const wchar_t *tail) {
+    const SchemeSpec spec = spec_for(protocol);
+    if (!spec.scheme)
+      return {};
+    std::wstring key = LR"(Software\Classes\)" + std::wstring(spec.scheme);
+    if (tail)
+      key += tail;
+    return key;
+  }
+
+  bool write_reg(const std::wstring &key_path, const wchar_t *name,
+                 const wchar_t *value) {
+    HKEY hkey;
+    LONG r = RegCreateKeyExW(HKEY_CURRENT_USER, key_path.c_str(), 0, nullptr,
+                             REG_OPTION_NON_VOLATILE, KEY_SET_VALUE, nullptr, &hkey,
+                             nullptr);
+    if (r != ERROR_SUCCESS)
+      return false;
+    r = RegSetValueExW(hkey, name, 0, REG_SZ, reinterpret_cast<const BYTE *>(value),
+                       (DWORD)((wcslen(value) + 1) * sizeof(wchar_t)));
+    RegCloseKey(hkey);
+    return r == ERROR_SUCCESS;
+  }
+
+  bool read_reg_string(const std::wstring &key_path, const wchar_t *name,
+                       std::wstring &out) {
+    HKEY hkey;
+    LONG r = RegOpenKeyExW(HKEY_CURRENT_USER, key_path.c_str(), 0, KEY_READ, &hkey);
+    if (r != ERROR_SUCCESS)
+      return false;
+    wchar_t buf[2048] = {};
+    DWORD buf_size    = sizeof(buf);
+    DWORD type        = REG_SZ;
+    r = RegQueryValueExW(hkey, name, nullptr, &type, reinterpret_cast<LPBYTE>(buf),
+                         &buf_size);
+    RegCloseKey(hkey);
+    if (r != ERROR_SUCCESS || type != REG_SZ || buf_size == 0)
+      return false;
+    out.assign(buf, (buf_size / sizeof(wchar_t)) - 1);
+    return true;
+  }
+
+  std::string narrow(const std::wstring &s) {
+    if (s.empty())
+      return {};
+    const int need =
+        WideCharToMultiByte(CP_UTF8, 0, s.c_str(), static_cast<int>(s.size()), nullptr,
+                            0, nullptr, nullptr);
+    if (need <= 0)
+      return {};
+    std::string out(static_cast<std::size_t>(need), '\0');
+    WideCharToMultiByte(CP_UTF8, 0, s.c_str(), static_cast<int>(s.size()), out.data(),
+                        need, nullptr, nullptr);
+    return out;
+  }
+
+}  // namespace
+
+bool WindowsPlatform::register_protocol_handler(
+    ProtocolHandler protocol, const std::filesystem::path &exe_path) const {
+  const SchemeSpec spec = spec_for(protocol);
+  if (!spec.scheme)
+    return false;
+
+  const std::wstring root    = class_key(protocol, nullptr);
+  const std::wstring cmd_key = class_key(protocol, LR"(\shell\open\command)");
+  const std::wstring shell_cmd =
+      L"\"" + exe_path.wstring() + L"\" " + spec.flag + L" \"%1\"";
+
+  bool ok = true;
+  ok &= write_reg(root, nullptr, spec.desc);
+  ok &= write_reg(root, L"URL Protocol", L"");
+  ok &= write_reg(cmd_key, nullptr, shell_cmd.c_str());
+  return ok;
+}
+
+bool WindowsPlatform::unregister_protocol_handler(ProtocolHandler protocol) const {
+  const std::wstring root = class_key(protocol, nullptr);
+  if (root.empty())
+    return false;
+  return RegDeleteTreeW(HKEY_CURRENT_USER, root.c_str()) == ERROR_SUCCESS;
+}
+
+bool WindowsPlatform::is_protocol_handler_registered(ProtocolHandler protocol) const {
+  std::wstring cmd;
+  if (!read_reg_string(class_key(protocol, LR"(\shell\open\command)"), nullptr, cmd))
+    return false;
+  // The binary path differs per installation, so match the argv flag instead:
+  // it is what our own registration writes and nothing else does.
+  const SchemeSpec spec = spec_for(protocol);
+  return cmd.find(spec.flag) != std::wstring::npos;
+}
+
+std::string WindowsPlatform::current_protocol_handler(ProtocolHandler protocol) const {
+  std::wstring cmd;
+  if (!read_reg_string(class_key(protocol, LR"(\shell\open\command)"), nullptr, cmd))
+    return {};
+  // `"C:\...\GameModManager.exe" --handle-nxm "%1"` -> "GameModManager.exe".
+  const std::size_t quoted = cmd.find(L'"');
+  std::wstring exe         = quoted == std::wstring::npos ? cmd : cmd.substr(0, quoted);
+  const std::size_t sep    = exe.find_last_of(L"\\/");
+  if (sep != std::wstring::npos)
+    exe = exe.substr(sep + 1);
+  return narrow(exe);
+}
+
 // --- Free-function forms (see platform.h) ---
 
 std::string platform_id() { return WindowsPlatform().platform_name(); }
@@ -334,6 +468,23 @@ std::filesystem::path find_steam_root() { return WindowsPlatform().find_steam_ro
 std::filesystem::path default_cache_dir() { return WindowsPlatform().cache_dir(); }
 
 std::filesystem::path find_wine() { return WindowsPlatform().find_wine(); }
+
+bool register_protocol_handler(ProtocolHandler protocol,
+                               const std::filesystem::path &exe_path) {
+  return WindowsPlatform().register_protocol_handler(protocol, exe_path);
+}
+
+bool unregister_protocol_handler(ProtocolHandler protocol) {
+  return WindowsPlatform().unregister_protocol_handler(protocol);
+}
+
+bool is_protocol_handler_registered(ProtocolHandler protocol) {
+  return WindowsPlatform().is_protocol_handler_registered(protocol);
+}
+
+std::string current_protocol_handler(ProtocolHandler protocol) {
+  return WindowsPlatform().current_protocol_handler(protocol);
+}
 
 }  // namespace engine
 
