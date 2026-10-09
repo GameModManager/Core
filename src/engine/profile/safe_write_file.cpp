@@ -1,19 +1,11 @@
 #include "engine/profile/safe_write_file.h"
 
+#include "platform/platform.h"
+
 #include <atomic>
 #include <cstdio>
 #include <fstream>
 #include <system_error>
-
-#ifdef _WIN32
-#ifndef NOMINMAX
-#define NOMINMAX
-#endif
-#include <windows.h>
-#include <process.h>
-#else
-#include <unistd.h>
-#endif
 
 namespace engine::profile {
 
@@ -24,26 +16,8 @@ namespace {
   // process is simply truncated by the next write.
   std::string unique_suffix() {
     static std::atomic<uint64_t> counter{0};
-#ifdef _WIN32
-    const long pid = _getpid();
-#else
-    const long pid = static_cast<long>(getpid());
-#endif
-    return std::to_string(pid) + "_" + std::to_string(counter.fetch_add(1));
-  }
-
-  // Rename `from` over `to`, replacing an existing `to`. Atomic on POSIX;
-  // MoveFileExW with MOVEFILE_REPLACE_EXISTING on Windows.
-  bool atomic_replace(const std::filesystem::path &from,
-                      const std::filesystem::path &to) {
-#ifdef _WIN32
-    return MoveFileExW(from.c_str(), to.c_str(),
-                       MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH) != 0;
-#else
-    std::error_code ec;
-    std::filesystem::rename(from, to, ec);
-    return !ec;
-#endif
+    return std::to_string(current_process_id()) + "_" +
+           std::to_string(counter.fetch_add(1));
   }
 
 }  // namespace

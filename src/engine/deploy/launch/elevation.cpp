@@ -1,9 +1,9 @@
 #include "engine/deploy/launch/elevation.h"
 
+#include "platform/platform.h"
+
 #include <cstdlib>
 #include <optional>
-
-#include <unistd.h>
 
 namespace engine {
 namespace {
@@ -31,7 +31,7 @@ std::optional<std::filesystem::path> found_on_path(const std::string &name) {
 
     std::error_code ec;
     if (std::filesystem::is_regular_file(candidate, ec) &&
-        access(candidate.c_str(), X_OK) == 0)
+        path_is_executable(candidate))
       return candidate;
 
     if (end == std::string::npos)

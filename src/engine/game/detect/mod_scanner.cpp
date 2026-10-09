@@ -7,6 +7,7 @@
 #include "engine/mod/meta/mod_meta.h"
 #include "engine/mod/meta/xml_util.h"
 #include "engine/parallel/parallel.h"
+#include "platform/platform.h"
 
 #include <algorithm>
 #include <chrono>
@@ -17,11 +18,6 @@
 #include <optional>
 #include <regex>
 #include <sstream>
-
-#if defined(__linux__)
-#include <fcntl.h>
-#include <sys/stat.h>
-#endif
 
 namespace engine {
 
@@ -118,13 +114,8 @@ static void folder_timestamps(const std::filesystem::path &dir, int64_t &install
           .count());
   changed = mtime_sec;
 
-#if defined(__linux__)
-  struct statx stx;
-  if (::statx(AT_FDCWD, dir.c_str(), 0, STATX_BTIME, &stx) == 0 &&
-      (stx.stx_mask & STATX_BTIME)) {
-    install = static_cast<int64_t>(stx.stx_btime.tv_sec);
-  }
-#endif
+  if (const auto btime = engine::file_birth_time(dir); btime && *btime > 0)
+    install = *btime;
   if (install <= 0)
     install = mtime_sec;
 }
