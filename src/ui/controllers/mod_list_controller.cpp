@@ -3619,6 +3619,14 @@ void ModListController::send_to_lowest_in_separator(const QString &id) {
   mod_actions_->send_to_lowest_in_separator(id);
 }
 
+void ModListController::send_to_first_conflict(const QString &id) {
+  mod_actions_->send_to_first_conflict(id);
+}
+
+void ModListController::send_to_last_conflict(const QString &id) {
+  mod_actions_->send_to_last_conflict(id);
+}
+
 void ModListController::priority_move_selected(int step) {
   mod_actions_->priority_move_selected(step);
 }

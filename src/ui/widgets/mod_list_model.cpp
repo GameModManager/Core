@@ -1580,6 +1580,29 @@ QString toggle_badge_reason(bool game_native, const std::string &reason) {
   return game_native ? QString::fromStdString(reason) : QString();
 }
 
+int conflict_send_target(const ConflictPairs &pairs,
+                         const std::function<int(const QString &)> &row_of,
+                         bool first) {
+  // First conflict = the mod this one wins against with the LOWEST priority;
+  // last conflict = the mod that wins against this one with the HIGHEST. A
+  // partner the model does not list (row_of returns -1) cannot be the target,
+  // so it is skipped rather than treated as row -1 and winning the min.
+  const auto &partners = first ? pairs.wins_against : pairs.loses_to;
+  int target           = -1;
+  for (const auto &id : partners) {
+    const int row = row_of(id);
+    if (row < 0)
+      continue;
+    if (target < 0)
+      target = row;
+    else if (first)
+      target = std::min(target, row);
+    else
+      target = std::max(target, row);
+  }
+  return target;
+}
+
 void ModList::set_toggle_error(const QString &id, const QString &reason) {
   for (int i = 0; i < mods_.size(); ++i) {
     if (mods_[i].id == id) {
