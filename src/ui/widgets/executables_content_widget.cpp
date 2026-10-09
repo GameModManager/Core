@@ -2,6 +2,7 @@
 
 #include "engine/deploy/launch/elevation.h"
 #include "engine/log/logger.h"
+#include "platform/platform.h"
 #include "ui/theme/icon_manager.h"
 
 #include "ui/settings/settings.h"
@@ -59,15 +60,14 @@ namespace Executables {
   // Name filter for the "Select Executable" pickers. On macOS, .app bundles
   // are directories, so *.app is only offered there (see select_executable_path).
   static QString executable_filter() {
-#ifdef Q_OS_WIN
-    return ContentWidget::tr("Executables (*.exe);;All Files (*)");
-#elif defined(Q_OS_MACOS)
-    return ContentWidget::tr(
-        "Executables (*.app *.exe *.AppImage *.bin *.elf *.sh);;All Files (*)");
-#else
+    const auto os = engine::platform_id();
+    if (os == "windows")
+      return ContentWidget::tr("Executables (*.exe);;All Files (*)");
+    if (os == "macos")
+      return ContentWidget::tr(
+          "Executables (*.app *.exe *.AppImage *.bin *.elf *.sh);;All Files (*)");
     return ContentWidget::tr(
         "Executables (*.exe *.AppImage *.bin *.elf *.sh);;All Files (*)");
-#endif
   }
 
   // Shared picker for the two "Select Executable" flows. On macOS, native open
@@ -76,20 +76,19 @@ namespace Executables {
   // selectable like a file.
   static QString select_executable_path(QWidget *parent, const QString &caption,
                                         const QString &dir, const QString &filter) {
-#ifdef Q_OS_MACOS
-    QFileDialog dlg(parent);
-    // Options must be set before other properties (Qt docs).
-    dlg.setOption(QFileDialog::DontUseNativeDialog);
-    dlg.setWindowTitle(caption);
-    dlg.setDirectory(dir);
-    dlg.setNameFilter(filter);
-    dlg.setFileMode(QFileDialog::ExistingFile);
-    if (dlg.exec() != QDialog::Accepted || dlg.selectedFiles().isEmpty())
-      return {};
-    return dlg.selectedFiles().constFirst();
-#else
+    if (engine::platform_id() == "macos") {
+      QFileDialog dlg(parent);
+      // Options must be set before other properties (Qt docs).
+      dlg.setOption(QFileDialog::DontUseNativeDialog);
+      dlg.setWindowTitle(caption);
+      dlg.setDirectory(dir);
+      dlg.setNameFilter(filter);
+      dlg.setFileMode(QFileDialog::ExistingFile);
+      if (dlg.exec() != QDialog::Accepted || dlg.selectedFiles().isEmpty())
+        return {};
+      return dlg.selectedFiles().constFirst();
+    }
     return QFileDialog::getOpenFileName(parent, caption, dir, filter);
-#endif
   }
 
   // ---------------------------------------------------------------------------

@@ -1115,4 +1115,14 @@ std::string LinuxPlatform::modl_file_based_default_handler() {
   return default_for_scheme("x-scheme-handler/modl");
 }
 
+// --- Free-function forms (see platform.h) ---
+
+std::string platform_id() { return LinuxPlatform().platform_name(); }
+
+std::filesystem::path find_steam_root() { return LinuxPlatform().find_steam_root(); }
+
+std::filesystem::path default_cache_dir() { return LinuxPlatform().cache_dir(); }
+
+std::filesystem::path find_wine() { return LinuxPlatform().find_wine(); }
+
 }  // namespace engine

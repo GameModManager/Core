@@ -26,6 +26,27 @@ target_link_libraries(gmm_test_support
     PUBLIC Catch2::Catch2
     PRIVATE Qt6::Core)
 
+# ---------------------------------------------------------------------------
+# Cross-platform abstraction ratchet
+# ---------------------------------------------------------------------------
+# All OS-specific code goes through src/platform/. This static scan of src/
+# fails when a file outside src/platform/ gains a direct OS header include, an
+# OS preprocessor branch (#ifdef _WIN32, Q_OS_WIN, __APPLE__, ...), or an OS
+# path literal. There are ~210 pre-existing occurrences, so this is a ratchet
+# rather than a zero-tolerance check: findings are compared against
+# platform_abstraction_baseline.txt keyed on (file, construct) with a count, so
+# an unrelated edit elsewhere in src/ never moves it, while any NEW or EXTRA
+# violation fails. Resolved violations also fail, so the baseline stays honest:
+#   python3 tests/platform_abstraction_scan.py --src <root>/src \
+#       --baseline <root>/tests/platform_abstraction_baseline.txt --update
+# Pure text scan with no OS dependence, so it is registered here rather than in
+# the POSIX-only block at the bottom of this file.
+add_test(NAME platform_abstraction_test
+    COMMAND ${Python3_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/platform_abstraction_scan.py
+        --src ${PROJECT_SOURCE_DIR}/src
+        --baseline ${CMAKE_CURRENT_SOURCE_DIR}/platform_abstraction_baseline.txt)
+
 # gmm_catch2_test(<name> <sources...>
 #     [UI]
 #     LIBS <extra link libraries>

@@ -1,5 +1,6 @@
 #include "ui/modinfo/description_renderer.h"
 
+#include "platform/platform.h"
 #include "ui/modinfo/description_browser.h"
 #ifdef GMM_HAS_WEBENGINE
 #include "ui/modinfo/webview_description_renderer.h"
@@ -30,13 +31,14 @@ void configure_chromium_flags() {
   // static BBCode fragment and it removes a whole process from the picture.
   qputenv("QTWEBENGINE_CHROMIUM_FLAGS", "--disable-gpu");
 
-#ifdef Q_OS_LINUX
-  // Containment. The crash is a fault in somebody else's code: a Vulkan
-  // overlay that interposes vkCreateDevice (MangoHud's BGFX layer, LSFG's
-  // loader shim, the Steam overlay, whatever comes next) dispatches through a
-  // callback it never installed, and the process jumps to 0x0. Uninstalling
-  // the overlay is not a fix - the next one lands in the same place - and
-  // nothing we own controls which overlays exist on a user's machine.
+  // Containment, Linux only: the Vulkan loader here is the one that loads
+  // interposing overlays out of the user's own search path. The crash is a
+  // fault in somebody else's code: a Vulkan overlay that interposes
+  // vkCreateDevice (MangoHud's BGFX layer, LSFG's loader shim, the Steam
+  // overlay, whatever comes next) dispatches through a callback it never
+  // installed, and the process jumps to 0x0. Uninstalling the overlay is not a
+  // fix - the next one lands in the same place - and nothing we own controls
+  // which overlays exist on a user's machine.
   //
   // Chromium's switch surface cannot close it either. Measured against this
   // Qt 6.11 WebEngine build with VK_LOADER_DEBUG=all: --disable-gpu,
@@ -53,8 +55,11 @@ void configure_chromium_flags() {
   // use of one - and Chromium's own log already reported its Vulkan
   // initialisation failing, i.e. it was not compositing with it either.
   // Chromium falls back to its GL path.
-  qputenv("VK_DRIVER_FILES", "/dev/null");
-#endif
+  //
+  // Runtime check, not Q_OS_LINUX: this runs before any Qt object exists, and
+  // platform_id() is a Qt-free free function.
+  if (engine::platform_id() == "linux")
+    qputenv("VK_DRIVER_FILES", "/dev/null");
 }
 
 // Applied before any Qt object exists, and on every path that can build a
