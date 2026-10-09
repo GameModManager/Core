@@ -307,7 +307,7 @@ port - their cited GMM symbol names were invented, the features are not.
 | Executables list proxy model | ✅ `ExecutablesListProxy` | ❌ | ❌ · |
 | U004 Ctrl+E = Executables... | ✅ `mainwindow.ui:1697-1717` | ❌ | ❌ · |
 | U016 Run menu (one action per pinned exe, statusTip, objectName) | ✅ `mainwindow.cpp:755-795` | ⚠️ exec controls bar only, Run menu unproven - `exec_controls_bar.cpp:224` | ⚠️ · |
-| U022 Toolbar context menu "Remove '%1' from the toolbar" | ✅ `mainwindow.cpp:3785-3805` | ❌ | ❌ · |
+| U022 Toolbar context menu "Remove '%1' from the toolbar" | ✅ `mainwindow.cpp:3785-3805` | ✅ names the shortcut being removed - `main_toolbar.cpp:141` | ✅ ✔ |
 | U024 Link button menu (Toolbar and Menu / Desktop / Start Menu shortcuts) | ✅ `mainwindow.cpp:360-367`, `:2695-2719` | ⚠️ desktop only - `launch_controller.cpp:1340` | ⚠️ · |
 | U051 Executables combo sentinels ("<Edit...>", "(no executables)") | ✅ `mainwindow.cpp:1866-1920` | ✅ kAddNewEntryText = "<Edit...>" - `exec_controls_bar.h:22` | ✅ · |
 | U069 Pinned exe toolbar actions (icon, statusTip, objectName) | ✅ `mainwindow.cpp:769-795` | ⚠️ action wiring only, trio unproven - `main_window.cpp:229` | ⚠️ · |
@@ -856,11 +856,11 @@ port - their cited GMM symbol names were invented, the features are not.
 | Send-to priority | ✅ `sendToPriority` | ❌ | ❌ · |
 | Lock/unlock plugin | ✅ `setESPLock` | ✅ Lock/Unlock load order - `plugin_context_menu.cpp:24` | ✅ · |
 | U085 Plugin "Enable all"/"Disable all" + confirm dialog | ✅ `pluginlistcontextmenu.cpp:36-48` | ✅ both on every row's menu and on empty space, confirm + already-in-state note - `mod_list_controller.cpp:3323` | ✅ · |
-| U086 Lock/Unlock load-order labels conditional on lock state | ✅ `pluginlistcontextmenu.cpp:56-77` | ⚠️ labels are state-conditional, but only one per row: MO2 shows both Lock and Unlock when the selection spans locked and unlocked rows - `plugin_context_menu.cpp:60` | ⚠️ · |
+| U086 Lock/Unlock load-order labels conditional on lock state | ✅ `pluginlistcontextmenu.cpp:56-77` | ✅ one action per state found across the selection, so a mixed selection gets both - `plugin_context_menu.cpp:71` | ✅ ✔ |
 | U087 Plugin Send to... (Top/Bottom/Priority QInputDialog) | ✅ `pluginlistcontextmenu.cpp:111-133` | ✅ Top = row 0, Bottom = last row, Priority... asks 0..row count - `plugin_context_menu.cpp:42`; per right-clicked row, not the whole selection | ✅ · |
 | U088 "Open Origin in Explorer" gated on origin resolving | ✅ `pluginlistcontextmenu.cpp:80-95` | ✅ gated on the origin resolving - `plugin_context_menu.cpp:91` | ✅ ✔ |
 | U089 "Open Origin Info..." default action (single non-foreign) | ✅ `pluginlistcontextmenu.cpp:96-107` | ✅ offered on the row context menu - `plugin_context_menu.cpp:97` | ✅ ✔ |
-| U228 Lock conditionals consider only enabled plugins | ✅ `pluginlistcontextmenu.cpp:56-77` | ❌ | ❌ · |
+| U228 Lock conditionals consider only enabled plugins | ✅ `pluginlistcontextmenu.cpp:56-77` | ✅ enabled rows only, in the decision and on apply - `plugin_context_menu.cpp:71` | ✅ ✔ |
 
 ## 21. Archive & Installation
 
@@ -949,7 +949,7 @@ port - their cited GMM symbol names were invented, the features are not.
 | U115 Saves list columns (display name "%1, #%2, Level %3, %4" + relative path) | ✅ `savestab.cpp:180-196` | ✅ format built in `display_name()` - `save_game.cpp:23`; File column is the path relative to the saves dir | ✅ · |
 | U159 Saves context menu (Fix enabled mods gating, Delete %n save(s), Open in Explorer) | ✅ `savestab.cpp:244-280` | ✅ all three; fix enabled only on a single row with something missing - `saves_tab.cpp:584` | ✅ ✔ |
 | U160 Save delete confirm (first 10 names + recycle-bin note) | ✅ `savestab.cpp:205-235` | ✅ all three parts, Delete key + context menu - `saves_tab.cpp:515` | ✅ · |
-| U199 Save parsing error strings (open failed, wrong format) | ✅ `gamebryosavegame.cpp:102-112` | ❌ | ❌ · |
+| U199 Save parsing error strings (open failed, wrong format) | ✅ `gamebryosavegame.cpp:102-112` | ✅ both strings raise from the reader and reach the console; the scan and the re-parse logged nothing and swallowed them, so a save that vanished from the tab was indistinguishable from one that was never there - `save_scanner.cpp:134` | ✅ ✔ |
 | U227 Save list sorted by creation desc + streaming adds + relative path column | ✅ `savestab.cpp:180` | ✅ sort `save_scanner.cpp:104`, streaming binary insert `saves_tab.cpp:296` | ✅ · |
 | U239 SaveGameInfo feature (getMissingAssets used by saves Fix) | ✅ `savestab.cpp:244` | ✅ `SaveParserRegistry::parse_save` - `saves_tab.cpp:329` | ✅ · |
 
@@ -1097,12 +1097,12 @@ port - their cited GMM symbol names were invented, the features are not.
 | U009 F5 = Refresh | ✅ `mainwindow.ui:1989` | ✅ QKeySequence::Refresh - `menu_bar.cpp:193` | ✅ ✔ |
 | U012 Help menu tree (Help on UI, Documentation, Wiki, Discord, Report Issue, Tutorials submenu, About) - see U008 ruling | ✅ `mainwindow.cpp:1096-1162` (flat) | ⚠️ 6 of 7; Discord absent, 4 fold into More, Tutorials gated - `menu_bar.cpp:331` | ⚠️ ✔ |
 | U017 Toolbar right-align spacer before last separator | ✅ `mainwindow.cpp:713-744` | ❌ no right-align spacer | ❌ · |
-| U018 Toolbar menu-buttons use QToolButton::InstantPopup | ✅ `mainwindow.cpp:746-753` | ❌ | ❌ · |
+| U018 Toolbar menu-buttons use QToolButton::InstantPopup | ✅ `mainwindow.cpp:746-753` | ✅ on the Instance Options button once its menu is attached; the exec shortcuts carry no menu, so MO2's setupActionMenu has nothing else to convert - `main_toolbar.cpp:137` | ✅ ✔ |
 | U019 View > Toolbars submenu (9 checkables: menu/toolbar/statusbar, 3 icon sizes, 3 style modes) | ✅ `mainwindow.ui:1558-1578` | ✅ all 9: menu bar + toolbar + status bar toggles, 3 icon sizes, 3 exclusive button styles - `menu_bar.cpp:69` | ✅ ✔ |
 | U021 Popup menu on toolbar/central-widget edges (Toolbars + View Log) | ✅ `mainwindow.cpp:821-840` | ❌ | ❌ · |
 | U023 Open Folder menu (12 entries: game/MyGames/INIs, instance/mods/profile/downloads, install/plugins/stylesheets/logs) | ✅ `mainwindow.cpp:2663-2693` | ⚠️ 11 FolderKinds handled, menu layout unproven - `mod_list_controller.cpp:3544` | ⚠️ · |
 | U031 Game Support Wiki first-run info dialog | ✅ `mainwindow.cpp:1268-1278` | ❌ | ❌ · |
-| U041 Right-click central widget edges shows popup menu | ✅ `mainwindow.cpp:906-924` | ❌ | ❌ · |
+| U041 Right-click central widget edges shows popup menu | ✅ `mainwindow.cpp:906-924` | ✅ visibility toggles from the same QActions the View menu holds, gated on childAt so it only claims bare edges - `main_window.cpp:228` | ✅ ✔ |
 | U048 Qt effects disabled at startup (menu/combo/tooltip animations) | ✅ `mainwindow.cpp:240-252` | ✅ the same 5 effects off app-wide before anything is built - `core.cpp:12` | ✅ ✔ |
 | U070 StatusBar carries Nexus API stats + user account (requestsChanged/credentialsReceived) (NEXUS-LENS: genericize/provider-scope) | ✅ `mainwindow.cpp:270-276`; one `m_api` label + tooltip | ⚠️ per-source metered budgets, no account half - `status_bar.h:30` | ⚠️ ✔ |
 | U100 Status bar "%1 - %2 - %3" game/instance/profile message | ✅ `statusbar.cpp:144-162` | ✅ `context_label_text()`, transient text restores it - `status_bar.h:19` | ✅ ✔ |
@@ -1381,7 +1381,7 @@ column.
 | 2. Launch Pipeline | 6 | 5 | 5 | 14 | 0 | 2 | 17 |
 | 3. Error Handling & Diagnostics | 8 | 9 | 0 | 0 | 28 | 11 | 35 |
 | 4. Settings & Configuration | 26 | 29 | 6 | 1 | 12 | 24 | 0 |
-| 5. Executable Management | 9 | 5 | 4 | 9 | 0 | 0 | 0 |
+| 5. Executable Management | 10 | 5 | 4 | 8 | 0 | 0 | 0 |
 | 6. Mod Management | 24 | 5 | 9 | 8 | 0 | 0 | 1 |
 | 7. Mod Categories | 6 | 5 | 0 | 9 | 0 | 0 | 0 |
 | 8. Mod Conflict Detection | 4 | 2 | 3 | 7 | 0 | 0 | 0 |
@@ -1396,17 +1396,17 @@ column.
 | 17. Source Providers | 4 | 0 | 7 | 1 | 0 | 0 | 0 |
 | 18. Mod List Features | 24 | 12 | 3 | 12 | 0 | 0 | 0 |
 | 19. Mod Context Menu | 15 | 4 | 0 | 13 | 0 | 0 | 0 |
-| 20. Plugin Context Menu | 8 | 1 | 0 | 3 | 0 | 0 | 0 |
+| 20. Plugin Context Menu | 10 | 0 | 0 | 2 | 0 | 0 | 0 |
 | 21. Archive & Installation | 10 | 3 | 4 | 2 | 0 | 0 | 0 |
 | 22. Deploy System | 0 | 1 | 9 | 0 | 2 | 0 | 0 |
 | 23. Overwrite System | 8 | 2 | 3 | 0 | 0 | 0 | 0 |
-| 24. Save Game System | 18 | 2 | 5 | 2 | 0 | 0 | 0 |
+| 24. Save Game System | 19 | 2 | 5 | 1 | 0 | 0 | 0 |
 | 25. Game Detection & Knowledge | 2 | 2 | 11 | 0 | 0 | 0 | 0 |
 | 26. Pipeline System | 0 | 0 | 16 | 0 | 0 | 0 | 0 |
 | 27. Plugin Host System | 0 | 1 | 12 | 3 | 0 | 0 | 0 |
 | 28. Sort System | 0 | 0 | 5 | 0 | 0 | 0 | 0 |
 | 29. Instance Management | 3 | 1 | 6 | 7 | 0 | 0 | 0 |
-| 30. UI Layer | 26 | 8 | 17 | 13 | 2 | 0 | 2 |
+| 30. UI Layer | 28 | 8 | 17 | 11 | 2 | 0 | 2 |
 | 31. Log System | 9 | 2 | 3 | 2 | 0 | 0 | 0 |
 | 32. System Tray | 4 | 1 | 0 | 0 | 0 | 0 | 0 |
 | 33. Self Updater | 2 | 3 | 0 | 4 | 0 | 0 | 0 |
@@ -1428,7 +1428,7 @@ column.
 | 49. CLI Help Grammar | 0 | 1 | 0 | 1 | 0 | 0 | 0 |
 | 50. My Games Resolution | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
 | 51. Conflict Scan Refresh | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
-| **TOTAL** | **355** | **168** | **177** | **246** | **54** | **43** | **62** |
+| **TOTAL** | **361** | **167** | **177** | **241** | **54** | **43** | **62** |
 
 ### The arithmetic
 
@@ -1436,13 +1436,13 @@ column.
 rows in file                          1043
 scored rows (ok + part + miss)         769
 
-MO2 parity        ok   / scored        355 /  769  = 46.2%
-partial           part / scored        168 /  769  = 21.9%
-missing           miss / scored        246 /  769  = 32.0%
+MO2 parity        ok   / scored        361 /  769  = 46.9%
+partial           part / scored        167 /  769  = 21.7%
+missing           miss / scored        241 /  769  = 31.3%
 GMM-exclusive     surp / all rows      177 / 1043  = 17.0%   (not scored)
 ```
 
-**Parity is 355 / 769 = 46.2%.** 246 rows are outright missing and 168 partial.
+**Parity is 361 / 769 = 46.9%.** 241 rows are outright missing and 167 partial.
 The largest untouched surfaces are **44. Tutorial** and **46. Notifications /
 Problems** (zero matched rows), then **16. Nexus** and **15. Downloads**, which
 carry the most missing rows in absolute terms.
