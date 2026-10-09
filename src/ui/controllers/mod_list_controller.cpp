@@ -860,6 +860,15 @@ void ModListController::switch_profile(const QString &profile) {
     if (m.is_game_native)
       state.foreign_mods.push_back(m.id.toStdString());
   }
+  // archives.txt too. ProfileSaveState::archives is written unconditionally by
+  // the switcher (profile_switching.cpp:75-83, "always written; an empty list
+  // is a valid state"), so leaving it default-constructed truncated this
+  // profile's file to nothing on every switch - the enabled-archive set the
+  // user had (and any MO2-authored one) was destroyed by switching away and
+  // back. The Archives tab is the only writer, and it holds no state yet, so
+  // the file on disk is the truth to carry over.
+  if (w_->active_profile_)
+    state.archives = w_->active_profile_->read_archives();
 
   // The active profile's engine model is the source of truth for the current
   // profile's modlist state (toggles persist through it via
