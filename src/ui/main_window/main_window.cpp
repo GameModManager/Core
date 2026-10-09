@@ -224,23 +224,6 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
   main_tab_container_->add_main_tab(console_splitter_);
   setCentralWidget(main_tab_container_);
 
-  // MO2 MainWindow::on_centralWidget_customContextMenuRequested
-  // (mainwindow.cpp:906-924): a right-click on the central widget ITSELF -
-  // in practice the bare edges left over when every panel is filled - opens
-  // the popup menu, so the visibility switches are still reachable with both
-  // the menu bar and the toolbar hidden. The childAt gate is MO2's and is
-  // load-bearing: without it this fires for every child that does not handle
-  // a right-click itself, hijacking menus that are supposed to belong to the
-  // mod list, the plugin table and the trees.
-  main_tab_container_->setContextMenuPolicy(Qt::CustomContextMenu);
-  connect(main_tab_container_, &QWidget::customContextMenuRequested, this,
-          [this](const QPoint &pos) {
-            if (main_tab_container_->childAt(pos) != main_tab_container_)
-              return;
-            menu_bar_->create_popup_menu(this)->exec(
-                main_tab_container_->mapToGlobal(pos));
-          });
-
   // Game-lock overlay (hidden until game launches)
   launch_->create_game_lock_overlay();
 
