@@ -310,25 +310,6 @@ void AppMenuBar::set_icon_size(int size) {
 
 // --------- View checkbox sync ---------
 
-// MO2 MainWindow::createPopupMenu (mainwindow.cpp:821-838) puts the whole
-// menuToolbars action set up front, then a separator, then View Log. Ours is
-// the same shape with our own split: the three chrome toggles MO2 lists
-// (toolbar, status bar, menu bar), then the separator, then the console -
-// which is our View Log, and which MO2 reaches through the same menu.
-QMenu *AppMenuBar::create_popup_menu(QWidget *parent) const {
-  auto *menu = new QMenu(parent);
-  if (toggle_toolbar_action_)
-    menu->addAction(toggle_toolbar_action_);
-  if (toggle_status_bar_action_)
-    menu->addAction(toggle_status_bar_action_);
-  if (toggle_menu_bar_action_)
-    menu->addAction(toggle_menu_bar_action_);
-  menu->addSeparator();
-  if (toggle_console_action_)
-    menu->addAction(toggle_console_action_);
-  return menu;
-}
-
 void AppMenuBar::set_toolbar_checked(bool checked) {
   if (toggle_toolbar_action_) {
     toggle_toolbar_action_->blockSignals(true);

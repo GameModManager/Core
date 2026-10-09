@@ -48,14 +48,6 @@ public:
   // back out of the menu.
   void set_tutorials(const QList<QPair<QString, QString>> &tutorials);
 
-  // MO2 MainWindow::createPopupMenu (mainwindow.cpp:821-838): the window's
-  // visibility switches as a standalone menu, reachable from a right-click on
-  // the central widget so the toggles survive both the menu bar and the
-  // toolbar being hidden. Parented to `parent`, which owns it. Built from the
-  // SAME QAction pointers the View menu holds, so ticking an entry here ticks
-  // it there and both stay in sync - no second source of truth to drift.
-  [[nodiscard]] QMenu *create_popup_menu(QWidget *parent) const;
-
 signals:
   // File
   void new_instance_requested();

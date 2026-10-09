@@ -1102,7 +1102,7 @@ port - their cited GMM symbol names were invented, the features are not.
 | U021 Popup menu on toolbar/central-widget edges (Toolbars + View Log) | ✅ `mainwindow.cpp:821-840` | ❌ | ❌ · |
 | U023 Open Folder menu (12 entries: game/MyGames/INIs, instance/mods/profile/downloads, install/plugins/stylesheets/logs) | ✅ `mainwindow.cpp:2663-2693` | ⚠️ 11 FolderKinds handled, menu layout unproven - `mod_list_controller.cpp:3544` | ⚠️ · |
 | U031 Game Support Wiki first-run info dialog | ✅ `mainwindow.cpp:1268-1278` | ❌ | ❌ · |
-| U041 Right-click central widget edges shows popup menu | ✅ `mainwindow.cpp:906-924` | ✅ visibility toggles from the same QActions the View menu holds, gated on childAt so it only claims bare edges - `main_window.cpp:228` | ✅ ✔ |
+| U041 Right-click central widget edges shows popup menu | ✅ `mainwindow.cpp:906-924` | ❌ our central widget is a `QTabWidget`, and its tab bar plus stacked widget cover all 842,400 px (censused offscreen: 0 bare points), so there is no margin left for an edge-gated menu to open on. MO2's `centralWidget` is a plain `QWidget` + `QVBoxLayout`, so its margins ARE the bare edges. The handler was shipped as `✅` but could never fire; it is reverted rather than left as a control that advertises something we do not have - `Workspace-drtl` | ❌ ✔ |
 | U048 Qt effects disabled at startup (menu/combo/tooltip animations) | ✅ `mainwindow.cpp:240-252` | ✅ the same 5 effects off app-wide before anything is built - `core.cpp:12` | ✅ ✔ |
 | U070 StatusBar carries Nexus API stats + user account (requestsChanged/credentialsReceived) (NEXUS-LENS: genericize/provider-scope) | ✅ `mainwindow.cpp:270-276`; one `m_api` label + tooltip | ⚠️ per-source metered budgets, no account half - `status_bar.h:30` | ⚠️ ✔ |
 | U100 Status bar "%1 - %2 - %3" game/instance/profile message | ✅ `statusbar.cpp:144-162` | ✅ `context_label_text()`, transient text restores it - `status_bar.h:19` | ✅ ✔ |
@@ -1406,7 +1406,7 @@ column.
 | 27. Plugin Host System | 0 | 1 | 12 | 3 | 0 | 0 | 0 |
 | 28. Sort System | 0 | 0 | 5 | 0 | 0 | 0 | 0 |
 | 29. Instance Management | 3 | 1 | 6 | 7 | 0 | 0 | 0 |
-| 30. UI Layer | 28 | 8 | 17 | 11 | 2 | 0 | 2 |
+| 30. UI Layer | 27 | 8 | 17 | 12 | 2 | 0 | 2 |
 | 31. Log System | 9 | 2 | 3 | 2 | 0 | 0 | 0 |
 | 32. System Tray | 4 | 1 | 0 | 0 | 0 | 0 | 0 |
 | 33. Self Updater | 2 | 3 | 0 | 4 | 0 | 0 | 0 |
@@ -1428,7 +1428,7 @@ column.
 | 49. CLI Help Grammar | 0 | 1 | 0 | 1 | 0 | 0 | 0 |
 | 50. My Games Resolution | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
 | 51. Conflict Scan Refresh | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
-| **TOTAL** | **361** | **167** | **177** | **241** | **54** | **43** | **62** |
+| **TOTAL** | **360** | **167** | **177** | **242** | **54** | **43** | **62** |
 
 ### The arithmetic
 
@@ -1436,13 +1436,13 @@ column.
 rows in file                          1043
 scored rows (ok + part + miss)         769
 
-MO2 parity        ok   / scored        361 /  769  = 46.9%
+MO2 parity        ok   / scored        360 /  769  = 46.8%
 partial           part / scored        167 /  769  = 21.7%
-missing           miss / scored        241 /  769  = 31.3%
+missing           miss / scored        242 /  769  = 31.5%
 GMM-exclusive     surp / all rows      177 / 1043  = 17.0%   (not scored)
 ```
 
-**Parity is 361 / 769 = 46.9%.** 241 rows are outright missing and 167 partial.
+**Parity is 360 / 769 = 46.8%.** 242 rows are outright missing and 167 partial.
 The largest untouched surfaces are **44. Tutorial** and **46. Notifications /
 Problems** (zero matched rows), then **16. Nexus** and **15. Downloads**, which
 carry the most missing rows in absolute terms.
@@ -1465,7 +1465,7 @@ completions - a missing column, a missing link - not unread settings - and 24
 
 ### Confidence
 
-295 of 1043 rows carry `✔` (both sides re-read); the rest carry `·` and are
+301 of 1043 rows carry `✔` (both sides re-read); the rest carry `·` and are
 leads, not findings. The `✔` rows concentrate in sections 3, 4, 15, 21, 18 and
 30. Section 45's `TaskDialog` row is a stale `❌` corrected here; uibase's
 `taskdialog.ui` is not vendored under `references/`, so its MO2 half is still
