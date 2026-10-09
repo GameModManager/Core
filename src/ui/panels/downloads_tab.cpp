@@ -160,6 +160,27 @@ DownloadShortcut download_shortcut_for(DownloadState state, int qt_key) {
   return DownloadShortcut::None;
 }
 
+QString format_remaining_time(int64_t remaining_bytes, double bytes_per_second) {
+  // No speed measured yet, nothing left to fetch, or a nonsensical input:
+  // there is no estimate to show.
+  if (bytes_per_second <= 0.0 || remaining_bytes <= 0)
+    return {};
+
+  const auto seconds = static_cast<int64_t>(remaining_bytes / bytes_per_second);
+  // Below a second the estimate is noise and would render as "0s".
+  if (seconds < 1)
+    return {};
+
+  // Largest unit that fits, so the cell never grows past four characters.
+  if (seconds >= 86400)
+    return QString::number(seconds / 86400) + "d";
+  if (seconds >= 3600)
+    return QString::number(seconds / 3600) + "h";
+  if (seconds >= 60)
+    return QString::number(seconds / 60) + "m";
+  return QString::number(seconds) + "s";
+}
+
 // MO2's header labels (downloadlist.cpp:76-91) for the columns we carry.
 QString DownloadsTab::column_name(int column) {
   switch (column) {
@@ -537,7 +558,14 @@ void DownloadsTab::update_progress(const std::string &id, int64_t downloaded,
   if (speed > 0.0) {
     QString speed_str = format_size(static_cast<int64_t>(speed)) + "/s";
     if (total > 0) {
-      entry.progress_bar->setFormat("%p% - " + speed_str);
+      // MO2 renders "%p% - speed - ~remaining"
+      // (downloadmanager.cpp:1747-1750). The estimate is dropped when it
+      // cannot be made, so a just-started row does not claim "~0s".
+      QString format    = "%p% - " + speed_str;
+      const QString eta = format_remaining_time(total - downloaded, speed);
+      if (!eta.isEmpty())
+        format += " - ~" + eta;
+      entry.progress_bar->setFormat(format);
     } else {
       entry.progress_bar->setFormat(format_size(downloaded) + " - " + speed_str);
     }

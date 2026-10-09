@@ -53,6 +53,21 @@ enum class DownloadShortcut { None, Install, Remove, Pause, Resume };
 
 [[nodiscard]] DownloadShortcut download_shortcut_for(DownloadState state, int qt_key);
 
+// Remaining-time estimate for the download progress bar's format string (MO2
+// DownloadManager::downloadProgress, downloadmanager.cpp:1745-1750:
+// "~%3" with MOBase::localizedTimeRemaining).
+//
+// Returns an empty string when no estimate is possible - unknown total, no
+// speed yet, or nothing left to fetch - so the caller drops the segment
+// rather than printing a nonsense "0s" on a row that has just started. A
+// speed or remaining-bytes value below what rounds to a second is likewise
+// empty: "<1s" is noise, not information.
+//
+// Single unit, largest that fits ("45s", "3m", "2h", "4d"). Free function so
+// the mapping is testable without a live download.
+[[nodiscard]] QString format_remaining_time(int64_t remaining_bytes,
+                                            double bytes_per_second);
+
 // How a dropped archive that collides with an existing file in the downloads
 // dir should be handled. The default resolver shows an MO2-style question
 // dialog; tests inject a stub.
