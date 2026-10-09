@@ -44,6 +44,8 @@
 #include <QEventLoop>
 #include <QHeaderView>
 #include <QIcon>
+#include <QItemSelection>
+#include <QItemSelectionModel>
 #include <QLCDNumber>
 #include <QList>
 #include <QMenu>
@@ -60,6 +62,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 #include <cstdio>
+#include <initializer_list>
 #include <string>
 #include <utility>
 #include <vector>
@@ -864,6 +867,56 @@ TEST_CASE("plugins tab", "[ui]") {
     check(action_with_text(menu5, "Open Origin in Explorer") == nullptr &&
               action_with_text(menu5, "Open Origin Info...") == nullptr,
           "an unowned game-Data row offers neither Open Origin action");
+
+    // --- Lock pair over the SELECTION (MO2 pluginlistcontextmenu.cpp:56-77) ---
+    // MO2 walks the whole selection, counts only ENABLED rows, and offers one
+    // action per state it found - so a mixed selection gets BOTH entries, and
+    // a disabled row contributes nothing in either direction. Deriving the
+    // label from the clicked row alone (the previous behaviour) shows one
+    // entry for a mixed selection and offers Lock on a plugin that is not
+    // loaded, which the load order cannot carry.
+    engine::GamePlugin mixed_a = skyui;  // unlocked, enabled
+    mixed_a.name               = "MixedA.esp";
+    engine::GamePlugin mixed_b = skyui;  // locked, enabled
+    mixed_b.name               = "MixedB.esp";
+    mixed_b.locked             = true;
+    engine::GamePlugin off     = skyui;  // unlocked, DISABLED
+    off.name                   = "Off.esp";
+    off.enabled                = false;
+    tab.set_plugins({native, mixed_a, mixed_b, off});
+
+    const auto select = [table](std::initializer_list<const char *> names) {
+      QItemSelection selection;
+      for (const char *name : names) {
+        const int row = row_with_name(table, name);
+        selection.select(table->model()->index(row, 0),
+                         table->model()->index(row, table->columnCount() - 1));
+      }
+      table->selectionModel()->select(selection, QItemSelectionModel::ClearAndSelect |
+                                                     QItemSelectionModel::Rows);
+    };
+
+    select({"MixedA.esp", "MixedB.esp"});
+    QMenu menu6;
+    tab.add_context_menu_actions(menu6, row_with_name(table, "MixedA.esp"));
+    check(action_with_text(menu6, "Lock load order") != nullptr &&
+              action_with_text(menu6, "Unlock load order") != nullptr,
+          "a mixed locked/unlocked selection offers BOTH lock actions");
+    locks.clear();
+    action_with_text(menu6, "Lock load order")->trigger();
+    check(locks.size() == 2 && locks[0].first == "MixedA.esp" &&
+              locks[1].first == "MixedB.esp" && locks[0].second && locks[1].second,
+          "Lock acts on every selected row, not just the clicked one");
+
+    // A disabled row is invisible to the decision AND skipped when applying
+    // it (PluginListContextMenu::setESPLock, :130-137). Selecting only the
+    // disabled row must offer neither action.
+    select({"Off.esp"});
+    QMenu menu7;
+    tab.add_context_menu_actions(menu7, row_with_name(table, "Off.esp"));
+    check(action_with_text(menu7, "Lock load order") == nullptr &&
+              action_with_text(menu7, "Unlock load order") == nullptr,
+          "a disabled row offers neither lock action");
   }
 
   // --- Enable/disable + Send to... (MO2 PluginListContextMenu parity) ---

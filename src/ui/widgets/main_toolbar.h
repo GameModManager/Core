@@ -19,9 +19,12 @@ public:
   void remove_exec_button(QToolButton *btn);
   void clear_exec_buttons();
 
-  // Instance Options button: body click emits instance_options_clicked()
-  // (opens the Instance Options panel); the attached dropdown arrow shows
-  // `menu` (set via set_instance_options_menu).
+  // Instance Options button. While it has NO menu, a body click emits
+  // instance_options_clicked() and opens the Instance Options panel.
+  // set_instance_options_menu then switches it to InstantPopup (MO2
+  // setupActionMenu): with a menu attached the whole button opens the menu
+  // and the panel is no longer opened by a body click - it stays reachable as
+  // an entry in that menu. Pass a null menu to go back to a plain click.
   QToolButton *add_instance_options_button(const QIcon &icon);
   void set_instance_options_menu(QMenu *menu);
 

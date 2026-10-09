@@ -12,7 +12,7 @@ void ContextMenu::set_rows(const std::vector<RowInfo> &rows) {
   rows_ = rows;
 }
 
-void ContextMenu::add_actions(QMenu &menu, int row) {
+void ContextMenu::add_actions(QMenu &menu, int row, const std::vector<int> &selection) {
   // MO2 adds the Enable all / Disable all pair unconditionally
   // (pluginlistcontextmenu.cpp:36-49) - before the per-row block, and not
   // gated on a selection - so they are on the menu of every row AND on one
@@ -32,7 +32,8 @@ void ContextMenu::add_actions(QMenu &menu, int row) {
   // MO2 PluginListContextMenu order (pluginlistcontextmenu.cpp:24-77):
   // Enable/Disable selected, Send to..., Lock/Unlock load order. Core rows
   // (force_loaded) cannot be toggled, moved or locked - the engine refuses
-  // all three, so they get no actions at all.
+  // all three, so they get no actions at all. The lock pair is the one block
+  // that reads the selection rather than the clicked row; see below.
   const bool locked = rows_[r].locked;
   const bool core   = rows_[r].force_loaded;
 
@@ -68,13 +69,51 @@ void ContextMenu::add_actions(QMenu &menu, int row) {
     });
   }
 
-  if (!locked && !core) {
-    menu.addAction(tr("Lock load order"), this, [this, r]() {
-      emit lock_requested(rows_[r].name, true);
+  // Lock / Unlock load order. MO2 walks the whole SELECTION, counts only the
+  // rows that are ENABLED, and offers one action per state it found
+  // (pluginlistcontextmenu.cpp:56-77), so a selection spanning locked and
+  // unlocked rows gets both entries instead of the one derived from whichever
+  // row happened to be clicked. A disabled row is invisible to the decision
+  // AND skipped when applying it (PluginListContextMenu::setESPLock, :130-137):
+  // pinning the load position of a plugin that is not loaded is not a state
+  // the load order can carry.
+  //
+  // Core rows stay out either way - the engine refuses to lock them, so the
+  // action would be a dead control.
+  std::vector<size_t> lockable;
+  if (selection.empty()) {
+    if (!core)
+      lockable.push_back(r);
+  } else {
+    for (int sel : selection) {
+      if (sel < 0 || sel >= nrows)
+        continue;
+      const auto s = static_cast<size_t>(sel);
+      if (rows_[s].force_loaded || !rows_[s].enabled)
+        continue;
+      lockable.push_back(s);
+    }
+  }
+
+  bool has_locked   = false;
+  bool has_unlocked = false;
+  for (size_t s : lockable) {
+    if (rows_[s].locked)
+      has_locked = true;
+    else
+      has_unlocked = true;
+  }
+
+  if (has_locked) {
+    menu.addAction(tr("Unlock load order"), this, [this, lockable]() {
+      for (size_t s : lockable)
+        emit lock_requested(rows_[s].name, false);
     });
-  } else if (locked) {
-    menu.addAction(tr("Unlock load order"), this, [this, r]() {
-      emit lock_requested(rows_[r].name, false);
+  }
+  if (has_unlocked) {
+    menu.addAction(tr("Lock load order"), this, [this, lockable]() {
+      for (size_t s : lockable)
+        emit lock_requested(rows_[s].name, true);
     });
   }
 

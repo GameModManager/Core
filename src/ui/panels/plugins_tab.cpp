@@ -119,7 +119,21 @@ QStringList PluginsTab::selected_plugin_names() const {
 // --- Context menu -----------------------------------------------------------
 
 void PluginsTab::add_context_menu_actions(QMenu &menu, int row) {
-  context_menu_->add_actions(menu, row);
+  // MO2 PluginListContextMenu takes the selection model and falls back to the
+  // clicked row when nothing is selected
+  // (pluginlistcontextmenu.cpp:17-20). Reproduced here so the lock pair sees
+  // the same set MO2's does; passing an empty selection would leave every
+  // lock decision on the clicked row alone.
+  std::vector<int> selection;
+  if (auto *t = view_->table()) {
+    if (t->selectionModel()) {
+      const auto rows = t->selectionModel()->selectedRows();
+      selection.reserve(static_cast<size_t>(rows.size()));
+      for (const auto &idx : rows)
+        selection.push_back(idx.row());
+    }
+  }
+  context_menu_->add_actions(menu, row, selection);
 }
 
 void PluginsTab::on_custom_context_menu(const QPoint &pos) {
