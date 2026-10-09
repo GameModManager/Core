@@ -463,6 +463,10 @@ gmm_catch2_test(downloads_shortcut_test ui/downloads_shortcut_test.cpp
     UI
     LIBS gmm_ui)
 
+gmm_catch2_test(conflict_send_test ui/conflict_send_test.cpp
+    UI
+    LIBS gmm_ui)
+
 gmm_catch2_test(exec_steam_app_id_test ui/exec_steam_app_id_test.cpp
     UI
     LIBS gmm_ui)

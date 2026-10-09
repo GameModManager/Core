@@ -8,6 +8,7 @@
 #include <QSet>
 #include <QVector>
 
+#include <functional>
 #include <string>
 
 class QAbstractItemView;
@@ -135,6 +136,26 @@ struct ConflictPairs {
   QStringList wins_against;
   QStringList loses_to;
 };
+
+// The row "Send to First/Last Conflict" moves a mod to (MO2
+// ModListViewActions::sendModsToFirstConflict / sendModsToLastConflict,
+// modlistviewactions.cpp:731-776).
+//
+// MO2 gathers every mod the selection conflicts with in that direction -
+// getModOverwrite for First, getModOverwritten for Last - maps them to
+// priorities, and moves the selection to the lowest (First) or highest (Last)
+// of them. In this model the row index IS the priority and ConflictPairs
+// already carries both directions, so First is the smallest row among the
+// mods this one WINS against, Last the largest row among the mods that win
+// against it.
+//
+// Returns -1 when the mod conflicts with nothing in that direction, or when
+// no partner has a row (a partner the model does not list). The caller leaves
+// the row where it is on -1. Free function so the mapping is testable without
+// a live conflict scan.
+[[nodiscard]] int
+conflict_send_target(const ConflictPairs &pairs,
+                     const std::function<int(const QString &)> &row_of, bool first);
 
 class ModList : public QAbstractTableModel {
   Q_OBJECT
