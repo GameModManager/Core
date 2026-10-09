@@ -73,7 +73,18 @@ bool save_current_profile(ProfileManager &profile, const ProfileSaveState &state
   }
 
   // 3. archives.txt (always written; an empty list is a valid state).
-  if (!profile.write_archives(state.archives)) {
+  //
+  //    Same defensive guard as modlist.txt above, and for the same reason. The
+  //    Archives tab holds no state yet, so archives.txt on disk is the only
+  //    truth there is; a caller that never fills state.archives would
+  //    otherwise truncate a populated file to nothing on every switch and
+  //    destroy the enabled-archive set for good. state is const, so fold the
+  //    file in locally rather than through the caller's copy.
+  std::vector<std::string> archives = state.archives;
+  if (archives.empty() && std::filesystem::exists(profile.archives_path())) {
+    archives = profile.read_archives();
+  }
+  if (!profile.write_archives(archives)) {
     const std::string message =
         "failed to write archives.txt in " + profile.directory().string();
     if (error) {

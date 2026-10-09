@@ -107,7 +107,13 @@ QToolButton *MainToolbar::add_instance_options_button(const QIcon &icon) {
   instance_options_button_->setIconSize(QSize(current_icon_size_, current_icon_size_));
   instance_options_button_->setToolButtonStyle(Qt::ToolButtonIconOnly);
   // Body click opens the Instance Options panel; the arrow opens the
-  // dropdown menu.
+  // dropdown menu. MO2 setupActionMenu (mainwindow.cpp:746-753) switches a
+  // toolbar button that owns a menu to InstantPopup so the WHOLE button opens
+  // the menu instead of press-and-hold on a separate arrow: a toolbar button
+  // is not a split control the way a combo box is, there is no second, more
+  // common action on it worth preserving. Set in set_instance_options_menu
+  // rather than here - a button with no menu yet has to stay clickable, or
+  // the panel entry point dies before the menu is ever attached.
   instance_options_button_->setPopupMode(QToolButton::MenuButtonPopup);
   gmm_buttons_.append(instance_options_button_);
 
@@ -123,8 +129,13 @@ QToolButton *MainToolbar::add_instance_options_button(const QIcon &icon) {
 }
 
 void MainToolbar::set_instance_options_menu(QMenu *menu) {
-  if (instance_options_button_)
-    instance_options_button_->setMenu(menu);
+  if (!instance_options_button_)
+    return;
+  instance_options_button_->setMenu(menu);
+  // With a menu attached the whole button opens it (MO2 setupActionMenu); with
+  // no menu it stays a plain click so the panel still opens.
+  instance_options_button_->setPopupMode(menu ? QToolButton::InstantPopup
+                                              : QToolButton::MenuButtonPopup);
 }
 
 QToolButton *MainToolbar::add_exec_button(const QString &tooltip, const QIcon &icon) {
@@ -137,20 +148,26 @@ QToolButton *MainToolbar::add_exec_button(const QString &tooltip, const QIcon &i
   exec_buttons_.append(btn);
   layout_->addWidget(btn);
 
-  // Right-click context menu to remove shortcut
+  // Right-click context menu to remove the shortcut. MO2 names the action it
+  // is about to remove in the entry itself
+  // (MainWindow::toolBar_customContextMenuRequested,
+  // mainwindow.cpp:3788-3795: "Remove '%1' from the toolbar"), so a
+  // right-click on a toolbar with several pinned executables says which one
+  // goes. The bare "Remove shortcut" said nothing.
   btn->setContextMenuPolicy(Qt::CustomContextMenu);
+  const QString label = tooltip;
   connect(btn, &QWidget::customContextMenuRequested, this,
-          [this, btn](const QPoint &pos) {
+          [this, btn, label](const QPoint &pos) {
             Q_UNUSED(pos);
             QMenu menu;
-            menu.addAction(tr("Remove shortcut"));
-            auto *action = menu.exec(btn->mapToGlobal(QPoint(0, btn->height())));
-            if (action) {
-              QString path = btn->property("exec_path").toString();
-              remove_exec_button(btn);
-              if (!path.isEmpty()) {
-                emit shortcut_removed(path);
-              }
+            auto *remove =
+                menu.addAction(tr("Remove '%1' from the toolbar").arg(label));
+            if (menu.exec(btn->mapToGlobal(QPoint(0, btn->height()))) != remove)
+              return;
+            QString path = btn->property("exec_path").toString();
+            remove_exec_button(btn);
+            if (!path.isEmpty()) {
+              emit shortcut_removed(path);
             }
           });
 

@@ -860,6 +860,13 @@ void ModListController::switch_profile(const QString &profile) {
     if (m.is_game_native)
       state.foreign_mods.push_back(m.id.toStdString());
   }
+  // archives.txt is deliberately left out of this state. save_current_profile
+  // guards it the way it guards modlist.txt (profile_switching.cpp:75-89): an
+  // empty archives here means "this caller knows nothing", and the switcher
+  // carries the file over rather than truncating it. Reading it here instead
+  // would have been wrong twice over - it ran before the recreate block below,
+  // so it could read a different profile's file, and a non-empty result would
+  // suppress the engine's own guard.
 
   // The active profile's engine model is the source of truth for the current
   // profile's modlist state (toggles persist through it via

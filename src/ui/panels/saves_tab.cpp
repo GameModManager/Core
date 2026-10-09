@@ -29,6 +29,7 @@
 #include <QVBoxLayout>
 
 #include <algorithm>
+#include <exception>
 #include <filesystem>
 #include <string>
 #include <vector>
@@ -382,7 +383,15 @@ void SavesTab::ensure_heavy_data(int row) {
     if (full) {
       save = std::move(*full);
     }
-  } catch (...) {
+  } catch (const std::exception &e) {
+    // Keep the header-only entry (the popup still shows what the scan found),
+    // but do not lose the reason. The parse strings are the same two MO2
+    // raises (gamebryosavegame.cpp:102-112); before this they were swallowed
+    // here and in the scanner, so a save that refuses to re-parse looked
+    // exactly like one that was fine.
+    engine::Logger::instance().error(
+        "save parse: " + QString::fromStdString(save.file_path.string()).toStdString() +
+        ": " + e.what());
   }
 }
 

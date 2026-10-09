@@ -196,6 +196,44 @@ TEST_CASE("save_current_profile preserves an unloaded profile's modlist", "[engi
   REQUIRE(modlist.find("+ModA") != std::string::npos);
 }
 
+// Regression for the "profile switch wipes archives.txt" data-loss bug:
+// archives.txt is written unconditionally ("an empty list is a valid state"),
+// so a caller that never fills ProfileSaveState::archives truncates the file to
+// nothing on every switch - the enabled-archive set is destroyed by switching
+// away and back. The Archives tab holds no state yet, so the file on disk is
+// the only truth; save_current_profile must preserve it exactly as it
+// preserves modlist.txt one paragraph earlier.
+TEST_CASE("save_current_profile preserves archives when the state carries none",
+          "[engine]") {
+  auto root               = make_temp_dir("save_unloaded_archives");
+  const auto profiles_dir = root / "profiles";
+  auto created = engine::profile::create_fresh_profile(profiles_dir, "Default");
+  REQUIRE(created.success);
+
+  // Populate archives.txt on disk the way a previous session left it.
+  write_text(created.directory / "archives.txt",
+             "Skyrim - Textures.bsa\nSkyrim - Meshes.bsa\n");
+
+  // A caller that knows nothing about archives (the switcher before the fix).
+  engine::profile::ProfileManager profile(created.directory);
+  engine::profile::ProfileSaveState state;
+  state.known_mods = {"ModA"};
+  // state.archives deliberately left default-constructed.
+
+  std::string error;
+  REQUIRE(engine::profile::save_current_profile(profile, state, nullptr, &error));
+  REQUIRE(error.empty());
+
+  const std::string archives = read_text(created.directory / "archives.txt");
+  REQUIRE(archives.find("Skyrim - Textures.bsa") != std::string::npos);
+  REQUIRE(archives.find("Skyrim - Meshes.bsa") != std::string::npos);
+
+  // A missing file still yields an empty one: an empty list is a valid state.
+  write_text(created.directory / "archives.txt", "");
+  REQUIRE(engine::profile::save_current_profile(profile, state, nullptr, &error));
+  REQUIRE(fs::exists(created.directory / "archives.txt"));
+}
+
 TEST_CASE("write_tweaked_ini writes atomically", "[engine]") {
   auto dir = make_temp_dir("tweak");
   std::string error;
