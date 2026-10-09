@@ -1642,31 +1642,6 @@ void LaunchController::apply_exec_entries(const QVector<Executables::Entry> &ent
   save_executables();
 }
 
-#ifndef Q_OS_WIN
-bool LaunchController::validate_linux_executable(const QString &path) {
-  QFileInfo fi(path);
-  if (!fi.exists())
-    return false;
-
-  // Check extension-based patterns first (fast path)
-  auto ext = fi.suffix().toLower();
-  if (ext == "exe" || ext == "elf" || ext == "sh" || ext == "appimage" || ext == "bin")
-    return true;
-
-  // For extensionless files, use `file --brief --mime-type`
-  QProcess proc;
-  proc.start("file", QStringList{"--brief", "--mime-type", path});
-  if (!proc.waitForFinished(3000))
-    return false;
-
-  auto mime = QString::fromUtf8(proc.readAllStandardOutput()).trimmed();
-  return mime == "application/x-executable" || mime == "application/x-pie-executable" ||
-         mime == "application/x-sharedlib" || mime == "text/x-shellscript" ||
-         mime == "application/x-mach-binary" || mime == "application/x-msdownload" ||
-         mime == "application/x-msdos-program";
-}
-#endif
-
 void LaunchController::create_game_lock_overlay() {
   w_->game_lock_overlay_ = new QWidget(w_);
   w_->game_lock_overlay_->setObjectName("gameLockOverlay");

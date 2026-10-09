@@ -325,6 +325,16 @@ bool WindowsPlatform::is_modl_handler_registered() {
   return cmd.find(L"--handle-modl") != std::wstring::npos;
 }
 
+// --- Free-function forms (see platform.h) ---
+
+std::string platform_id() { return WindowsPlatform().platform_name(); }
+
+std::filesystem::path find_steam_root() { return WindowsPlatform().find_steam_root(); }
+
+std::filesystem::path default_cache_dir() { return WindowsPlatform().cache_dir(); }
+
+std::filesystem::path find_wine() { return WindowsPlatform().find_wine(); }
+
 }  // namespace engine
 
 #endif  // _WIN32

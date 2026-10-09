@@ -1,5 +1,7 @@
 #include "engine/proton/proton_tweaks.h"
 
+#include "platform/platform.h"
+
 #include <algorithm>
 #include <cmath>
 #include <fstream>
@@ -59,20 +61,9 @@ namespace {
     return {};
   }
 
-  // System wine binary (mirrors LinuxPlatform::find_wine without the Platform
-  // dependency - this module only gets a prefix + appid).
-  fs::path find_wine_binary() {
-    auto wine = find_on_path("wine");
-    if (!wine.empty())
-      return wine;
-    for (const auto &c :
-         {"/usr/bin/wine", "/usr/local/bin/wine", "/opt/wine/bin/wine"}) {
-      std::error_code ec;
-      if (fs::exists(c, ec))
-        return c;
-    }
-    return {};
-  }
+  // System wine binary lives in the platform layer - this module only gets a
+  // prefix + appid, so it uses the free-function form.
+  fs::path find_wine_binary() { return engine::find_wine(); }
 
   struct SyncResult {
     bool started  = false;
