@@ -73,6 +73,28 @@ enum class DownloadShortcut { None, Install, Remove, Pause, Resume };
 // dialog; tests inject a stub.
 enum class DropConflictAction { Overwrite, Rename, Ignore };
 
+// Which rows a batch context-menu action covers (MO2
+// DownloadListView::downloadContextMenu, downloadlistview.cpp:300-325:
+// "Delete Installed/Uninstalled/All Downloads..." and
+// "Hide Installed/Uninstalled/All...", plus "Un-Hide All...").
+enum class DownloadBatch {
+  Installed,   // rows whose mod is installed
+  Uninstalled, // rows that finished but are not installed
+  All          // every row, whatever its state
+};
+
+// True when a row's state puts it in the batch's scope. A download still in
+// flight is NOT in Installed or Uninstalled (it has not finished, so nothing
+// about it is known) but IS in All - MO2's issueDeleteAll and issueRemoveFrom-
+// ViewAll take every row. Removed is in no scope: the entry is already gone.
+//
+// Free function so the scope rules are testable without building a tab.
+[[nodiscard]] bool download_in_batch(DownloadState state, DownloadBatch batch);
+
+// Label for a batch action, as MO2 words it ("Delete Installed Downloads...",
+// "Hide Uninstalled...", "Un-Hide All..."). Empty scope names nothing.
+[[nodiscard]] QString download_batch_label(DownloadBatch batch, bool remove);
+
 class DownloadsTab : public QWidget {
   Q_OBJECT
 public:
@@ -242,6 +264,10 @@ signals:
   // Emitted after a download entry (and its file) has been removed, so the
   // manifest can be persisted. The entry is already gone from the table.
   void entry_removed(const std::string &id);
+  // Emitted when entries changed but nothing was removed (the batch Hide
+  // actions), so the manifest is rewritten without any link bookkeeping or a
+  // kDownloadRemoved event - no row left the table.
+  void entries_changed();
 
 private slots:
   // The downloads dir changed on disk (watcher fired): (re)arm the debounce
@@ -264,6 +290,11 @@ private:
     // ?do=download query). Persisted in the manifest so the "Open on ..."
     // context action and install provenance survive restarts.
     std::string page_url;
+    // Hidden from the table without being deleted (MO2 DownloadInfo::m_Hidden
+    // / DownloadManager::isHidden, downloadmanager.cpp:1523-1529). Persisted
+    // in the manifest, so a row the user hid stays hidden across restarts and
+    // "Un-Hide All..." can bring it back.
+    bool hidden = false;
     QTableWidgetItem *name_item     = nullptr;
     QTableWidgetItem *source_item   = nullptr;
     QTableWidgetItem *size_item     = nullptr;
@@ -289,8 +320,24 @@ private:
   // Trash the entry's archive after the MO2 "Move to the Recycle Bin"
   // question. Shared by the context-menu Remove action and the Delete key
   // (MO2 issueDelete, downloadlistview.cpp:377-389).
-  void confirm_and_remove(const std::string &id);
-  void apply_installed_filter();
+void confirm_and_remove(const std::string &id);
+void apply_installed_filter();
+
+  // The batch context-menu actions (MO2 DownloadListView
+  // ::downloadContextMenu, downloadlistview.cpp:300-325). `hide` picks the
+  // Hide/Un-Hide family, otherwise the Delete family: hide flags the rows and
+  // re-applies the row filter, delete trashes each archive and drops the
+  // entry. Both confirm once for the whole batch rather than per row.
+  void apply_batch(DownloadBatch batch, bool hide);
+  // Confirm-then-trash every entry in the batch, and report the count. No-op
+  // when the batch is empty.
+  void remove_batch(DownloadBatch batch);
+  // Flag the batch's rows hidden (or every row, for unhide) and re-apply the
+  // row filter. Emits entry_removed-free: nothing is deleted, so the manifest
+  // is rewritten through the existing entry change path.
+  void hide_batch(DownloadBatch batch, bool unhide);
+  // Re-apply setRowHidden for every entry, on top of the other filters.
+  void apply_hidden_rows();
 
   // Derive the origin metadata for an install from a download entry:
   // source_type ("nexus"/"loverslab"/""), source_id, file_id, and the

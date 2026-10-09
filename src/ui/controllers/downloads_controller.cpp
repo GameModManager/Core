@@ -509,6 +509,8 @@ void DownloadsController::wire_downloads_tab() {
                                           engine::json_obj({{"id", id}}));
     save_download_manifest();
   });
+  connect(dt, &DownloadsTab::entries_changed, this,
+          [this]() { save_download_manifest(); });
 }
 
 void DownloadsController::wire_saves_tab() {
