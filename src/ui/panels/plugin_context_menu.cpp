@@ -77,6 +77,29 @@ void ContextMenu::add_actions(QMenu &menu, int row) {
       emit lock_requested(rows_[r].name, false);
     });
   }
+
+  // "Open Origin in Explorer" / "Open Origin Info..."
+  // (pluginlistcontextmenu.cpp:89-112). MO2 offers both only when the
+  // row's origin resolves to a mod, and hides them entirely for a game file
+  // like Skyrim.esm. A plugin with no owning mod is that same case, so the
+  // pair is off rather than present and inert.
+  const std::string &owner = rows_[r].owner_mod;
+  if (owner.empty())
+    return;
+
+  menu.addSeparator();
+  menu.addAction(tr("Open Origin in Explorer"), this, [this, owner]() {
+    emit open_origin_explorer_requested(owner);
+  });
+  // MO2 also requires a single non-foreign selection. There is no foreign
+  // case here: every mod row this list can name has a Mod Info dialog, which
+  // is the same one the plain double-click opens.
+  auto *info = menu.addAction(tr("Open Origin Info..."), this, [this, owner]() {
+    emit open_origin_info_requested(owner);
+  });
+  // Double-click or Enter repeats the default action, so MO2's "the most
+  // likely thing" choice is preserved (pluginlistcontextmenu.cpp:104).
+  menu.setDefaultAction(info);
 }
 
 }  // namespace engine::PluginDb
