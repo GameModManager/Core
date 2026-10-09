@@ -765,8 +765,9 @@ void SettingsController::connect_menu_actions() {
       w_->console_splitter_->setSizes({700, 0});
     }
   });
-  // MO2 actionMainMenuToggle. Qt brings the menu bar back on Alt, so the
-  // action is re-synced whenever the bar is shown from anywhere.
+  // MO2 actionMainMenuToggle. This hides the bar and nothing else: an Alt key
+  // release brings it back (MainWindow::keyReleaseEvent, MO2
+  // mainwindow.cpp:4054) and re-checks the View entry there.
   connect(w_->menu_bar_, &AppMenuBar::toggle_menu_bar, this, [this](bool visible) {
     w_->menu_bar_->setVisible(visible);
   });

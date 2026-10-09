@@ -141,8 +141,9 @@ void AppMenuBar::build_view_menu() {
   connect(toggle_console_action_, &QAction::toggled, this, &AppMenuBar::toggle_console);
 
   // MO2 actionMainMenuToggle, the first entry of menuToolbars
-  // (mainwindow.ui:1560): hide the whole menu bar. Qt re-shows it when Alt is
-  // pressed, so this is a focus-saving toggle rather than a permanent change.
+  // (mainwindow.ui:1560): hide the whole menu bar. An Alt key release brings
+  // it back (MO2 MainWindow::keyReleaseEvent), so this is a focus-saving
+  // toggle rather than a permanent change.
   toggle_menu_bar_action_ = menu->addAction(tr("Show Menu Bar"));
   toggle_menu_bar_action_->setCheckable(true);
   toggle_menu_bar_action_->setChecked(true);
@@ -330,6 +331,14 @@ void AppMenuBar::set_console_checked(bool checked) {
     toggle_console_action_->blockSignals(true);
     toggle_console_action_->setChecked(checked);
     toggle_console_action_->blockSignals(false);
+  }
+}
+
+void AppMenuBar::set_menu_bar_checked(bool checked) {
+  if (toggle_menu_bar_action_) {
+    toggle_menu_bar_action_->blockSignals(true);
+    toggle_menu_bar_action_->setChecked(checked);
+    toggle_menu_bar_action_->blockSignals(false);
   }
 }
 
