@@ -1,21 +1,14 @@
 #include "engine/util/thread_priority.h"
 
-#if defined(_WIN32)
-#include <windows.h>
-#else
-#include <sys/resource.h>
-#endif
+#include "platform/platform.h"
 
 namespace engine {
 
+// The three OS bodies live in src/platform/ (see Platform::set_thread_low_priority
+// and the free-function form in platform.h). This wrapper is the historical
+// name the archive extractor calls.
 void set_low_priority() noexcept {
-#if defined(_WIN32)
-  SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_BELOW_NORMAL);
-#else
-  // nice value 10 = below normal. Lowering (raising the nice value) is always
-  // permitted for an unprivileged process; ignore any error (best-effort).
-  (void)setpriority(PRIO_PROCESS, 0, 10);
-#endif
+  set_thread_low_priority();
 }
 
 }  // namespace engine

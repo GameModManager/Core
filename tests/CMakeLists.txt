@@ -66,6 +66,20 @@ add_test(NAME platform_contract_test
         ${CMAKE_CURRENT_SOURCE_DIR}/platform_contract_scan.py
         --src ${PROJECT_SOURCE_DIR}/src)
 
+# ---------------------------------------------------------------------------
+# Windows compile check (Workspace-kgvn)
+# ---------------------------------------------------------------------------
+# Windows platform module: CMake picks GMM_PLATFORM from the host, so a
+# Windows-only compile error ships silently. Where the mingw cross-compiler is
+# installed, this syntax-checks every source under src/platform/windows/
+# against the real Windows headers. It skips cleanly where it is not.
+#   python3 tests/mingw_windows_syntax_check.py --root <root>
+add_test(NAME windows_syntax_check
+    COMMAND ${Python3_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/mingw_windows_syntax_check.py
+        --root ${PROJECT_SOURCE_DIR}
+        --skip-if-missing)
+
 # gmm_catch2_test(<name> <sources...>
 #     [UI]
 #     LIBS <extra link libraries>
@@ -268,6 +282,14 @@ if(Qt6Keychain_FOUND)
         ${PROJECT_SOURCE_DIR}/src/engine/keyring/qtkeychain_keyring.cpp
         LIBS Qt6Keychain::Qt6Keychain Qt6::Core)
 endif()
+
+# Cross-platform ratchet equivalence tests. These exercise the OS primitives
+# that were moved out of engine/ into src/platform/ (Workspace-fjx8), and prove
+# each one reaches a real consumer rather than just returning a value. Needs
+# gmm_platform because the functions under test are free functions defined in
+# the adaptor for the OS being built.
+gmm_catch2_test(platform_primitives_test engine/platform_primitives_test.cpp
+    LIBS gmm_platform)
 
 # Linux platform module (mimeapps / XDG handling).
 if(GMM_PLATFORM STREQUAL "linux")

@@ -4,14 +4,21 @@
 
 #include "platform/macos/macos_platform.h"
 
+#include <cerrno>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <ctime>
 #include <filesystem>
 #include <fstream>
+#include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
+#include <fcntl.h>
 #include <sys/resource.h>
+#include <sys/stat.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
@@ -349,6 +356,171 @@ bool is_protocol_handler_registered(ProtocolHandler protocol) {
 
 std::string current_protocol_handler(ProtocolHandler protocol) {
   return MacOSPlatform().current_protocol_handler(protocol);
+}
+
+// --- OS primitives that have no Platform instance to hang off ---
+
+std::tm local_time(std::time_t t) {
+  std::tm out{};
+  if (!localtime_r(&t, &out))
+    return {};
+  return out;
+}
+
+std::tm utc_time(std::time_t t) {
+  std::tm out{};
+  if (!gmtime_r(&t, &out))
+    return {};
+  return out;
+}
+
+long current_process_id() {
+  return static_cast<long>(getpid());
+}
+
+void set_thread_low_priority() {
+  MacOSPlatform().set_thread_low_priority();
+}
+
+bool atomic_replace(const std::filesystem::path &from,
+                    const std::filesystem::path &to) {
+  std::error_code ec;
+  std::filesystem::rename(from, to, ec);
+  return !ec;
+}
+
+bool create_truncated_file(const std::filesystem::path &path, std::error_code &ec) {
+  ec.clear();
+  const int fd = ::open(path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
+  if (fd < 0) {
+    ec.assign(errno, std::generic_category());
+    return false;
+  }
+  ::close(fd);
+  return true;
+}
+
+bool move_to_recycle_bin(const std::filesystem::path &path) {
+  // macOS has no freedesktop trash: the Trash is a per-volume .Trashes
+  // directory that Finder owns, and moving a file into it by rename is what
+  // NSFileManager's trashItemAtURL does under the hood. .Trashes/501 is the
+  // user (uid 501 on a stock macOS account) case Finder itself uses; the uid
+  // is read rather than assumed so a non-501 account still lands correctly.
+  const uid_t uid = getuid();
+  const auto home = home_dir();
+  if (home.empty())
+    return false;
+
+  // A volume-local trash is preferred (it is where Finder puts the file, so
+  // "Put Back" and the Trash count in Finder both work), but it must be
+  // writable by the user and the sticky-bit set, which only root can arrange
+  // at the volume root. ~/ .Trash is always ours, so it is the fallback.
+  std::vector<std::filesystem::path> candidates = {
+      path.parent_path() / ".Trashes" / std::to_string(uid),
+      home / ".Trash",
+  };
+
+  for (const auto &trash : candidates) {
+    std::error_code ec;
+    if (!std::filesystem::is_directory(trash, ec))
+      continue;
+    if (::access(trash.c_str(), W_OK) != 0)
+      continue;
+
+    // Collision-free name, same shape as the Linux side.
+    const auto base = path.filename();
+    auto target     = trash / base;
+    int n           = 0;
+    for (;;) {
+      ec.clear();
+      if (!std::filesystem::exists(target, ec))
+        break;
+      target = trash / (base.string() + "." + std::to_string(++n));
+    }
+
+    ec.clear();
+    std::filesystem::rename(path, target, ec);
+    if (!ec)
+      return true;
+
+    // Cross-device (the volume-local trash lives on another filesystem than
+    // a home-directory path): copy then remove.
+    ec.clear();
+    std::filesystem::copy(path, target,
+                          std::filesystem::copy_options::recursive |
+                              std::filesystem::copy_options::copy_symlinks,
+                          ec);
+    if (ec)
+      continue;
+    std::filesystem::remove_all(path, ec);
+    if (!ec)
+      return true;
+  }
+  return false;
+}
+
+bool path_is_executable(const std::filesystem::path &path) {
+  return ::access(path.c_str(), X_OK) == 0;
+}
+
+bool filesystem_is_case_insensitive() {
+  // APFS (and HFS+) fold case by default. A case-SENSITIVE APFS volume exists,
+  // and this build cannot tell one from the other without probing the mount, so
+  // the answer is the conservative one for a path index: a case-sensitive
+  // index still resolves every path it can see on a case-insensitive volume,
+  // while the reverse silently misses files.
+  return false;
+}
+
+std::string machine_id() {
+  // macOS has no /etc/machine-id and no registry. The hardware UUID lives in
+  // IOPlatformUUID, reachable without IOKit through the ioreg command line;
+  // shelled out rather than linked so src/platform/ stays framework-light.
+  // Empty when it cannot be read, which is what the keyring treats as "no
+  // machine binding available" and falls back to a per-install seed.
+  std::unique_ptr<FILE, int (*)(FILE *)> pipe(
+      ::popen("/usr/sbin/ioreg -rd1 -c IOPlatformExpertDevice 2>/dev/null", "r"),
+      ::pclose);
+  if (!pipe)
+    return {};
+  char line[512];
+  while (std::fgets(line, sizeof(line), pipe.get())) {
+    const std::string text(line);
+    const auto key = text.find("\"IOPlatformUUID\"");
+    if (key == std::string::npos)
+      continue;
+    const auto open  = text.find('"', text.find('=', key));
+    const auto close = text.find('"', open + 1);
+    if (open == std::string::npos || close == std::string::npos || close <= open + 1)
+      continue;
+    return text.substr(open + 1, close - open - 1);
+  }
+  return {};
+}
+
+std::optional<std::int64_t> file_birth_time(const std::filesystem::path &path) {
+  struct stat st{};
+  if (::stat(path.c_str(), &st) != 0 || st.st_birthtimespec.tv_sec == 0)
+    return std::nullopt;
+  return static_cast<std::int64_t>(st.st_birthtimespec.tv_sec);
+}
+
+int open_truncated_write_fd(const std::string &path) {
+  return ::open(path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
+}
+
+void write_raw_fd(int fd, const char *data, std::size_t size) {
+  while (size > 0) {
+    const auto n = ::write(fd, data, size);
+    if (n <= 0)
+      return;
+    data += n;
+    size -= static_cast<std::size_t>(n);
+  }
+}
+
+void close_raw_fd(int fd) {
+  ::close(fd);
 }
 
 }  // namespace engine

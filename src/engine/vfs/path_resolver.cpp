@@ -1,5 +1,7 @@
 #include "path_resolver.h"
 
+#include "platform/platform.h"
+
 #include <algorithm>
 #include <cctype>
 #include <system_error>
@@ -59,11 +61,7 @@ const std::filesystem::path &PathResolver::root() const {
 }
 
 bool PathResolver::is_native_ci() const {
-#ifdef _WIN32
-  return true;
-#else
-  return false;
-#endif
+  return filesystem_is_case_insensitive();
 }
 
 std::string PathResolver::normalize(std::string_view game_rel) const {

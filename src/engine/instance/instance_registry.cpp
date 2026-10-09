@@ -337,14 +337,9 @@ InstanceRegistry::repair_missing(const std::string &name) {
 // --- Helpers ---
 
 std::string InstanceRegistry::now_iso8601() const {
-  auto now  = std::chrono::system_clock::now();
-  auto time = std::chrono::system_clock::to_time_t(now);
-  std::tm utc{};
-#ifdef _WIN32
-  gmtime_s(&utc, &time);
-#else
-  gmtime_r(&time, &utc);
-#endif
+  auto now          = std::chrono::system_clock::now();
+  auto time         = std::chrono::system_clock::to_time_t(now);
+  const std::tm utc = engine::utc_time(time);
 
   std::ostringstream ss;
   ss << std::put_time(&utc, "%Y-%m-%dT%H:%M:%SZ");

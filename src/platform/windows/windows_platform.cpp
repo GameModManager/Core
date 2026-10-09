@@ -3,12 +3,19 @@
 #include "platform/windows/windows_platform.h"
 
 #include <cstdlib>
+#include <ctime>
 #include <filesystem>
 #include <string>
 #include <vector>
 
 // Windows headers
+#include <cerrno>
+#include <fcntl.h>
+#include <io.h>
+#include <optional>
+#include <process.h>
 #include <shellapi.h>
+#include <sys/stat.h>
 #include <windows.h>
 
 namespace engine {
@@ -484,6 +491,149 @@ bool is_protocol_handler_registered(ProtocolHandler protocol) {
 
 std::string current_protocol_handler(ProtocolHandler protocol) {
   return WindowsPlatform().current_protocol_handler(protocol);
+}
+
+// --- OS primitives that have no Platform instance to hang off ---
+
+std::tm local_time(std::time_t t) {
+  std::tm out{};
+  localtime_s(&out, &t);
+  return out;
+}
+
+std::tm utc_time(std::time_t t) {
+  std::tm out{};
+  gmtime_s(&out, &t);
+  return out;
+}
+
+long current_process_id() {
+  return static_cast<long>(_getpid());
+}
+
+void set_thread_low_priority() {
+  WindowsPlatform().set_thread_low_priority();
+}
+
+bool atomic_replace(const std::filesystem::path &from,
+                    const std::filesystem::path &to) {
+  // MOVEFILE_WRITE_THROUGH is what makes this a data-integrity guarantee
+  // rather than a rename: it does not return until the rename has been
+  // flushed to disk, so a power loss immediately afterwards cannot leave the
+  // old contents sitting under the new name.
+  return MoveFileExW(from.c_str(), to.c_str(),
+                     MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH) != 0;
+}
+
+bool create_truncated_file(const std::filesystem::path &path, std::error_code &ec) {
+  ec.clear();
+  const std::wstring w = path.wstring();
+  const int flags      = _O_WRONLY | _O_CREAT | _O_TRUNC | _O_BINARY;
+  const int fd         = ::_wopen(w.c_str(), flags, _S_IREAD | _S_IWRITE);
+  if (fd < 0) {
+    ec.assign(errno, std::generic_category());
+    return false;
+  }
+  ::_close(fd);
+  return true;
+}
+
+bool move_to_recycle_bin(const std::filesystem::path &path) {
+  // SHFileOperationW takes a double-NUL-terminated multi-string of paths;
+  // FOF_ALLOWUNDO is what routes it to the Recycle Bin instead of deleting.
+  const std::wstring w = path.wstring();
+  std::vector<wchar_t> from(w.begin(), w.end());
+  from.push_back(L'\0');
+  from.push_back(L'\0');
+
+  SHFILEOPSTRUCTW op{};
+  op.wFunc  = FO_DELETE;
+  op.pFrom  = from.data();
+  op.fFlags = FOF_ALLOWUNDO | FOF_NOCONFIRMATION | FOF_NOERRORUI | FOF_SILENT;
+  return SHFileOperationW(&op) == 0;
+}
+
+bool path_is_executable(const std::filesystem::path &path) {
+  // NTFS has no execute bit: the ACL is what says whether this user may run
+  // the file. _waccess with mode 0 asks "can this user open it at all", which
+  // is the closest the CRT gets, and is the same question a PATHEXT lookup
+  // ends up asking.
+  return ::_waccess(path.wstring().c_str(), 0) == 0;
+}
+
+bool filesystem_is_case_insensitive() {
+  return true;  // NTFS (and every other volume Windows mounts) folds case
+}
+
+std::string machine_id() {
+  HKEY hkey = nullptr;
+  if (RegOpenKeyExW(HKEY_LOCAL_MACHINE, L"SOFTWARE\\Microsoft\\Cryptography", 0,
+                    KEY_READ, &hkey) != ERROR_SUCCESS)
+    return {};
+  wchar_t buf[256];
+  DWORD buf_size = sizeof(buf);
+  DWORD type     = 0;
+  LPBYTE bytes   = reinterpret_cast<LPBYTE>(buf);
+  const LONG rc =
+      RegQueryValueExW(hkey, L"MachineGuid", nullptr, &type, bytes, &buf_size);
+  const bool ok = rc == ERROR_SUCCESS && type == REG_SZ;
+  RegCloseKey(hkey);
+  if (!ok)
+    return {};
+
+  // The GUID is ASCII hex with braces; narrow it byte-per-wchar and drop the
+  // trailing NUL that buf_size counts.
+  const std::wstring guid(buf, buf_size / sizeof(wchar_t));
+  std::string narrow;
+  narrow.reserve(guid.size());
+  for (wchar_t wc : guid) {
+    if (wc != L'\0')
+      narrow += static_cast<char>(wc);
+  }
+  return narrow;
+}
+
+std::optional<std::int64_t> file_birth_time(const std::filesystem::path &path) {
+  // GetFileTimeEx needs a handle, and GetFileAttributesEx does not expose a
+  // creation time, so this is the only route to one on Windows.
+  HANDLE h = CreateFileW(path.wstring().c_str(), 0, FILE_SHARE_READ | FILE_SHARE_WRITE,
+                         nullptr, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, nullptr);
+  if (h == INVALID_HANDLE_VALUE)
+    return std::nullopt;
+  FILETIME created{};
+  const bool ok = GetFileTime(h, &created, nullptr, nullptr) != FALSE;
+  CloseHandle(h);
+  if (!ok)
+    return std::nullopt;
+
+  // FILETIME counts 100ns ticks since 1601-01-01; the Unix epoch is 11644473600
+  // seconds later.
+  ULARGE_INTEGER ticks{};
+  ticks.LowPart  = created.dwLowDateTime;
+  ticks.HighPart = created.dwHighDateTime;
+  return static_cast<std::int64_t>(ticks.QuadPart / 10000000ULL - 11644473600LL);
+}
+
+int open_truncated_write_fd(const std::string &path) {
+  // _open on the narrow path: the logger is handed an ASCII-ish path by
+  // main() and taking the wide form here would mean threading std::wstring
+  // through the Logger for no gain at this layer.
+  return ::_open(path.c_str(), _O_WRONLY | _O_CREAT | _O_TRUNC | _O_BINARY,
+                 _S_IREAD | _S_IWRITE);
+}
+
+void write_raw_fd(int fd, const char *data, std::size_t size) {
+  while (size > 0) {
+    const int n = ::_write(fd, data, static_cast<unsigned>(size));
+    if (n <= 0)
+      return;
+    data += n;
+    size -= static_cast<std::size_t>(n);
+  }
+}
+
+void close_raw_fd(int fd) {
+  ::_close(fd);
 }
 
 }  // namespace engine
