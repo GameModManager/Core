@@ -1,6 +1,7 @@
 #include "engine/backup/backup_service.h"
 
 #include "engine/profile/safe_write_file.h"
+#include "platform/platform.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -23,15 +24,7 @@ namespace {
   constexpr std::size_t kMaxCopyDigits = 9;
 
   std::tm local_calendar(std::chrono::system_clock::time_point tp) {
-    const auto seconds = std::chrono::system_clock::to_time_t(tp);
-    std::tm out{};
-#if defined(_WIN32)
-    localtime_s(&out, &seconds);
-#else
-    if (localtime_r(&seconds, &out) == nullptr)
-      out = std::tm{};
-#endif
-    return out;
+    return engine::local_time(std::chrono::system_clock::to_time_t(tp));
   }
 
   std::string format_stamp(std::chrono::system_clock::time_point tp) {

@@ -9,26 +9,6 @@
 #include <cstring>
 #include <filesystem>
 
-#ifdef _WIN32
-#include <io.h>
-#include <fcntl.h>
-#define open _open
-#define write _write
-#define close _close
-#define O_WRONLY _O_WRONLY
-#define O_CREAT _O_CREAT
-#define O_TRUNC _O_TRUNC
-#define O_RDONLY _O_RDONLY
-// For mode_t:
-#ifndef S_IRUSR
-#define S_IRUSR _S_IREAD
-#define S_IWUSR _S_IWRITE
-#endif
-#else
-#include <fcntl.h>
-#include <unistd.h>
-#endif
-
 namespace engine {
 
 Logger::Logger() {
@@ -95,18 +75,18 @@ void Logger::log(LogLevel level, const std::string &message) {
   replay_buffer_.push_back({level, ts, msg});
 
   if (log_fd_ >= 0) {
-    auto tag                = level_tag(level);
-    std::string line        = "[" + tag + "] [" + ts + "] " + msg + "\n";
-    [[maybe_unused]] auto _ = ::write(log_fd_, line.data(), line.size());
+    auto tag         = level_tag(level);
+    std::string line = "[" + tag + "] [" + ts + "] " + msg + "\n";
+    write_raw_fd(log_fd_, line.data(), line.size());
   }
 }
 
 bool Logger::set_log_file(const std::string &path) {
   std::lock_guard lock(mutex_);
   if (log_fd_ >= 0)
-    ::close(log_fd_);
+    close_raw_fd(log_fd_);
   log_file_path_ = path;
-  log_fd_        = ::open(path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
+  log_fd_        = open_truncated_write_fd(path);
   return log_fd_ >= 0;
 }
 
@@ -148,7 +128,7 @@ void Logger::enable_console(bool color) {
 
 void Logger::raw_append(const std::string &line) const {
   if (log_fd_ >= 0)
-    ::write(log_fd_, line.data(), line.size());
+    write_raw_fd(log_fd_, line.data(), line.size());
 }
 
 std::string Logger::sanitize(std::string msg) const {
@@ -169,12 +149,7 @@ std::string Logger::make_timestamp() const {
   auto time_t_now = system_clock::to_time_t(now);
   auto ms         = duration_cast<milliseconds>(now.time_since_epoch()) % 1000;
 
-  struct tm tm_buf{};
-#ifdef _WIN32
-  localtime_s(&tm_buf, &time_t_now);
-#else
-  localtime_r(&time_t_now, &tm_buf);
-#endif
+  const std::tm tm_buf = engine::local_time(time_t_now);
 
   char buf[16];
   std::snprintf(buf, sizeof(buf), "%02d:%02d:%02d", tm_buf.tm_hour, tm_buf.tm_min,

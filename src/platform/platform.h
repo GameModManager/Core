@@ -1,7 +1,10 @@
 #pragma once
 
+#include <cstdint>
 #include <cstdlib>
+#include <ctime>
 #include <filesystem>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -215,6 +218,85 @@ public:
 [[nodiscard]] bool unregister_protocol_handler(ProtocolHandler protocol);
 [[nodiscard]] bool is_protocol_handler_registered(ProtocolHandler protocol);
 [[nodiscard]] std::string current_protocol_handler(ProtocolHandler protocol);
+
+// Thread-safe local-time breakdown. localtime_r on Linux/macOS,
+// localtime_s on Windows. Returns a zeroed tm when the conversion fails,
+// which every caller here treats as "no usable time" rather than an error:
+// they are formatting a filename or a timestamp, not scheduling anything.
+[[nodiscard]] std::tm local_time(std::time_t t);
+
+// Same for UTC. gmtime_r on Linux/macOS, gmtime_s on Windows.
+[[nodiscard]] std::tm utc_time(std::time_t t);
+
+// Current process id. Uniqueness is all the callers want (temp-file names,
+// cgroup names), not any signal or wait semantics.
+[[nodiscard]] long current_process_id();
+
+// Rename `from` over `to`, replacing an existing `to`, atomically with
+// respect to a reader of `to`: it sees either the whole old file or the whole
+// new one, never a mix. POSIX rename() is already that; Windows needs
+// MoveFileExW with MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH, which
+// additionally forces the rename out to disk before returning - so a power
+// loss right after this call cannot resurrect the old contents.
+[[nodiscard]] bool atomic_replace(const std::filesystem::path &from,
+                                  const std::filesystem::path &to);
+
+// Create `path` as an empty file, truncating an existing one. Reports why it
+// failed through `ec` (std::generic_category): std::filesystem has no
+// create-file operation and a bare std::ofstream cannot say why it failed,
+// which is exactly the case the caller has to show the user.
+[[nodiscard]] bool create_truncated_file(const std::filesystem::path &path,
+                                         std::error_code &ec);
+
+// Move `path` to the OS trash, so it stays recoverable: the Recycle Bin via
+// SHFileOperationW on Windows, the freedesktop.org Trash spec on Linux, and the
+// volume-local .Trashes/<uid> (falling back to ~/.Trash) on macOS. False when
+// the OS refused, in which case nothing was removed.
+[[nodiscard]] bool move_to_recycle_bin(const std::filesystem::path &path);
+
+// True when `path` exists and the current user may execute it.
+[[nodiscard]] bool path_is_executable(const std::filesystem::path &path);
+
+// True when the OS filesystem this process runs on resolves paths without
+// regard to case (NTFS and APFS do; ext4 and XFS do not). Callers building a
+// path index have to know, because the index they build is only correct for
+// one of the two behaviours.
+[[nodiscard]] bool filesystem_is_case_insensitive();
+
+// Stable per-machine identifier, used to bind locally-stored key material to
+// this installation. Linux: /etc/machine-id then /var/lib/dbus/machine-id.
+// Windows: the MachineGuid registry value. macOS: the IOPlatformUUID hardware
+// UUID, read through ioreg. Empty when the OS offers none, which callers
+// already treat as "no machine binding available" and fall back to a
+// per-install seed.
+[[nodiscard]] std::string machine_id();
+
+// Creation time of `path` as Unix epoch seconds, when the filesystem records
+// one (statx STATX_BTIME, GetFileTime, st_birthtimespec). nullopt when the
+// filesystem has no birth time or the read failed; callers fall back to mtime.
+[[nodiscard]] std::optional<std::int64_t>
+file_birth_time(const std::filesystem::path &path);
+
+// A raw, unbuffered file descriptor, as the logger needs it: the forked launch
+// supervisor must append a line without taking the logger's mutex (a GUI
+// thread could have held it at fork) and without a C++ stream object that the
+// child inherited in an indeterminate state. Returns -1 when the file cannot
+// be opened.
+[[nodiscard]] int open_truncated_write_fd(const std::string &path);
+
+// Best-effort write of the whole buffer to a descriptor from
+// open_truncated_write_fd(). Partial writes and errors are both swallowed: a
+// log line is not worth the recovery path, and the caller has no better
+// place to report it than the log it is writing to.
+void write_raw_fd(int fd, const char *data, std::size_t size);
+
+// Close a descriptor from open_truncated_write_fd().
+void close_raw_fd(int fd);
+
+// Free-function form of Platform::set_thread_low_priority(), for callers that
+// hold no Platform pointer (the archive extractor runs on a worker thread
+// before the app shell exists).
+void set_thread_low_priority();
 
 // Centralized home dir lookup for code paths without a Platform pointer.
 inline std::filesystem::path safe_home_dir() {
