@@ -20,6 +20,7 @@
 #include <string>
 #include <vector>
 
+#include <dlfcn.h>
 #include <fcntl.h>
 #include <sys/resource.h>
 #include <sys/stat.h>
@@ -1336,6 +1337,134 @@ bool move_to_recycle_bin(const std::filesystem::path &path) {
 
 bool path_is_executable(const std::filesystem::path &path) {
   return ::access(path.c_str(), X_OK) == 0;
+}
+
+std::filesystem::path current_executable_path() {
+  std::error_code ec;
+  auto p = std::filesystem::read_symlink("/proc/self/exe", ec);
+  if (ec)
+    return {};
+  return p;
+}
+
+std::filesystem::path home_dir_or_empty() {
+  const char *home = std::getenv("HOME");
+  return (home && home[0] != '\0') ? std::filesystem::path(home)
+                                   : std::filesystem::path{};
+}
+
+bool path_is_writable(const std::filesystem::path &dir) {
+  if (dir.empty())
+    return false;
+  return ::access(dir.c_str(), W_OK) == 0;
+}
+
+std::filesystem::path volume_root_of(const std::filesystem::path &p) {
+  if (p.empty())
+    return {};
+  // A directory is a mount point exactly when it sits on a different device
+  // than its parent. Compared by st_dev rather than through
+  // std::filesystem::is_mount_point, which this libstdc++ does not provide.
+  struct stat here{};
+  if (::stat(p.c_str(), &here) != 0)
+    return {};
+  const auto parent = p.parent_path();
+  struct stat up{};
+  if (::stat(parent.empty() ? "/" : parent.c_str(), &up) != 0)
+    return {};
+  if (here.st_dev == up.st_dev)
+    return p;  // no mount between p and its parent: p is its own volume root
+  for (auto dir = p; !dir.empty() && dir != dir.root_path(); dir = dir.parent_path()) {
+    struct stat d{};
+    if (::stat(dir.c_str(), &d) != 0)
+      break;
+    struct stat dparent{};
+    if (::stat(dir.parent_path().c_str(), &dparent) != 0)
+      break;
+    if (d.st_dev != dparent.st_dev)
+      return dir;
+  }
+  return p;
+}
+
+std::filesystem::path recorded_install_location() {
+  // Linux has no registry, and no Linux install method (QtIFW, AppImage,
+  // Flatpak) records a location the way a Windows installer does. Returning
+  // empty is the honest answer here: "nothing recorded one" is what a caller
+  // has to be able to represent, and inventing a path would make the caller
+  // treat an arbitrary directory as the install root.
+  return {};
+}
+
+void *load_shared_library(const std::filesystem::path &path) {
+  // RTLD_LOCAL, not RTLD_GLOBAL: a GMM plugin's symbols must not leak into the
+  // process-wide namespace, where they could interpose on another plugin that
+  // ships the same symbol. RTLD_LAZY so a plugin that resolves a symbol only
+  // on a rarely-taken path does not fail to load over it.
+  return ::dlopen(path.c_str(), RTLD_LAZY | RTLD_LOCAL);
+}
+
+void *shared_library_symbol(void *handle, const char *name) {
+  return handle ? ::dlsym(handle, name) : nullptr;
+}
+
+void unload_shared_library(void *handle) noexcept {
+  if (handle)
+    ::dlclose(handle);
+}
+
+const char *dlerror_message() {
+  const char *msg = ::dlerror();
+  return msg ? msg : "";
+}
+
+std::int64_t spawn_detached_process(const std::filesystem::path &executable,
+                                    const std::vector<std::string> &argv,
+                                    const std::filesystem::path &work_dir,
+                                    bool shell_fallback) {
+  if (argv.empty() || executable.empty())
+    return -1;
+
+  // Both the argv array and the executable string are prepared BEFORE the
+  // fork, so no allocation happens in the child where it could deadlock
+  // against a malloc lock the parent happened to hold at fork time.
+  std::vector<char *> args;
+  args.reserve(argv.size() + 1);
+  for (const auto &a : argv)
+    args.push_back(const_cast<char *>(a.c_str()));
+  args.push_back(nullptr);
+  const std::string exe(executable.string());
+
+  const pid_t pid = fork();
+  if (pid < 0)
+    return -1;
+  if (pid == 0) {
+    // Child. From here: setsid, chdir, execv. Nothing allocates, nothing takes
+    // a lock.
+    ::setsid();
+    if (!work_dir.empty())
+      ::chdir(work_dir.c_str());
+    // stdin from the null device so the child never inherits our terminal.
+    std::freopen("/dev/null", "r", stdin);
+    // execvp, not execv: a bare name is resolved through PATH the way the
+    // native launcher always has, and a path containing a separator is exec'd
+    // directly, which is what the Proton path needs.
+    ::execvp(exe.c_str(), args.data());
+    if (shell_fallback) {
+      std::vector<char *> sh_args;
+      sh_args.reserve(args.size() + 2);
+      sh_args.push_back(const_cast<char *>("sh"));
+      sh_args.push_back(args[0]);
+      for (std::size_t i = 1; args[i] != nullptr; ++i)
+        sh_args.push_back(args[i]);
+      sh_args.push_back(nullptr);
+      ::execv("/bin/sh", sh_args.data());
+    }
+    ::_exit(1);
+  }
+  // Parent: return immediately. The child is fully detached and must never be
+  // waited for here - that is what the setsid above bought.
+  return static_cast<std::int64_t>(pid);
 }
 
 bool filesystem_is_case_insensitive() {

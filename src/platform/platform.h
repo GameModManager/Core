@@ -298,6 +298,87 @@ void close_raw_fd(int fd);
 // before the app shell exists).
 void set_thread_low_priority();
 
+// The absolute path of the running executable, or empty when the OS will not
+// say. Windows: GetModuleFileNameW with a buffer that grows until the value
+// fits, because a per-user install under a long profile can exceed MAX_PATH.
+// macOS: _NSGetExecutablePath, which can return a path containing symlinks,
+// then weakly_canonical. Linux: readlink of /proc/self/exe.
+[[nodiscard]] std::filesystem::path current_executable_path();
+
+// The current user's home directory, or empty when the environment does not
+// name one. This is deliberately NOT Platform::home_dir(), which falls back to
+// the temp directory: a caller that has to tell "no home configured" from "home
+// is the temp directory" needs the distinction, and guessing wrong there would
+// write files somewhere the user never chose.
+[[nodiscard]] std::filesystem::path home_dir_or_empty();
+
+// True when the current user may create files in `dir`. Asked as a permission
+// question rather than answered by attempting a write, so a probe never leaves
+// a byte behind. Windows: GetFileAttributesW, because POSIX access() semantics
+// and W_OK do not exist there. Linux/macOS: access(dir, W_OK).
+[[nodiscard]] bool path_is_writable(const std::filesystem::path &dir);
+
+// The mount point that `p` lives on, or empty when the platform does not
+// express one. macOS: walk up to the first ancestor that is a mount point, so
+// the answer does not depend on the bundle sitting at a fixed depth below
+// /Volumes. Linux: the same walk. Windows: GetVolumePathNameW. Callers that
+// only ask on macOS (a mounted disk image is read-only) still get a real
+// answer everywhere rather than an empty stub.
+[[nodiscard]] std::filesystem::path volume_root_of(const std::filesystem::path &p);
+
+// Start `executable` as a fully detached child process: its own session, so it
+// survives this process exiting and is not taken down by a Ctrl-C aimed at
+// our terminal; `work_dir` as its working directory when non-empty; stdin from
+// the null device, so it can never inherit a terminal and block on input.
+//
+// `argv` is the argument vector as the child sees it; argv[0] is passed through
+// verbatim and does NOT have to be `executable`. The two differ in real use: a
+// Proton runner is invoked by its full path but reports itself to the game by
+// its bare filename. `executable` is what gets executed, and is resolved
+// through PATH when it names no path.
+//
+// When `shell_fallback` is set and exec fails, the same argv is retried through
+// /bin/sh, which is what lets a script carrying no shebang still start. Returns
+// the child pid, or -1 when the process could not be started. The caller must
+// not wait on it: that is the whole contract, and an implementation that waits
+// would hang the launch path for the lifetime of the game.
+[[nodiscard]] std::int64_t
+spawn_detached_process(const std::filesystem::path &executable,
+                       const std::vector<std::string> &argv,
+                       const std::filesystem::path &work_dir, bool shell_fallback);
+
+// --- Shared libraries --------------------------------------------------------
+//
+// dlopen/dlsym/dlclose versus LoadLibraryExW/GetProcAddress/FreeLibrary, behind
+// one spelling. This exists because two call sites each hand-rolled the
+// Windows side, and one of them (plugin_loader.cpp) shipped four inline shims
+// named dlopen, dlsym, dlclose and dlerror that shadowed the real symbols.
+
+// Load the shared library at `path`, lazily bound and private to this process.
+// Returns an opaque handle, or nullptr on failure. `dlerror_message()` then
+// says why.
+[[nodiscard]] void *load_shared_library(const std::filesystem::path &path);
+
+// Look up an exported symbol by name. nullptr when absent or the handle is
+// null.
+[[nodiscard]] void *shared_library_symbol(void *handle, const char *name);
+
+// Release a handle from load_shared_library(). Null-safe.
+void unload_shared_library(void *handle) noexcept;
+
+// Why the last load_shared_library() failed, or an empty string. Never null,
+// because the callers log it directly.
+[[nodiscard]] const char *dlerror_message();
+
+// Install location this application's own installer recorded, or empty when
+// nothing recorded one. Windows: the InstallLocation value under the
+// uninstall subkey our installer writes. Linux/macOS: empty, because neither
+// has a registry and neither install method (QtIFW, AppImage, Flatpak) records
+// a location in one. An installer that writes a different subkey therefore
+// reports as "not installed by the installer", which is a visible report rather
+// than a silent wrong answer.
+[[nodiscard]] std::filesystem::path recorded_install_location();
+
 // Centralized home dir lookup for code paths without a Platform pointer.
 inline std::filesystem::path safe_home_dir() {
 #ifdef _WIN32
