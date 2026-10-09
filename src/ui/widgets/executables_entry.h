@@ -8,6 +8,7 @@
 #include <QString>
 #include <QVector>
 #include <QWidget>
+#include <cstdint>
 #include <filesystem>
 
 class QLineEdit;
@@ -34,6 +35,11 @@ namespace Executables {
     // machine; fakeroot needs no prompt and is usually the right answer on
     // Linux, but it is a Linux tool and is not offered elsewhere.
     QString elevation;
+    // Steam App ID override for this binary (MO2 Executable::steamAppID).
+    // Empty = use the game's own app id; a decimal number overrides it, which
+    // is what launches a game shipped outside Steam (or a tool that needs a
+    // different prefix) through the right compatibility data.
+    QString steam_app_id;
 
     QJsonObject toJson() const;
     static Entry fromJson(const QJsonObject &obj);
@@ -42,9 +48,9 @@ namespace Executables {
 
   // One choice in the form's elevation combo.
   struct ElevationOption {
-    QString label;    // what the row reads
-    QString value;    // the persisted Entry::elevation value
-    bool enabled;     // false = greyed out, with the control's tooltip saying why
+    QString label;  // what the row reads
+    QString value;  // the persisted Entry::elevation value
+    bool enabled;   // false = greyed out, with the control's tooltip saying why
 
     friend bool operator==(const ElevationOption &, const ElevationOption &) = default;
   };
@@ -78,6 +84,17 @@ namespace Executables {
   QStringList environment_for_path(const QVector<Entry> &entries,
                                    const std::filesystem::path &game_dir,
                                    const QString &full_path);
+
+  // Resolves the effective Steam App ID for a launched binary: the launched
+  // executable's own Entry::steam_app_id when it holds a decimal number,
+  // otherwise `fallback` (the game's registered id, or 0 when the game
+  // registers none). Same first-match path semantics as the resolvers above.
+  // A non-numeric override falls back rather than failing the launch - the
+  // field is a free-text line edit, so this is the one place that can receive
+  // something the user typed that is not an id.
+  uint32_t steam_app_id_for_path(const QVector<Entry> &entries,
+                                 const std::filesystem::path &game_dir,
+                                 const QString &full_path, uint32_t fallback);
 
   // Mode-agnostic executable editor. Extracted from Dialog so the same
   // content can be embedded either in a popup QDialog (Dialog) or as a
@@ -170,7 +187,8 @@ namespace Executables {
     QLineEdit *args_edit_          = nullptr;
     QLineEdit *start_in_edit_      = nullptr;
     QComboBox *output_mod_combo_   = nullptr;
-    QComboBox *elevation_combo_   = nullptr;
+    QLineEdit *steam_app_id_edit_  = nullptr;
+    QComboBox *elevation_combo_    = nullptr;
     QPlainTextEdit *env_edit_      = nullptr;
     QCheckBox *use_app_icon_check_ = nullptr;
     QPushButton *change_icon_btn_  = nullptr;

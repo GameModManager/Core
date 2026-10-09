@@ -39,6 +39,10 @@ signals:
   // "Send to... Top / Bottom / Priority...": move one plugin to a new row.
   // Same signal the table's drag reorder uses, so one handler serves both.
   void reorder_requested(int from_row, int to_row);
+  // "Enable all" / "Disable all" (MO2 pluginlistcontextmenu.cpp:37-49).
+  // Emitted regardless of the right-clicked row, so it is on the menu of
+  // every row and of the table itself.
+  void set_all_requested(bool enabled);
 
 private:
   std::vector<RowInfo> rows_;

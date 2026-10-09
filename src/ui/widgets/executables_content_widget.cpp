@@ -1,6 +1,7 @@
 #include "ui/widgets/executables_entry.h"
 
 #include "engine/deploy/launch/elevation.h"
+#include "engine/log/logger.h"
 #include "ui/theme/icon_manager.h"
 
 #include "ui/settings/settings.h"
@@ -25,6 +26,8 @@
 #include <QPlainTextEdit>
 #include <QProcess>
 #include <QPushButton>
+#include <QRegularExpression>
+#include <QRegularExpressionValidator>
 #include <QSplitter>
 #include <QStandardPaths>
 #include <QStyle>
@@ -103,18 +106,20 @@ namespace Executables {
     obj["icon"]  = icon_path;
     obj["env"]   = QJsonArray::fromStringList(environment);
     obj["elev"]  = elevation;
+    obj["steam"] = steam_app_id;
     return obj;
   }
 
   Entry Entry::fromJson(const QJsonObject &obj) {
     Entry e;
-    e.path       = obj["path"].toString();
-    e.title      = obj["title"].toString();
-    e.arguments  = obj["args"].toString();
-    e.start_in   = obj["cwd"].toString();
-    e.output_mod = obj["mod"].toString();
-    e.icon_path  = obj["icon"].toString();
-    e.elevation  = obj["elev"].toString();
+    e.path         = obj["path"].toString();
+    e.title        = obj["title"].toString();
+    e.arguments    = obj["args"].toString();
+    e.start_in     = obj["cwd"].toString();
+    e.output_mod   = obj["mod"].toString();
+    e.icon_path    = obj["icon"].toString();
+    e.elevation    = obj["elev"].toString();
+    e.steam_app_id = obj["steam"].toString();
     e.environment.clear();
     const auto env_arr = obj["env"].toArray();
     e.environment.reserve(env_arr.size());
@@ -210,6 +215,23 @@ namespace Executables {
     return find_entry_for_path(entries, game_dir, full_path, [](const Entry &) {
       return true;
     });
+  }
+
+  uint32_t steam_app_id_for_path(const QVector<Entry> &entries,
+                                 const std::filesystem::path &game_dir,
+                                 const QString &full_path, uint32_t fallback) {
+    const Entry *e =
+        find_entry_for_path(entries, game_dir, full_path, [](const Entry &en) {
+          return !en.steam_app_id.trimmed().isEmpty();
+        });
+    if (!e)
+      return fallback;
+    bool ok           = false;
+    const uint32_t id = e->steam_app_id.trimmed().toUInt(&ok);
+    if (!ok)
+      engine::Logger::instance().warn("Ignoring non-numeric Steam App ID override: " +
+                                      e->steam_app_id.toStdString());
+    return ok ? id : fallback;
   }
 
   // ---------------------------------------------------------------------------
@@ -323,6 +345,17 @@ namespace Executables {
       output_mod_combo_->addItem(name, QVariant(id));
     }
     form->addRow(tr("Output to mod:"), output_mod_combo_);
+
+    steam_app_id_edit_ = new QLineEdit(right_panel);
+    steam_app_id_edit_->setPlaceholderText(
+        tr("Leave empty to use the game's own Steam App ID"));
+    steam_app_id_edit_->setValidator(new QRegularExpressionValidator(
+        QRegularExpression(QStringLiteral("[0-9]*")), steam_app_id_edit_));
+    steam_app_id_edit_->setToolTip(
+        tr("Launch this binary under a different Steam App ID, which picks a\n"
+           "different compatibility prefix. Use it for a build that is not\n"
+           "the one this game is registered under."));
+    form->addRow(tr("Steam App ID:"), steam_app_id_edit_);
 
     // Elevation. Same combo idiom as Output to mod: fixed item data, findData()
     // to restore, itemData() to read back.
@@ -445,6 +478,8 @@ namespace Executables {
             &ContentWidget::on_field_changed);
     connect(start_in_edit_, &QLineEdit::textChanged, this,
             &ContentWidget::on_field_changed);
+    connect(steam_app_id_edit_, &QLineEdit::textChanged, this,
+            &ContentWidget::on_field_changed);
     connect(output_mod_combo_, &QComboBox::currentIndexChanged, this,
             &ContentWidget::on_field_changed);
     connect(output_mod_combo_, &QComboBox::editTextChanged, this,
@@ -528,6 +563,7 @@ namespace Executables {
     args_edit_->setText(e.arguments);
     start_in_edit_->setText(e.start_in);
     env_edit_->setPlainText(e.environment.join(QLatin1Char('\n')));
+    steam_app_id_edit_->setText(e.steam_app_id);
     int combo_idx = output_mod_combo_->findData(e.output_mod);
     if (combo_idx >= 0)
       output_mod_combo_->setCurrentIndex(combo_idx);
@@ -693,6 +729,7 @@ namespace Executables {
       args_edit_->clear();
       start_in_edit_->clear();
       output_mod_combo_->setCurrentIndex(0);
+      steam_app_id_edit_->clear();
       env_edit_->clear();
       use_app_icon_check_->setChecked(true);
       change_icon_btn_->setEnabled(false);
@@ -895,14 +932,15 @@ namespace Executables {
       return;
 
     if (current_index_ >= 0 && current_index_ < entries_.size()) {
-      auto &e       = entries_[current_index_];
-      e.title       = title_edit_->text().trimmed();
-      e.path        = binary_edit_->text().trimmed();
-      e.arguments   = args_edit_->text().trimmed();
-      e.start_in    = start_in_edit_->text().trimmed();
-      e.output_mod  = current_output_mod_text();
-    e.environment = parse_environment_text(env_edit_->toPlainText());
-    e.elevation   = elevation_combo_->currentData().toString();
+      auto &e        = entries_[current_index_];
+      e.title        = title_edit_->text().trimmed();
+      e.path         = binary_edit_->text().trimmed();
+      e.arguments    = args_edit_->text().trimmed();
+      e.start_in     = start_in_edit_->text().trimmed();
+      e.output_mod   = current_output_mod_text();
+      e.steam_app_id = steam_app_id_edit_->text().trimmed();
+      e.environment  = parse_environment_text(env_edit_->toPlainText());
+      e.elevation    = elevation_combo_->currentData().toString();
       if (use_app_icon_check_->isChecked())
         e.icon_path.clear();
 

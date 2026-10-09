@@ -13,6 +13,17 @@ void ContextMenu::set_rows(const std::vector<RowInfo> &rows) {
 }
 
 void ContextMenu::add_actions(QMenu &menu, int row) {
+  // MO2 adds the Enable all / Disable all pair unconditionally
+  // (pluginlistcontextmenu.cpp:36-49) - before the per-row block, and not
+  // gated on a selection - so they are on the menu of every row AND on one
+  // opened over empty space below the last row.
+  menu.addAction(tr("Enable all"), this, [this]() {
+    emit set_all_requested(true);
+  });
+  menu.addAction(tr("Disable all"), this, [this]() {
+    emit set_all_requested(false);
+  });
+
   if (row < 0 || row >= static_cast<int>(rows_.size()))
     return;
   const size_t r  = static_cast<size_t>(row);
@@ -22,10 +33,6 @@ void ContextMenu::add_actions(QMenu &menu, int row) {
   // Enable/Disable selected, Send to..., Lock/Unlock load order. Core rows
   // (force_loaded) cannot be toggled, moved or locked - the engine refuses
   // all three, so they get no actions at all.
-  //
-  // MO2's "Enable all"/"Disable all" pair is NOT here: the engine's
-  // set_all_enabled() is the first-run default, not a user action, and no
-  // bulk handler exists to receive one.
   const bool locked = rows_[r].locked;
   const bool core   = rows_[r].force_loaded;
 

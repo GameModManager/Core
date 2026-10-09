@@ -41,6 +41,7 @@
 #include "ui/settings/settings.h"
 #include "ui/theme/icon_manager.h"
 #include "ui/theme/style_manager.h"
+#include "ui/widgets/error_popup.h"
 #include "ui/widgets/event_filter.h"
 #include "ui/widgets/game_icon_cache.h"
 
@@ -158,8 +159,15 @@ Application::Application(int &argc, char **argv)
   if (!command_line_.parse())
     return;  // --help was printed
 
-  // Initialize logger
-  engine::Logger::instance().set_log_file(log_path());
+  // Initialize logger. A failed open means every later line goes nowhere, so
+  // say so once, loudly, and say where the file was meant to be - MO2 raises a
+  // critical dialog from loglist.cpp's createAndMakeWritable in the same case.
+  if (!engine::Logger::instance().set_log_file(log_path())) {
+    ui::critical_on_top(
+        QObject::tr("Failed to open the log file %1. The user account probably "
+                    "lacks permission. Logging is off until restart.")
+            .arg(QString::fromStdString(log_path())));
+  }
   engine::Logger::instance().info("GameModManager v" + std::string(VERSION) +
                                   " started");
 

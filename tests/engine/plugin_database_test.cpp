@@ -1199,6 +1199,62 @@ void run_force_core_files_fixture() {
   fs::remove_all(base, ec);
 }
 
+// MO2's plugin-list context menu offers "Enable all" / "Disable all"
+// (pluginlistcontextmenu.cpp:37-49). Two things have to hold: a mod plugin
+// follows the bulk state, and a core (game-native / CC) row never does - the
+// game loads it regardless and set_enabled() already refuses it.
+void run_bulk_enable_fixture() {
+  std::error_code ec;
+  const fs::path base = fs::temp_directory_path() / "gmm_bulk_enable";
+  fs::remove_all(base, ec);
+  const fs::path game = base / "game";
+  const fs::path mods = base / "mods";
+  fs::create_directories(game / "Data", ec);
+  fs::create_directories(mods / "SkyUI", ec);
+
+  write_esp(game / "Data" / "Skyrim.esm", true, {});
+  write_esp(game / "Data" / "ccSomeDlc.esl", false, {"Skyrim.esm"});
+  write_esp(mods / "SkyUI" / "SkyUI.esp", false, {"Skyrim.esm"});
+
+  const std::string natives = "Skyrim.esm";
+
+  engine::PluginDatabase db;
+  require(db.refresh(game, mods, "", natives), "refresh for the bulk fixtures");
+  db.sort_load_order();
+  db.set_all_enabled();
+  require(db.find("SkyUI.esp")->enabled, "SkyUI starts enabled after the default pass");
+  require(db.find("Skyrim.esm")->force_loaded, "the native is force-loaded");
+  require(db.find("ccSomeDlc.esl")->force_loaded, "the CC plugin is force-loaded");
+
+  // Disable all: the mod plugin goes off, the core rows stay on.
+  require(db.set_all_user_enabled(false), "disable-all reports a change");
+  require(!db.find("SkyUI.esp")->enabled, "the mod plugin is disabled");
+  require(db.find("Skyrim.esm")->enabled, "the native is untouched by disable-all");
+  require(db.find("ccSomeDlc.esl")->enabled, "CC is untouched by disable-all");
+
+  // Asking again changes nothing and says so, rather than pretending to act.
+  require(!db.set_all_user_enabled(false),
+          "disable-all is idempotent and reports no change");
+
+  // Enable all puts it back.
+  require(db.set_all_user_enabled(true), "enable-all reports a change");
+  require(db.find("SkyUI.esp")->enabled, "the mod plugin is enabled again");
+
+  // A plugin with an absent master cannot be enabled by the bulk pass either:
+  // reuses the same guard set_enabled() applies, so the load order never
+  // advertises a plugin the game cannot load.
+  fs::create_directories(mods / "Broken", ec);
+  write_esp(mods / "Broken" / "Broken.esp", false, {"AbsentMaster.esm"});
+  engine::PluginDatabase db2;
+  require(db2.refresh(game, mods, "", natives), "refresh with a missing master");
+  db2.sort_load_order();
+  db2.set_all_user_enabled(true);
+  require(!db2.find("Broken.esp")->enabled,
+          "enable-all still refuses a plugin whose master is absent");
+
+  fs::remove_all(base, ec);
+}
+
 }  // namespace
 
 TEST_CASE("plugin database", "[engine]") {
@@ -1206,5 +1262,6 @@ TEST_CASE("plugin database", "[engine]") {
   run_disabled_mod_fixture();
   run_hover_parity_fixture();
   run_force_core_files_fixture();
+  run_bulk_enable_fixture();
   run_real_skyrim();
 }

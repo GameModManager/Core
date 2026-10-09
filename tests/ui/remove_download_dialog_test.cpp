@@ -169,11 +169,20 @@ TEST_CASE("remove download confirmation routes through TaskDialog", "[ui]") {
     const std::string menu_region = function_region(
         src, "void DownloadsTab::add_context_menu_actions", "\nvoid DownloadsTab::");
     check(!menu_region.empty(), "add_context_menu_actions exists in downloads_tab.cpp");
-    check(menu_region.find("TaskDialog") != std::string::npos,
+    // The menu action delegates to confirm_and_remove, which builds the
+    // dialog; the keyboard Delete path calls the same helper, so both go
+    // through one confirm.
+    check(menu_region.find("confirm_and_remove") != std::string::npos,
+          "the Remove action routes through the shared confirm helper");
+
+    const std::string confirm_region = function_region(
+        src, "void DownloadsTab::confirm_and_remove", "\nbool DownloadsTab::");
+    check(!confirm_region.empty(), "confirm_and_remove exists in downloads_tab.cpp");
+    check(confirm_region.find("TaskDialog") != std::string::npos,
           "the Remove action builds a ui::TaskDialog (not an ad-hoc box)");
-    check(menu_region.find("configure_remove_download_dialog") != std::string::npos,
+    check(confirm_region.find("configure_remove_download_dialog") != std::string::npos,
           "the Remove action routes through the shared configure seam");
-    check(menu_region.find("remove_entry(id)") != std::string::npos,
+    check(confirm_region.find("remove_entry(id)") != std::string::npos,
           "confirming still drops the row via remove_entry");
 
     // The workhorse stays confirm-free: the rescan vanished-file cleanup

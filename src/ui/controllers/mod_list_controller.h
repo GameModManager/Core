@@ -145,6 +145,7 @@ public slots:
   // tab_materialized handler re-runs it once the tab is built.
   void refresh_conflicts_tab();
   void on_plugin_toggle(const std::string &name, bool enabled);
+  void on_plugin_set_all(bool enabled);
   void on_plugin_reorder(int from_row, int to_row);
   void on_plugin_lock(const std::string &name, bool locked);
   void on_mod_selection_changed();

@@ -3856,3 +3856,100 @@ TEST_CASE("source column badges are painted once by a single role", "[ui]") {
 
   std::filesystem::remove_all(cfg);
 }
+
+// MO2's per-row "Collapse others" (modlistcontextmenu.cpp:240-243): fold
+// every separator but the right-clicked one, which stays open as the viewer's
+// anchor. Without it the only fold actions are all-or-nothing, so the user
+// cannot keep one band open while closing the rest.
+TEST_CASE("collapse others folds every separator but the chosen one",
+          "[ui][mo2-parity]") {
+  qputenv("QT_QPA_PLATFORM", "offscreen");
+  qputenv("TZ", "UTC");
+  tzset();
+  const std::filesystem::path cfg = "/tmp/gmm_mod_list_collapse_others/config";
+  std::filesystem::remove_all("/tmp/gmm_mod_list_collapse_others");
+  std::filesystem::create_directories(cfg);
+  qputenv("XDG_CONFIG_HOME", cfg.c_str());
+  int test_argc     = 1;
+  char test_argv0[] = "test";
+  char *test_argv[] = {test_argv0, test_argv0, nullptr};
+  QApplication app(test_argc, test_argv);
+  QCoreApplication::setOrganizationName("GameModManager");
+  QCoreApplication::setApplicationName("GameModManager");
+
+  ui::ModList model;
+  QVector<ui::ModEntry> entries;
+  auto separator = [](const char *id) {
+    ui::ModEntry s;
+    s.id           = QString::fromLatin1(id);
+    s.name         = QString::fromLatin1(id);
+    s.enabled      = true;
+    s.is_separator = true;
+    return s;
+  };
+  auto plain = [](const char *id) {
+    ui::ModEntry m;
+    m.id      = QString::fromLatin1(id);
+    m.name    = QString::fromLatin1(id);
+    m.enabled = true;
+    return m;
+  };
+  entries << plain("ModA") << separator("One_separator") << plain("ModB")
+          << separator("Two_separator") << plain("ModC") << separator("Three_separator")
+          << plain("ModD");
+  model.reset_with_order(entries);
+
+  int one = -1, two = -1, three = -1;
+  for (int r = 0; r < model.mods().size(); ++r) {
+    const QString id = model.mods()[r].id;
+    if (id == "One_separator")
+      one = r;
+    else if (id == "Two_separator")
+      two = r;
+    else if (id == "Three_separator")
+      three = r;
+  }
+  REQUIRE(one >= 0);
+  REQUIRE(two >= 0);
+  REQUIRE(three >= 0);
+
+  int changes = 0;
+  QObject::connect(&model, &ui::ModList::mod_list_changed, [&]() {
+    ++changes;
+  });
+
+  // Nothing folded to begin with.
+  REQUIRE(!model.mods()[one].folded);
+  REQUIRE(!model.mods()[two].folded);
+  REQUIRE(!model.mods()[three].folded);
+
+  // Keep the middle band open, fold the other two.
+  model.set_all_separators_folded_except(true, two);
+  CHECK(model.mods()[one].folded);
+  CHECK(!model.mods()[two].folded);  // the chosen row stays open
+  CHECK(model.mods()[three].folded);
+  CHECK(changes == 1);  // one persistence write for the batch
+
+  // The plain rows are never touched - they have no fold state.
+  CHECK(!model.mods()[0].folded);
+
+  // A second identical call changes nothing and does not re-announce.
+  model.set_all_separators_folded_except(true, two);
+  CHECK(changes == 1);
+
+  // The same call with folded = false expands everything EXCEPT the anchor,
+  // which stays as it was (MO2's collapseAll + setExpanded-back shape).
+  model.set_all_separators_folded_except(false, two);
+  CHECK(!model.mods()[one].folded);
+  CHECK(!model.mods()[two].folded);
+  CHECK(!model.mods()[three].folded);
+
+  // An out-of-range row means no anchor, so everything folds - exactly what
+  // MO2's collapseAll() does on its own.
+  model.set_all_separators_folded_except(true, 9999);
+  CHECK(model.mods()[one].folded);
+  CHECK(model.mods()[two].folded);
+  CHECK(model.mods()[three].folded);
+
+  std::filesystem::remove_all(cfg);
+}

@@ -57,6 +57,14 @@ namespace PluginDb {
     // every plugin it finds in Data.
     void set_all_enabled();
 
+    // MO2's plugin-list context-menu pair (pluginlistcontextmenu.cpp:37-49):
+    // enable or disable every plugin the user controls at once. Core
+    // (force-loaded, game-native) rows are never touched - the game loads
+    // them regardless and the engine refuses to move them. Returns false when
+    // nothing changed, which is what the caller reports as "already in that
+    // state".
+    bool set_all_user_enabled(bool enabled);
+
     // Recompute missing_master flags for the current list.
     void set_missing_masters();
 
