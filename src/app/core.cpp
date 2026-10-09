@@ -132,6 +132,18 @@ Application::Application(int &argc, char **argv)
   // for, including every combo added later.
   ui::install_combo_wheel_guard(&app_);
 
+  // MO2 MainWindow's constructor (mainwindow.cpp:249-257) turns five UI
+  // effects off before it builds anything, because the desktop's "fade or
+  // slide menus into view" setting makes menu, combo and tooltip transitions
+  // feel like the window is lagging. Those effects are the same on every
+  // platform here, and the app is built around immediate menus, so they are
+  // off by default rather than left to the desktop.
+  QApplication::setEffectEnabled(Qt::UI_FadeMenu, false);
+  QApplication::setEffectEnabled(Qt::UI_AnimateMenu, false);
+  QApplication::setEffectEnabled(Qt::UI_AnimateCombo, false);
+  QApplication::setEffectEnabled(Qt::UI_AnimateTooltip, false);
+  QApplication::setEffectEnabled(Qt::UI_FadeTooltip, false);
+
   app_.setApplicationName("GameModManager");
   app_.setApplicationVersion(VERSION);
 
