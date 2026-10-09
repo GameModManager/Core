@@ -1381,7 +1381,7 @@ column.
 | 2. Launch Pipeline | 6 | 5 | 5 | 14 | 0 | 2 | 17 |
 | 3. Error Handling & Diagnostics | 8 | 9 | 0 | 0 | 28 | 11 | 35 |
 | 4. Settings & Configuration | 26 | 29 | 6 | 1 | 12 | 24 | 0 |
-| 5. Executable Management | 8 | 5 | 4 | 10 | 0 | 0 | 0 |
+| 5. Executable Management | 9 | 5 | 4 | 9 | 0 | 0 | 0 |
 | 6. Mod Management | 24 | 5 | 9 | 8 | 0 | 0 | 1 |
 | 7. Mod Categories | 6 | 5 | 0 | 9 | 0 | 0 | 0 |
 | 8. Mod Conflict Detection | 4 | 2 | 3 | 7 | 0 | 0 | 0 |
@@ -1391,12 +1391,12 @@ column.
 | 12. Plugin Management | 27 | 7 | 3 | 14 | 0 | 0 | 0 |
 | 13. LOOT Integration | 10 | 2 | 1 | 7 | 0 | 0 | 0 |
 | 14. Profile Management | 27 | 5 | 3 | 6 | 0 | 0 | 0 |
-| 15. Download Management | 19 | 12 | 6 | 24 | 10 | 0 | 0 |
+| 15. Download Management | 19 | 15 | 6 | 21 | 10 | 0 | 0 |
 | 16. Nexus Integration | 8 | 10 | 2 | 20 | 0 | 0 | 0 |
 | 17. Source Providers | 4 | 0 | 7 | 1 | 0 | 0 | 0 |
-| 18. Mod List Features | 22 | 12 | 3 | 14 | 0 | 0 | 0 |
+| 18. Mod List Features | 22 | 13 | 3 | 13 | 0 | 0 | 0 |
 | 19. Mod Context Menu | 15 | 4 | 0 | 13 | 0 | 0 | 0 |
-| 20. Plugin Context Menu | 3 | 2 | 0 | 7 | 0 | 0 | 0 |
+| 20. Plugin Context Menu | 4 | 1 | 0 | 7 | 0 | 0 | 0 |
 | 21. Archive & Installation | 10 | 3 | 4 | 2 | 0 | 0 | 0 |
 | 22. Deploy System | 0 | 1 | 9 | 0 | 2 | 0 | 0 |
 | 23. Overwrite System | 8 | 2 | 3 | 0 | 0 | 0 | 0 |
@@ -1407,7 +1407,7 @@ column.
 | 28. Sort System | 0 | 0 | 5 | 0 | 0 | 0 | 0 |
 | 29. Instance Management | 3 | 1 | 6 | 7 | 0 | 0 | 0 |
 | 30. UI Layer | 23 | 8 | 17 | 16 | 2 | 0 | 2 |
-| 31. Log System | 8 | 2 | 3 | 3 | 0 | 0 | 0 |
+| 31. Log System | 9 | 2 | 3 | 2 | 0 | 0 | 0 |
 | 32. System Tray | 4 | 1 | 0 | 0 | 0 | 0 | 0 |
 | 33. Self Updater | 2 | 3 | 0 | 4 | 0 | 0 | 0 |
 | 34. Multi-Process / IPC | 4 | 2 | 0 | 1 | 0 | 0 | 0 |
@@ -1428,21 +1428,21 @@ column.
 | 49. CLI Help Grammar | 0 | 1 | 0 | 1 | 0 | 0 | 0 |
 | 50. My Games Resolution | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
 | 51. Conflict Scan Refresh | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
-| **TOTAL** | **337** | **169** | **177** | **263** | **54** | **43** | **62** |
+| **TOTAL** | **340** | **172** | **177** | **257** | **54** | **43** | **62** |
 
 ### The arithmetic
 
 ```
-rows in file                          1043
+rows in file                          1044
 scored rows (ok + part + miss)         769
 
-MO2 parity        ok   / scored        337 /  769  = 43.8%
-partial           part / scored        169 /  769  = 22.0%
-missing           miss / scored        263 /  769  = 34.2%
-GMM-exclusive     surp / all rows      177 / 1043  = 17.0%   (not scored)
+MO2 parity        ok   / scored        340 /  769  = 44.2%
+partial           part / scored        172 /  769  = 22.4%
+missing           miss / scored        257 /  769  = 33.4%
+GMM-exclusive     surp / all rows      177 / 1044  = 17.0%   (not scored)
 ```
 
-**Parity is 337 / 769 = 43.8%.** 263 rows are outright missing and 169 partial.
+**Parity is 340 / 769 = 44.2%.** 257 rows are outright missing and 172 partial.
 The largest untouched surfaces are **44. Tutorial** and **46. Notifications /
 Problems** (zero matched rows), then **16. Nexus** and **15. Downloads**, which
 carry the most missing rows in absolute terms.
@@ -1458,7 +1458,7 @@ completions - a missing column, a missing link - not unread settings - and 24
 
 ### Confidence
 
-285 of 1043 rows carry `✔` (both sides re-read); the rest carry `·` and are
+287 of 1044 rows carry `✔` (both sides re-read); the rest carry `·` and are
 leads, not findings. The `✔` rows concentrate in sections 3, 4, 15, 21, 18 and
 30. Section 45's `TaskDialog` row is a stale `❌` corrected here; uibase's
 `taskdialog.ui` is not vendored under `references/`, so its MO2 half is still
