@@ -78,9 +78,9 @@ enum class DropConflictAction { Overwrite, Rename, Ignore };
 // "Delete Installed/Uninstalled/All Downloads..." and
 // "Hide Installed/Uninstalled/All...", plus "Un-Hide All...").
 enum class DownloadBatch {
-  Installed,   // rows whose mod is installed
-  Uninstalled, // rows that finished but are not installed
-  All          // every row, whatever its state
+  Installed,    // rows whose mod is installed
+  Uninstalled,  // rows that finished but are not installed
+  All           // every row, whatever its state
 };
 
 // True when a row's state puts it in the batch's scope. A download still in
@@ -294,7 +294,7 @@ private:
     // / DownloadManager::isHidden, downloadmanager.cpp:1523-1529). Persisted
     // in the manifest, so a row the user hid stays hidden across restarts and
     // "Un-Hide All..." can bring it back.
-    bool hidden = false;
+    bool hidden                     = false;
     QTableWidgetItem *name_item     = nullptr;
     QTableWidgetItem *source_item   = nullptr;
     QTableWidgetItem *size_item     = nullptr;
@@ -320,8 +320,8 @@ private:
   // Trash the entry's archive after the MO2 "Move to the Recycle Bin"
   // question. Shared by the context-menu Remove action and the Delete key
   // (MO2 issueDelete, downloadlistview.cpp:377-389).
-void confirm_and_remove(const std::string &id);
-void apply_installed_filter();
+  void confirm_and_remove(const std::string &id);
+  void apply_installed_filter();
 
   // The batch context-menu actions (MO2 DownloadListView
   // ::downloadContextMenu, downloadlistview.cpp:300-325). `hide` picks the

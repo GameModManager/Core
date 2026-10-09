@@ -55,6 +55,7 @@ public slots:
   // The snapshot is taken at click time, not at scan time, so toggles that
   // happened between scan and click are reflected.
   void on_save_information_requested(int row);
+  void on_save_fix_missing_requested(int row);
   void update_install_progress(const std::string &mod_id, int percent,
                                const std::string &status);
   void hide_install_progress();

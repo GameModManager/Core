@@ -244,6 +244,90 @@ static QWidget *find_tooltip_widget() {
   return nullptr;
 }
 
+// Expose the protected slot so the fix flow can be driven directly: the
+// context menu runs menu.exec(), which blocks on the offscreen platform.
+struct TestSavesTab : ui::SavesTab {
+  using ui::SavesTab::on_fix_enabled_mods;
+};
+
+// MO2 SavesTab::onContextMenu adds "Fix enabled mods..." enabled only when a
+// single row is selected AND that save has missing assets
+// (savestab.cpp:255-262), and fixMods hands the list to the dialog that does
+// the enabling (savestab.cpp:280). What the tab owns is that gate and the row
+// it reports; the controller owns the plugin database the fix lands in.
+TEST_CASE("fix enabled mods fires only for a single row with something missing",
+          "[ui]") {
+  qputenv("QT_QPA_PLATFORM", "offscreen");
+  const fs::path cfg = "/tmp/gmm_saves_fix/config";
+  fs::remove_all("/tmp/gmm_saves_fix");
+  fs::create_directories(cfg);
+  qputenv("XDG_CONFIG_HOME", cfg.c_str());
+  int test_argc     = 1;
+  char test_argv0[] = "test";
+  char *test_argv[] = {test_argv0, nullptr};
+  QApplication app(test_argc, test_argv);
+  QCoreApplication::setOrganizationName("GameModManager");
+  QCoreApplication::setApplicationName("GameModManager");
+
+  TestSavesTab tab;
+
+  engine::SaveGame clean_save;
+  clean_save.file_path   = "/tmp/gmm_saves_fix/Clean.ess";
+  clean_save.pc_name     = "Clean";
+  clean_save.save_number = 1;
+  ui::SavesScanResultEntry clean;
+  clean.save = clean_save;
+
+  ui::SavesScanResultEntry broken;
+  broken.save           = clean_save;
+  broken.save.file_path = "/tmp/gmm_saves_fix/Broken.ess";
+  broken.save.pc_name   = "Broken";
+  broken.missing.push_back({"GoneMod.esp", "", false, {}});
+
+  ui::SavesScanResult result;
+  result.entries = {clean, broken};
+  tab.set_saves(result);
+
+  std::vector<int> asked;
+  QObject::connect(&tab, &ui::SavesTab::fix_missing_requested, [&](int row) {
+    asked.push_back(row);
+  });
+
+  auto *table = tab.table();
+  check(table->rowCount() == 2, "two rows");
+  check(tab.missing_count_at(0) == 0, "the clean save has nothing missing");
+  check(tab.missing_count_at(1) == 1, "the broken save is missing one plugin");
+  check(tab.missing_count_at(9) == 0, "an out-of-range row has nothing missing");
+
+  SECTION("a single broken row reports its row") {
+    table->selectRow(1);
+    tab.on_fix_enabled_mods();
+    check(asked.size() == 1 && asked[0] == 1, "the broken row is reported");
+  }
+
+  SECTION("a clean row reports nothing") {
+    table->selectRow(0);
+    tab.on_fix_enabled_mods();
+    check(asked.empty(), "a save with nothing missing asks for no fix");
+  }
+
+  SECTION("a multi-selection reports nothing") {
+    table->selectionModel()->select(
+        QItemSelection(table->model()->index(0, 0), table->model()->index(1, 0)),
+        QItemSelectionModel::ClearAndSelect | QItemSelectionModel::Rows);
+    tab.on_fix_enabled_mods();
+    check(asked.empty(), "MO2 computes the list for one selected row only");
+  }
+
+  SECTION("no selection reports nothing") {
+    table->clearSelection();
+    tab.on_fix_enabled_mods();
+    check(asked.empty(), "an empty selection asks for no fix");
+  }
+
+  fs::remove_all("/tmp/gmm_saves_fix");
+}
+
 TEST_CASE("saves tab", "[ui]") {
   qputenv("QT_QPA_PLATFORM", "offscreen");
   const fs::path cfg = "/tmp/gmm_saves_tab/config";
