@@ -455,6 +455,10 @@ gmm_catch2_test(downloads_tab_state_test ui/downloads_tab_state_test.cpp
     UI
     LIBS gmm_ui)
 
+gmm_catch2_test(downloads_batch_test ui/downloads_batch_test.cpp
+    UI
+    LIBS gmm_ui)
+
 gmm_catch2_test(downloads_shortcut_test ui/downloads_shortcut_test.cpp
     UI
     LIBS gmm_ui)
