@@ -292,7 +292,7 @@ port - their cited GMM symbol names were invented, the features are not.
 | Custom executables list | ✅ `ExecutablesList` (CRUD) | ✅ `Entry` + `ExecControlsBar` - `executables_entry.h:26` | ✅ · |
 | Per-executable arguments | ✅ `Executable::arguments` | ✅ `Entry::arguments` - `executables_entry.h:30` | ✅ · |
 | Per-executable working directory | ✅ `Executable::workingDirectory` | ✅ `start_in_edit_` - `executables_content_widget.cpp:317` | ✅ · |
-| Per-executable Steam App ID | ✅ `Executable::steamAppID` | ❌ no field on `Entry`; the MO2 importer that populated it is deleted - `executables_entry.h:24` | ❌ · |
+| Per-executable Steam App ID | ✅ `Executable::steamAppID` | ✅ `Entry::steam_app_id` field, editor row, persisted to instance.toml and resolved into the launch - `executables_entry.h:41` | ✅ · |
 | Per-executable custom overwrite | ✅ `Executable::customOverwrites` | ❌ | ❌ · |
 | Per-executable forced libraries | ✅ `Executable::forcedLibraries` | ❌ | ❌ · |
 | Per-executable environment variables | ❌ | 🚀 `parse_environment_text` (KEY=VALUE) - `executables_content_widget.cpp:45` | 🚀 · |
@@ -663,7 +663,7 @@ port - their cited GMM symbol names were invented, the features are not.
 | Batch hide operations + un-hide all | ✅ `downloadlistview.cpp:312-322` (4 batch actions) | ❌ one toggled `Hide installed` filter instead - `downloads_tab.cpp:208` | ❌ ✔ |
 | Filter widget for downloads | ✅ `FilterWidget` (fuzzy match) | ⚠️ shared right-panel bar, composed with the installed filter - `right_panel.cpp:175` | ⚠️ ✔ |
 | Meta/display name toggle setting | ✅ `metaDownloads` `downloadlist.cpp` | ❌ one name per row, no toggle | ❌ ✔ |
-| Keyboard shortcuts (Enter=install, Delete=remove, Space=pause) | ✅ `downloadlistview.cpp` | ❌ no `keyPressEvent`/`eventFilter`/`QShortcut` on the tab | ❌ ✔ |
+| Keyboard shortcuts (Enter=install, Delete=remove, Space=pause) | ✅ `downloadlistview.cpp` | ⚠️ Enter/Delete/Space routed per row state through `download_shortcut_for`; no Up/Down special case, they navigate natively - `downloads_tab.cpp:135` | ⚠️ ✔ |
 | Visit on Nexus (from download) | ✅ `visitOnNexus()` `downloadmanager.cpp:1234` | ✅ "Open on <Source>" from stored domain + mod id - `downloads_tab.cpp:1095` | ✅ ✔ |
 | Visit uploader profile | ✅ `visitUploaderProfile()` `downloadmanager.cpp` | ❌ `uploader` absent from `src/`; no `queryInfo` equivalent | ❌ ✔ |
 | Plugin download callbacks (onDownloadComplete/Paused/Failed/Removed) | ✅ `IDownloadManager` boost::signals2 | ❌ ABI-shaped: internal EventBus has all four, the ABI has none - `event_bus.h:45` | ❌ ✔ |
@@ -675,7 +675,7 @@ port - their cited GMM symbol names were invented, the features are not.
 | U039 dropEvent (TargetMoveAction coercion, shellCopy/Move, URL) | ✅ `mainwindow.cpp:4034-4050` | ✅ coerces MoveAction, copies, routes URL via `import_dropped_file` - `downloads_tab.cpp:856` | ✅ ✔ |
 | U045 "Can't change download directory while downloads are in progress" toast | ✅ `mainwindow.cpp:2803` | ❌ dir is derived from the instance, no mid-session setting | ❌ ✔ |
 | U062 showHiddenBox toggles downloadManager setShowHidden | ✅ `mainwindow.cpp:3818-3821` | ❌ no hidden-download state to toggle | ❌ ✔ |
-| U096 Download row tooltip (filename, info-missing hint, modName version desc, Pending) | ✅ `downloadlist.cpp:213-232` | ❌ no `Qt::ToolTipRole` handler at all - `downloads_tab.cpp` | ❌ ✔ |
+| U096 Download row tooltip (filename, info-missing hint, modName version desc, Pending) | ✅ `downloadlist.cpp:213-232` | ⚠️ Name cell carries the pending notice, the source page and the on-disk path; no Nexus version/description, which this build does not carry - `downloads_tab.cpp:443` | ⚠️ ✔ |
 | U097 Download status colors (READY/UNINSTALLED/PAUSED foregrounds) | ✅ `downloadlist.cpp:205-211` | ⚠️ mapping not one-to-one: 6 GMM states vs 9 - `downloads_tab.cpp:1105` | ⚠️ ✔ |
 | U108 Download list 8 columns (4 hidden by default, ini override) | ✅ `downloadlist.h:38-51` = NAME, STATUS, SIZE, FILETIME, MODNAME, VERSION, ID ("Nexus ID"), SOURCEGAME | ⚠️ 6 shipped; Mod name, Version, Source Game absent, Source is ours - `downloads_tab.cpp:127` | ⚠️ ✔ |
 | U109 Downloads header right-click per-column checkbox menu (QWidgetAction) | ✅ `downloadlistview.cpp:178-210` | ✅ `ColumnToggleHeaderView` labels from `column_names()` - `right_panel.cpp:277` | ✅ ✔ |
@@ -684,7 +684,7 @@ port - their cited GMM symbol names were invented, the features are not.
 | U216 Double-click download row (READY->install, PAUSED->resume) | ✅ `downloadlistview.cpp:164-177` | ✅ `on_cell_double_clicked()` past Complete installs - `downloads_tab.cpp:922` | ✅ ✔ |
 | Download list header tooltips | ❌ (MO2 has none) | 🚀 6, one per shipped column - `downloads_tab.cpp:158` | 🚀 ✔ |
 | Download context menu | ✅ `downloadlistview.cpp:231-322` (incl. 7 batch Delete/Hide entries) | ⚠️ 5 entries; Query Info, Cancel, Un-Hide and all batch ops absent - `downloads_tab.cpp:1024` | ⚠️ ✔ |
-| U217 Downloads keyboard Enter/Delete state gating | ✅ `downloadlistview.cpp:326+` | ❌ no `keyPressEvent`; Up/Down navigate natively | ❌ ✔ |
+| U217 Downloads keyboard Enter/Delete state gating | ✅ `downloadlistview.cpp:326+` | ⚠️ `eventFilter` on the table gates by `download_shortcut_for`; Delete on a live download removes where MO2 cancels - `downloads_tab.cpp:1228` | ⚠️ ✔ |
 | U225 Downloads drag accepted only over downloadTab rect | ✅ `mainwindow.cpp:3947` | 🚫 accepts over the whole tab widget, a deliberate superset - `downloads_tab.cpp:261` | 🚫 ✔ |
 | U226 MoveAction -> TargetMoveAction coercion on drop | ✅ `mainwindow.cpp:4034-4044` | 🚫 already shipped - `downloads_tab.cpp:870` | 🚫 ✔ |
 | U243 IDownloadManager API + downloadmanagerproxy requestDownload slot | ✅ `mainwindow.cpp:1576` | ❌ ABI-shaped, same v3 decision as the plugin-API rows | ❌ ✔ |
@@ -790,7 +790,7 @@ port - their cited GMM symbol names were invented, the features are not.
 | Double-click maps the clicked column to a Mod Info tab | ✅ `modlistview.cpp` (Name→Source, Priority→Conflicts, Category→Categories) | ⚠️ Conflicts/Flags, Category, Source mapped; rest → last-used tab - `mod_list_controller.cpp:469` | ⚠️ ✔ |
 | Double-click a separator toggles its fold | ✅ `modlistview.cpp` | ✅ plus an anti-bounce guard - `mod_table_view.cpp:383` | ✅ ✔ |
 | U053 Wheel-scroll blocked on groupCombo/profileBox | ✅ `mainwindow.cpp:378-385` | ✅ `EventFilter` on both - `mod_filter_bar.cpp:63`, `profile_bar.cpp:46` | ✅ · |
-| U074 Row-with-children menu (Collapse all / others / Expand all) | ✅ `modlistcontextmenu.cpp:236-243` | ❌ | ❌ · |
+| U074 Row-with-children menu (Collapse all / others / Expand all) | ✅ `modlistcontextmenu.cpp:236-243` | ⚠️ all three, but only on a separator row: a mod row has no children to fold - `mod_context_menu.cpp:171` | ⚠️ ✔ |
 | U077 "Send to..." conditionality (priority-sort gating + First/Last conflict flags) | ✅ `modlistcontextmenu.cpp:273-332` | ⚠️ conditional send-to tree; conflict flags unproven - `mod_context_menu.cpp:280` | ⚠️ · |
 | U092 Mod-list cell tooltips per column (flags/conflicts/name/version/category/notes) | ✅ `modlist.cpp:384-480` | ⚠️ 5 of 6; Version and Notes need untracked data - `mod_list_model.cpp:194` | ⚠️ ✔ |
 | U095 Mod list header tooltips (13 exact strings) | ✅ `modlist.cpp:1345-1387` | ⚠️ 11 shipped, 7 verbatim; Source ID wording is ours - `mod_list_model.cpp:553` | ⚠️ ✔ |
@@ -855,7 +855,7 @@ port - their cited GMM symbol names were invented, the features are not.
 | Enable/disable plugin | ✅ `PluginListContextMenu` | ❌ | ❌ · |
 | Send-to priority | ✅ `sendToPriority` | ❌ | ❌ · |
 | Lock/unlock plugin | ✅ `setESPLock` | ✅ Lock/Unlock load order - `plugin_context_menu.cpp:24` | ✅ · |
-| U085 Plugin "Enable all"/"Disable all" + confirm dialog | ✅ `pluginlistcontextmenu.cpp:36-48` | ⚠️ bulk enable + confirm unproven - `plugin_context_menu.cpp:24` | ⚠️ · |
+| U085 Plugin "Enable all"/"Disable all" + confirm dialog | ✅ `pluginlistcontextmenu.cpp:36-48` | ✅ both on every row's menu and on empty space, confirm + already-in-state note - `mod_list_controller.cpp:3323` | ✅ · |
 | U086 Lock/Unlock load-order labels conditional on lock state | ✅ `pluginlistcontextmenu.cpp:56-77` | ⚠️ labels are state-conditional, but only one per row: MO2 shows both Lock and Unlock when the selection spans locked and unlocked rows - `plugin_context_menu.cpp:60` | ⚠️ · |
 | U087 Plugin Send to... (Top/Bottom/Priority QInputDialog) | ✅ `pluginlistcontextmenu.cpp:111-133` | ✅ Top = row 0, Bottom = last row, Priority... asks 0..row count - `plugin_context_menu.cpp:42`; per right-clicked row, not the whole selection | ✅ · |
 | U088 "Open Origin in Explorer" gated on origin resolving | ✅ `pluginlistcontextmenu.cpp:80-95` | ❌ | ❌ · |
@@ -1136,7 +1136,7 @@ port - their cited GMM symbol names were invented, the features are not.
 | U020 View > Log checkable action toggles log dock | ✅ `mainwindow.cpp:816-819` | ✅ Show Console toggle - `menu_bar.cpp:122` | ✅ · |
 | U057 errorReported() scans newest log first 50000 lines for ERROR | ✅ `mainwindow.cpp:993-1022` | ❌ | ❌ · |
 | U157 Log list context menu (Copy/Copy all/Clear all/Open folder/Level submenu) | ✅ `loglist.cpp:250-290` | ✅ all five, level re-renders from the replay buffer - `console_panel.cpp:171` | ✅ · |
-| U158 Log file creation failure critical dialog | ✅ `loglist.cpp:384-385` | ❌ | ❌ · |
+| U158 Log file creation failure critical dialog | ✅ `loglist.cpp:384-385` | ✅ `set_log_file` returns the open result and startup raises a critical naming the path - `app/core.cpp:165` | ✅ · |
 | U294 logDock QDockWidget (area 8 bottom, View>Log toggle) | ✅ `mainwindow.ui:1510` | ⚠️ toggle exists, QDockWidget bottom area unproven - `menu_bar.cpp:122` | ⚠️ · |
 
 ## 32. System Tray
@@ -1381,7 +1381,7 @@ column.
 | 2. Launch Pipeline | 6 | 5 | 5 | 14 | 0 | 2 | 17 |
 | 3. Error Handling & Diagnostics | 8 | 9 | 0 | 0 | 28 | 11 | 35 |
 | 4. Settings & Configuration | 26 | 29 | 6 | 1 | 12 | 24 | 0 |
-| 5. Executable Management | 8 | 5 | 4 | 10 | 0 | 0 | 0 |
+| 5. Executable Management | 9 | 5 | 4 | 9 | 0 | 0 | 0 |
 | 6. Mod Management | 24 | 5 | 9 | 8 | 0 | 0 | 1 |
 | 7. Mod Categories | 6 | 5 | 0 | 9 | 0 | 0 | 0 |
 | 8. Mod Conflict Detection | 4 | 2 | 3 | 7 | 0 | 0 | 0 |
@@ -1391,12 +1391,12 @@ column.
 | 12. Plugin Management | 27 | 7 | 3 | 14 | 0 | 0 | 0 |
 | 13. LOOT Integration | 10 | 2 | 1 | 7 | 0 | 0 | 0 |
 | 14. Profile Management | 27 | 5 | 3 | 6 | 0 | 0 | 0 |
-| 15. Download Management | 19 | 12 | 6 | 24 | 10 | 0 | 0 |
+| 15. Download Management | 19 | 15 | 6 | 21 | 10 | 0 | 0 |
 | 16. Nexus Integration | 8 | 10 | 2 | 20 | 0 | 0 | 0 |
 | 17. Source Providers | 4 | 0 | 7 | 1 | 0 | 0 | 0 |
-| 18. Mod List Features | 22 | 12 | 3 | 14 | 0 | 0 | 0 |
+| 18. Mod List Features | 22 | 13 | 3 | 13 | 0 | 0 | 0 |
 | 19. Mod Context Menu | 15 | 4 | 0 | 13 | 0 | 0 | 0 |
-| 20. Plugin Context Menu | 3 | 2 | 0 | 7 | 0 | 0 | 0 |
+| 20. Plugin Context Menu | 4 | 1 | 0 | 7 | 0 | 0 | 0 |
 | 21. Archive & Installation | 10 | 3 | 4 | 2 | 0 | 0 | 0 |
 | 22. Deploy System | 0 | 1 | 9 | 0 | 2 | 0 | 0 |
 | 23. Overwrite System | 8 | 2 | 3 | 0 | 0 | 0 | 0 |
@@ -1407,7 +1407,7 @@ column.
 | 28. Sort System | 0 | 0 | 5 | 0 | 0 | 0 | 0 |
 | 29. Instance Management | 3 | 1 | 6 | 7 | 0 | 0 | 0 |
 | 30. UI Layer | 23 | 8 | 17 | 16 | 2 | 0 | 2 |
-| 31. Log System | 8 | 2 | 3 | 3 | 0 | 0 | 0 |
+| 31. Log System | 9 | 2 | 3 | 2 | 0 | 0 | 0 |
 | 32. System Tray | 4 | 1 | 0 | 0 | 0 | 0 | 0 |
 | 33. Self Updater | 2 | 3 | 0 | 4 | 0 | 0 | 0 |
 | 34. Multi-Process / IPC | 4 | 2 | 0 | 1 | 0 | 0 | 0 |
@@ -1428,21 +1428,21 @@ column.
 | 49. CLI Help Grammar | 0 | 1 | 0 | 1 | 0 | 0 | 0 |
 | 50. My Games Resolution | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
 | 51. Conflict Scan Refresh | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
-| **TOTAL** | **337** | **169** | **177** | **263** | **54** | **43** | **62** |
+| **TOTAL** | **340** | **172** | **177** | **257** | **54** | **43** | **62** |
 
 ### The arithmetic
 
 ```
-rows in file                          1043
+rows in file                          1044
 scored rows (ok + part + miss)         769
 
-MO2 parity        ok   / scored        337 /  769  = 43.8%
-partial           part / scored        169 /  769  = 22.0%
-missing           miss / scored        263 /  769  = 34.2%
-GMM-exclusive     surp / all rows      177 / 1043  = 17.0%   (not scored)
+MO2 parity        ok   / scored        340 /  769  = 44.2%
+partial           part / scored        172 /  769  = 22.4%
+missing           miss / scored        257 /  769  = 33.4%
+GMM-exclusive     surp / all rows      177 / 1044  = 17.0%   (not scored)
 ```
 
-**Parity is 337 / 769 = 43.8%.** 263 rows are outright missing and 169 partial.
+**Parity is 340 / 769 = 44.2%.** 257 rows are outright missing and 172 partial.
 The largest untouched surfaces are **44. Tutorial** and **46. Notifications /
 Problems** (zero matched rows), then **16. Nexus** and **15. Downloads**, which
 carry the most missing rows in absolute terms.
@@ -1458,7 +1458,7 @@ completions - a missing column, a missing link - not unread settings - and 24
 
 ### Confidence
 
-285 of 1043 rows carry `✔` (both sides re-read); the rest carry `·` and are
+287 of 1044 rows carry `✔` (both sides re-read); the rest carry `·` and are
 leads, not findings. The `✔` rows concentrate in sections 3, 4, 15, 21, 18 and
 30. Section 45's `TaskDialog` row is a stale `❌` corrected here; uibase's
 `taskdialog.ui` is not vendored under `references/`, so its MO2 half is still

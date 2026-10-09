@@ -2,6 +2,7 @@
 
 #include <cstdio>
 #include <cstdlib>
+#include <filesystem>
 #include <string>
 #include <vector>
 #include <catch2/catch_test_macros.hpp>
@@ -67,4 +68,31 @@ TEST_CASE("logger", "[engine]") {
   require(tail.size() == 256, "replay buffer bounded at kReplayLimit");
   require(tail.front() == "flood-44", "oldest buffered entry is flood-44");
   require(tail.back() == "flood-299", "newest buffered entry is flood-299");
+}
+
+TEST_CASE("logger set_log_file reports whether it opened", "[engine]") {
+  auto &logger = Logger::instance();
+
+  // A writable path opens, and the path is recorded either way so
+  // "open the logs folder" still has somewhere to point.
+  const std::string good = "/tmp/gmm-logger-open-test.log";
+  std::remove(good.c_str());
+  REQUIRE(logger.set_log_file(good));
+  REQUIRE(logger.log_file_path() == good);
+  REQUIRE(logger.log_dir() == "/tmp");
+
+  // An unopenable path (a directory that does not exist, so O_CREAT cannot
+  // make the file) reports failure. Without this the app logs into a void and
+  // the user is never told - which is the bug the return value exists for.
+  const std::string bad = "/tmp/gmm-no-such-dir-8f3a/log.txt";
+  std::error_code ignored;
+  std::filesystem::remove_all("/tmp/gmm-no-such-dir-8f3a", ignored);
+  REQUIRE(!logger.set_log_file(bad));
+  // Still recorded: the failure is about opening, not about the location.
+  REQUIRE(logger.log_file_path() == bad);
+
+  // Leave the logger on a real file so a later test in this binary does not
+  // inherit the failure.
+  REQUIRE(logger.set_log_file(good));
+  std::remove(good.c_str());
 }

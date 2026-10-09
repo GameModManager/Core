@@ -42,6 +42,17 @@ enum class DownloadState {
   Removed
 };
 
+// What Enter / Delete / Space do on the selected download row, as a function
+// of the row's state (MO2 DownloadListView::keyPressEvent,
+// downloadlistview.cpp:330-360). A finished row takes Enter as install and
+// Delete as remove; a running row takes Space as pause and Delete as remove;
+// a paused or failed row takes Space as resume and Delete as remove. Anything
+// else does nothing. Free function so the state mapping is testable without
+// synthesising key events on the table.
+enum class DownloadShortcut { None, Install, Remove, Pause, Resume };
+
+[[nodiscard]] DownloadShortcut download_shortcut_for(DownloadState state, int qt_key);
+
 // How a dropped archive that collides with an existing file in the downloads
 // dir should be handled. The default resolver shows an MO2-style question
 // dialog; tests inject a stub.
@@ -238,21 +249,32 @@ private:
     // ?do=download query). Persisted in the manifest so the "Open on ..."
     // context action and install provenance survive restarts.
     std::string page_url;
-    QTableWidgetItem *name_item   = nullptr;
-    QTableWidgetItem *source_item = nullptr;
-    QTableWidgetItem *size_item   = nullptr;
+    QTableWidgetItem *name_item     = nullptr;
+    QTableWidgetItem *source_item   = nullptr;
+    QTableWidgetItem *size_item     = nullptr;
     QTableWidgetItem *filetime_item = nullptr;
-    QProgressBar *progress_bar    = nullptr;
+    QProgressBar *progress_bar      = nullptr;
   };
 
   DownloadEntry &entry_for(const std::string &id);
   // Filetime cell content: the on-disk archive's mtime, empty while no
   // archive exists yet. Re-run whenever entry.file_path or the file changes.
   void update_filetime(DownloadEntry &entry);
+  // Name-cell hover text (MO2 DownloadListModel::data ToolTipRole,
+  // downloadlist.cpp:213-232). There is no Nexus description to show on a
+  // download row in this build - the Version column was dropped for exactly
+  // that reason - so the tooltip carries what the columns do not: the full
+  // on-disk path, the source page, and a pending notice while no archive has
+  // landed yet.
+  void update_tooltip(DownloadEntry &entry);
   void replace_bar_with_label(const std::string &id, const QString &text,
                               const QColor &bg, const QColor &fg);
   void on_cell_double_clicked(int row, int column);
   void remove_entry(const std::string &id);
+  // Trash the entry's archive after the MO2 "Move to the Recycle Bin"
+  // question. Shared by the context-menu Remove action and the Delete key
+  // (MO2 issueDelete, downloadlistview.cpp:377-389).
+  void confirm_and_remove(const std::string &id);
   void apply_installed_filter();
 
   // Derive the origin metadata for an install from a download entry:
@@ -278,6 +300,14 @@ protected:
 private:
   void on_custom_context_menu(const QPoint &pos);
 
+protected:
+  // Enter / Delete / Space on the selected row (MO2
+  // DownloadListView::keyPressEvent). The state mapping lives in
+  // download_shortcut_for; this only routes the chosen action to the same
+  // primitives the context menu uses. Unhandled keys fall through to Qt.
+  bool eventFilter(QObject *watched, QEvent *event) override;
+
+private:
   // Move or copy a dropped local archive into downloads_dir_ and surface it
   // as a "Manual" Complete entry. Returns true if an entry was added.
   bool import_dropped_file(const std::filesystem::path &source, bool move);

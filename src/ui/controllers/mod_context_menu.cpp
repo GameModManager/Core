@@ -165,6 +165,14 @@ void ModContextMenu::setup_mod_list_context_menu() {
                 w_->mod_model_->set_all_separators_folded(true);
               });
           collapse_action->setEnabled(any_unfolded);
+          // MO2's per-row "Collapse others"
+          // (modlistcontextmenu.cpp:240-243): fold every separator but the one
+          // that was right-clicked, which stays open as the viewer's anchor.
+          auto *collapse_others_action =
+              menu.addAction(QObject::tr("Collapse Other Separators"), [this, row]() {
+                w_->mod_model_->set_all_separators_folded_except(true, row);
+              });
+          collapse_others_action->setEnabled(any_unfolded && !entry.folded);
           menu.exec(w_->mod_view_->viewport()->mapToGlobal(pos));
           return;
         }

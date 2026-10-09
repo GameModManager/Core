@@ -3122,6 +3122,8 @@ void ModListController::refresh_plugins_tab(bool write_back) {
             &ModListController::on_plugin_reorder);
     connect(pt, &ui::PluginsTab::lock_requested, this,
             &ModListController::on_plugin_lock);
+    connect(pt, &ui::PluginsTab::set_all_requested, this,
+            &ModListController::on_plugin_set_all);
     connect(pt, &ui::PluginsTab::refresh_requested, this, [this]() {
       refresh_plugins_tab();
       // set_plugins() rebuilds the rows and clears row-hidden states;
@@ -3314,6 +3316,31 @@ void ModListController::on_plugin_toggle(const std::string &name, bool enabled) 
   engine::EventBus::instance().dispatch(engine::events::kPluginStateChanged,
                                         engine::json_obj({
                                             {"plugin", name},
+                                            {"enabled", enabled ? "1" : "0"},
+                                        }));
+}
+
+void ModListController::on_plugin_set_all(bool enabled) {
+  // MO2 confirms before the bulk toggle (pluginlistcontextmenu.cpp:38-48):
+  // "Really enable all plugins?" - it rewrites the whole load order, so it is
+  // worth one question.
+  const auto answer = QMessageBox::question(
+      w_, tr("Plugins"),
+      enabled ? tr("Really enable all plugins?") : tr("Really disable all plugins?"),
+      QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
+  if (answer != QMessageBox::Yes)
+    return;
+  if (!w_->plugins_db_.set_all_user_enabled(enabled)) {
+    QMessageBox::information(w_, tr("Plugins"),
+                             tr("Every plugin is already %1.")
+                                 .arg(enabled ? tr("enabled") : tr("disabled")));
+    return;
+  }
+  w_->plugins_db_.save_profile(w_->profiles_dir_path(), w_->current_profile_name_);
+  refresh_plugins_tab();
+  engine::EventBus::instance().dispatch(engine::events::kPluginStateChanged,
+                                        engine::json_obj({
+                                            {"plugin", "*"},
                                             {"enabled", enabled ? "1" : "0"},
                                         }));
 }

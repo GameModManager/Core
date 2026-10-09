@@ -363,6 +363,11 @@ public:
   void set_folded(int row, bool folded);
   // Set folded state for all separator rows.
   void set_all_separators_folded(bool folded);
+  // Fold every separator except `except_row` (MO2 "Collapse others",
+  // modlistcontextmenu.cpp:240-243: collapseAll() then setExpanded back on
+  // the right-clicked row). Out-of-range or non-separator rows fold
+  // everything, which is what collapseAll() alone does.
+  void set_all_separators_folded_except(bool folded, int except_row);
   // Settings > Mod List > "Auto-collapse separators on hover". The view calls
   // this on every drag-move with the row under the cursor: with the setting on,
   // a folded separator row opens for as long as the drag is over it and
