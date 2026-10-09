@@ -765,6 +765,11 @@ void SettingsController::connect_menu_actions() {
       w_->console_splitter_->setSizes({700, 0});
     }
   });
+  // MO2 actionMainMenuToggle. Qt brings the menu bar back on Alt, so the
+  // action is re-synced whenever the bar is shown from anywhere.
+  connect(w_->menu_bar_, &AppMenuBar::toggle_menu_bar, this, [this](bool visible) {
+    w_->menu_bar_->setVisible(visible);
+  });
   connect(w_->menu_bar_, &AppMenuBar::pipeline_requested, w_->tab_mode_.get(),
           &TabModeController::route_pipeline);
   connect(w_->status_bar_, &StatusBar::pipeline_clicked, w_->tab_mode_.get(),
@@ -780,6 +785,17 @@ void SettingsController::connect_menu_actions() {
     w_->toolbar_area_->setIconSize(QSize(size, size));
     w_->toolbar_->set_icon_size(size);
   });
+
+  // MO2 setToolbarButtonStyle (mainwindow.cpp:899) walks every tool button in
+  // the window. QToolBar::setToolButtonStyle would not: the main toolbar is a
+  // QWidget of QToolButtons hosted inside toolbar_area_, and a QToolBar only
+  // styles the buttons it creates itself.
+  connect(w_->menu_bar_, &AppMenuBar::tool_button_style_requested, this,
+          [this](int style) {
+            const auto s = static_cast<Qt::ToolButtonStyle>(style);
+            for (auto *b : w_->findChildren<QToolButton *>())
+              b->setToolButtonStyle(s);
+          });
 
   // Transparency checkerboard for image previews: persist the choice and
   // apply it to the open preview window (ImageViewer instances pick it up
