@@ -134,4 +134,14 @@ void MacOSPlatform::set_thread_low_priority() const {
   setpriority(PRIO_PROCESS, 0, 10);
 }
 
+// --- Free-function forms (see platform.h) ---
+
+std::string platform_id() { return MacOSPlatform().platform_name(); }
+
+std::filesystem::path find_steam_root() { return MacOSPlatform().find_steam_root(); }
+
+std::filesystem::path default_cache_dir() { return MacOSPlatform().cache_dir(); }
+
+std::filesystem::path find_wine() { return MacOSPlatform().find_wine(); }
+
 }  // namespace engine

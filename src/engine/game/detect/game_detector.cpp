@@ -6,53 +6,9 @@
 #include <optional>
 #include <sstream>
 
-#ifdef _WIN32
-#include <windows.h>
-#endif
-
 namespace engine {
 
 namespace {
-
-  std::vector<std::filesystem::path> default_steam_roots() {
-    std::vector<std::filesystem::path> roots;
-
-#ifdef _WIN32
-    // Windows: try registry first
-    HKEY hkey;
-    LONG result =
-        RegOpenKeyExW(HKEY_CURRENT_USER, L"SOFTWARE\\Valve\\Steam", 0, KEY_READ, &hkey);
-    if (result == ERROR_SUCCESS) {
-      wchar_t buf[MAX_PATH];
-      DWORD buf_size = sizeof(buf);
-      DWORD type     = REG_SZ;
-      result         = RegQueryValueExW(hkey, L"SteamPath", nullptr, &type,
-                                        reinterpret_cast<LPBYTE>(buf), &buf_size);
-      RegCloseKey(hkey);
-      if (result == ERROR_SUCCESS && type == REG_SZ) {
-        std::wstring ws(buf, buf_size / sizeof(wchar_t));
-        // Registry uses forward slashes; normalize
-        for (auto &c : ws) {
-          if (c == L'/')
-            c = L'\\';
-        }
-        auto root = std::filesystem::path(ws);
-        roots.push_back(root);
-      }
-    }
-    // Common Windows Steam paths
-    roots.push_back(LR"(C:\Program Files (x86)\Steam)");
-    roots.push_back(LR"(C:\Program Files\Steam)");
-#else
-    // Linux / macOS
-    std::filesystem::path home_path = safe_home_dir();
-    roots.push_back(home_path / ".local" / "share" / "Steam");
-    roots.push_back(home_path / ".steam" / "steam");
-    roots.push_back(home_path / ".steam" / "debian-installation");
-#endif
-
-    return roots;
-  }
 
   std::string trim(const std::string &s) {
     auto start = s.find_first_not_of(" \t\r\n\"");
@@ -65,19 +21,24 @@ namespace {
 }  // namespace
 
 std::optional<GameDetector::SteamPaths> GameDetector::find_steam() {
-  for (const auto &root : default_steam_roots()) {
-    auto vdf = root / "steamapps" / "libraryfolders.vdf";
-    if (std::filesystem::exists(vdf)) {
-      SteamPaths paths;
-      paths.steam_root      = root;
-      paths.library_folders = parse_library_folders(vdf);
-      if (paths.library_folders.empty()) {
-        paths.library_folders.push_back(root / "steamapps");
-      }
-      return paths;
-    }
+  // Steam root discovery belongs to the platform layer: it owns the Windows
+  // registry read, the per-OS candidate paths, and the vdf existence check.
+  // Do not re-scan candidates here - one owner, one answer.
+  const auto root = engine::find_steam_root();
+  if (root.empty())
+    return std::nullopt;
+
+  const auto vdf = root / "steamapps" / "libraryfolders.vdf";
+  if (!std::filesystem::exists(vdf))
+    return std::nullopt;
+
+  SteamPaths paths;
+  paths.steam_root      = root;
+  paths.library_folders = parse_library_folders(vdf);
+  if (paths.library_folders.empty()) {
+    paths.library_folders.push_back(root / "steamapps");
   }
-  return std::nullopt;
+  return paths;
 }
 
 std::vector<std::filesystem::path>
