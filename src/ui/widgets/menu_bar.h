@@ -69,8 +69,14 @@ signals:
   void toggle_toolbar(bool visible);
   void toggle_status_bar(bool visible);
   void toggle_console(bool visible);
+  // MO2 actionMainMenuToggle (mainwindow.ui:menuToolbars) - the third
+  // visibility toggle in that menu, and the only one of the three missing.
+  void toggle_menu_bar(bool visible);
   void pipeline_requested();
   void icon_size_requested(int size);
+  // MO2 actionToolBarIconsOnly / TextOnly / IconsAndText: how toolbar buttons
+  // render, as a Qt::ToolButtonStyle value.
+  void tool_button_style_requested(int style);
   void checkerboard_style_requested(int style);
   void refresh_requested();
 
@@ -111,6 +117,10 @@ private:
   QAction *toggle_toolbar_action_    = nullptr;
   QAction *toggle_status_bar_action_ = nullptr;
   QAction *toggle_console_action_    = nullptr;
+  QAction *toggle_menu_bar_action_   = nullptr;
+  // Toolbar button style group (Icons Only / Text Only / Icons and Text) for
+  // sync; the chosen style is also what the group reports back.
+  QActionGroup *tool_button_style_group_ = nullptr;
   // Checkerboard submenu actions (Off/Light/Medium/Dark) for sync.
   QActionGroup *checkerboard_group_ = nullptr;
   std::string current_game_id_;

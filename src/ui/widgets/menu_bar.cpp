@@ -140,6 +140,15 @@ void AppMenuBar::build_view_menu() {
   toggle_console_action_->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_Backtab));
   connect(toggle_console_action_, &QAction::toggled, this, &AppMenuBar::toggle_console);
 
+  // MO2 actionMainMenuToggle, the first entry of menuToolbars
+  // (mainwindow.ui:1560): hide the whole menu bar. Qt re-shows it when Alt is
+  // pressed, so this is a focus-saving toggle rather than a permanent change.
+  toggle_menu_bar_action_ = menu->addAction(tr("Show Menu Bar"));
+  toggle_menu_bar_action_->setCheckable(true);
+  toggle_menu_bar_action_->setChecked(true);
+  connect(toggle_menu_bar_action_, &QAction::toggled, this,
+          &AppMenuBar::toggle_menu_bar);
+
   menu->addSeparator();
 
   auto *pipeline = menu->addAction("Workflow Pipeline...");
@@ -164,6 +173,28 @@ void AppMenuBar::build_view_menu() {
   add_icon_size(tr("Small"), 24, true);
   add_icon_size(tr("Medium"), 32, false);
   add_icon_size(tr("Large"), 48, false);
+
+  // MO2's last three entries in menuToolbars (mainwindow.ui:1566-1570): how
+  // the toolbar buttons render. One exclusive group, because these are three
+  // renderings of the same toolbar rather than three independent switches.
+  auto *style_menu         = menu->addMenu(tr("Toolbar Buttons"));
+  tool_button_style_group_ = new QActionGroup(this);
+  tool_button_style_group_->setExclusive(true);
+  const std::pair<const char *, Qt::ToolButtonStyle> button_styles[] = {
+      {"Icons Only", Qt::ToolButtonIconOnly},
+      {"Text Only", Qt::ToolButtonTextOnly},
+      {"Icons and Text", Qt::ToolButtonTextUnderIcon},
+  };
+  for (const auto &[label, style] : button_styles) {
+    auto *act = style_menu->addAction(tr(label));
+    act->setCheckable(true);
+    act->setData(static_cast<int>(style));
+    act->setChecked(style == Qt::ToolButtonIconOnly);
+    tool_button_style_group_->addAction(act);
+    connect(act, &QAction::triggered, this, [this, style]() {
+      emit tool_button_style_requested(static_cast<int>(style));
+    });
+  }
 
   // Transparency checkerboard for image previews (PreviewWindow, Mod Info
   // images). Each entry shows a 2x2 swatch of the grid it selects.

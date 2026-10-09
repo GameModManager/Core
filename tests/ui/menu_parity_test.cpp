@@ -140,6 +140,83 @@ QKeySequence ctrl(int key) {
 
 }  // namespace
 
+// MO2 menuToolbars (mainwindow.ui:1557-1571) holds nine checkables: three
+// visibility toggles (menu bar, toolbar, status bar), three icon sizes and
+// three button styles. The View menu here carried the toolbar and status bar
+// toggles and the icon sizes; the menu-bar toggle and the button-style trio
+// were missing. Both are asserted against the real AppMenuBar, and the
+// button-style entries are driven to prove the value they carry reaches the
+// signal the window applies.
+TEST_CASE("View menu carries MO2's remaining toolbars entries", "[ui][menu][parity]") {
+  qputenv("QT_QPA_PLATFORM", "offscreen");
+  const std::filesystem::path root = "/tmp/opencode/gmm_view_toolbars/config";
+  std::filesystem::remove_all("/tmp/opencode/gmm_view_toolbars");
+  std::filesystem::create_directories(root);
+  qputenv("XDG_CONFIG_HOME", root.c_str());
+  int test_argc     = 1;
+  char test_argv0[] = "test";
+  char *test_argv[] = {test_argv0, nullptr};
+  QApplication app(test_argc, test_argv);
+  QCoreApplication::setOrganizationName("GameModManager");
+  QCoreApplication::setApplicationName("GameModManager");
+
+  ui::AppMenuBar bar(nullptr);
+  QMenu *view = menu_named(bar, "&View");
+  REQUIRE(view != nullptr);
+
+  SECTION("the menu bar visibility toggle is offered and checked by default") {
+    QAction *act = find_action(view, "Show Menu Bar");
+    REQUIRE(act != nullptr);
+    CHECK(act->isCheckable());
+    CHECK(act->isChecked());
+
+    bool asked = false;
+    bool value = false;
+    QObject::connect(&bar, &ui::AppMenuBar::toggle_menu_bar, [&](bool visible) {
+      asked = true;
+      value = visible;
+    });
+    act->setChecked(false);
+    CHECK(asked);
+    CHECK_FALSE(value);
+  }
+
+  SECTION("button style is one exclusive group of three, not three switches") {
+    QMenu *styles = nullptr;
+    for (QAction *act : view->actions())
+      if (act->menu() && act->menu()->title() == "Toolbar Buttons")
+        styles = act->menu();
+    REQUIRE(styles != nullptr);
+
+    const std::vector<std::string> entries = menu_entries(styles);
+    CHECK(entries ==
+          std::vector<std::string>{"Icons Only", "Text Only", "Icons and Text"});
+
+    std::vector<int> requested;
+    QObject::connect(&bar, &ui::AppMenuBar::tool_button_style_requested,
+                     [&](int style) {
+                       requested.push_back(style);
+                     });
+    for (QAction *act : styles->actions()) {
+      act->trigger();
+    }
+    REQUIRE(requested.size() == 3);
+    CHECK(requested[0] == static_cast<int>(Qt::ToolButtonIconOnly));
+    CHECK(requested[1] == static_cast<int>(Qt::ToolButtonTextOnly));
+    CHECK(requested[2] == static_cast<int>(Qt::ToolButtonTextUnderIcon));
+
+    // Only one can be on at a time - they are three renderings of one
+    // toolbar, so an exclusive group is the whole point.
+    int checked = 0;
+    for (QAction *act : styles->actions())
+      if (act->isChecked())
+        ++checked;
+    CHECK(checked == 1);
+  }
+
+  std::filesystem::remove_all("/tmp/opencode/gmm_view_toolbars");
+}
+
 TEST_CASE("Help menu carries its own tree", "[ui][menu][parity]") {
   qputenv("QT_QPA_PLATFORM", "offscreen");
   const std::filesystem::path root = "/tmp/opencode/gmm_menu_parity/config";
