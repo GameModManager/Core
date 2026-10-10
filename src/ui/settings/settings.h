@@ -2,6 +2,7 @@
 
 #include <QColor>
 #include <QDateTime>
+#include <QMap>
 #include <QMessageBox>
 #include <QSettings>
 #include <QString>
@@ -202,6 +203,11 @@ public:
   // Instances root dir override (empty = default XDG location).
   QString instances_dir() const;
   void set_instances_dir(const QString &dir);
+
+  // Last-used directory per named file dialog (MO2 PathSettings::recent,
+  // settingsdialogpaths.cpp's FileDialogMemory). id -> directory.
+  [[nodiscard]] QMap<QString, QString> recent_dirs() const;
+  void set_recent_dirs(const QMap<QString, QString> &dirs);
 
   // network ----------------------------------------------------------------
   bool offline_mode() const;

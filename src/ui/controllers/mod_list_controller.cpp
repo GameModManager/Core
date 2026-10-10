@@ -84,6 +84,7 @@
 #include "ui/widgets/category_filter_panel.h"
 #include "ui/widgets/column_toggle_header.h"
 #include "ui/widgets/exec_controls_bar.h"
+#include "ui/widgets/file_dialog_memory.h"
 #include "ui/widgets/list_dialog.h"
 #include "ui/widgets/mod_filter_bar.h"
 #include "ui/widgets/mod_list_model.h"
@@ -3121,6 +3122,10 @@ void ModListController::refresh_plugins_tab(bool write_back) {
   if (w_->plugin_loader_)  // plugin-supplied diagnostics land in the tooltip
     w_->plugin_loader_->collect_diagnostics(w_->current_game_id_, w_->plugins_db_);
 
+  // The Archives tab is a peek, not a work surface: only materialize it once
+  // the user has actually opened it, so a game that never shows the tab pays
+  // nothing for the listing.
+  refresh_archives_tab();
   // The widget push runs only once the tab is built (Workspace-j6ty). The
   // tab_materialized handler re-runs this refresh on first show, so the
   // freshly built tab is populated from the already-refreshed model above.
@@ -3211,6 +3216,39 @@ void ModListController::refresh_plugins_tab(bool write_back) {
 
   // P1.3 event bus: mirror MO2 onRefreshed (plugin list rebuilt).
   engine::EventBus::instance().dispatch(engine::events::kPluginListRefreshed, "{}");
+}
+
+void ModListController::refresh_archives_tab() {
+  if (!w_->right_panel_ || w_->current_game_dir_.empty())
+    return;
+  // The Archives tab is a peek, not a work surface: only materialize it once
+  // the user has actually opened it, so a game that never shows the tab pays
+  // nothing for the listing.
+  auto *tab = w_->right_panel_->archives_tab();
+  if (!tab)
+    return;
+
+  // Every archive the ENABLED Bethesda plugin files load (plugin_database.cpp
+  // fills GamePlugin::archives from the sibling .bsa/.ba2 of each plugin), in
+  // load order, deduplicated. MO2 builds the same set from the loaded plugins
+  // (mainwindow.cpp:1922-2090).
+  QStringList names;
+  QStringList missing;
+  for (const auto &plugin : w_->plugins_db_.plugins()) {
+    if (!plugin.enabled)
+      continue;
+    for (const auto &archive : plugin.archives) {
+      const QString name = QString::fromStdString(archive);
+      if (names.contains(name))
+        continue;
+      names.append(name);
+      // A plugin names its archives by prefix, so the file on disk may carry a
+      // suffix; resolve against the plugin's own folder rather than guessing.
+      if (!std::filesystem::exists(plugin.full_path.parent_path() / archive))
+        missing.append(name);
+    }
+  }
+  tab->set_archives(names, missing);
 }
 
 void ModListController::run_loot_sort() {
@@ -3796,8 +3834,9 @@ void ModListController::import_archives(const QStringList &paths) {
 void ModListController::export_modlist() {
   if (w_->current_game_id_.empty())
     return;
-  const QString path = QFileDialog::getSaveFileName(
-      w_, tr("Export Modlist"), QString(), tr("CSV files (*.csv);;All files (*)"));
+  const QString path = FileDialogMemory::get_save_file_name(
+      "export-modlist", w_, tr("Export Modlist"), QString(),
+      tr("CSV files (*.csv);;All files (*)"));
   if (path.isEmpty())
     return;
 
@@ -3846,8 +3885,9 @@ void ModListController::export_modlist() {
 void ModListController::import_modlist() {
   if (w_->current_game_id_.empty())
     return;
-  const QString path = QFileDialog::getOpenFileName(
-      w_, tr("Import Modlist"), QString(), tr("CSV files (*.csv);;All files (*)"));
+  const QString path = FileDialogMemory::get_open_file_name(
+      "import-modlist", w_, tr("Import Modlist"), QString(),
+      tr("CSV files (*.csv);;All files (*)"));
   if (path.isEmpty())
     return;
 

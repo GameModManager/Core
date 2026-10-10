@@ -43,6 +43,7 @@
 #include "ui/theme/style_manager.h"
 #include "ui/widgets/error_popup.h"
 #include "ui/widgets/event_filter.h"
+#include "ui/widgets/file_dialog_memory.h"
 #include "ui/widgets/game_icon_cache.h"
 
 #ifdef GMM_HAS_QTKEYCHAIN
@@ -166,6 +167,10 @@ Application::Application(int &argc, char **argv)
   const QString language = Settings::instance().language();
   if (translator.load(":/i18n/" + language + ".qm"))
     app_.installTranslator(&translator);
+
+  // Last-used directory per named file dialog (MO2 FileDialogMemory::restore,
+  // mainwindow.cpp:478). Read before any widget opens a dialog.
+  ui::FileDialogMemory::restore();
 
   // Suppress noisy Qt platform/theme messages (e.g. "grabbing the mouse" on
   // Wayland)
@@ -331,6 +336,7 @@ Application::Application(int &argc, char **argv)
 }
 
 Application::~Application() {
+  ui::FileDialogMemory::save();
   engine::CrashHandler::uninstall();
 }
 

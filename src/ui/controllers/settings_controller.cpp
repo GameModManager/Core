@@ -7,6 +7,7 @@
 #include <QApplication>
 #include <QCheckBox>
 #include <QFileDialog>
+#include <QFileInfo>
 #include <QHeaderView>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -81,6 +82,7 @@
 #include "ui/widgets/console_panel.h"
 #include "ui/widgets/debug_window.h"
 #include "ui/widgets/exec_controls_bar.h"
+#include "ui/widgets/file_dialog_memory.h"
 #include "ui/widgets/game_path_banner.h"
 #include "ui/widgets/instance_statistics_dialog.h"
 #include "ui/widgets/instance_switcher_dialog.h"
@@ -691,8 +693,14 @@ void SettingsController::connect_menu_actions() {
     if (w_->current_instance_root_.empty())
       return;
     const QStringList paths = QFileDialog::getOpenFileNames(
-        w_, tr("Import Mod Archives"), QString(),
+        w_, tr("Import Mod Archives"),
+        FileDialogMemory::start_dir("import-mod-archives", QString()),
         tr("Archives (*.zip *.7z *.rar *.tar *.gz);;All files (*)"));
+    // getOpenFileNames has no single-file wrapper; record the chosen folder so
+    // the next import opens there.
+    if (!paths.isEmpty())
+      FileDialogMemory::remember("import-mod-archives",
+                                 QFileInfo(paths.first()).absolutePath());
     if (paths.isEmpty())
       return;
     w_->mod_list_->import_archives(paths);
@@ -822,6 +830,22 @@ void SettingsController::connect_menu_actions() {
   });
   connect(w_->menu_bar_, &AppMenuBar::executables_requested, w_->tab_mode_.get(),
           &TabModeController::route_exec_entry);
+  // --- Run ---
+  // MO2's Run menu (mainwindow.cpp:755-795) mirrors the pinned executable
+  // shortcuts. The toolbar already holds each one's resolved path, title and
+  // icon, so the menu bar reads them straight off it when it opens.
+  w_->menu_bar_->set_run_menu_provider([w = w_]() {
+    QList<RunMenuEntry> entries;
+    const auto pinned = w->toolbar_->exec_shortcuts();
+    entries.reserve(pinned.size());
+    for (const auto &s : pinned)
+      entries.append(RunMenuEntry{s.path, s.title, s.icon});
+    return entries;
+  });
+  connect(w_->menu_bar_, &AppMenuBar::run_requested, this,
+          [this](const QString &rel_path) {
+            w_->launch_->launch_toolbar_shortcut(rel_path);
+          });
   connect(w_->menu_bar_, &AppMenuBar::tool_requested, this,
           [this](const QString &tool_id, const QString &game_id) {
             if (!w_->plugin_loader_)

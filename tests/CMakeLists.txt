@@ -600,6 +600,11 @@ gmm_catch2_test(instance_switch_plan_test ui/instance_switch_plan_test.cpp
     UI
     LIBS gmm_ui)
 
+# Last-used directory per named file dialog (MO2 FileDialogMemory).
+gmm_catch2_test(file_dialog_memory_test ui/file_dialog_memory_test.cpp
+    UI
+    LIBS gmm_ui)
+
 gmm_catch2_test(category_filter_panel_test ui/category_filter_panel_test.cpp
     UI
     LIBS gmm_ui Qt6::Test)

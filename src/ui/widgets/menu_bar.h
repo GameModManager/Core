@@ -3,16 +3,29 @@
 #include <QActionGroup>
 #include <QMenu>
 #include <QMenuBar>
+#include <functional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "engine/tools/external_tool.h"
+
+class QIcon;
 
 namespace ui {
 
 class MainWindow;
 
-// Application menu bar - File / Edit / View / Tools / Help.
+// One entry of the Run menu: a pinned executable.
+struct RunMenuEntry {
+  QString rel_path;  // game-relative binary path, what run_requested carries
+  QString title;     // menu label
+  QIcon icon;
+};
+
+using RunMenuProvider = std::function<QList<RunMenuEntry>()>;
+
+// Application menu bar - File / Edit / View / Tools / Run / Help.
 // Created once per MainWindow, lives at the top of the window.
 // Actions emit signals; MainWindow connects them to actual behavior.
 class AppMenuBar : public QMenuBar {
@@ -25,6 +38,15 @@ public:
                              const std::vector<engine::ExternalTool> &tools);
   void set_sort_available(bool available);
   void set_icon_size(int size);
+
+  // Run menu (MO2 MainWindow::updatePinnedExecutables, mainwindow.cpp:755-795):
+  // one entry per executable pinned to the toolbar, carrying its icon, its
+  // title as the label and the game-relative binary path as the status tip.
+  // The provider is queried when the menu is about to open (MO2's lazy-rebuild
+  // menu pattern, mainwindow.cpp:455-474) so pinning or unpinning a shortcut
+  // needs no call back into the menu bar. The menu hides itself when nothing
+  // is pinned, exactly as MO2 does.
+  void set_run_menu_provider(RunMenuProvider provider);
 
   // View menu checkbox sync - update checked state without re-emitting toggled
   void set_toolbar_checked(bool checked);
@@ -91,6 +113,9 @@ signals:
   void profiles_requested();
   void executables_requested();
 
+  // Run menu - `rel_path` is the pinned executable's game-relative binary path
+  void run_requested(const QString &rel_path);
+
   // Help
   void help_on_ui_requested();
   void open_url_requested(const QString &url);
@@ -104,13 +129,16 @@ private:
   void build_edit_menu();
   void build_view_menu();
   void build_tools_menu();
+  void build_run_menu();
   void build_help_menu();
 
-  QMenu *recent_menu_       = nullptr;
-  QMenu *tools_menu_        = nullptr;
-  QMenu *icons_menu_        = nullptr;
+  QMenu *recent_menu_ = nullptr;
+  QMenu *tools_menu_  = nullptr;
+  QMenu *run_menu_    = nullptr;
+  QMenu *icons_menu_  = nullptr;
+  RunMenuProvider run_menu_provider_;
   // Help > Tutorials. Hidden until set_tutorials() has entries to put in it.
-  QMenu *tutorials_menu_     = nullptr;
+  QMenu *tutorials_menu_    = nullptr;
   QAction *tools_separator_ = nullptr;
   QAction *sort_action_     = nullptr;
   // Help > Game Support Wiki. Hidden until set_game_support_url() has a URL.
