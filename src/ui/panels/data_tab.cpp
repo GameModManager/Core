@@ -4,6 +4,7 @@
 #include "ui/preview/preview_window.h"
 #include "ui/settings/settings.h"
 #include "ui/widgets/column_toggle_header.h"
+#include "ui/widgets/file_dialog_memory.h"
 #include "ui/widgets/mod_list_model.h"
 
 #include "engine/log/logger.h"
@@ -59,6 +60,29 @@ namespace {
           engine::IconManager::instance().resolve_icon("folder", QStyle::SP_DirIcon);
     }
     return folder;
+  }
+
+  // MO2 FileTree's MenuItem hint/disabledHint/setTips protocol
+  // (filetree.cpp:60-115): an enabled entry shows its hint, and a disabled one
+  // shows the hint followed by "Disabled because: <reason>", so the status bar
+  // answers why an entry is greyed out instead of going silent. An empty
+  // `reason` means the entry has no "disabled because" clause at all.
+  void set_menu_tip(QAction *action, const QString &hint,
+                    const QString &reason = QString()) {
+    if (action->isEnabled() || reason.isEmpty()) {
+      action->setStatusTip(hint);
+      return;
+    }
+    QString text = hint.trimmed();
+    if (!text.isEmpty()) {
+      if (!text.endsWith('.'))
+        text += '.';
+      text += "\n";
+    }
+    text += QObject::tr("Disabled because") + ": " + reason.trimmed();
+    if (!text.endsWith('.'))
+      text += ".";
+    action->setStatusTip(text);
   }
 
   // Find or create a child tree item by name under parent.
@@ -825,19 +849,16 @@ void DataTab::add_file_menus(QMenu &menu, QTreeWidgetItem *item) {
       menu.addAction(is_exe ? tr("&Execute") : tr("&Open"), this, [this, item]() {
         open_item(item);
       });
-  open_action->setStatusTip(is_exe
+  set_menu_tip(open_action, is_exe
                                 ? tr("Launches this program (in the merged mod view)")
                                 : tr("Opens this file with its default handler"));
 
   auto *preview_action = menu.addAction(tr("&Preview"), this, [this, item]() {
     preview_item(item);
   });
-  preview_action->setStatusTip(tr("Previews this file within GameModManager"));
-  if (!can_preview(real_path)) {
-    preview_action->setEnabled(false);
-    preview_action->setStatusTip(
-        tr("This file has no preview handler associated with it"));
-  }
+  preview_action->setEnabled(can_preview(real_path));
+  set_menu_tip(preview_action, tr("Previews this file within GameModManager"),
+               tr("This file has no preview handler associated with it"));
 
   // MO2 FileTree parity (Workspace-co2 row 411): bold the default
   // (first-enabled) menu entry - the action a plain double-click runs.
@@ -864,17 +885,14 @@ void DataTab::add_file_menus(QMenu &menu, QTreeWidgetItem *item) {
                                   item->text(0),
                                   item->data(0, DataRealPathRole).toString());
   });
-  add_exe_action->setStatusTip(tr("Add this file to the executables list"));
-  if (!is_exe) {
-    add_exe_action->setEnabled(false);
-    add_exe_action->setStatusTip(tr("This file is not executable"));
-  }
+  add_exe_action->setEnabled(is_exe);
+  set_menu_tip(add_exe_action, tr("Add this file to the executables list"),
+               tr("This file is not executable"));
 
-  auto *reveal_action =
-      menu.addAction(tr("Reveal in E&xplorer"), this, [this, item]() {
-        reveal_item(item);
-      });
-  reveal_action->setStatusTip(tr("Opens the file in the file manager"));
+  auto *reveal_action = menu.addAction(tr("Reveal in E&xplorer"), this, [this, item]() {
+    reveal_item(item);
+  });
+  set_menu_tip(reveal_action, tr("Opens the file in the file manager"));
 
   const QString origin_mod_id = item->data(0, DataOriginModRole).toString();
   const bool game_native      = origin_mod_id == QLatin1String(kGameRootNativeId);
@@ -885,22 +903,18 @@ void DataTab::add_file_menus(QMenu &menu, QTreeWidgetItem *item) {
   const bool managed = !origin_mod_id.isEmpty() &&
                        origin_mod_id != QLatin1String(kOverwriteModId) &&
                        origin_mod_id != QLatin1String(kMergedModId) && !game_native;
-  mod_info_action->setStatusTip(tr("Opens the Mod Info Window"));
-  if (!managed) {
-    mod_info_action->setEnabled(false);
-    mod_info_action->setStatusTip(tr("This file is not in a managed mod"));
-  }
+  mod_info_action->setEnabled(managed);
+  set_menu_tip(mod_info_action, tr("Opens the Mod Info Window"),
+               tr("This file is not in a managed mod"));
 
   auto *hide_action = menu.addAction(
       hidden ? tr("&Un-Hide") : tr("&Hide"), this, [this, item, hidden]() {
         emit hide_requested(item->data(0, DataRealPathRole).toString(),
                             item->data(0, DataOriginModRole).toString(), !hidden);
       });
-  hide_action->setStatusTip(hidden ? tr("Un-hides the file") : tr("Hides the file"));
-  if (game_native) {
-    hide_action->setEnabled(false);
-    hide_action->setStatusTip(tr("This file belongs to the game"));
-  }
+  hide_action->setEnabled(!game_native);
+  set_menu_tip(hide_action, hidden ? tr("Un-hides the file") : tr("Hides the file"),
+               tr("This file belongs to the game"));
 }
 
 void DataTab::add_common_menus(QMenu &menu) {
@@ -909,24 +923,28 @@ void DataTab::add_common_menus(QMenu &menu) {
   auto *save_action = menu.addAction(tr("&Save Tree to Text File..."), this, [this]() {
     dump_tree_to_file();
   });
-  save_action->setStatusTip(tr("Writes the list of files to a text file"));
+  set_menu_tip(save_action, tr("Writes the list of files to a text file"));
 
   auto *refresh_action = menu.addAction(tr("&Refresh"), this, [this]() {
     emit refresh_requested();
   });
-  refresh_action->setStatusTip(tr("Refreshes the list"));
+  set_menu_tip(refresh_action, tr("Refreshes the list"));
 
-  menu.addAction(tr("Ex&pand All"), this, [this]() {
+  auto *expand_action = menu.addAction(tr("Ex&pand All"), this, [this]() {
     tree_->expandAll();
   });
-  menu.addAction(tr("&Collapse All"), this, [this]() {
+  set_menu_tip(expand_action, tr("Opens every folder in the list"));
+
+  auto *collapse_action = menu.addAction(tr("&Collapse All"), this, [this]() {
     tree_->collapseAll();
   });
+  set_menu_tip(collapse_action, tr("Closes every folder in the list"));
 }
 
 void DataTab::dump_tree_to_file() {
-  const QString file_path =
-      QFileDialog::getSaveFileName(this, tr("Save Tree to Text File"));
+  const QString file_path = FileDialogMemory::get_save_file_name(
+      "data-tab-save-tree", this, tr("Save Tree to Text File"), QString(),
+      tr("Text files (*.txt);;All files (*)"));
   if (file_path.isEmpty())
     return;
 

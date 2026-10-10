@@ -174,6 +174,16 @@ QToolButton *MainToolbar::add_exec_button(const QString &tooltip, const QIcon &i
   return btn;
 }
 
+QList<ExecShortcut> MainToolbar::exec_shortcuts() const {
+  QList<ExecShortcut> out;
+  out.reserve(exec_buttons_.size());
+  for (const auto *btn : exec_buttons_) {
+    out.append(ExecShortcut{btn->property("exec_path").toString(), btn->toolTip(),
+                            btn->icon()});
+  }
+  return out;
+}
+
 void MainToolbar::remove_exec_button(QToolButton *btn) {
   if (!btn)
     return;

@@ -140,6 +140,8 @@ public slots:
   // be applied" is exactly the state the restore left behind, and writing would
   // silently undo the "not written" the report just promised about it.
   void refresh_plugins_tab(bool write_back = true);
+  // Repopulate the right panel's Archives tab from the enabled plugin files.
+  void refresh_archives_tab();
   // Push the current mod selection's conflicts to the ConflictsTab.
   // No-op while the tab is still a lazy placeholder (Workspace-j6ty); the
   // tab_materialized handler re-runs it once the tab is built.

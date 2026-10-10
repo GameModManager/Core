@@ -13,6 +13,7 @@
 #include "ui/theme/icon_manager.h"
 #include "ui/theme/style_manager.h"
 #include "ui/widgets/line_edit_clear.h"
+#include "ui/widgets/file_dialog_memory.h"
 #include "ui/widgets/web_link.h"
 
 #include <QAbstractItemView>
@@ -783,6 +784,29 @@ QWidget *SettingsContentWidget::build_modlist_tab() {
 // -- Paths
 // ---------------------------------------------------------------------
 
+namespace {
+
+  // Every path on the Paths tab is typed by hand, so a mistyped or unwritable
+  // one used to commit silently and only surface much later as a deploy
+  // failure or a missing instance. MO2 creates the directory on commit and
+  // refuses to change the stored value when it cannot
+  // (settingsdialogpaths.cpp:96-104); the exact wording is kept so the message
+  // is recognisable.
+  bool create_dir_or_warn(QWidget *parent, const QString &path) {
+    if (path.isEmpty() || QFileInfo::exists(path))
+      return true;
+    if (QDir().mkpath(path))
+      return true;
+    QMessageBox::warning(
+        parent, QObject::tr("Error"),
+        QObject::tr("Failed to create \"%1\", you may not have the necessary "
+                    "permissions. Path remains unchanged.")
+            .arg(path));
+    return false;
+  }
+
+}  // namespace
+
 QWidget *SettingsContentWidget::build_paths_tab() {
   namespace fs = std::filesystem;
   auto &s      = Settings::instance();
@@ -806,12 +830,18 @@ QWidget *SettingsContentWidget::build_paths_tab() {
   inst_hint->setWordWrap(true);
   layout->addWidget(inst_hint);
 
-  connect(dir_edit, &QLineEdit::editingFinished, this, [&s, dir_edit]() {
-    s.set_instances_dir(dir_edit->text().trimmed());
+  connect(dir_edit, &QLineEdit::editingFinished, this, [&s, dir_edit, page]() {
+    const QString text = dir_edit->text().trimmed();
+    if (!create_dir_or_warn(page, text)) {
+      dir_edit->setText(s.instances_dir());
+      return;
+    }
+    s.set_instances_dir(text);
   });
   connect(inst_browse, &QPushButton::clicked, this, [dir_edit]() {
-    const QString dir = QFileDialog::getExistingDirectory(
-        dir_edit, QObject::tr("Choose instances directory"), dir_edit->text());
+    const QString dir = FileDialogMemory::get_existing_directory(
+        "settings-instances-dir", dir_edit, QObject::tr("Choose instances directory"),
+        dir_edit->text());
     if (!dir.isEmpty())
       dir_edit->setText(dir);
   });
@@ -874,7 +904,9 @@ QWidget *SettingsContentWidget::build_paths_tab() {
 
       auto commit = [this, kind = f.kind, edit]() {
         const QString text = edit->text().trimmed();
-        auto inst          = engine::Instance::from_root(instance_root_);
+        if (!create_dir_or_warn(edit, text))
+          return;
+        auto inst = engine::Instance::from_root(instance_root_);
         inst.read_toml();
         inst.set_path_override(kind, text.isEmpty()
                                          ? std::filesystem::path{}
@@ -883,8 +915,9 @@ QWidget *SettingsContentWidget::build_paths_tab() {
       };
       connect(edit, &QLineEdit::editingFinished, this, commit);
       connect(browse, &QPushButton::clicked, this, [edit, commit]() {
-        const QString dir = QFileDialog::getExistingDirectory(
-            edit, QObject::tr("Choose folder"), edit->text());
+        const QString dir = FileDialogMemory::get_existing_directory(
+            "settings-instance-folder", edit, QObject::tr("Choose folder"),
+            edit->text());
         if (!dir.isEmpty()) {
           edit->setText(dir);
           commit();
@@ -944,8 +977,9 @@ QWidget *SettingsContentWidget::build_paths_tab() {
     };
     connect(base_edit, &QLineEdit::editingFinished, this, commit_base);
     connect(base_browse, &QPushButton::clicked, this, [base_edit, commit_base]() {
-      const QString dir = QFileDialog::getExistingDirectory(
-          base_edit, QObject::tr("Choose base directory"), base_edit->text());
+      const QString dir = FileDialogMemory::get_existing_directory(
+          "settings-game-dir", base_edit, QObject::tr("Choose base directory"),
+          base_edit->text());
       if (!dir.isEmpty()) {
         base_edit->setText(dir);
         commit_base();
@@ -973,14 +1007,33 @@ QWidget *SettingsContentWidget::build_paths_tab() {
                                               instance_root_.parent_path());
       if (!inst.read_toml())
         return;
+      auto reject = [&inst, game_edit](const QString &why) {
+        QMessageBox::warning(game_edit, QObject::tr("Error"), why);
+        game_edit->setText(QString::fromStdString(inst.info().game_dir.string()));
+      };
+      if (!create_dir_or_warn(game_edit, new_dir)) {
+        game_edit->setText(QString::fromStdString(inst.info().game_dir.string()));
+        return;
+      }
+      // MO2 checks the game's binary is in the folder and says so when it is
+      // not (settingsdialogpaths.cpp:235-239). We do not know the binary name
+      // for every game, so the portable half of that check is the weaker but
+      // still true one: a folder with nothing in it is not an installation.
+      if (QDir(new_dir).isEmpty()) {
+        reject(QObject::tr("The given path was not recognized as a valid game "
+                           "installation: \"%1\" is empty.")
+                   .arg(new_dir));
+        return;
+      }
       // Surgical key write (not write_toml): a full rewrite would drop
       // app-owned sections like [executables] (see b55b411).
       inst.write_key("game_dir", new_dir.toStdString());
     };
     connect(game_edit, &QLineEdit::editingFinished, this, commit_game);
     connect(game_browse, &QPushButton::clicked, this, [game_edit, commit_game]() {
-      const QString dir = QFileDialog::getExistingDirectory(
-          game_edit, QObject::tr("Choose game directory"), game_edit->text());
+      const QString dir = FileDialogMemory::get_existing_directory(
+          "settings-game-dir", game_edit, QObject::tr("Choose game directory"),
+          game_edit->text());
       if (!dir.isEmpty()) {
         game_edit->setText(dir);
         commit_game();
@@ -1010,12 +1063,19 @@ QWidget *SettingsContentWidget::build_paths_tab() {
       // Empty clears the key (write_key contract) -> game-dir fallback.
       auto inst = engine::Instance::installed(instance_root_.filename().string(),
                                               instance_root_.parent_path());
-      inst.write_key("game_mods_dir", gmods_edit->text().trimmed().toStdString());
+      inst.read_toml();
+      const QString text = gmods_edit->text().trimmed();
+      if (!create_dir_or_warn(gmods_edit, text)) {
+        gmods_edit->setText(QString::fromStdString(inst.info().game_mods_dir.string()));
+        return;
+      }
+      inst.write_key("game_mods_dir", text.toStdString());
     };
     connect(gmods_edit, &QLineEdit::editingFinished, this, commit_gmods);
     connect(gmods_browse, &QPushButton::clicked, this, [gmods_edit, commit_gmods]() {
-      const QString dir = QFileDialog::getExistingDirectory(
-          gmods_edit, QObject::tr("Choose game mods directory"), gmods_edit->text());
+      const QString dir = FileDialogMemory::get_existing_directory(
+          "settings-game-mods-dir", gmods_edit,
+          QObject::tr("Choose game mods directory"), gmods_edit->text());
       if (!dir.isEmpty()) {
         gmods_edit->setText(dir);
         commit_gmods();

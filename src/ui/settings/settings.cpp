@@ -443,6 +443,29 @@ void Settings::set_instances_dir(const QString &dir) {
   settings_.setValue("paths/instances", dir);
 }
 
+QMap<QString, QString> Settings::recent_dirs() const {
+  // Two parallel lists rather than a QVariantMap: the IniFormat codec the
+  // tests run under has no map encoder, and QSettings stores a list as-is.
+  QMap<QString, QString> dirs;
+  const QStringList keys = settings_.value("paths/recent_keys").toStringList();
+  const QStringList vals = settings_.value("paths/recent_dirs").toStringList();
+  const int n            = qMin(keys.size(), vals.size());
+  for (int i = 0; i < n; ++i)
+    dirs.insert(keys.at(i), vals.at(i));
+  return dirs;
+}
+
+void Settings::set_recent_dirs(const QMap<QString, QString> &dirs) {
+  QStringList keys;
+  QStringList vals;
+  for (auto it = dirs.cbegin(); it != dirs.cend(); ++it) {
+    keys.append(it.key());
+    vals.append(it.value());
+  }
+  settings_.setValue("paths/recent_keys", keys);
+  settings_.setValue("paths/recent_dirs", vals);
+}
+
 // network ---------------------------------------------------------------------
 
 bool Settings::offline_mode() const {

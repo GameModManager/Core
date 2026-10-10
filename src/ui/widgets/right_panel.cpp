@@ -510,4 +510,17 @@ PluginsTab *RightPanel::ensure_plugins_tab() {
   return qobject_cast<PluginsTab *>(materialize("plugins"));
 }
 
+ArchivesTab *RightPanel::archives_tab() const {
+  auto it = tabs_.find("archives");
+  if (it != tabs_.end())
+    return qobject_cast<ArchivesTab *>(it->second);
+  return nullptr;
+}
+
+ArchivesTab *RightPanel::ensure_archives_tab() {
+  if (auto *at = archives_tab())
+    return at;
+  return qobject_cast<ArchivesTab *>(materialize("archives"));
+}
+
 }  // namespace ui

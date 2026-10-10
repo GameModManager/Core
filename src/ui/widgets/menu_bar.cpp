@@ -20,6 +20,7 @@ AppMenuBar::AppMenuBar(MainWindow *parent) : QMenuBar(parent) {
   build_edit_menu();
   build_view_menu();
   build_tools_menu();
+  build_run_menu();
   build_help_menu();
 }
 
@@ -355,6 +356,38 @@ void AppMenuBar::set_checkerboard_style(int style) {
       return;
     }
   }
+}
+
+// --------- Run ---------
+
+void AppMenuBar::build_run_menu() {
+  run_menu_ = addMenu(tr("&Run"));
+  // Hidden until something is pinned, so the bar does not advertise a menu that
+  // would always be empty (MO2: ui->menuRun->menuAction()->setVisible(hasLinks)).
+  run_menu_->menuAction()->setVisible(false);
+  connect(run_menu_, &QMenu::aboutToShow, this, [this]() {
+    run_menu_->clear();
+    bool has_links = false;
+    if (run_menu_provider_) {
+      for (const auto &entry : run_menu_provider_()) {
+        has_links = true;
+        auto *act = run_menu_->addAction(entry.icon, entry.title);
+        // MO2 names the action after the executable so its identity survives a
+        // rebuild (mainwindow.cpp:770), and puts the binary path in the status
+        // tip (mainwindow.cpp:772).
+        act->setObjectName(QStringLiteral("custom__") + entry.title);
+        act->setStatusTip(entry.rel_path);
+        connect(act, &QAction::triggered, this, [this, rel_path = entry.rel_path]() {
+          emit run_requested(rel_path);
+        });
+      }
+    }
+    run_menu_->menuAction()->setVisible(has_links);
+  });
+}
+
+void AppMenuBar::set_run_menu_provider(RunMenuProvider provider) {
+  run_menu_provider_ = std::move(provider);
 }
 
 // --------- Help ---------

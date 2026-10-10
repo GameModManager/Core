@@ -24,4 +24,16 @@ ArchivesTab::ArchivesTab(QWidget *parent) : QWidget(parent) {
   layout->addWidget(tree_, 1);
 }
 
+void ArchivesTab::set_archives(const QStringList &names, const QStringList &missing) {
+  tree_->clear();
+  for (const auto &name : names) {
+    auto *item = new QTreeWidgetItem(tree_);
+    item->setText(0, name);
+    const bool gone = missing.contains(name);
+    item->setToolTip(0, gone ? tr("%1: not found on disk").arg(name)
+                             : tr("%1: present on disk").arg(name));
+  }
+  tree_->resizeColumnToContents(0);
+}
+
 }  // namespace ui

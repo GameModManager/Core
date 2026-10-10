@@ -73,6 +73,7 @@ set(UI_SOURCES
     # Reusable UI primitives pack (Workspace-axva, MO2 U264/U265/U269).
     widgets/sortable_tree_widget.cpp
     widgets/expander_widget.cpp
+    widgets/file_dialog_memory.cpp
     widgets/link_label.cpp
     widgets/line_edit_clear.cpp
     widgets/event_filter.cpp
