@@ -1458,3 +1458,176 @@ TEST_CASE("Debug panel: instance switch leaves the panel on the new ProfileManag
 
   fs::remove_all(root);
 }
+
+// MO2 ModListContextMenu nests the whole-list menu in every row menu as
+// "All Mods" (modlistcontextmenu.cpp:230-234), and its Enable/Disable pair
+// relabels itself and acts on the filtered set when a filter is active
+// (modlistcontextmenu.cpp:73-87). Driven through the real context menu: the
+// submenu has to be reachable, its wording has to follow the filter, and the
+// action has to enable the FILTERED mods and no others.
+TEST_CASE("MainWindow: All Mods menu enables only the filter-matching mods",
+          "[ui][harness]") {
+  const fs::path root     = make_case_root("gmm_qs50_allmods");
+  const fs::path inst_dir = root / "instances";
+
+  qputenv("QT_QPA_PLATFORM", "offscreen");
+  int app_argc     = 1;
+  char app_argv0[] = "main_window_harness_test";
+  char *app_argv[] = {app_argv0, nullptr};
+  QApplication app(app_argc, app_argv);
+  QCoreApplication::setOrganizationName("GameModManager");
+  QCoreApplication::setApplicationName("GameModManager");
+
+  auto inst           = engine::Instance::installed("TestGame", inst_dir);
+  inst.info().game_id = "testgame";
+  REQUIRE(inst.create_directories());
+  REQUIRE(inst.write_toml());
+  const fs::path inst_root = inst.info().root;
+  const fs::path mods_dir =
+      engine::Instance::from_root(inst_root).path_for(engine::InstanceKind::Mods);
+  fs::create_directories(mods_dir / "Foo_mod");
+  write_file(mods_dir / "Foo_mod" / "meta.ini", "[General]\npriority=0\n");
+  fs::create_directories(mods_dir / "Bar_mod");
+  write_file(mods_dir / "Bar_mod" / "meta.ini", "[General]\npriority=1\n");
+  fs::create_directories(mods_dir / "Baz_mod");
+  write_file(mods_dir / "Baz_mod" / "meta.ini", "[General]\npriority=2\n");
+
+  engine::GameKnowledge knowledge;
+  knowledge.set("testgame", "mods_subpath", "Mods");
+
+  ui::MainWindow w;
+  w.set_game_knowledge(&knowledge);
+  w.show();
+  w.set_game_info("testgame", "Test Game", "Default", {}, inst_root);
+  REQUIRE(pump_until([&w] {
+    return !w.is_loading();
+  }));
+
+  auto *model = w.findChild<ui::ModList *>();
+  REQUIRE(model != nullptr);
+  auto *view = w.mod_view();
+  REQUIRE(view != nullptr);
+  REQUIRE(pump_until([&] {
+    return find_mod_row(view, QStringLiteral("Foo_mod")) >= 0 &&
+           find_mod_row(view, QStringLiteral("Bar_mod")) >= 0 &&
+           find_mod_row(view, QStringLiteral("Baz_mod")) >= 0;
+  }));
+
+  // Start every mod disabled, written through the model's own CheckStateRole
+  // path - the same write a checkbox click makes.
+  auto set_enabled = [&](const QString &id, bool on) {
+    const int row = find_mod_row(view, id);
+    REQUIRE(row >= 0);
+    model->setData(model->index(row, ui::ModList::Name),
+                   on ? Qt::Checked : Qt::Unchecked, Qt::CheckStateRole);
+  };
+  auto mod_enabled = [&](const QString &id) {
+    const int row = find_mod_row(view, id);
+    REQUIRE(row >= 0);
+    return model->mods()[static_cast<size_t>(row)].enabled;
+  };
+  set_enabled(QStringLiteral("Foo_mod"), false);
+  set_enabled(QStringLiteral("Bar_mod"), false);
+  set_enabled(QStringLiteral("Baz_mod"), false);
+
+  auto *filter_bar = w.findChild<ui::ModFilterBar *>();
+  REQUIRE(filter_bar != nullptr);
+
+  // Opens the row context menu at `id`, hands the "All Mods" submenu's action
+  // named `action` to `body`, and closes the menu. Returns the submenu so the
+  // caller can assert the wording.
+  auto run_all_mods_action = [&](const QString &id, std::function<void(QMenu &)> body) {
+    const int row = find_mod_row(view, id);
+    REQUIRE(row >= 0);
+    const QRect cell = view->visualRect(view->model()->index(row, 0));
+    REQUIRE(cell.isValid());
+
+    QMenu *menu     = nullptr;
+    QMenu *all_mods = nullptr;
+    QTimer::singleShot(0, [&] {
+      menu = qobject_cast<QMenu *>(QApplication::activePopupWidget());
+      if (!menu) {
+        return;
+      }
+      for (auto *a : menu->actions()) {
+        if (a->text() == QStringLiteral("All Mods") && a->menu()) {
+          all_mods = a->menu();
+          break;
+        }
+      }
+      if (all_mods)
+        body(*all_mods);
+      menu->close();
+    });
+    QContextMenuEvent ctx(QContextMenuEvent::Mouse, cell.center(),
+                          view->viewport()->mapToGlobal(cell.center()));
+    QCoreApplication::sendEvent(view->viewport(), &ctx);
+    REQUIRE(menu != nullptr);
+    REQUIRE(all_mods != nullptr);
+  };
+
+  auto find_action = [](QMenu &menu, const char *text) {
+    for (auto *a : menu.actions()) {
+      if (a->text() == QLatin1String(text))
+        return a;
+    }
+    return static_cast<QAction *>(nullptr);
+  };
+
+  // --- Filtered half: only Foo_mod matches "Foo".
+  // Filter to "Foo" through the same path the user's keystrokes take.
+  {
+    auto *edit = filter_bar->findChild<QLineEdit *>();
+    REQUIRE(edit != nullptr);
+    edit->setText(QStringLiteral("Foo"));
+  }
+  REQUIRE(pump_until([&] {
+    return view->isRowHidden(find_mod_row(view, QStringLiteral("Bar_mod")),
+                             QModelIndex()) &&
+           view->isRowHidden(find_mod_row(view, QStringLiteral("Baz_mod")),
+                             QModelIndex()) &&
+           !view->isRowHidden(find_mod_row(view, QStringLiteral("Foo_mod")),
+                              QModelIndex());
+  }));
+
+  run_all_mods_action(QStringLiteral("Foo_mod"), [&](QMenu &all_mods) {
+    // Wording follows the filter (MO2 modlistcontextmenu.cpp:74-78).
+    REQUIRE(find_action(all_mods, "Enable All Matching Mods") != nullptr);
+    REQUIRE(find_action(all_mods, "Disable All Matching Mods") != nullptr);
+    REQUIRE(find_action(all_mods, "Enable All") == nullptr);
+    find_action(all_mods, "Enable All Matching Mods")->trigger();
+  });
+
+  // Consumer check: the filtered mod flipped, the two filtered-out mods did
+  // not. If the action ignored the filter every mod would be enabled and the
+  // two CHECK_FALSE lines are what would fail.
+  CHECK(mod_enabled(QStringLiteral("Foo_mod")));
+  CHECK_FALSE(mod_enabled(QStringLiteral("Bar_mod")));
+  CHECK_FALSE(mod_enabled(QStringLiteral("Baz_mod")));
+
+  // --- Unfiltered half: with no filter the wording drops back and the same
+  // action covers every mod. Unrelated churn stays green.
+  {
+    auto *edit = filter_bar->findChild<QLineEdit *>();
+    REQUIRE(edit != nullptr);
+    edit->clear();
+  }
+  REQUIRE(pump_until([&] {
+    return !view->isRowHidden(find_mod_row(view, QStringLiteral("Bar_mod")),
+                              QModelIndex()) &&
+           !view->isRowHidden(find_mod_row(view, QStringLiteral("Baz_mod")),
+                              QModelIndex());
+  }));
+
+  run_all_mods_action(QStringLiteral("Foo_mod"), [&](QMenu &all_mods) {
+    REQUIRE(find_action(all_mods, "Enable All") != nullptr);
+    REQUIRE(find_action(all_mods, "Enable All Matching Mods") == nullptr);
+    find_action(all_mods, "Enable All")->trigger();
+  });
+
+  CHECK(mod_enabled(QStringLiteral("Foo_mod")));
+  CHECK(mod_enabled(QStringLiteral("Bar_mod")));
+  CHECK(mod_enabled(QStringLiteral("Baz_mod")));
+
+  fs::remove_all(root);
+}

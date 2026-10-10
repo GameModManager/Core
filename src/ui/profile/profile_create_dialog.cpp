@@ -1,9 +1,12 @@
 #include "ui/profile/profile_create_dialog.h"
 
+#include "engine/util/fs_utils.h"
+
 #include <QComboBox>
 #include <QDialogButtonBox>
 #include <QFormLayout>
 #include <QLineEdit>
+#include <QMessageBox>
 #include <QPushButton>
 
 namespace ui {
@@ -35,7 +38,22 @@ ProfileCreateDialog::ProfileCreateDialog(const QStringList &existing_profiles,
   auto *buttons =
       new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
   form->addRow(buttons);
-  connect(buttons, &QDialogButtonBox::accepted, this, &QDialog::accept);
+  connect(buttons, &QDialogButtonBox::accepted, this, [this]() {
+    // MO2 ProfileInputDialog::exec (profileinputdialog.cpp:38-40) folds the
+    // typed name through fixDirectoryName before the dialog can be accepted,
+    // and MO2 ProfilesDialog (profilesdialog.cpp:217-227) refuses the copy
+    // outright with "Invalid profile name" when nothing usable is left.
+    // sanitize_directory_name is the same fix-up; it returns empty when the
+    // name cannot be a folder name at all.
+    const QString fixed = QString::fromStdString(
+        engine::sanitize_directory_name(profile_name().toStdString()));
+    if (fixed.isEmpty()) {
+      QMessageBox::warning(this, tr("Invalid name"), tr("Invalid profile name"));
+      return;
+    }
+    name_edit_->setText(fixed);
+    accept();
+  });
   connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
 
   connect(name_edit_, &QLineEdit::textChanged, this, [this]() {

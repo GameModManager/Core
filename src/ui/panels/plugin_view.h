@@ -15,6 +15,7 @@
 
 class QKeyEvent;
 class QLCDNumber;
+class QLineEdit;
 class QPushButton;
 class QTableWidget;
 
@@ -43,6 +44,14 @@ public:
 
   /// MO2-style plugin counter (PluginListView::updatePluginCount parity).
   void refresh_counters();
+
+  /// MO2's espFilterEdit (mainwindow.ui) as PluginListView wires it
+  /// (pluginlistview.cpp:259-262): a name filter over the plugin table. Rows
+  /// that do not match are hidden, not removed, so enable state and the
+  /// load order are untouched; the counter then reports the active count of
+  /// what is still visible, which is the MO2 behaviour
+  /// (pluginlistview.cpp:86, :165).
+  void apply_filter(const QString &text);
 
   /// MO2 parity - highlight rows owned by the selected mod / master plugins.
   void set_contained_plugins(const QVector<QString> &contained);
@@ -121,6 +130,7 @@ private:
 
   class PluginTable;
   PluginTable *table_          = nullptr;
+  QLineEdit *filter_edit_      = nullptr;
   QPushButton *refresh_button_ = nullptr;
   QPushButton *backup_button_  = nullptr;
   QPushButton *restore_button_ = nullptr;

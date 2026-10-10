@@ -38,7 +38,17 @@ public:
   // Add category submenus (Change Categories + Primary Category) to a menu.
   void add_category_menus(QMenu &menu, const QString &mod_id);
 
+  // MO2 ModListGlobalContextMenu (modlistcontextmenu.cpp:29-102): the
+  // whole-list actions, reachable from the empty space of the mod list and,
+  // per MO2 modlistcontextmenu.cpp:230-234, nested in every row menu as the
+  // "All Mods" submenu.
+  void add_all_mods_menu(QMenu &parent);
+
 private:
+  // The entries of the global menu itself; `parent` is the menu they land in
+  // (the empty-space menu, or the "All Mods" submenu). Split out so both
+  // entry points build the same actions from the same source.
+  void add_global_actions(QMenu &menu);
   // Whether a mod row has a live external source folder to mirror from
   // (Workspace-0pi5 menu gating). A member (ModContextMenu is a friend) so
   // it may read MainWindow's private paths.

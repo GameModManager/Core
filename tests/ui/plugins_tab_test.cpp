@@ -47,6 +47,7 @@
 #include <QItemSelection>
 #include <QItemSelectionModel>
 #include <QLCDNumber>
+#include <QLineEdit>
 #include <QList>
 #include <QMenu>
 #include <QMouseEvent>
@@ -1267,4 +1268,80 @@ TEST_CASE("plugins tab double-click targets the owning mod", "[ui][dblclick]") {
         "double-click works again after the interval");
 
   tab.hide();
+}
+
+// MO2's espFilterEdit (PluginListView, pluginlistview.cpp:259-262) filtering
+// the plugin table: rows are HIDDEN, not removed, so the load order and every
+// enable state survive, and the counter reports the active count of what is
+// still visible (pluginlistview.cpp:86, :165).
+TEST_CASE("plugins tab filter hides non-matching rows and recounts", "[ui][filter]") {
+  qputenv("QT_QPA_PLATFORM", "offscreen");
+  const std::filesystem::path cfg = "/tmp/gmm_plugins_filter/config";
+  std::filesystem::remove_all("/tmp/gmm_plugins_filter");
+  std::filesystem::create_directories(cfg);
+  qputenv("XDG_CONFIG_HOME", cfg.c_str());
+  int test_argc     = 1;
+  char test_argv0[] = "test";
+  char *test_argv[] = {test_argv0, test_argv0, nullptr};
+  QApplication app(test_argc, test_argv);
+  QCoreApplication::setOrganizationName("GameModManager");
+  QCoreApplication::setApplicationName("GameModManager");
+  engine::IconManager::instance().discover_packs(GMM_TEST_RESOURCES_DIR);
+
+  engine::GamePlugin a;
+  a.name    = "AlphaMod.esm";
+  a.enabled = true;
+  engine::GamePlugin b;
+  b.name    = "AlphaText.esp";
+  b.enabled = true;
+  engine::GamePlugin c;
+  c.name    = "Other.esp";
+  c.enabled = true;
+
+  TestPluginsTab tab;
+  auto *table = tab.table();
+  tab.resize(600, 300);
+  tab.show();
+  tab.set_plugins({a, b, c});
+  QApplication::processEvents();
+
+  auto *edit    = tab.findChild<QLineEdit *>("pluginFilterEdit");
+  auto *counter = tab.findChild<QLCDNumber *>("mo2CounterLabel");
+  check(edit != nullptr, "plugin filter edit present");
+  check(counter != nullptr, "MO2 counter label present");
+
+  const int alpha_row = row_with_name(table, "AlphaMod.esm");
+  const int other_row = row_with_name(table, "Other.esp");
+  check(counter->intValue() == 3, "counter counts every row before filtering");
+
+  edit->setText(QStringLiteral("Alpha"));
+  QApplication::processEvents();
+
+  // Consumer check: the counter is driven off row visibility, so the value
+  // moving 3 -> 2 is the proof that the rows really are hidden, not just
+  // repainted.
+  check(table->isRowHidden(other_row), "non-matching row hidden");
+  check(!table->isRowHidden(alpha_row), "matching row stays visible");
+  check(counter->intValue() == 2, "counter follows the filtered set");
+
+  // Negative control, one attribute apart: a filter that matches NOTHING must
+  // hide everything and drop the counter to 0. If the hide branch were dead
+  // the counter above would still read 3 and that check would be the failure.
+  edit->setText(QStringLiteral("NoSuchPlugin"));
+  QApplication::processEvents();
+  check(table->isRowHidden(alpha_row) && table->isRowHidden(other_row),
+        "a filter matching nothing hides every row");
+  check(counter->intValue() == 0, "counter reads 0 when nothing matches");
+
+  // Unrelated churn stays green: clearing the filter restores every row, and
+  // the rows themselves were never removed.
+  edit->clear();
+  QApplication::processEvents();
+  check(table->rowCount() == 3, "filtering never removes rows");
+  check(!table->isRowHidden(alpha_row) && !table->isRowHidden(other_row),
+        "clearing the filter shows every row again");
+  check(counter->intValue() == 3, "counter restored");
+
+  tab.hide();
+  std::filesystem::remove_all("/tmp/gmm_plugins_filter");
 }

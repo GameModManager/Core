@@ -231,7 +231,7 @@ public:
   //   Category   "Categories: " followed by every category name, " , " apart.
   //
   // MO2 text this build cannot back is deliberately NOT emitted: the Version
-  // cell stays empty (MO2's version tooltip only carries content beyond the
+  // tooltip stays empty (MO2's version tooltip only carries content beyond the
   // installed version we track - a newest version, a downgrade warning, a
   // Nexus file status and a next-check cooldown, none of which this model
   // has), and no endorsement, website-tracking, notes or alternate-game text
