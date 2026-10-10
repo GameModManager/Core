@@ -124,6 +124,21 @@ TEST_CASE("delete profile confirmation routes through TaskDialog", "[ui]") {
     }
     check(dir_in_details, "the profile dir path moves into the details pane");
     check(has_icon(dlg), "the confirmation shows the Question icon");
+
+    // The name reads as a clause of its own, not dangling mid-sentence: one
+    // quoted occurrence, intact, so a wrap can only land on a space. Dropping
+    // the string back to 'Delete profile "X"?' re-breaks the quotes and the
+    // name off the start of a line once the label re-wraps.
+    QString main_text;
+    for (auto *l : dlg.findChildren<QLabel *>()) {
+      if (l->text().contains("Survival"))
+        main_text = l->text();
+    }
+    check(main_text.count("Survival") == 1, "the name appears exactly once");
+    check(main_text.contains("\"" + QStringLiteral("Survival") + "\""),
+          "the name keeps one intact quoted pair");
+    check(!main_text.contains(QStringLiteral("profile \"Survival\"?")),
+          "the name no longer dangles mid-sentence after 'profile'");
   }
 
   // ---- No rejects --------------------------------------------------------
