@@ -29,6 +29,8 @@
 #include "gmm_abi_v1.h"
 #include "gmm_abi_v2.h"
 
+#include "platform/platform.h"
+
 // v2 IPluginPreview backing store. Header-only + Qt-free so the engine can
 // populate it without linking the UI library (keeps gmm_engine Qt-free and
 // avoids an engine->ui link cycle). The UI casts the returned void* to
@@ -40,27 +42,6 @@
 #include <cstring>
 #include <filesystem>
 #include <optional>
-
-#ifdef _WIN32
-#include <windows.h>
-#define RTLD_LAZY 0
-#define RTLD_NOW 0
-#define RTLD_LOCAL 0
-inline void *dlopen(const char *path, int) {
-  return static_cast<void *>(LoadLibraryA(path));
-}
-inline void *dlsym(void *handle, const char *name) {
-  return reinterpret_cast<void *>(GetProcAddress(static_cast<HMODULE>(handle), name));
-}
-inline int dlclose(void *handle) {
-  return FreeLibrary(static_cast<HMODULE>(handle));
-}
-inline const char *dlerror() {
-  return "dlopen failed";
-}
-#else
-#include <dlfcn.h>
-#endif
 
 namespace engine {
 
@@ -1846,17 +1827,19 @@ bool PluginLoader::load_plugin(const std::string &path) {
     return false;
   }
 
-  void *handle = dlopen(path.c_str(), RTLD_LAZY | RTLD_LOCAL);
+  void *handle = engine::load_shared_library(path);
   if (!handle) {
-    Logger::instance().error("Failed to load plugin: " + path + " - " + dlerror());
+    Logger::instance().error("Failed to load plugin: " + path + " - " +
+                             engine::dlerror_message());
     return false;
   }
 
   // Check ABI version
-  auto version_fn = reinterpret_cast<uint32_t (*)()>(dlsym(handle, "gmm_abi_version"));
+  auto version_fn = reinterpret_cast<uint32_t (*)()>(
+      engine::shared_library_symbol(handle, "gmm_abi_version"));
   if (!version_fn) {
     Logger::instance().error("Plugin missing gmm_abi_version: " + path);
-    dlclose(handle);
+    engine::unload_shared_library(handle);
     return false;
   }
 
@@ -1871,18 +1854,18 @@ bool PluginLoader::load_plugin(const std::string &path) {
   // and consulted at the parse-time bridge to decide whether to copy the
   // new fields. Load-time only, so no concurrency concern.
   uint64_t plugin_features = 0;
-  if (auto features_fn =
-          reinterpret_cast<uint64_t (*)()>(dlsym(handle, "gmm_abi_features"))) {
+  if (auto features_fn = reinterpret_cast<uint64_t (*)()>(
+          engine::shared_library_symbol(handle, "gmm_abi_features"))) {
     plugin_features = features_fn();
   }
 
   if (plugin_abi == 1) {
     // ---- v1 path (unchanged) ----
     auto register_fn = reinterpret_cast<void (*)(GmmRegistrationCtx *)>(
-        dlsym(handle, "gmm_register_v1"));
+        engine::shared_library_symbol(handle, "gmm_register_v1"));
     if (!register_fn) {
       Logger::instance().error("Plugin missing gmm_register_v1: " + path);
-      dlclose(handle);
+      engine::unload_shared_library(handle);
       return false;
     }
 
@@ -1938,10 +1921,10 @@ bool PluginLoader::load_plugin(const std::string &path) {
   } else if (plugin_abi == 2) {
     // ---- v2 path ----
     auto register_fn = reinterpret_cast<void (*)(GmmRegistrationCtxV2 *)>(
-        dlsym(handle, "gmm_register_v2"));
+        engine::shared_library_symbol(handle, "gmm_register_v2"));
     if (!register_fn) {
       Logger::instance().error("Plugin missing gmm_register_v2: " + path);
-      dlclose(handle);
+      engine::unload_shared_library(handle);
       return false;
     }
 
@@ -2006,7 +1989,7 @@ bool PluginLoader::load_plugin(const std::string &path) {
   } else {
     Logger::instance().error("ABI version mismatch: plugin=" +
                              std::to_string(plugin_abi) + " host supports 1 and 2");
-    dlclose(handle);
+    engine::unload_shared_library(handle);
     return false;
   }
 }
@@ -2171,7 +2154,7 @@ void PluginLoader::unload_all() {
     // ToolRegistry never holds a dangling function pointer.
     PluginToolRegistry::instance().clear_plugin(p.path);
     if (p.handle) {
-      dlclose(p.handle);
+      engine::unload_shared_library(p.handle);
       p.handle = nullptr;
     }
   }

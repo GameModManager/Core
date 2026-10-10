@@ -1,29 +1,15 @@
 #include "engine/update/install_method.h"
 
+#include "platform/platform.h"
+
 #include <cstdlib>
 #include <cstring>
-
-#if defined(_WIN32)
-#include <Windows.h>
-#elif defined(__APPLE__)
-#include <mach-o/dyld.h>
-#else
-#include <unistd.h>
-#endif
 
 namespace engine::update {
 
 namespace fs = std::filesystem;
 
 namespace {
-
-  // The uninstall subkey our installer writes and the detector reads. Kept as
-  // one constant on both sides of the contract: an installer that writes a
-  // different subkey reports as WindowsPortable, which is a report, not an
-  // install, so the failure mode is visible rather than silent.
-  constexpr const char *kUninstallSubkey =
-      "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\GameModManager";
-  constexpr const char *kInstallLocationValue = "InstallLocation";
 
   // Env var lookup that distinguishes "absent" from "present but empty": both
   // mean "not this method", but only a non-empty value is a positive signal.
@@ -69,98 +55,11 @@ namespace {
            without_trailing_sep(b).lexically_normal();
   }
 
-  // The running executable's path, or empty when the platform will not say.
-  fs::path current_exe_path() {
-#if defined(_WIN32)
-    // MAX_PATH is 260 but a per-user install under a long profile can exceed
-    // it, so grow the buffer until the value fits.
-    std::wstring buf(512, L'\0');
-    for (;;) {
-      const DWORD n =
-          GetModuleFileNameW(nullptr, buf.data(), static_cast<DWORD>(buf.size()));
-      if (n == 0)
-        return {};
-      if (n < buf.size()) {
-        buf.resize(n);
-        return fs::path(buf);
-      }
-      buf.resize(buf.size() * 2);
-    }
-#elif defined(__APPLE__)
-    std::uint32_t size = 0;
-    _NSGetExecutablePath(nullptr, &size);
-    if (size == 0)
-      return {};
-    std::string buf(size, '\0');
-    if (_NSGetExecutablePath(buf.data(), &size) != 0)
-      return {};
-    buf.resize(std::strlen(buf.c_str()));
-    std::error_code ec;
-    return fs::weakly_canonical(fs::path(buf), ec);
-#else
-    std::error_code ec;
-    auto p = fs::read_symlink("/proc/self/exe", ec);
-    if (ec)
-      return {};
-    return p;
-#endif
-  }
-
-  fs::path home_path() {
-#if defined(_WIN32)
-    // USERPROFILE is what Windows sets for an interactive user; HOME is the
-    // fallback some tooling (git bash, MSYS) sets instead.
-    const std::string h = env("USERPROFILE").empty() ? env("HOME") : env("USERPROFILE");
-    return h.empty() ? fs::path() : fs::path(h);
-#else
-    const std::string h = env("HOME");
-    return h.empty() ? fs::path() : fs::path(h);
-#endif
-  }
-
   bool path_exists(const fs::path &p) {
     if (p.empty())
       return false;
     std::error_code ec;
     return fs::exists(p, ec);
-  }
-
-  // Writable is a permission question, asked with access(W_OK) rather than
-  // answered by attempting a write: probing must not leave a byte behind.
-  bool dir_writable(const fs::path &dir) {
-    if (dir.empty())
-      return false;
-#if defined(_WIN32)
-    // POSIX access() semantics do not exist here and W_OK is undefined for
-    // directories. NT's AccessCheck over the directory handle is the honest
-    // equivalent, and it is still a pure query.
-    const DWORD attrs = GetFileAttributesW(dir.wstring().c_str());
-    if (attrs == INVALID_FILE_ATTRIBUTES || (attrs & FILE_ATTRIBUTE_DIRECTORY) == 0)
-      return false;
-    return true;
-#else
-    return ::access(dir.c_str(), W_OK) == 0;
-#endif
-  }
-
-  // Walk up to the directory the bundle's volume lives in. On macOS a bundle
-  // is /Applications/GameModManager.app/Contents/MacOS/gamemodmanager, and the
-  // mount point is the first ancestor that is a mount point. Ask the kernel
-  // rather than assume a depth.
-  fs::path mounted_volume_root(const fs::path &p) {
-#if defined(__APPLE__)
-    std::error_code ec;
-    for (auto dir = p; !dir.empty() && dir != dir.root_path();
-         dir      = dir.parent_path()) {
-      if (fs::is_mount_point(dir, ec))
-        return dir;
-      ec.clear();
-    }
-    return p;
-#else
-    (void)p;
-    return {};
-#endif
   }
 
 }  // namespace
@@ -224,16 +123,18 @@ InstallMethod detect_install_method(const InstallFacts &f) {
 InstallFacts probe_install_facts() {
   InstallFacts f;
 
-#if defined(_WIN32)
-  f.platform = HostPlatform::Windows;
-#elif defined(__APPLE__)
-  f.platform = HostPlatform::MacOs;
-#else
-  f.platform = HostPlatform::Linux;
-#endif
+  // The host OS, as the adaptors name it. Every adaptor already answers this,
+  // so the detector asks rather than branching on a compiler macro.
+  const std::string os = engine::platform_id();
+  if (os == "windows")
+    f.platform = HostPlatform::Windows;
+  else if (os == "macos")
+    f.platform = HostPlatform::MacOs;
+  else
+    f.platform = HostPlatform::Linux;
 
-  f.exe_path = current_exe_path();
-  f.home     = home_path();
+  f.exe_path = engine::current_executable_path();
+  f.home     = engine::home_dir_or_empty();
 
   const fs::path exe_dir = f.exe_path.parent_path();
 
@@ -246,22 +147,13 @@ InstallFacts probe_install_facts() {
   // QtIFW names the maintenance tool the same way on every platform it ships.
   f.installerbase_sibling = path_exists(exe_dir / "installerbase");
 
-#if defined(_WIN32)
-  HKEY key = nullptr;
-  if (RegOpenKeyExA(HKEY_CURRENT_USER, kUninstallSubkey, 0, KEY_READ, &key) ==
-      ERROR_SUCCESS) {
-    char buf[1024] = {};
-    DWORD type     = 0;
-    DWORD size     = sizeof(buf) - 1;
-    if (RegQueryValueExA(key, kInstallLocationValue, nullptr, &type,
-                         reinterpret_cast<BYTE *>(buf), &size) == ERROR_SUCCESS &&
-        (type == REG_SZ || type == REG_EXPAND_SZ))
-      f.windows_uninstall_location = buf;
-    RegCloseKey(key);
-  }
-#elif defined(__APPLE__)
-  f.volume_writable = dir_writable(mounted_volume_root(exe_dir));
-#endif
+  // Both probes below are pure queries on every OS, so they run everywhere
+  // rather than behind a platform branch. Only the macOS decision reads
+  // volume_writable, and only the Windows decision reads
+  // windows_uninstall_location, so asking on all three changes no outcome -
+  // it just means neither answer depends on a preprocessor guess.
+  f.volume_writable = engine::path_is_writable(engine::volume_root_of(exe_dir));
+  f.windows_uninstall_location = engine::recorded_install_location().string();
 
   return f;
 }

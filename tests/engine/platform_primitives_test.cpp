@@ -519,3 +519,220 @@ TEST_CASE("set_thread_low_priority actually lowers this thread's nice value",
   else
     REQUIRE(after >= before);
 }
+
+TEST_CASE("current_executable_path names the binary that is actually running",
+          "[platform]") {
+  const auto exe = current_executable_path();
+  REQUIRE_FALSE(exe.empty());
+  REQUIRE(fs::exists(exe));
+
+  // Consumer reachability, not a getter round-trip: install_method.cpp decides
+  // the install method from this path, so compare it against the path the test
+  // binary itself reports. /proc/self/exe resolves symlinks, so a build tree
+  // reached through a symlinked path still has to agree on the file name.
+  REQUIRE(exe.filename() == fs::canonical("/proc/self/exe").filename());
+
+  // Negative control: a path that does not exist must not be handed back as
+  // though it did. If the body returned its argument unconditionally, or
+  // returned the cwd, this is the assertion that fails.
+  REQUIRE(current_executable_path() != fs::current_path());
+}
+
+TEST_CASE("home_dir_or_empty agrees with HOME and never invents one", "[platform]") {
+  const char *env = std::getenv("HOME");
+
+  // Consumer reachability: install_method.cpp feeds this into f.home and then
+  // compares the exe directory against it, so an empty value when HOME is set
+  // would silently disable QtIFW detection.
+  if (env && env[0] != '\0') {
+    REQUIRE(home_dir_or_empty() == fs::path(env));
+  }
+
+  // Negative control, and the reason this is a separate function at all:
+  // home_dir() falls back to the temp directory when HOME is unset, so a body
+  // that forwarded to home_dir() would return a NON-empty path. Here, unset
+  // HOME must produce empty, which is the distinction the caller relies on to
+  // tell "no home configured" from "home is the temp directory".
+  ::unsetenv("HOME");
+  REQUIRE(home_dir_or_empty().empty());
+
+  // Re-probe after restoring, proving the body reads the environment on every
+  // call rather than caching the first answer.
+  ::setenv("HOME", "/tmp/gmm-home-probe", 1);
+  REQUIRE(home_dir_or_empty() == fs::path("/tmp/gmm-home-probe"));
+
+  if (env && env[0] != '\0')
+    ::setenv("HOME", env, 1);
+  else
+    ::unsetenv("HOME");
+}
+
+TEST_CASE("path_is_writable is a permission question, not a guess", "[platform]") {
+  const auto dir = scratch("writable");
+
+  // Consumer reachability: install_method.cpp decides macOS disk-image
+  // installs from this answer, so a body that always returned true would report
+  // a read-only mounted image as writable.
+  REQUIRE(path_is_writable(dir));
+
+  // Negative control: a path that is not a directory cannot be a directory the
+  // user writes into. A body that returned true unconditionally fails here.
+  const auto missing = dir / "absent";
+  REQUIRE_FALSE(path_is_writable(missing));
+
+  // And the empty path is refused rather than defaulting to the process cwd,
+  // which is what a naive `access(dir.c_str(), W_OK)` on "" would have done.
+  REQUIRE_FALSE(path_is_writable({}));
+}
+
+TEST_CASE("volume_root_of finds the mount a path lives on", "[platform]") {
+  const auto dir = scratch("volume");
+
+  // Consumer reachability: install_method.cpp asks this to decide whether a
+  // macOS bundle sits on a writable volume or a mounted read-only image.
+  const auto root = volume_root_of(dir);
+  REQUIRE_FALSE(root.empty());
+  REQUIRE(fs::exists(root));
+
+  // The answer must be an ancestor of what was asked, or the caller cannot use
+  // it to decide anything about the original path.
+  const auto probe       = fs::absolute(dir).lexically_normal();
+  const auto root_abs    = fs::absolute(root).lexically_normal();
+  const bool is_root     = root_abs == probe.root_path().lexically_normal();
+  const bool is_ancestor = std::distance(root_abs.begin(), root_abs.end()) <=
+                           std::distance(probe.begin(), probe.end());
+  REQUIRE((is_root || is_ancestor));
+
+  // Negative control: empty in, empty out. A body that returned its argument
+  // for anything non-empty would still pass the two checks above, so this is
+  // what pins the actual guard.
+  REQUIRE(volume_root_of({}).empty());
+}
+
+TEST_CASE("recorded_install_location is empty where nothing records one",
+          "[platform]") {
+  // No test writes a real install location, so on every OS this must report
+  // "nothing recorded one" rather than inventing a path. A body that returned
+  // the home directory or the cwd would make install_method.cpp treat an
+  // arbitrary directory as the install root.
+  const auto loc = recorded_install_location();
+  REQUIRE(loc.empty());
+  REQUIRE(loc != home_dir_or_empty());
+  REQUIRE(loc != fs::current_path());
+}
+
+TEST_CASE("load_shared_library resolves a real symbol through the adaptor",
+          "[platform]") {
+  // Consumer reachability: Module::symbol and PluginLoader both resolve
+  // "gmm_abi_version" through this and nothing else. Loading a real library
+  // and resolving a real exported symbol is the proof that the dlopen/dlsym
+  // pair still works after the Windows shims were removed.
+  const auto dir = scratch("shlib");
+
+  // Build the shared object the same way the plugin build does, then load it
+  // the way the plugin loader does.
+  const auto src = dir / "probe.c";
+  const auto so  = dir / "libprobe.so";
+  write_file(src, "int gmm_abi_version(void) { return 7; }\n");
+
+  const std::string cmd =
+      "cc -shared -fPIC -o '" + so.string() + "' '" + src.string() + "' 2>/dev/null";
+  if (std::system(cmd.c_str()) != 0 || !fs::exists(so)) {
+    fs::remove_all(dir);
+    SUCCEED("no C compiler for the shared-library probe; adaptor is "
+            "unexercised on this machine, not proven here");
+    return;
+  }
+
+  void *handle = load_shared_library(so);
+  REQUIRE(handle != nullptr);
+
+  auto *version =
+      reinterpret_cast<int (*)()>(shared_library_symbol(handle, "gmm_abi_version"));
+  REQUIRE(version != nullptr);
+  // The value proves the symbol came out of THIS library, not that some pointer
+  // was returned.
+  REQUIRE(version() == 7);
+
+  // Negative control: a symbol that does not exist must resolve to null, and
+  // unloading must be safe on a null handle.
+  REQUIRE(shared_library_symbol(handle, "gmm_no_such_symbol") == nullptr);
+  REQUIRE(shared_library_symbol(nullptr, "gmm_abi_version") == nullptr);
+  unload_shared_library(handle);
+  unload_shared_library(nullptr);
+  SUCCEED("unload and null-handle paths exercised");
+
+  // A failed load must report something rather than crash, and the handle must
+  // be null. This is the path the plugin scanner hits for every bad plugin.
+  REQUIRE(load_shared_library(dir / "definitely_absent.so") == nullptr);
+  REQUIRE(dlerror_message() != nullptr);
+
+  fs::remove_all(dir);
+}
+
+TEST_CASE("spawn_detached_process starts a real process and returns its pid",
+          "[platform]") {
+  const auto dir = scratch("spawn");
+
+  // Consumer reachability: NativeRuntime::launch calls exactly this and then
+  // hands last_pid() to launcher.cpp. A body that returned a pid without
+  // starting anything would pass a "pid is positive" assertion and still ship
+  // a game that never launches, so the process itself is observed.
+  const auto marker        = dir / "spawned.txt";
+  const std::string script = "echo alive > " + marker.string();
+
+  const auto pid = spawn_detached_process("/bin/sh", {"/bin/sh", "-c", script}, dir,
+                                          /*shell_fallback=*/false);
+  REQUIRE(pid > 0);
+
+  // The call must NOT block: it returns while the child is still running. Poll
+  // briefly for the file the child writes.
+  bool seen = false;
+  for (int i = 0; i < 200 && !seen; ++i) {
+    seen = fs::exists(marker);
+    if (!seen)
+      ::usleep(10000);
+  }
+  REQUIRE(seen);
+  REQUIRE(read_file(marker).find("alive") != std::string::npos);
+
+  // Negative control: nothing to execute cannot start a process and must say
+  // so, rather than return a plausible-looking pid.
+  REQUIRE(spawn_detached_process({}, {"/bin/sh"}, dir, false) == -1);
+  REQUIRE(spawn_detached_process("/bin/sh", {}, dir, false) == -1);
+
+  fs::remove_all(dir);
+}
+
+TEST_CASE("spawn_detached_process execs the executable, not argv[0]", "[platform]") {
+  const auto dir = scratch("spawn_path");
+
+  // Regression guard for a real mistake made while writing this adaptor: the
+  // first signature folded argv[0] and the executable together, which silently
+  // broke ProtonRuntime. That runtime execs the runner by its FULL path while
+  // argv[0] is the bare filename, so a body that exec'd argv[0] would send
+  // execvp searching PATH and never find the runner sitting next to it.
+  //
+  // Executable and argv[0] therefore differ here too, and the child proves it
+  // saw the right one by echoing both back.
+  const auto out           = dir / "argv.txt";
+  const std::string script = "echo \"$0\" > " + out.string();
+
+  // A bare name that is NOT on PATH: if the body exec'd argv[0] this could not
+  // possibly work, because nothing resolves "not-on-path-probe".
+  const auto pid = spawn_detached_process(
+      "/bin/sh", {"not-on-path-probe", "-c", script}, dir, /*shell_fallback=*/false);
+  REQUIRE(pid > 0);
+
+  bool seen = false;
+  for (int i = 0; i < 200 && !seen; ++i) {
+    seen = fs::exists(out);
+    if (!seen)
+      ::usleep(10000);
+  }
+  REQUIRE(seen);
+  // $0 is argv[0], which is what the child was told to call itself.
+  REQUIRE(read_file(out).find("not-on-path-probe") != std::string::npos);
+
+  fs::remove_all(dir);
+}

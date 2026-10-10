@@ -1,14 +1,9 @@
 #include "engine/module.h"
 
 #include "engine/log/logger.h"
+#include "platform/platform.h"
 
 #include <algorithm>
-
-#ifdef _WIN32
-#include <windows.h>
-#else
-#include <dlfcn.h>
-#endif
 
 namespace engine {
 
@@ -32,11 +27,7 @@ ModuleInfo ModuleInfo::from_path(const std::filesystem::path &path) {
 // Module - platform-specific handle management
 // ---------------------------------------------------------------------------
 Module::Module(const ModuleInfo &info) : info_(info) {
-#ifdef _WIN32
-  handle_ = static_cast<void *>(LoadLibraryW(info.path.wstring().c_str()));
-#else
-  handle_ = dlopen(info.path.c_str(), RTLD_LAZY | RTLD_LOCAL);
-#endif
+  handle_ = engine::load_shared_library(info.path);
 
   if (!handle_) {
     Logger::instance().error("Failed to load module: " + info.path.string());
@@ -44,13 +35,7 @@ Module::Module(const ModuleInfo &info) : info_(info) {
 }
 
 Module::~Module() {
-  if (handle_) {
-#ifdef _WIN32
-    FreeLibrary(static_cast<HMODULE>(handle_));
-#else
-    dlclose(handle_);
-#endif
-  }
+  engine::unload_shared_library(handle_);
 }
 
 Module::Module(Module &&other) noexcept
@@ -60,13 +45,7 @@ Module::Module(Module &&other) noexcept
 
 Module &Module::operator=(Module &&other) noexcept {
   if (this != &other) {
-    if (handle_) {
-#ifdef _WIN32
-      FreeLibrary(static_cast<HMODULE>(handle_));
-#else
-      dlclose(handle_);
-#endif
-    }
+    engine::unload_shared_library(handle_);
     info_         = std::move(other.info_);
     handle_       = other.handle_;
     other.handle_ = nullptr;
@@ -83,14 +62,7 @@ bool Module::is_loaded() const {
 }
 
 void *Module::symbol(const char *name) const {
-  if (!handle_)
-    return nullptr;
-
-#ifdef _WIN32
-  return reinterpret_cast<void *>(GetProcAddress(static_cast<HMODULE>(handle_), name));
-#else
-  return dlsym(handle_, name);
-#endif
+  return engine::shared_library_symbol(handle_, name);
 }
 
 }  // namespace engine
