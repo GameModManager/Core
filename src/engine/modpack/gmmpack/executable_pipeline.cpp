@@ -7,6 +7,7 @@
 #include <system_error>
 
 #include "engine/util/process_utils.h"
+#include "platform/platform.h"
 
 namespace engine::gmmpack {
 namespace {
@@ -27,13 +28,7 @@ namespace {
 }  // namespace
 
 std::string host_os_name() {
-#if defined(_WIN32)
-  return "windows";
-#elif defined(__APPLE__)
-  return "macos";
-#else
-  return "linux";
-#endif
+  return engine::platform_id();
 }
 
 std::vector<std::string> merged_environment(const ExecutableEntry &entry,

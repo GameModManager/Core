@@ -7,14 +7,6 @@
 #include <string>
 #include <vector>
 
-#ifdef _WIN32
-#include <windows.h>
-#else
-#include <sys/stat.h>
-#include <sys/wait.h>
-#include <unistd.h>
-#endif
-
 namespace engine {
 
 // --- NativeRuntime ---
@@ -27,14 +19,7 @@ bool NativeRuntime::launch(const std::filesystem::path &executable,
   if (!std::filesystem::exists(executable))
     return false;
 
-#ifdef _WIN32
-  // On Windows, use ShellExecute to launch any registered file type
-  std::string cmd = "\"" + executable.string() + "\"";
-  for (const auto &a : args)
-    cmd += " \"" + a + "\"";
-  return std::system(cmd.c_str()) == 0;
-#else
-  // Ensure the file is executable
+  // Ensure the file is executable.
   auto st    = std::filesystem::status(executable);
   auto perms = st.permissions();
   if ((perms & std::filesystem::perms::owner_exec) == std::filesystem::perms::none) {
@@ -46,42 +31,22 @@ bool NativeRuntime::launch(const std::filesystem::path &executable,
                                  ec);
   }
 
-  pid_t pid = fork();
-  if (pid == 0) {
-    // Child process: detach from parent process group
-    setsid();
-    // Change to the configured working directory (game_dir when unset)
-    // so relative paths in the executable work.
-    const auto work_dir = cwd.empty() ? game_dir : cwd;
-    if (!work_dir.empty())
-      chdir(work_dir.c_str());
-    // Redirect stdin from /dev/null so the child doesn't inherit our TTY
-    if (freopen("/dev/null", "r", stdin)) {
-    }
-    // argv[0] = executable, then the configured args, then nullptr.
-    std::vector<char *> argv;
-    argv.push_back(const_cast<char *>(executable.c_str()));
-    for (const auto &a : args)
-      argv.push_back(const_cast<char *>(a.c_str()));
-    argv.push_back(nullptr);
-    execvp(argv[0], argv.data());
-    // If exec fails, try running through /bin/sh (for scripts without
-    // proper shebang), preserving the args.
-    std::vector<char *> sh_argv;
-    sh_argv.push_back(const_cast<char *>("sh"));
-    sh_argv.push_back(const_cast<char *>(executable.c_str()));
-    for (const auto &a : args)
-      sh_argv.push_back(const_cast<char *>(a.c_str()));
-    sh_argv.push_back(nullptr);
-    execv("/bin/sh", sh_argv.data());
-    _exit(1);
-  } else if (pid > 0) {
-    // Parent: don't wait - child is fully detached
-    last_pid_ = static_cast<int64_t>(pid);
-    return true;
-  }
-  return false;
-#endif
+  // argv[0] is the executable, then the configured args.
+  std::vector<std::string> argv;
+  argv.reserve(args.size() + 1);
+  argv.push_back(executable.string());
+  for (const auto &a : args)
+    argv.push_back(a);
+
+  // The working directory is cwd when set, else the game dir, so relative
+  // paths inside the executable resolve the way the instance expects.
+  const auto work_dir = cwd.empty() ? game_dir : cwd;
+
+  // shell_fallback: a game installed as a script with no shebang still starts,
+  // which is what the old execvp-then-/bin/sh fallback bought.
+  last_pid_ =
+      spawn_detached_process(executable, argv, work_dir, /*shell_fallback=*/true);
+  return last_pid_ > 0;
 }
 
 bool NativeRuntime::is_available() const {
@@ -108,32 +73,30 @@ bool ProtonRuntime::launch(const std::filesystem::path &executable,
   if (!prepare_proton_environment(platform_, game_dir, steam_appid))
     return false;
 
-  pid_t pid = fork();
-  if (pid == 0) {
-    setsid();
-    const auto work_dir = cwd.empty() ? game_dir : cwd;
-    if (!work_dir.empty())
-      chdir(work_dir.c_str());
-    if (freopen("/dev/null", "r", stdin)) {
-    }
-    // proton waitforexitandrun <exe> <args...>
-    // NOTE: proton_name must outlive execv - filename() returns a
-    // temporary whose c_str() would dangle (Workspace-0y6g).
-    auto proton_name = proton.filename();
-    std::vector<char *> argv;
-    argv.push_back(const_cast<char *>(proton_name.c_str()));
-    argv.push_back(const_cast<char *>("waitforexitandrun"));
-    argv.push_back(const_cast<char *>(executable.c_str()));
-    for (const auto &a : args)
-      argv.push_back(const_cast<char *>(a.c_str()));
-    argv.push_back(nullptr);
-    execv(proton.c_str(), argv.data());
-    _exit(1);
-  } else if (pid > 0) {
-    last_pid_ = static_cast<int64_t>(pid);
-    return true;
-  }
-  return false;
+  // proton waitforexitandrun <exe> <args...>
+  //
+  // The runner is executed by its FULL path but reports itself to the game by
+  // its bare filename, which is why argv[0] and the executable are separate
+  // arguments here. argv[0] is built from filename() and copied into the string
+  // list, because filename() returns a temporary whose c_str() would dangle
+  // once the expression ends (Workspace-0y6g); the adaptor then copies every
+  // argument into its own argv before forking, so that lifetime rule holds by
+  // construction.
+  std::vector<std::string> argv;
+  argv.reserve(args.size() + 3);
+  argv.push_back(proton.filename().string());
+  argv.emplace_back("waitforexitandrun");
+  argv.push_back(executable.string());
+  for (const auto &a : args)
+    argv.push_back(a);
+
+  const auto work_dir = cwd.empty() ? game_dir : cwd;
+
+  // No shell fallback: a missing or broken proton runner is a real failure the
+  // caller must see as one, not something to paper over by re-running the
+  // runner script through /bin/sh.
+  last_pid_ = spawn_detached_process(proton, argv, work_dir, /*shell_fallback=*/false);
+  return last_pid_ > 0;
 }
 
 // --- Static helpers ---

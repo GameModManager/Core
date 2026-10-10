@@ -5,6 +5,7 @@
 #include <cstdlib>
 #include <ctime>
 #include <filesystem>
+#include <cstdio>
 #include <string>
 #include <vector>
 
@@ -23,6 +24,40 @@ namespace engine {
 // --- Helper: expand environment variables ---
 
 namespace {
+
+  // Quote one argument per the CommandLineToArgvW rules, which is what
+  // CreateProcessW parses the command line with. A backslash is only special
+  // immediately before a quote or at the end of the argument, so the general
+  // case is "wrap in quotes and double any interior quotes"; a run of
+  // backslashes before a quote or before the closing quote has to be doubled as
+  // well or the quote comes out escaped instead of literal.
+  std::wstring QuoteForWindows(const std::wstring &arg) {
+    if (!arg.empty() && arg.find_first_of(L" \t\n\v\"") == std::wstring::npos)
+      return arg;
+
+    std::wstring out;
+    out.push_back(L'"');
+    for (std::size_t i = 0;; ++i) {
+      std::size_t backslashes = 0;
+      while (i < arg.size() && arg[i] == L'\\') {
+        ++i;
+        ++backslashes;
+      }
+      if (i == arg.size()) {
+        // Trailing run: double it so the closing quote is not escaped.
+        out.append(backslashes * 2, L'\\');
+        break;
+      }
+      if (arg[i] == L'"') {
+        out.append(backslashes * 2 + 1, L'\\');
+      } else {
+        out.append(backslashes, L'\\');
+      }
+      out.push_back(arg[i]);
+    }
+    out.push_back(L'"');
+    return out;
+  }
 
   std::wstring expand_env(const wchar_t *pattern) {
     wchar_t buf[MAX_PATH];
@@ -612,6 +647,171 @@ std::optional<std::int64_t> file_birth_time(const std::filesystem::path &path) {
   ticks.LowPart  = created.dwLowDateTime;
   ticks.HighPart = created.dwHighDateTime;
   return static_cast<std::int64_t>(ticks.QuadPart / 10000000ULL - 11644473600LL);
+}
+
+std::filesystem::path current_executable_path() {
+  // MAX_PATH is 260 but a per-user install under a long profile can exceed it,
+  // so grow the buffer until the value fits. GetModuleFileNameW returns the
+  // untruncated length when the buffer is too small, which is the loop condition.
+  std::wstring buf(512, L'\0');
+  for (;;) {
+    const DWORD n =
+        GetModuleFileNameW(nullptr, buf.data(), static_cast<DWORD>(buf.size()));
+    if (n == 0)
+      return {};
+    if (n < buf.size()) {
+      buf.resize(n);
+      return std::filesystem::path(buf);
+    }
+    buf.resize(buf.size() * 2);
+  }
+}
+
+std::filesystem::path home_dir_or_empty() {
+  // USERPROFILE is what Windows sets for an interactive user; HOME is the
+  // fallback some tooling (git bash, MSYS) sets instead. Empty when neither is
+  // there, so a caller can tell "no home configured" from "home is temp".
+  const char *profile = std::getenv("USERPROFILE");
+  if (profile && profile[0] != '\0')
+    return std::filesystem::path(profile);
+  const char *home = std::getenv("HOME");
+  return (home && home[0] != '\0') ? std::filesystem::path(home)
+                                   : std::filesystem::path{};
+}
+
+bool path_is_writable(const std::filesystem::path &dir) {
+  if (dir.empty())
+    return false;
+  // POSIX access() semantics and W_OK do not exist here, and W_OK is undefined
+  // for directories. The directory's existence and attribute read is the honest
+  // equivalent query, and it is still a pure probe: nothing is created.
+  const DWORD attrs = GetFileAttributesW(dir.wstring().c_str());
+  if (attrs == INVALID_FILE_ATTRIBUTES || (attrs & FILE_ATTRIBUTE_DIRECTORY) == 0)
+    return false;
+  return true;
+}
+
+std::filesystem::path volume_root_of(const std::filesystem::path &p) {
+  if (p.empty())
+    return {};
+  // GetVolumePathNameW walks up to the volume root itself, so no manual
+  // ancestor loop is needed.
+  std::wstring buf(MAX_PATH, L'\0');
+  const DWORD n = GetVolumePathNameW(p.wstring().c_str(), buf.data(),
+                                     static_cast<DWORD>(buf.size()));
+  if (n == 0 || n >= buf.size())
+    return {};
+  buf.resize(n);
+  return std::filesystem::path(buf);
+}
+
+std::filesystem::path recorded_install_location() {
+  // The uninstall subkey our installer writes and the detector reads. Kept as
+  // one constant on both sides of the contract: an installer that writes a
+  // different subkey reports as "not an installer install", which is a visible
+  // report rather than a silent wrong answer.
+  static constexpr wchar_t kUninstallSubkey[] =
+      L"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\GameModManager";
+  static constexpr wchar_t kInstallLocationValue[] = L"InstallLocation";
+
+  HKEY key = nullptr;
+  if (RegOpenKeyExW(HKEY_CURRENT_USER, kUninstallSubkey, 0, KEY_READ, &key) !=
+      ERROR_SUCCESS)
+    return {};
+
+  wchar_t buf[1024] = {};
+  DWORD type        = 0;
+  DWORD size        = sizeof(buf) - 1;
+  const bool ok =
+      RegQueryValueExW(key, kInstallLocationValue, nullptr, &type,
+                       reinterpret_cast<BYTE *>(buf), &size) == ERROR_SUCCESS;
+  RegCloseKey(key);
+  if (!ok || (type != REG_SZ && type != REG_EXPAND_SZ) || buf[0] == L'\0')
+    return {};
+  return std::filesystem::path(buf);
+}
+
+void *load_shared_library(const std::filesystem::path &path) {
+  // LOAD_WITH_ALTERED_SEARCH_PATH keeps a plugin's own directory ahead of the
+  // process-wide search path, so a plugin that ships a dependency beside itself
+  // finds that copy rather than whatever else on PATH happens to share the
+  // name. Wide entry point because that is what resolves a Unicode path.
+  return static_cast<void *>(
+      LoadLibraryExW(path.wstring().c_str(), nullptr, LOAD_WITH_ALTERED_SEARCH_PATH));
+}
+
+void *shared_library_symbol(void *handle, const char *name) {
+  return handle ? reinterpret_cast<void *>(
+                      GetProcAddress(static_cast<HMODULE>(handle), name))
+                : nullptr;
+}
+
+void unload_shared_library(void *handle) noexcept {
+  if (handle)
+    FreeLibrary(static_cast<HMODULE>(handle));
+}
+
+std::int64_t spawn_detached_process(const std::filesystem::path &executable,
+                                    const std::vector<std::string> &argv,
+                                    const std::filesystem::path &work_dir,
+                                    bool /*shell_fallback*/) {
+  if (argv.empty() || executable.empty())
+    return -1;
+
+  // argv[0] is passed through verbatim and is not necessarily the executable,
+  // so the command line starts from argv rather than from `executable`.
+  std::wstring cmd = QuoteForWindows(std::wstring(argv[0].begin(), argv[0].end()));
+  for (std::size_t i = 1; i < argv.size(); ++i) {
+    cmd.push_back(L' ');
+    cmd += QuoteForWindows(std::wstring(argv[i].begin(), argv[i].end()));
+  }
+  const std::wstring exe(executable.wstring());
+
+  // STARTUPINFO must be zeroed or CreateProcess reads whatever is on the stack.
+  STARTUPINFOW si{};
+  si.cb = sizeof(si);
+  PROCESS_INFORMATION pi{};
+
+  const std::wstring wdir(work_dir.wstring());
+  const wchar_t *cwd = wdir.empty() ? nullptr : wdir.c_str();
+
+  // DETACHED_PROCESS so the game outlives us and does not inherit our console;
+  // CREATE_NEW_PROCESS_GROUP so Ctrl-C in our terminal does not reach it. The
+  // command line is mutable, so cmd.data() is handed over as-is.
+  if (!CreateProcessW(exe.c_str(), cmd.data(), nullptr, nullptr, FALSE,
+                      DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP, nullptr, cwd, &si,
+                      &pi))
+    return -1;
+
+  CloseHandle(pi.hThread);
+  const auto pid = static_cast<std::int64_t>(pi.dwProcessId);
+  // Closed rather than kept: nothing here waits on the child, and holding it
+  // would leak one handle per launch.
+  CloseHandle(pi.hProcess);
+  return pid;
+}
+
+const char *dlerror_message() {
+  // Windows has no dlerror. GetLastError is the equivalent, but it is a DWORD
+  // and the only way to render it without a static buffer is FormatMessage into
+  // one. A thread_local buffer keeps this correct when two threads fail a load
+  // at once, which is exactly what the plugin scanner does during a scan.
+  static thread_local char buf[256] = {};
+  const DWORD err                   = GetLastError();
+  if (err == 0)
+    return "";
+  DWORD n = FormatMessageA(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+                           nullptr, err, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), buf,
+                           sizeof(buf) - 1, nullptr);
+  if (n == 0) {
+    std::snprintf(buf, sizeof(buf), "LoadLibrary failed (error %lu)",
+                  static_cast<unsigned long>(err));
+    return buf;
+  }
+  // FormatMessage appends CRLF; a log line does not want it.
+  while (n > 0 && (buf[n - 1] == '\r' || buf[n - 1] == '\n'))
+    buf[--n] = '\0';
+  return buf;
 }
 
 int open_truncated_write_fd(const std::string &path) {
