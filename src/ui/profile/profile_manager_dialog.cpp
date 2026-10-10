@@ -249,10 +249,12 @@ void ProfileManagerDialog::on_rename() {
 
 void configure_delete_profile_dialog(TaskDialog &dlg, const QString &profile_name,
                                      const QString &profile_dir) {
+  // The name leads its clause rather than dangling mid-sentence: one quoted
+  // occurrence, and a wrap can only land on a clause boundary, never inside
+  // the quotes or between a name and its verb.
   dlg.title(QObject::tr("Delete Profile"))
-      .main(QObject::tr("Delete profile \"%1\"? This removes the profile "
-                        "directory and all profile-specific files (including "
-                        "profile-specific save games, if any).")
+      .main(QObject::tr("Delete this profile? \"%1\" and its profile-specific "
+                        "files, including save games, will be removed.")
                 .arg(profile_name))
       .content(QObject::tr("This cannot be undone."))
       .details(profile_dir)

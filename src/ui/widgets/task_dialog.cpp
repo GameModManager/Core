@@ -12,6 +12,7 @@
 #include <QLabel>
 #include <QPlainTextEdit>
 #include <QPushButton>
+#include <QSizePolicy>
 #include <QStyle>
 #include <QToolButton>
 #include <QVBoxLayout>
@@ -59,6 +60,17 @@ TaskDialog::TaskDialog(QWidget *parent, const QString &title) : QWidget(parent) 
 
   main_label_ = new QLabel(this);
   main_label_->setWordWrap(true);
+  // With the details pane open, its QPlainTextEdit (Expanding/Expanding) is what
+  // makes the nested content layout expansive, so the surplus width reaches
+  // these labels. Collapse it and that item is gone: the content layout stops
+  // being expansive, QHBoxLayout hands the surplus to the only item still
+  // asking for it - the icon label, which grew from 32 to 230 px - and squeezes
+  // these labels to their minimum (370 -> 172 px at the default width). A
+  // wrapped label squeezed to its longest word re-wraps into a tall narrow
+  // column, which is the stretched, broken-mid-quote text. Expanding says what
+  // a wrapped label wants - take the width, wrap in it - and keeps the content
+  // layout expansive with the details pane open or closed.
+  main_label_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
   QFont main_font = main_label_->font();
   main_font.setPointSizeF(main_font.pointSizeF() * 1.5);
   main_label_->setFont(main_font);
@@ -66,6 +78,7 @@ TaskDialog::TaskDialog(QWidget *parent, const QString &title) : QWidget(parent) 
 
   content_label_ = new QLabel(this);
   content_label_->setWordWrap(true);
+  content_label_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
   content_label_->setVisible(false);
   content_layout_->addWidget(content_label_);
 
