@@ -3953,3 +3953,54 @@ TEST_CASE("collapse others folds every separator but the chosen one",
 
   std::filesystem::remove_all(cfg);
 }
+
+// MO2 ModList::data (modlist.cpp:198-206): a mod with no recorded version
+// reads "?" in the Version column when it can still be updated, so "no version
+// yet" is distinguishable from "nothing to wait for".
+TEST_CASE("mod list Version cell reads ? only for an updatable mod", "[ui][version]") {
+  qputenv("QT_QPA_PLATFORM", "offscreen");
+  qputenv("TZ", "UTC");
+  tzset();
+  const std::filesystem::path cfg = "/tmp/gmm_mod_list_version/config";
+  std::filesystem::remove_all("/tmp/gmm_mod_list_version");
+  std::filesystem::create_directories(cfg);
+  qputenv("XDG_CONFIG_HOME", cfg.c_str());
+  int test_argc     = 1;
+  char test_argv0[] = "test";
+  char *test_argv[] = {test_argv0, test_argv0, nullptr};
+  QApplication app(test_argc, test_argv);
+  QCoreApplication::setOrganizationName("GameModManager");
+  QCoreApplication::setApplicationName("GameModManager");
+  engine::IconManager::instance().discover_packs(GMM_TEST_RESOURCES_DIR);
+
+  ui::ModList model;
+  model.add_mod(QStringLiteral("Remote"), QStringLiteral("Remote"), QString());
+  model.add_mod(QStringLiteral("Local"), QStringLiteral("Local"), QString());
+  model.add_mod(QStringLiteral("Versioned"), QStringLiteral("Versioned"),
+                QStringLiteral("2.1"));
+  model.add_mod(QStringLiteral("NoId"), QStringLiteral("NoId"), QString());
+  // "Remote" and "NoId" differ ONLY in whether the source recorded an id.
+  model.set_source_info(QStringLiteral("Remote"), QStringLiteral("nexusmods"),
+                        QStringLiteral("1234"));
+  model.set_source_info(QStringLiteral("NoId"), QStringLiteral("nexusmods"), {});
+  model.set_source_info(QStringLiteral("Versioned"), QStringLiteral("nexusmods"),
+                        QStringLiteral("99"));
+
+  auto cell = [&model](const char *id, int role) {
+    return model.data(model.index(row_with_id(model, id), ui::ModList::Version), role)
+        .toString();
+  };
+
+  // The branch: empty version + a source that could be re-queried.
+  CHECK(cell("Remote", Qt::DisplayRole) == QStringLiteral("?"));
+  // Negative control, same pair one attribute apart: no id, so nothing to
+  // wait for and the cell stays empty. If the "?" branch were dead both would
+  // read empty and the check above is what fails.
+  CHECK(cell("NoId", Qt::DisplayRole).isEmpty());
+  // Unrelated churn stays green: a recorded version is never replaced.
+  CHECK(cell("Versioned", Qt::DisplayRole) == QStringLiteral("2.1"));
+  // An inline edit must start from the stored value, never from the "?".
+  CHECK(cell("Remote", Qt::EditRole).isEmpty());
+
+  std::filesystem::remove_all(cfg);
+}

@@ -528,7 +528,7 @@ port - their cited GMM symbol names were invented, the features are not.
 | Plugin list sort proxy | ✅ `pluginlistsortproxy.h` (column filtering, custom sorting) | ❌ | ❌ · |
 | Plugin list highlight masters | ✅ `PluginList::highlightMasters()` | ❌ | ❌ · |
 | Plugin list ChangeBracket (RAII layout notifications) | ✅ `PluginList::ChangeBracket` | ❌ | ❌ · |
-| Plugin list view (filter, counter, keyboard nav) | ✅ `pluginlistview.h/cpp` (Space, Ctrl+Up/Down, Ctrl+Enter, Ctrl+F/Esc) | ⚠️ keyboard nav shipped (Space, Enter, Ctrl+Up/Down, plain Up/Down); no plugin-side filter - `plugin_view.cpp:519` | ⚠️ ✔ |
+| Plugin list view (filter, counter, keyboard nav) | ✅ `pluginlistview.h/cpp` (Space, Ctrl+Up/Down, Ctrl+Enter, Ctrl+F/Esc) | ✅ name filter driven from the shared right-panel bar hides non-matching rows (counter recounts visible actives), counter, keyboard nav (Space, Enter, Ctrl+Up/Down, plain Up/Down); Ctrl+F focuses that bar and Esc clears it, one pane-scoped pair - `plugin_view.cpp:666`, `right_panel.cpp:174`, `main_window.cpp:407` | ✅ ✔ |
 | Plugin list context menu | ✅ `pluginlistcontextmenu.cpp:24-112` (9 groups incl. Send to, Open Origin) | ✅ every group: Enable all, Disable all, Enable/Disable selected, Send to (Top/Bottom/Priority), Lock/Unlock load order, Open Origin in Explorer, Open Origin Info - `plugin_context_menu.cpp:20` | ✅ ✔ |
 | Plugin list model (metadata, type flags) | ✅ `pluginlist.h` (form/header version, author, description) | ✅ all parsed and rendered, in the tooltip not columns - `plugin_info.h:78` | ✅ ✔ |
 | U043 BSA enabled-in-INI warning | ✅ `mainwindow.cpp:2071` | ❌ | ❌ · |
@@ -608,7 +608,7 @@ port - their cited GMM symbol names were invented, the features are not.
 | U050 profileBox "<Manage...>" sentinel entry opening profiles dialog | ✅ `mainwindow.cpp:1822-1864` | ✅ kManageProfilesText, sentinel at index 0 - `profile_bar.cpp:19` | ✅ · |
 | U132 General > Profile Defaults group (Local INIs / Saves / Archive Invalidation) | ✅ `settingsdialog.ui:234-261` | ⚠️ checkboxes mapped, invalidation parity unproven - `profile_settings_widget.h:11` | ⚠️ · |
 | U166 Profiles dialog full control set (3 checkables + 7 buttons w/ tooltips) | ✅ `profilesdialog.ui` | ⚠️ create/copy/rename/delete only - `profile_manager_dialog.h:13` | ⚠️ · |
-| U167 Profiles dialog messages (invalid name, active guards, broken profile) | ✅ `profilesdialog.cpp:78-300` | ❌ | ❌ · |
+| U167 Profiles dialog messages (invalid name, active guards, broken profile) | ✅ `profilesdialog.cpp:78-300` | ✅ "Invalid name" on create/copy/rename (name folded through `sanitize_directory_name` first), active-profile guards on rename/delete, "Profile broken" second confirm naming the exact folder - `profile_create_dialog.cpp:51`, `profile_manager_dialog.cpp:265` | ✅ ✔ |
 | U173 ProfileInputDialog (name prompt + Default Game INI Settings checkbox) | ✅ `profileinputdialog.ui` | ⚠️ dialog exists, checkbox parity unproven - `profile_create_dialog.h:10` | ⚠️ · |
 | U214 Profile 7-file set + settingsByGroup arbitrary keys + meta timer | ✅ `profile.cpp` | ✅ 7 accessors + 5s modlist debounce proven - `profile.h:81` | ✅ · |
 | U215 Profile initweaks / invalidation archive-list interactions | ✅ `mainwindow.cpp:2585-2603` | ⚠️ writers exist, invalidationActive toggling unproven - `profile_switching.cpp:76` | ⚠️ · |
@@ -797,14 +797,14 @@ port - their cited GMM symbol names were invented, the features are not.
 | U106 Mod list 13 columns | ✅ `modlist.h:83-96` (COL_NAME…COL_NOTES) | ⚠️ 11 shipped; Content, Author, Uploader, Source Game, Notes absent - `mod_list_model.h:115` | ⚠️ ✔ |
 | Mod list default-hidden column set | ✅ `modlistview.cpp:817-824` | ⚠️ hides Source ID, Installation + own Source, Changed - `mod_list_model.cpp:576` | ⚠️ ✔ |
 | U110 Editable-cell rules (priority/version/ModID; foreign guards; auto-priority) | ✅ `modlist.cpp:620-650` | ❌ | ❌ · |
-| U111 Version column "?" when empty + canBeUpdated | ✅ `modlist.cpp:198-206` | ❌ | ❌ · |
+| U111 Version column "?" when empty + canBeUpdated | ✅ `modlist.cpp:198-206` | ✅ "?" for an empty version on a mod whose source can be re-queried; EditRole keeps the raw value - `mod_list_model.cpp:29` | ✅ ✔ |
 | U113 Priority cell hidden for automatic-priority mods | ✅ `modlist.cpp:207-213` | ❌ | ❌ · |
 | U127 HIGHLIGHT_CENTER centers Name cell alignment | ✅ `modlist.cpp:640-647` | ❌ | ❌ · |
 | U136 Mod List settings (separator colors, out-of-MO mods, remember filters, update-on-install, drag collapse) | ✅ `settingsdialog.ui:557-635` | ⚠️ tab exists, 5 checkboxes unproven - `settings_content_widget.cpp:450` | ⚠️ · |
 | U137 Collapsible Separators settings group (sort-direction, highlights, icon toggles, per-profile) | ✅ `settingsdialog.ui:653-830` | ⚠️ 12 keys shipped, plugin-highlight nuance unproven - `settings.h:35` | ⚠️ · |
 | U163 Filter panel controls (Clear/Edit, And/Or radios, filters tree) | ✅ `mainwindow.ui:137-200`, `:505` | ❌ | ❌ · |
 | U164 openFolderMenu / listOptionsBtn / displayCategoriesBtn tooltips+roles | ✅ `mainwindow.ui:283-460` | ⚠️ folders menu only - `profile_bar.h:14` | ⚠️ · |
-| U165 LCD counters ("Active:" activeMods/activePlugins QLCDNumber) | ✅ `mainwindow.ui:354`, `:880` | ⚠️ counters exist, "Active:" labels unproven - `mod_list_controller.cpp:648` | ⚠️ · |
+| U165 LCD counters ("Active:" activeMods/activePlugins QLCDNumber) | ✅ `mainwindow.ui:354`, `:880` | ⚠️ the mod-list counter carries MO2's "Active:" label; the Plugins-tab counter is still a bare number (MO2 labels activePlugins too) - `mod_list_controller.cpp:711`, `plugin_view.cpp:651` | ⚠️ ✔ |
 | U232 Escape/Filter shortcut scope = WidgetWithChildren, autoRepeat off | ✅ `mainwindow.cpp:217-231` | ✅ both, one pair per pane - `main_window.cpp:376` | ✅ ✔ |
 | U280 csvbuilder for exportModListCSV | ✅ `csvbuilder.cpp` | ❌ | ❌ · |
 
@@ -832,10 +832,10 @@ port - their cited GMM symbol names were invented, the features are not.
 | Rename mod | ✅ `renameMod` | ✅ `rename_mod_inline()` - `mod_list_controller.h:63` | ✅ · |
 | Remove mod | ✅ | ✅ `remove_selected_mods()` (folder to trash) - `mod_actions.cpp:158` | ✅ · |
 | Root override toggle | ✅ | ✅ `toggle_root_override()` - `mod_list_controller.h:142` | ✅ · |
-| U052 listOptionsBtn hosts ModListGlobalContextMenu | ✅ `mainwindow.cpp:374-376` | ❌ | ❌ · |
-| U071 ModListGlobalContextMenu full tree (install/create above-below-inside, collapse, enable-matching, update, auto-categories, refresh, csv) | ✅ `modlistcontextmenu.cpp:33-102` | ⚠️ subset only; filter-aware labels + position entries unproven - `mod_context_menu.cpp:75` | ⚠️ · |
+| U052 listOptionsBtn hosts ModListGlobalContextMenu | ✅ `mainwindow.cpp:374-376` | ⚠️ the whole-list menu ships and opens on the mod list's empty space, but not from a toolbar button - `mod_context_menu.cpp:49` | ⚠️ ✔ |
+| U071 ModListGlobalContextMenu full tree (install/create above-below-inside, collapse, enable-matching, update, auto-categories, refresh, csv) | ✅ `modlistcontextmenu.cpp:33-102` | ⚠️ create empty mod / create separator / collapse+expand all / enable+disable all (filter-aware labels, acts on the filtered set) / refresh; no install, position entries, auto-categories, update check or csv - `mod_context_menu.cpp:49`, `mod_actions.cpp:388` | ⚠️ ✔ |
 | U072 Type-dispatched context menus (Overwrite/Backup/Separator/Foreign/Regular trees) | ✅ `modlistcontextmenu.cpp:225-245` | ❌ no per-row-type menu variants | ❌ · |
-| U073 "All Mods" submenu (global menu nested in row menu) | ✅ `modlistcontextmenu.cpp:230-234` | ❌ | ❌ · |
+| U073 "All Mods" submenu (global menu nested in row menu) | ✅ `modlistcontextmenu.cpp:230-234` | ✅ first entry of every row menu, whatever the row type - `mod_context_menu.cpp:121` | ✅ ✔ |
 | U075 "Information..." default (bold) action, omitted for foreign | ✅ `modlistcontextmenu.cpp:247-255` | ⚠️ action exists, bolding unproven - `mod_context_menu.cpp:114` | ⚠️ · |
 | U081 Separator row menu (rename/remove, color select/reset, send-to) | ✅ `modlistcontextmenu.cpp:422-447` | ❌ | ❌ · |
 | U082 Foreign row menu (Send to... only - no Information) | ✅ `modlistcontextmenu.cpp:449-454` | ❌ | ❌ · |
@@ -1189,7 +1189,7 @@ app can never end up unreachable - see `tray_decision.h:66`.
 | U190 TextViewer (multi-tab, per-file writable, Find, Save-per-page, save prompt) | ✅ `textviewer.cpp:60-276` | ⚠️ multi-file tab + write warning + Find - `generic_files_tab.cpp:49` | ⚠️ · |
 | U191 TextViewer read-only INI write TaskDialog (Clear flag / Allow once / Skip) | ✅ `textviewer.cpp:173-192` | ❌ no read-only surface to gate: the only text editor lists files under the mod folder, all writable - `generic_files_tab.cpp:121` | ❌ · |
 | U192 FindDialog (find-only, Find Next, Close) | ✅ `finddialog.ui` | ✅ pattern + Match case + Find Next + Close, wraps - `find_dialog.h:22` | ✅ · |
-| U248 TextEditor toolbar per-file (Save, Word wrap toggle, Open in Explorer) + dirty flag | ✅ `texteditor.cpp:468-491` | ⚠️ save only, wrap/Explorer unproven - `generic_files_tab.cpp:63` | ⚠️ · |
+| U248 TextEditor toolbar per-file (Save, Word wrap toggle, Open in Explorer) + dirty flag | ✅ `texteditor.cpp:468-491` | ✅ Save, checkable Word wrap, Open in File Manager, Find, dirty-flag-driven Save - `generic_files_tab.cpp:79`, `:88`, `:239` | ✅ ✔ |
 | U249 Line-number gutter + current-line highlight + TextEditorHighlighter | ✅ `texteditor.cpp:13-14` | ⚠️ highlighter + gutter, current-line unproven - `generic_files_tab.cpp:59` | ⚠️ · |
 | U250 TextViewer multi-file tabs w/ per-tab Save + Find | ✅ `textviewer.cpp` | ❌ | ❌ · |
 
@@ -1388,14 +1388,14 @@ column.
 | 9. Mod Content Analysis | 6 | 7 | 0 | 13 | 0 | 0 | 0 |
 | 10. Mod Info Dialog | 10 | 1 | 1 | 2 | 0 | 0 | 0 |
 | 11. Version & Update Management | 3 | 1 | 2 | 12 | 0 | 0 | 0 |
-| 12. Plugin Management | 28 | 6 | 3 | 14 | 0 | 0 | 0 |
+| 12. Plugin Management | 29 | 5 | 3 | 14 | 0 | 0 | 0 |
 | 13. LOOT Integration | 10 | 2 | 1 | 7 | 0 | 0 | 0 |
-| 14. Profile Management | 27 | 5 | 3 | 6 | 0 | 0 | 0 |
+| 14. Profile Management | 28 | 5 | 3 | 5 | 0 | 0 | 0 |
 | 15. Download Management | 22 | 15 | 6 | 18 | 10 | 0 | 0 |
 | 16. Nexus Integration | 8 | 10 | 2 | 20 | 0 | 0 | 0 |
 | 17. Source Providers | 4 | 0 | 7 | 1 | 0 | 0 | 0 |
-| 18. Mod List Features | 24 | 12 | 3 | 12 | 0 | 0 | 0 |
-| 19. Mod Context Menu | 15 | 4 | 0 | 13 | 0 | 0 | 0 |
+| 18. Mod List Features | 25 | 12 | 3 | 11 | 0 | 0 | 0 |
+| 19. Mod Context Menu | 16 | 5 | 0 | 11 | 0 | 0 | 0 |
 | 20. Plugin Context Menu | 10 | 0 | 0 | 2 | 0 | 0 | 0 |
 | 21. Archive & Installation | 10 | 3 | 4 | 2 | 0 | 0 | 0 |
 | 22. Deploy System | 0 | 1 | 9 | 0 | 2 | 0 | 0 |
@@ -1411,7 +1411,7 @@ column.
 | 32. System Tray | 4 | 1 | 0 | 0 | 0 | 0 | 0 |
 | 33. Self Updater | 2 | 3 | 0 | 4 | 0 | 0 | 0 |
 | 34. Multi-Process / IPC | 4 | 2 | 0 | 1 | 0 | 0 | 0 |
-| 35. Text Editor | 2 | 3 | 0 | 3 | 0 | 0 | 0 |
+| 35. Text Editor | 3 | 2 | 0 | 3 | 0 | 0 | 0 |
 | 36. Browser | 0 | 1 | 0 | 6 | 0 | 0 | 0 |
 | 37. Dialogs | 3 | 1 | 0 | 8 | 0 | 0 | 1 |
 | 38. Platform Abstraction | 2 | 1 | 14 | 1 | 0 | 0 | 0 |
@@ -1428,7 +1428,7 @@ column.
 | 49. CLI Help Grammar | 0 | 1 | 0 | 1 | 0 | 0 | 0 |
 | 50. My Games Resolution | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
 | 51. Conflict Scan Refresh | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
-| **TOTAL** | **360** | **167** | **177** | **242** | **54** | **43** | **62** |
+| **TOTAL** | **365** | **166** | **177** | **238** | **54** | **43** | **62** |
 
 ### The arithmetic
 
@@ -1436,13 +1436,13 @@ column.
 rows in file                          1043
 scored rows (ok + part + miss)         769
 
-MO2 parity        ok   / scored        360 /  769  = 46.8%
-partial           part / scored        167 /  769  = 21.7%
-missing           miss / scored        242 /  769  = 31.5%
+MO2 parity        ok   / scored        365 /  769  = 47.5%
+partial           part / scored        166 /  769  = 21.6%
+missing           miss / scored        238 /  769  = 30.9%
 GMM-exclusive     surp / all rows      177 / 1043  = 17.0%   (not scored)
 ```
 
-**Parity is 360 / 769 = 46.8%.** 242 rows are outright missing and 167 partial.
+**Parity is 365 / 769 = 47.5%.** 238 rows are outright missing and 166 partial.
 The largest untouched surfaces are **44. Tutorial** and **46. Notifications /
 Problems** (zero matched rows), then **16. Nexus** and **15. Downloads**, which
 carry the most missing rows in absolute terms.

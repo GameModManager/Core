@@ -61,6 +61,9 @@ private:
   void select_file(const QModelIndex &index);
   void load_editor(const QString &path);
   void save_editor();
+  // MO2 TextEditor::explore (texteditor.cpp:203-210): reveal the loaded file
+  // in the system file manager. No-op with no file loaded.
+  void open_in_file_manager();
   bool maybe_flush_editor();
   void apply_theme();
   // Find-in-text (MO2's MOBase::FindDialog). Ctrl+F opens the dialog; the
@@ -78,6 +81,11 @@ private:
   // Enabled exactly when there is a file loaded to search; open_find_dialog
   // also refuses with no file, so the two agree.
   QPushButton *find_btn_ = nullptr;
+  // MO2 TextEditorToolbar (texteditor.cpp:471-477): the word-wrap action is
+  // checkable and shows the editor's current wrap mode, "Open in Explorer"
+  // lives beside it. Both are per-file tools on the same bar as Save.
+  QPushButton *wrap_btn_    = nullptr;
+  QPushButton *explore_btn_ = nullptr;
   // Built on the first Ctrl+F, reused after that: a fresh dialog each time
   // would lose the pattern the user is stepping through.
   FindDialog *find_dlg_ = nullptr;
