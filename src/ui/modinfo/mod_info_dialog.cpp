@@ -22,6 +22,7 @@
 #include <QMessageBox>
 #include <QMoveEvent>
 #include <QPushButton>
+#include <QTabBar>
 #include <QTabWidget>
 #include <QVBoxLayout>
 
@@ -69,6 +70,17 @@ ModInfoDialog::ModInfoDialog(ModInfoData data,
   make_tab(new SourceTab(this), tr("Source"));
   make_tab(new NotesTab(this), tr("Notes"));
   make_tab(new FiletreeTab(this), tr("Filetree"));
+
+  // MO2 GeometrySettings::modInfoTabOrder(): put the tabs back the way the
+  // user left them. Ids missing from the saved order (a tab added since the
+  // order was written) keep their natural place at the end.
+  restore_tab_order();
+  connect(tabs_->tabBar(), &QTabBar::tabMoved, this, [this](int, int) {
+    save_tab_order();
+  });
+  for (auto *tab : tab_order_)
+    connect(tab, &ModInfoTab::has_data_changed, this,
+            &ModInfoDialog::update_tab_colors);
 
   tab_loaded_.assign(tab_order_.size(), false);
   tab_activated_.assign(tab_order_.size(), false);
@@ -193,6 +205,60 @@ void ModInfoDialog::update_tab_enabled_states() {
     const int visual = tabs_->indexOf(tab_order_[i]);
     if (visual >= 0)
       tabs_->setTabEnabled(visual, true);
+  }
+  update_tab_colors();
+}
+
+void ModInfoDialog::update_tab_colors() {
+  // MO2 ModInfoDialog::setTabsColors (modinfodialog.cpp:603-619). A tab whose
+  // content is empty for this mod wears the Disabled WindowText colour, one
+  // with data wears the palette default. This reaches past the disabled set
+  // above: the Source and Notes tabs are always clickable but say nothing
+  // about most mods, and MO2 greys them.
+  const QColor no_data = palette().color(QPalette::Disabled, QPalette::WindowText);
+  for (size_t i = 0; i < tab_order_.size(); ++i) {
+    const int visual = tabs_->indexOf(tab_order_[i]);
+    if (visual < 0)
+      continue;
+    tabs_->tabBar()->setTabTextColor(visual,
+                                     tab_order_[i]->has_data() ? QColor() : no_data);
+  }
+}
+
+void ModInfoDialog::save_tab_order() {
+  QList<int> order;
+  order.reserve(tab_order_.size());
+  for (int visual = 0; visual < tabs_->count(); ++visual) {
+    if (auto *tab = qobject_cast<ModInfoTab *>(tabs_->widget(visual)))
+      order.append(static_cast<int>(tab->tab_id()));
+  }
+  Settings::instance().set_modinfo_tab_order(order);
+}
+
+void ModInfoDialog::restore_tab_order() {
+  const QList<int> saved = Settings::instance().modinfo_tab_order();
+  if (saved.size() != tab_order_.size())
+    return;  // first run, or a tab was added since: keep the natural order
+  const QTabWidget *const tabs            = tabs_;
+  const std::vector<ModInfoTab *> natural = tab_order_;
+  std::vector<ModInfoTab *> wanted;
+  wanted.reserve(natural.size());
+  for (int id : saved) {
+    if (id < 0 || id >= static_cast<int>(natural.size()))
+      return;  // stale: the id space moved, keep the natural order
+    auto *tab = natural[static_cast<size_t>(id)];
+    if (std::find(wanted.begin(), wanted.end(), tab) != wanted.end())
+      return;  // duplicate id: the stored order is nonsense, ignore it
+    wanted.push_back(tab);
+  }
+  if (wanted.size() != natural.size())
+    return;
+  for (size_t target = 0; target < wanted.size(); ++target) {
+    const int from = tabs->indexOf(wanted[target]);
+    if (from < 0)
+      return;
+    if (static_cast<size_t>(from) != target)
+      tabs_->tabBar()->moveTab(from, static_cast<int>(target));
   }
 }
 

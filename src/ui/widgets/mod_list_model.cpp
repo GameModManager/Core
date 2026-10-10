@@ -575,6 +575,29 @@ bool ModList::setData(const QModelIndex &index, const QVariant &value, int role)
     emit rename_requested(index.row(), value.toString().trimmed());
     return true;
   }
+
+  // MO2 ModList::setData COL_PRIORITY (modlist.cpp:552-561): typing a number
+  // in the Priority cell moves the mod to that priority. Renumbering keeps
+  // priority == row index, but look the target row up by its stored priority
+  // so the edit cannot land one row off if the two ever diverge. Out-of-range
+  // and non-numeric input are refused, as MO2's value.toInt(&ok) guard does.
+  if (role == Qt::EditRole && index.column() == Priority) {
+    bool ok          = false;
+    const int wanted = value.toInt(&ok);
+    if (!ok || m.is_separator)
+      return false;
+    int target_row = -1;
+    for (int i = 0; i < mods_.size(); ++i) {
+      if (mods_[i].priority == wanted) {
+        target_row = i;
+        break;
+      }
+    }
+    if (target_row < 0 || target_row == index.row())
+      return target_row == index.row();
+    move_mod(m.id, target_row);
+    return true;
+  }
   return false;
 }
 
@@ -703,6 +726,15 @@ Qt::ItemFlags ModList::flags(const QModelIndex &index) const {
       f |= Qt::ItemIsEditable;
     }
   }
+
+  // MO2 ModList::flags (modlist.cpp:632-635): the Priority cell is editable
+  // for any regular mod. Typing a number there is the direct route to a load
+  // order - the same destination Send to Highest/Lowest Priority reaches, so
+  // it takes the same guards: the pseudo rows (Overwrite, MERGED, the
+  // game-native band) are not draggable and must not be repositioned here.
+  if (index.column() == Priority && !mod.is_overwrite && !mod.is_merged &&
+      !mod.is_game_native && !mod.is_separator)
+    f |= Qt::ItemIsEditable;
 
   if (mod.is_overwrite || mod.is_merged || mod.is_game_native) {
     f &= ~(Qt::ItemIsDragEnabled | Qt::ItemIsDropEnabled);

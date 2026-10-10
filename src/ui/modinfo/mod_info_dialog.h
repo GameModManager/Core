@@ -51,6 +51,14 @@ private:
   void load_index(int index);
   void switch_to(int index);
   void update_tab_enabled_states();
+  // MO2 GeometrySettings::modInfoTabOrder(): the visual tab sequence, saved
+  // as ModInfoTabId integers and re-applied on the next open.
+  void save_tab_order();
+  void restore_tab_order();
+  // MO2 ModInfoDialog::setTabsColors (modinfodialog.cpp:603): a tab with no
+  // data for the current mod wears the Disabled WindowText colour, one with
+  // data wears the palette default.
+  void update_tab_colors();
   // Nearest non-separator mod index in direction `dir` (+1 next, -1 prev)
   // from `from`, or -1 when there is none. Separators are never worth
   // viewing, so prev/next cycle past them.

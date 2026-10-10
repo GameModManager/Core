@@ -609,6 +609,12 @@ gmm_catch2_test(category_filter_panel_test ui/category_filter_panel_test.cpp
     UI
     LIBS gmm_ui Qt6::Test)
 
+# Change Categories commit-on-hide: opening the submenu and leaving it alone
+# must not write, and a real edit still must.
+gmm_catch2_test(change_categories_test ui/change_categories_test.cpp
+    UI
+    LIBS gmm_ui)
+
 gmm_catch2_test(categories_tab_test ui/categories_tab_test.cpp
     UI
     LIBS gmm_ui)

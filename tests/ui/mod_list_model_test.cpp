@@ -4004,3 +4004,96 @@ TEST_CASE("mod list Version cell reads ? only for an updatable mod", "[ui][versi
 
   std::filesystem::remove_all(cfg);
 }
+
+// MO2 ModList::flags + setData COL_PRIORITY (modlist.cpp:632-635, :552-561):
+// typing a number in the Priority cell moves the mod to that row.
+TEST_CASE("priority cell edit moves the mod and refuses bad input",
+          "[ui][mo2-parity]") {
+  qputenv("QT_QPA_PLATFORM", "offscreen");
+  qputenv("TZ", "UTC");
+  tzset();
+  const std::filesystem::path cfg = "/tmp/gmm_mod_list_priority/config";
+  std::filesystem::remove_all("/tmp/gmm_mod_list_priority");
+  std::filesystem::create_directories(cfg);
+  qputenv("XDG_CONFIG_HOME", cfg.c_str());
+  int test_argc     = 1;
+  char test_argv0[] = "test";
+  char *test_argv[] = {test_argv0, nullptr};
+  QApplication app(test_argc, test_argv);
+  QCoreApplication::setOrganizationName("GameModManager");
+  QCoreApplication::setApplicationName("GameModManager");
+
+  ui::ModList model;
+  QVector<ui::ModEntry> entries;
+  for (const char *id : {"A", "B", "C"}) {
+    ui::ModEntry m;
+    m.id      = QString::fromLatin1(id);
+    m.name    = m.id;
+    m.enabled = true;
+    entries.append(m);
+  }
+  ui::ModEntry sep;
+  sep.id           = QStringLiteral("SEP");
+  sep.name         = QStringLiteral("SEP");
+  sep.is_separator = true;
+  entries.append(sep);
+  model.reset_with_order(entries);
+
+  const auto cell = [&model](const char *id, int column, int role) {
+    return model.data(model.index(row_with_id(model, id), column), role);
+  };
+  const auto order = [&model] {
+    QStringList ids;
+    for (const auto &m : model.mods())
+      ids << m.id;
+    return ids;
+  };
+
+  // The cell is editable - otherwise setData is never reached and the move
+  // below would be vacuously false for the wrong reason.
+  CHECK((model.flags(model.index(row_with_id(model, "A"), ui::ModList::Priority)) &
+         Qt::ItemIsEditable) != Qt::ItemFlags{});
+  CHECK(cell("A", ui::ModList::Priority, Qt::EditRole).toInt() == 0);
+
+  // The branch under test: A is at row 0, "move to priority 2" puts it last.
+  REQUIRE(model.setData(model.index(row_with_id(model, "A"), ui::ModList::Priority), 2,
+                        Qt::EditRole));
+  CHECK(order() == QStringList({"B", "C", "A", "SEP"}));
+  CHECK(cell("A", ui::ModList::Priority, Qt::EditRole).toInt() == 2);
+
+  // Refusals. Out of range, non-numeric, and a separator row all leave the
+  // order untouched. Without these the guard could be dead code and the
+  // check above would still pass.
+  CHECK(!model.setData(model.index(row_with_id(model, "A"), ui::ModList::Priority), 99,
+                       Qt::EditRole));
+  CHECK(!model.setData(model.index(row_with_id(model, "A"), ui::ModList::Priority), -1,
+                       Qt::EditRole));
+  CHECK(!model.setData(model.index(row_with_id(model, "A"), ui::ModList::Priority),
+                       QStringLiteral("not a number"), Qt::EditRole));
+  CHECK(!model.setData(model.index(row_with_id(model, "SEP"), ui::ModList::Priority), 0,
+                       Qt::EditRole));
+  CHECK(order() == QStringList({"B", "C", "A", "SEP"}));
+
+  // Unrelated churn stays green: another column still rejects the same edit
+  // role, and the game-native guard still holds for Priority.
+  CHECK(!model.setData(model.index(row_with_id(model, "A"), ui::ModList::Conflicts), 0,
+                       Qt::EditRole));
+  QVector<ui::ModEntry> with_native;
+  ui::ModEntry native;
+  native.id             = QStringLiteral("Sky.esm");
+  native.name           = QStringLiteral("Sky.esm");
+  native.is_game_native = true;
+  with_native.append(native);
+  for (const auto &e : entries)
+    with_native.append(e);
+  model.reset_with_order(with_native);
+  const int native_row = row_with_id(model, "Sky.esm");
+  CHECK((model.flags(model.index(native_row, ui::ModList::Priority)) &
+         Qt::ItemIsEditable) == Qt::ItemFlags{});
+  const QStringList before_native_edit = order();
+  CHECK(
+      !model.setData(model.index(native_row, ui::ModList::Priority), 0, Qt::EditRole));
+  CHECK(order() == before_native_edit);
+
+  std::filesystem::remove_all(cfg);
+}
