@@ -31,30 +31,47 @@ never a `✅` - it is `🚀` if we do it better, or `❌`/`⏳` if we do not hav
 
 Everything in backticks is a **pointer**, and a pointer must resolve:
 
-- The **MO2 column** resolves against the vendored MO2 tree at
-  `../../references/` (modorganizer plus its plugin repos).
-- **Every other column** resolves against this repo.
+- **Every GMM-side pointer** - the feature column, the GMM column, the status
+  column - resolves against this repo, and `scripts/check_featuremap.py`
+  checks all of them.
+- The **MO2 column is not machine-checked.** It cites MO2's own sources and MO2
+  is not a dependency of this repo, so there is nothing here to resolve it
+  against. Those cells are a carry, and a `✔` on one is a record of a past
+  verification, not something this checkout can repeat.
 - A pointer that names a **file** must be a file that exists. A pointer that
   names a **symbol** (`Settings::useSplash`, `profile.getActiveMods`) must be an
-  identifier that appears in that tree.
+  identifier that appears in the tree it cites.
 - A **runtime data file** (`initweaks.ini`, `plugins.txt`) and a **binary**
   (`usvfs_x64.dll`, `conhost.exe`) are not source and are prose. Point at the
   code that reads or writes them instead - that is where the claim is.
 - The MO2 column cites MO2 and the GMM column cites GMM. An MO2 file quoted in
   the GMM column is a column mistake, not evidence.
 
-**Verification** (second token in Status): `✔` re-verified against the vendored
-MO2 source and the live `src/` tree; `·` carried over unverified, a lead not a
+**Verification** (second token in Status): `✔` re-verified against the cited
+source and the live `src/` tree; `·` carried over unverified, a lead not a
 finding. A `✔` means the row was checked, not that the feature is complete.
 **A pointer that does not resolve cannot carry `✔`** - there is nothing behind
 the tick to have checked.
 
-**MO2's uibase is not vendored here.** `references/` has modorganizer, its game
-and installer plugin repos and the usvfs sources; it does **not** have
-bsplugins' uibase (`taskdialog.ui`, `textviewer.cpp`, `sortabletreewidget.cpp`,
-`eventfilter.cpp`, `nxmurl.cpp`, ...). A row citing uibase names real MO2 code
-that this checkout cannot resolve, so such a row is `·` and its pointer stays in
-the baseline until the tree is vendored. That is a known gap, not a fabrication.
+**The checker is a docs tool, not a test.** It is deliberately outside
+`tests/` and outside the ctest suite: a markdown progress tracker is read by
+agents and humans, it is not consumed by any program, and it must never put a
+sibling checkout into this repo's build graph. Run it deliberately:
+
+```
+python3 scripts/check_featuremap.py            # check
+python3 scripts/check_featuremap.py --update   # rewrite the ratchet baseline
+```
+
+It needs only this repository. A new GMM-side pointer that resolves nowhere is
+a failure; one that used not to resolve and now does is a `RESOLVED` report and
+belongs out of `scripts/featuremap_baseline.txt`.
+
+**MO2's uibase was never vendored here.** The sibling `references/` tree has
+modorganizer, its game and installer plugin repos and the usvfs sources; it does
+**not** have bsplugins' uibase (`taskdialog.ui`, `textviewer.cpp`,
+`sortabletreewidget.cpp`, `eventfilter.cpp`, `nxmurl.cpp`, ...). A row citing
+uibase names real MO2 code, and it is a lead, not a fabrication.
 
 `[win]` = blocked by the standing decision not to write Windows code until MO2
 parity. Excluded from the parity denominator.
@@ -154,7 +171,7 @@ port - their cited GMM symbol names were invented, the features are not.
 | ERROR_ACCESS_DENIED (AV blocking) | ✅ `spawn.cpp:145` (Win32 `DWORD`) | ⏳ planned port - Workspace-udm5 (prior cite invented) | ⏳ ✔ [win] |
 | ERROR_FILE_NOT_FOUND (exe missing) | ✅ `spawn.cpp:150` (Win32 `DWORD`) | ⏳ planned port - Workspace-udm5; portable half ships | ⏳ ✔ [win] |
 | ERROR_DIRECTORY (bad cwd) | ✅ `spawn.cpp:153` (Win32 `DWORD`) | ⏳ planned port - Workspace-udm5 (prior cite invented) | ⏳ ✔ [win] |
-| ERROR_ELEVATION_REQUIRED (admin restart) | ✅ `confirmRestartAsAdmin` `spawn.cpp:250` | 🚫 Linux has no elevation prompt - Workspace-9z66 | 🚫 ✔ [win] |
+| ERROR_ELEVATION_REQUIRED (admin restart) | ✅ `spawn::dialogs::confirmRestartAsAdmin()` `spawn.cpp:250` | ⚠️ pkexec (polkit) raises the desktop privilege prompt and wraps argv, but nothing detects the error or restarts - `plan_elevation()` `elevation.cpp:166` | ⚠️ · [win] |
 | makeDetails (owner, ACL, DLL presence) | ✅ `spawn.cpp:66-134` (ACL, USVFS dll probe) | ⚠️ portable half only: exec path in details pane - `launch_controller.cpp:120` | ⚠️ ✔ |
 | Blacklist warning dialog | ✅ `confirmBlacklisted` `spawn.cpp:361` | ⏳ blacklist is a VFS directive - Workspace-av1y | ⏳ ✔ [win] |
 | Crash dump type selection | ✅ `CrashDumpsType` `usvfsconnector.cpp:106` (Win32 minidump flavours) | ⚠️ no reader; handler writes one fixed backtrace - `settings.cpp:567` | ⚠️ ✔ |
@@ -179,7 +196,7 @@ port - their cited GMM symbol names were invented, the features are not.
 | Windows error formatting | ✅ `MOShared::windows_error` exception | 🚫 | 🚫 ✔ [win] |
 | Windows compatibility mode detection | ✅ `WindowsInfo::compatibilityMode()` `envwindows.cpp` | 🚫 | 🚫 ✔ [win] |
 | Windows version info collection | ✅ `WindowsInfo` (BuildLab, UBR) | 🚫 | 🚫 ✔ [win] |
-| Process elevation detection | ✅ `WindowsInfo::isElevated()` | ⚠️ declared and overridden, no caller - `platform.h:132` | ⚠️ ✔ |
+| Process elevation detection | ✅ `WindowsInfo::isElevated()` | ⚠️ overridden on all 3, only caller is Windows `symlinks_available()` - `platform.h:171` | ⚠️ ✔ |
 | Module detection and version info | ✅ `env::Module` `envmodule.h` | 🚫 | 🚫 ✔ [win] |
 | Process enumeration and tree | ✅ `env::Process` `envmodule.h` | 🚫 | 🚫 ✔ [win] |
 | DLL load notification (LdrRegisterDllNotification) | ✅ `Environment::onModuleLoaded()` | 🚫 | 🚫 ✔ [win] |
@@ -1251,7 +1268,7 @@ app can never end up unreachable - see `tray_decision.h:66`.
 
 | Feature | MO2 | GMM | Status |
 |---------|-----|-----|--------|
-| Windows (native) | ✅ | ✅ `home_dir`/`temp_dir` + windows_platform impl - `platform.h:141` | ✅ · |
+| Windows (native) | ✅ | ✅ `home_dir`/`temp_dir` + windows_platform impl - `platform.h:180` | ✅ · |
 | Windows (MSVC compile) | ✅ | ✅ `build-windows.ps1` (MSVC toolchain checks) | ✅ · |
 | Linux (native) | ❌ | 🚀 full Linux support - `linux_platform.h:23` | 🚀 · |
 | Linux (OverlayFS) | ❌ | 🚀 `OverlayFsLauncher` - `overlay_launcher.h:14` | 🚀 · |
@@ -1259,15 +1276,15 @@ app can never end up unreachable - see `tray_decision.h:66`.
 | Linux (subreaper) | ❌ | 🚀 `PR_SET_CHILD_SUBREAPER` - `launcher.cpp:193` | 🚀 · |
 | Linux (Proton/Wine) | ❌ | 🚀 `ProtonRuntime` - `runtime.h:45` | 🚀 · |
 | macOS | ❌ | ⚠️ stub `Platform` impls - `macos_platform.h:30` | ⚠️ · |
-| Platform abstraction (XDG, Steam, Proton) | ❌ | 🚀 `Platform` base class (home_dir, temp_dir) - `platform.h:141` | 🚀 · |
+| Platform abstraction (XDG, Steam, Proton) | ❌ | 🚀 `Platform` base class (home_dir, temp_dir) - `platform.h:180` | 🚀 · |
 | PathResolver (canonical paths) | ❌ | 🚀 `PathResolver` + `PathResolverRegistry` - `path_resolver.h:34` | 🚀 · |
 | Keyring (OS-backed + file fallback) | ❌ | 🚀 `Keyring` + `FileKeyring` (XOR+base64) - `keyring.h:11` | 🚀 · |
 | Thread priority (low) | ❌ | 🚀 `set_low_priority()` - `thread_priority.h:16` | 🚀 · |
 | Headless launcher (CLI) | ❌ | 🚀 `cli::HeadlessLauncher` + `Config` - `headless_launcher.h:14` | 🚀 · |
 | Proton version discovery | ❌ | 🚀 `find_proton()` / `enumerate_proton_versions()` - `proton_tools.h:37` | 🚀 · |
-| Wine binary discovery | ❌ | 🚀 `find_wine()` - `linux_platform.cpp:490` | 🚀 · |
-| Admin elevation check | ❌ | 🚀 `is_elevated()` on all 3 platforms - `platform.h:132` | 🚀 · |
-| Symlink/junction capability check | ❌ | 🚀 `symlinks_available()` / `junctions_available()` - `platform.h:135` | 🚀 · |
+| Wine binary discovery | ❌ | 🚀 `find_wine()` - `linux_platform.cpp:496` | 🚀 · |
+| Admin elevation check | ❌ | 🚀 `is_elevated()` on all 3 platforms - `platform.h:171` | 🚀 · |
+| Symlink/junction capability check | ❌ | 🚀 `symlinks_available()` / `junctions_available()` - `platform.h:174` | 🚀 · |
 | Environment variable management (get/set/path) | ✅ `env::get()`, `env::set()`, `env::path()` | ❌ | ❌ · |
 
 ## 39. Theme System
@@ -1404,7 +1421,7 @@ column.
 |---------|---|---|---|---|---|---|---|
 | 1. Virtual Filesystem | 5 | 2 | 4 | 1 | 0 | 5 | 5 |
 | 2. Launch Pipeline | 6 | 5 | 5 | 14 | 0 | 2 | 17 |
-| 3. Error Handling & Diagnostics | 8 | 9 | 0 | 0 | 28 | 11 | 35 |
+| 3. Error Handling & Diagnostics | 8 | 10 | 0 | 0 | 27 | 11 | 35 |
 | 4. Settings & Configuration | 29 | 28 | 6 | 1 | 12 | 22 | 0 |
 | 5. Executable Management | 12 | 4 | 4 | 7 | 0 | 0 | 0 |
 | 6. Mod Management | 24 | 5 | 9 | 8 | 0 | 0 | 1 |
@@ -1453,21 +1470,21 @@ column.
 | 49. CLI Help Grammar | 0 | 1 | 0 | 1 | 0 | 0 | 0 |
 | 50. My Games Resolution | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
 | 51. Conflict Scan Refresh | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
-| **TOTAL** | **382** | **165** | **178** | **224** | **53** | **41** | **62** |
+| **TOTAL** | **382** | **166** | **178** | **224** | **52** | **41** | **62** |
 
 ### The arithmetic
 
 ```
 rows in file                          1043
-scored rows (ok + part + miss)         771
+scored rows (ok + part + miss)         772
 
-MO2 parity        ok   / scored        382 /  771  = 49.5%
-partial           part / scored        165 /  771  = 21.4%
-missing           miss / scored        224 /  771  = 29.1%
+MO2 parity        ok   / scored        382 /  772  = 49.5%
+partial           part / scored        166 /  772  = 21.5%
+missing           miss / scored        224 /  772  = 29.0%
 GMM-exclusive     surp / all rows      178 / 1043  = 17.1%   (not scored)
 ```
 
-**Parity is 382 / 771 = 49.5%.** 224 rows are outright missing and 165 partial.
+**Parity is 382 / 772 = 49.5%.** 224 rows are outright missing and 166 partial.
 The largest untouched surfaces are **44. Tutorial** and **46. Notifications /
 Problems** (zero matched rows), then **16. Nexus** and **15. Downloads**, which
 carry the most missing rows in absolute terms.
@@ -1503,6 +1520,31 @@ the numerator and the denominator both gained the same row. Nothing was
 reclassified out of scoring to buy the number. The other thirteen status moves
 were `❌` to `✅` or `⚠️`, all scored.
 
+**This pass corrected the elevation row, and it was wrong in both cells.** It
+read `🚫 Linux has no elevation prompt - Workspace-9z66`, which is false on its
+face: `src/engine/deploy/launch/elevation.{h,cpp}` implements the platform's own
+privilege prompt, `pkexec` (polkit) on Linux and `osascript` on macOS, and it is
+wired end to end - the "Run with elevated privileges" combo on the executables
+entry persists an elevation string, `launch_controller` gates on
+`elevation_supported()` from the UI thread so the desktop authorisation dialog
+can actually be raised, and `plan_elevation()` rewrites the argv in
+`launcher.cpp`. A game launched through Wine/Proton, or through the OverlayFS
+path, is refused with a stated reason rather than launched unelevated. Only the
+Windows UAC branch is unimplemented, and `elevation_supported()` says so.
+
+What is genuinely missing is the other half of MO2's feature: nothing detects
+`ERROR_ELEVATION_REQUIRED` and nothing restarts the game. So the row is `⚠️`,
+not `🚫` and not `✅`: a real mechanism, wired and reachable, doing the
+elevation but not the detect-and-restart. `[win]` stays, because the remainder
+is Windows-shaped and held off by the standing decision. Scored rows go 771 to
+772 and the numerator does not move, so **382 / 772 = 49.5%**. The percentage is
+unchanged because the correction added a partial, not a win.
+
+The row's MO2 cell was normalised to `spawn::dialogs::confirmRestartAsAdmin()`
+to match the sibling `Spawn error: confirmRestartAsAdmin` row, and its `✔` was
+dropped to `·`: with the MO2 column unresolvable here, no claim in it can be
+re-verified in this checkout.
+
 **4. Settings** was re-verified row by row and is no longer a missing-row
 surface: 57 `❌` became 1. An audit of every `Settings` getter followed: each
 one whose only reader was the widget that writes it is either wired to a
@@ -1514,14 +1556,22 @@ completions - a missing column, a missing link - not unread settings - and 24
 
 ### Confidence
 
-318 of 1043 rows carry `✔` (both sides re-read); the rest carry `·` and are
-leads, not findings. The `✔` rows concentrate in sections 3, 4, 15, 21, 18 and
-30. Section 45's `TaskDialog` row is a stale `❌` corrected here; uibase's
-`taskdialog.ui` is not vendored under `references/`, so its MO2 half is still
-`·`.
+317 of 1043 rows carry `✔` (both sides re-read at the time); the rest carry `·`
+and are leads, not findings. The `✔` rows concentrate in sections 3, 4, 15, 21,
+18 and 30. Section 45's `TaskDialog` row is a stale `❌` corrected here; uibase's
+`taskdialog.ui` was never vendored, so its MO2 half is still `·`.
 
-**16 pointers still do not resolve**. All 16 are honest gaps, not
-rot: 14 name real MO2 uibase files that `references/` does not vendor, and 2
-name a build output (`usvfs_x64.dll`) and a libbsparse class (`BSAExtractor`)
-that are not in any tree here. Every one of those rows carries `·`. When
-uibase is vendored the 14 resolve.
+**Every GMM-side pointer in this file resolves.** `scripts/check_featuremap.py`
+resolves all 1043 rows against this tree and finds zero unresolvable GMM-side
+pointers, so `scripts/featuremap_baseline.txt` is empty. That is the whole
+honest scope of the check: the MO2 column cites a tree this repo does not
+depend on and cannot check, and rows whose MO2 half cannot be confirmed here
+carry `·`.
+
+**A checker that only checks half a map misses half the fabrications.** The one
+pointer this pass found fabricated, `confirmRestartAsAdmin` `spawn.cpp:250`,
+sits in the **MO2 column** - the column that cannot be resolved here. Dropping
+the MO2 resolution removed the `references/` dependency and, with it, the
+ability to catch that class of lie. The ratchet below can only fail on a GMM
+pointer; an invented MO2 pointer is now a job for a reader, and a reader is
+what `·` is for.
