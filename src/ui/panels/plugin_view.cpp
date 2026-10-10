@@ -14,7 +14,6 @@
 #include <QHeaderView>
 #include <QIcon>
 #include <QLCDNumber>
-#include <QLineEdit>
 #include <QList>
 #include <QKeyEvent>
 #include <QMouseEvent>
@@ -23,7 +22,6 @@
 #include <QPushButton>
 #include <QRect>
 #include <QSet>
-#include <QShortcut>
 #include <QShowEvent>
 #include <QSize>
 #include <QStyle>
@@ -654,30 +652,19 @@ PluginView::PluginView(QWidget *parent) : QWidget(parent) {
   header->addWidget(counter_display_);
   layout->addLayout(header);
 
-  // MO2's espFilterEdit, which PluginListView owns as `ui.filter` and drives
-  // through PluginListSortProxy::updateFilter (pluginlistview.cpp:259-262).
-  filter_edit_ = new QLineEdit(this);
-  filter_edit_->setObjectName("pluginFilterEdit");
-  filter_edit_->setPlaceholderText(tr("Filter plugins..."));
-  filter_edit_->setClearButtonEnabled(true);
-  filter_edit_->setToolTip(tr("Show only plugin files whose name contains this text."));
-  layout->addWidget(filter_edit_);
-
   layout->addWidget(table_);
 
-  connect(filter_edit_, &QLineEdit::textChanged, this, &PluginView::apply_filter);
-  // MO2 binds Ctrl+F on the plugin list to the same filter box.
-  auto *find_shortcut = new QShortcut(QKeySequence::Find, this);
-  find_shortcut->setContext(Qt::WidgetWithChildrenShortcut);
-  connect(find_shortcut, &QShortcut::activated, this, [this]() {
-    filter_edit_->setFocus(Qt::ShortcutFocusReason);
-    filter_edit_->selectAll();
-  });
+  // No filter input here: the Plugins tab is filtered by the shared
+  // RightFilterBar below the tab bar, the same bar every other tab uses.
+  // Ctrl+F and Escape reach it through MainWindow's pane-scoped shortcut pair
+  // (main_window.cpp:407-408), which is the pair MO2's setFilterShortcuts
+  // installs for the plugin list too (mainwindow.cpp:464-466).
 
   refresh_counters();
 }
 
 void PluginView::apply_filter(const QString &text) {
+  filter_text_         = text;
   const QString needle = text.trimmed();
   for (int i = 0; i < table_->rowCount(); ++i) {
     if (static_cast<size_t>(i) >= names_.size())
@@ -836,7 +823,7 @@ void PluginView::set_plugins(const std::vector<engine::GamePlugin> &plugins) {
   relayout_flag_rows();
   // A rebuild starts every row visible, so an active filter has to be
   // re-applied or a Refresh would silently show the whole list again.
-  apply_filter(filter_edit_ ? filter_edit_->text() : QString());
+  apply_filter(filter_text_);
 }
 
 void PluginView::relayout_flag_rows() {

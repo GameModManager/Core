@@ -50,10 +50,6 @@ void RightFilterBar::clear_filter() {
   filter_edit_->clear();
 }
 
-bool RightFilterBar::filter_has_focus() const {
-  return filter_edit_->hasFocus();
-}
-
 void RightFilterBar::apply_to(QTableWidget *table) const {
   if (!table)
     return;

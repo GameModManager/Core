@@ -34,10 +34,13 @@
 // verified manually.
 //
 // Hermetic: offscreen platform, throwaway XDG_CONFIG_HOME, no network.
+#include "engine/game/registry/game_capabilities.h"
 #include "ui/panels/tab_panels.h"
 #include "ui/settings/settings.h"
 #include "ui/theme/icon_manager.h"
 #include "ui/widgets/mod_table_view.h"
+#include "ui/widgets/right_filter_bar.h"
+#include "ui/widgets/right_panel.h"
 
 #include <QAction>
 #include <QApplication>
@@ -1274,6 +1277,12 @@ TEST_CASE("plugins tab double-click targets the owning mod", "[ui][dblclick]") {
 // the plugin table: rows are HIDDEN, not removed, so the load order and every
 // enable state survive, and the counter reports the active count of what is
 // still visible (pluginlistview.cpp:86, :165).
+//
+// Driven through the REAL RightPanel and its shared RightFilterBar, not a
+// stand-in: the Plugins tab owns no filter input of its own, so the only honest
+// check is that typing in the bar every other tab uses actually reaches this
+// table. A copy of the old per-tab input would pass a hand-built stand-in and
+// still leave the shipped wiring untouched.
 TEST_CASE("plugins tab filter hides non-matching rows and recounts", "[ui][filter]") {
   qputenv("QT_QPA_PLATFORM", "offscreen");
   const std::filesystem::path cfg = "/tmp/gmm_plugins_filter/config";
@@ -1288,6 +1297,22 @@ TEST_CASE("plugins tab filter hides non-matching rows and recounts", "[ui][filte
   QCoreApplication::setApplicationName("GameModManager");
   engine::IconManager::instance().discover_packs(GMM_TEST_RESOURCES_DIR);
 
+  engine::GameCapabilities caps;
+  engine::CapabilityInfo info;
+  info.game_id      = "filtergame";
+  info.capability   = "plugins";
+  info.display_name = "Plugins";
+  caps.register_capability(info);
+
+  ui::RightPanel panel;
+  panel.set_capabilities(&caps);
+  panel.set_game("filtergame");
+  panel.resize(600, 300);
+  panel.show();
+  auto *tab = panel.ensure_plugins_tab();
+  check(tab != nullptr, "plugins tab builds");
+  panel.show_plugins_tab();
+
   engine::GamePlugin a;
   a.name    = "AlphaMod.esm";
   a.enabled = true;
@@ -1298,17 +1323,22 @@ TEST_CASE("plugins tab filter hides non-matching rows and recounts", "[ui][filte
   c.name    = "Other.esp";
   c.enabled = true;
 
-  TestPluginsTab tab;
-  auto *table = tab.table();
-  tab.resize(600, 300);
-  tab.show();
-  tab.set_plugins({a, b, c});
+  auto *table = tab->table();
+  tab->set_plugins({a, b, c});
   QApplication::processEvents();
 
-  auto *edit    = tab.findChild<QLineEdit *>("pluginFilterEdit");
-  auto *counter = tab.findChild<QLCDNumber *>("mo2CounterLabel");
-  check(edit != nullptr, "plugin filter edit present");
+  // The bar is shared: one RightFilterBar for the whole right panel, sitting
+  // below the tab bar, and it is the only filter input the panel has.
+  auto *bar = panel.filter_bar();
+  check(bar != nullptr, "the shared filter bar exists");
+  check(bar->findChildren<ui::RightFilterBar *>().empty(),
+        "the Plugins tab does NOT add a second bar of its own");
+  auto *edit    = bar->findChild<QLineEdit *>();
+  auto *counter = tab->findChild<QLCDNumber *>("mo2CounterLabel");
+  check(edit != nullptr, "the shared bar carries the filter input");
   check(counter != nullptr, "MO2 counter label present");
+  check(tab->findChild<QLineEdit *>() == nullptr,
+        "no filter input sits inside the Plugins tab itself");
 
   const int alpha_row = row_with_name(table, "AlphaMod.esm");
   const int other_row = row_with_name(table, "Other.esp");
@@ -1324,6 +1354,23 @@ TEST_CASE("plugins tab filter hides non-matching rows and recounts", "[ui][filte
   check(!table->isRowHidden(alpha_row), "matching row stays visible");
   check(counter->intValue() == 2, "counter follows the filtered set");
 
+  // MO2's proxy matches the plugin NAME. Delta sits at Priority 3, so a filter
+  // of "3" is the discriminator: the generic all-column pass the other tabs use
+  // would keep Delta visible on its Priority text, MO2's name match hides it.
+  engine::GamePlugin d;
+  d.name     = "Delta.esp";
+  d.enabled  = false;
+  d.priority = 3;
+  tab->set_plugins({a, b, c, d});
+  QApplication::processEvents();
+  const int delta_row = row_with_name(table, "Delta.esp");
+  check(delta_row >= 0, "the fourth plugin row exists");
+  edit->setText(QStringLiteral("3"));
+  QApplication::processEvents();
+  check(table->isRowHidden(delta_row),
+        "the filter matches the plugin name, not the Priority column");
+  check(counter->intValue() == 0, "and the counter follows the name match");
+
   // Negative control, one attribute apart: a filter that matches NOTHING must
   // hide everything and drop the counter to 0. If the hide branch were dead
   // the counter above would still read 3 and that check would be the failure.
@@ -1334,14 +1381,31 @@ TEST_CASE("plugins tab filter hides non-matching rows and recounts", "[ui][filte
   check(counter->intValue() == 0, "counter reads 0 when nothing matches");
 
   // Unrelated churn stays green: clearing the filter restores every row, and
-  // the rows themselves were never removed.
+  // the rows themselves were never removed - so the load order is untouched.
   edit->clear();
   QApplication::processEvents();
-  check(table->rowCount() == 3, "filtering never removes rows");
+  check(table->rowCount() == 4, "filtering never removes rows");
   check(!table->isRowHidden(alpha_row) && !table->isRowHidden(other_row),
         "clearing the filter shows every row again");
   check(counter->intValue() == 3, "counter restored");
+  // Load order: row N held the same plugin before the filter ran and after it
+  // was cleared. Hidden rows keep their slot; a filter that removed rows would
+  // renumber these and fail here.
+  check(row_with_name(table, "AlphaMod.esm") == alpha_row &&
+            row_with_name(table, "AlphaText.esp") == alpha_row + 1 &&
+            row_with_name(table, "Other.esp") == alpha_row + 2 &&
+            row_with_name(table, "Delta.esp") == alpha_row + 3,
+        "filtering never renumbers rows, so the load order is untouched");
 
-  tab.hide();
+  // A Refresh rebuilds every row, so the bar's text has to be re-applied or the
+  // list silently comes back unfiltered while the bar still shows the text.
+  edit->setText(QStringLiteral("Alpha"));
+  QApplication::processEvents();
+  tab->set_plugins({a, b, c, d});
+  QApplication::processEvents();
+  check(table->isRowHidden(row_with_name(table, "Delta.esp")),
+        "a Refresh keeps the shared bar's filter applied");
+
+  panel.hide();
   std::filesystem::remove_all("/tmp/gmm_plugins_filter");
 }
