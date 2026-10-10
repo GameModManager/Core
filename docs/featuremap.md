@@ -528,7 +528,7 @@ port - their cited GMM symbol names were invented, the features are not.
 | Plugin list sort proxy | ✅ `pluginlistsortproxy.h` (column filtering, custom sorting) | ❌ | ❌ · |
 | Plugin list highlight masters | ✅ `PluginList::highlightMasters()` | ❌ | ❌ · |
 | Plugin list ChangeBracket (RAII layout notifications) | ✅ `PluginList::ChangeBracket` | ❌ | ❌ · |
-| Plugin list view (filter, counter, keyboard nav) | ✅ `pluginlistview.h/cpp` (Space, Ctrl+Up/Down, Ctrl+Enter, Ctrl+F/Esc) | ✅ name filter hides non-matching rows (counter recounts visible actives), counter, keyboard nav (Space, Enter, Ctrl+Up/Down, plain Up/Down), Ctrl+F focuses the filter - `plugin_view.cpp:680` | ✅ ✔ |
+| Plugin list view (filter, counter, keyboard nav) | ✅ `pluginlistview.h/cpp` (Space, Ctrl+Up/Down, Ctrl+Enter, Ctrl+F/Esc) | ✅ name filter driven from the shared right-panel bar hides non-matching rows (counter recounts visible actives), counter, keyboard nav (Space, Enter, Ctrl+Up/Down, plain Up/Down); Ctrl+F focuses that bar and Esc clears it, one pane-scoped pair - `plugin_view.cpp:666`, `right_panel.cpp:174`, `main_window.cpp:407` | ✅ ✔ |
 | Plugin list context menu | ✅ `pluginlistcontextmenu.cpp:24-112` (9 groups incl. Send to, Open Origin) | ✅ every group: Enable all, Disable all, Enable/Disable selected, Send to (Top/Bottom/Priority), Lock/Unlock load order, Open Origin in Explorer, Open Origin Info - `plugin_context_menu.cpp:20` | ✅ ✔ |
 | Plugin list model (metadata, type flags) | ✅ `pluginlist.h` (form/header version, author, description) | ✅ all parsed and rendered, in the tooltip not columns - `plugin_info.h:78` | ✅ ✔ |
 | U043 BSA enabled-in-INI warning | ✅ `mainwindow.cpp:2071` | ❌ | ❌ · |
@@ -804,7 +804,7 @@ port - their cited GMM symbol names were invented, the features are not.
 | U137 Collapsible Separators settings group (sort-direction, highlights, icon toggles, per-profile) | ✅ `settingsdialog.ui:653-830` | ⚠️ 12 keys shipped, plugin-highlight nuance unproven - `settings.h:35` | ⚠️ · |
 | U163 Filter panel controls (Clear/Edit, And/Or radios, filters tree) | ✅ `mainwindow.ui:137-200`, `:505` | ❌ | ❌ · |
 | U164 openFolderMenu / listOptionsBtn / displayCategoriesBtn tooltips+roles | ✅ `mainwindow.ui:283-460` | ⚠️ folders menu only - `profile_bar.h:14` | ⚠️ · |
-| U165 LCD counters ("Active:" activeMods/activePlugins QLCDNumber) | ✅ `mainwindow.ui:354`, `:880` | ✅ mod-list counter carries MO2's "Active:" label - `mod_list_controller.cpp:711` | ✅ ✔ |
+| U165 LCD counters ("Active:" activeMods/activePlugins QLCDNumber) | ✅ `mainwindow.ui:354`, `:880` | ⚠️ the mod-list counter carries MO2's "Active:" label; the Plugins-tab counter is still a bare number (MO2 labels activePlugins too) - `mod_list_controller.cpp:711`, `plugin_view.cpp:651` | ⚠️ ✔ |
 | U232 Escape/Filter shortcut scope = WidgetWithChildren, autoRepeat off | ✅ `mainwindow.cpp:217-231` | ✅ both, one pair per pane - `main_window.cpp:376` | ✅ ✔ |
 | U280 csvbuilder for exportModListCSV | ✅ `csvbuilder.cpp` | ❌ | ❌ · |
 
@@ -1394,7 +1394,7 @@ column.
 | 15. Download Management | 22 | 15 | 6 | 18 | 10 | 0 | 0 |
 | 16. Nexus Integration | 8 | 10 | 2 | 20 | 0 | 0 | 0 |
 | 17. Source Providers | 4 | 0 | 7 | 1 | 0 | 0 | 0 |
-| 18. Mod List Features | 26 | 11 | 3 | 11 | 0 | 0 | 0 |
+| 18. Mod List Features | 25 | 12 | 3 | 11 | 0 | 0 | 0 |
 | 19. Mod Context Menu | 16 | 5 | 0 | 11 | 0 | 0 | 0 |
 | 20. Plugin Context Menu | 10 | 0 | 0 | 2 | 0 | 0 | 0 |
 | 21. Archive & Installation | 10 | 3 | 4 | 2 | 0 | 0 | 0 |
@@ -1428,7 +1428,7 @@ column.
 | 49. CLI Help Grammar | 0 | 1 | 0 | 1 | 0 | 0 | 0 |
 | 50. My Games Resolution | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
 | 51. Conflict Scan Refresh | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
-| **TOTAL** | **366** | **165** | **177** | **238** | **54** | **43** | **62** |
+| **TOTAL** | **365** | **166** | **177** | **238** | **54** | **43** | **62** |
 
 ### The arithmetic
 
@@ -1436,13 +1436,13 @@ column.
 rows in file                          1043
 scored rows (ok + part + miss)         769
 
-MO2 parity        ok   / scored        366 /  769  = 47.6%
-partial           part / scored        165 /  769  = 21.5%
-missing           miss / scored        238 /  769  = 31.0%
+MO2 parity        ok   / scored        365 /  769  = 47.5%
+partial           part / scored        166 /  769  = 21.6%
+missing           miss / scored        238 /  769  = 30.9%
 GMM-exclusive     surp / all rows      177 / 1043  = 17.0%   (not scored)
 ```
 
-**Parity is 366 / 769 = 47.6%.** 238 rows are outright missing and 165 partial.
+**Parity is 365 / 769 = 47.5%.** 238 rows are outright missing and 166 partial.
 The largest untouched surfaces are **44. Tutorial** and **46. Notifications /
 Problems** (zero matched rows), then **16. Nexus** and **15. Downloads**, which
 carry the most missing rows in absolute terms.
