@@ -1062,17 +1062,6 @@ void DownloadsTab::reapply_installed_filter() {
   apply_installed_filter();
 }
 
-void DownloadsTab::apply_hidden_rows() {
-  apply_installed_filter();
-}
-
-void DownloadsTab::apply_batch(DownloadBatch batch, bool hide) {
-  if (hide)
-    hide_batch(batch, /*unhide=*/false);
-  else
-    remove_batch(batch);
-}
-
 void DownloadsTab::hide_batch(DownloadBatch batch, bool unhide) {
   // Copy the ids out first: the loop below only writes a flag, but the
   // manifest round-trip that follows reads the whole map, and keeping the
