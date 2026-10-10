@@ -705,6 +705,11 @@ void ModListController::setup_mod_list(QVBoxLayout *left_layout) {
   // counter has whitespace in front of it instead of sitting flush against
   // Restore - the same placement the plugins-tab counter gets.
   count_row->addStretch(1);
+  // MO2 mainwindow.ui:326 pairs the "Active:" label with the activeMods
+  // QLCDNumber, the way mainwindow.ui:880 does for activePlugins. Without it
+  // the bare seven-segment number reads as the row count.
+  auto *mod_count_label = new QLabel(tr("Active:"), w_);
+  count_row->addWidget(mod_count_label);
   count_row->addWidget(w_->mod_count_enabled_);
 
   auto *mod_list_pane = new QWidget(w_);

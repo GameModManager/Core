@@ -19,6 +19,14 @@ class TaskDialog;
 void configure_delete_profile_dialog(TaskDialog &dlg, const QString &profile_name,
                                      const QString &profile_dir);
 
+// MO2 ProfilesDialog::on_removeProfileButton_clicked (profilesdialog.cpp:250-262)
+// asks a SECOND time, naming the exact folder, when the profile could not be
+// loaded as a Profile object. GMM's equivalent of "could not be loaded" is a
+// folder that is not a working profile: gone, or with no settings.ini (the
+// file ProfileManager::repair regenerates). Exposed for the dialog tests;
+// driving the modal Question itself is not possible offscreen.
+[[nodiscard]] bool profile_needs_broken_confirm(const std::filesystem::path &dir);
+
 // MO2's ProfilesDialog: list all profiles, create/copy/rename/delete, mark a
 // default (startup) profile, and edit per-profile settings (Local Saves,
 // Local Settings, Archive Invalidation). The engine stays Qt-free - this

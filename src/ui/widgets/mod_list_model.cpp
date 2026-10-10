@@ -22,6 +22,14 @@ static QString format_epoch_ts(qint64 ts) {
   return QDateTime::fromSecsSinceEpoch(ts).toString("yyyy-MM-dd HH:mm:ss");
 }
 
+// MO2 ModInfoRegular::canBeUpdated (modinforegular.cpp:675-682) is "this mod
+// carries a Nexus mod id", i.e. the source could be re-queried for a newer
+// version. The source-agnostic form of the same question: a mod that records
+// which site it came from AND an id on that site.
+static bool can_be_updated(const ModEntry &mod) {
+  return !mod.source_type.isEmpty() && !mod.source_id.isEmpty();
+}
+
 ModList::ModList(QObject *parent) : QAbstractTableModel(parent) {
   ensure_overwrite_present();
   ensure_merged_present();
@@ -368,6 +376,17 @@ QVariant ModList::data(const QModelIndex &index, int role) const {
     case SourceId:
       return mod.source_id;
     case Version:
+      // MO2 ModList::data (modlist.cpp:198-206): an empty version reads "?"
+      // when the mod can still be updated, so "no version yet" is visibly
+      // distinct from "no remote version to track". MO2's canBeUpdated is a
+      // Nexus mod id (modinforegular.cpp:675-682); the source-agnostic
+      // equivalent is a mod that came from a source we can re-query, i.e. a
+      // non-empty source_type with a source id behind it. A mod with no
+      // recorded version and no remote source has nothing to wait for, so the
+      // cell stays empty. The Edit role keeps the raw value so an inline edit
+      // never starts from a "?".
+      if (mod.version.isEmpty() && role != Qt::EditRole && can_be_updated(mod))
+        return QStringLiteral("?");
       return mod.version;
     case Installation:
       return mod.installation_ts > 0 ? format_epoch_ts(mod.installation_ts) : QString();

@@ -22,6 +22,8 @@
 
 #include "engine/game/detect/mod_scanner.h"
 #include "ui/theme/icon_manager.h"
+#include "ui/widgets/category_filter_panel.h"
+#include "ui/widgets/mod_filter_bar.h"
 
 namespace ui {
 
@@ -44,6 +46,81 @@ bool ModContextMenu::has_live_external_source(MainWindow *w, const ModEntry &m) 
 ModContextMenu::ModContextMenu(MainWindow *w, ModActions *actions)
     : w_(w), actions_(actions) {}
 
+void ModContextMenu::add_global_actions(QMenu &menu) {
+  // Create empty mod / Create separator (MO2 modlistcontextmenu.cpp:49-64).
+  menu.addAction(engine::IconManager::instance().resolve_icon("folder-new"),
+                 QObject::tr("Create Empty Mod"), w_, [this]() {
+                   actions_->create_empty_mod();
+                 });
+  menu.addAction(engine::IconManager::instance().resolve_icon("view-sort"),
+                 QObject::tr("Create Separator"), w_, [this]() {
+                   actions_->create_separator();
+                 });
+
+  // Collapse/Expand all (modlistcontextmenu.cpp:67-70), offered only when
+  // the list actually has separators - MO2 gates on hasCollapsibleSeparators().
+  bool any_folded   = false;
+  bool any_unfolded = false;
+  for (const auto &mod : w_->mod_model_->mods()) {
+    if (!mod.is_separator)
+      continue;
+    if (mod.folded)
+      any_folded = true;
+    else
+      any_unfolded = true;
+  }
+  menu.addSeparator();
+  auto *collapse_all = menu.addAction(QObject::tr("Collapse All Separators"), [this]() {
+    w_->mod_model_->set_all_separators_folded(true);
+  });
+  collapse_all->setEnabled(any_unfolded);
+  auto *expand_all = menu.addAction(QObject::tr("Expand All Separators"), [this]() {
+    w_->mod_model_->set_all_separators_folded(false);
+  });
+  expand_all->setEnabled(any_folded);
+
+  // Enable/Disable all (modlistcontextmenu.cpp:73-87). MO2 swaps in the
+  // "... matching mods" wording when a filter is active and acts on the
+  // filtered set. Reads the same four inputs
+  // ModListController::apply_mod_filter turns into per-row visibility; the
+  // row set itself is never taken from here, ModActions reads it back off
+  // the view, so only the wording depends on this predicate.
+  auto *panel    = w_->category_filter_panel_;
+  bool filtering = panel && (panel->has_active_filter() || panel->has_active_special());
+  auto *bar      = w_->filter_bar_;
+  if (bar && (!bar->filter_text().trimmed().isEmpty() ||
+              bar->current_group() != QLatin1String("All"))) {
+    filtering = true;
+  }
+  menu.addSeparator();
+  menu.addAction(engine::IconManager::instance().resolve_icon("dialog-ok"),
+                 filtering ? QObject::tr("Enable All Matching Mods")
+                           : QObject::tr("Enable All"),
+                 w_, [this]() {
+                   actions_->toggle_all_mods(true);
+                 });
+  menu.addAction(engine::IconManager::instance().resolve_icon("dialog-cancel"),
+                 filtering ? QObject::tr("Disable All Matching Mods")
+                           : QObject::tr("Disable All"),
+                 w_, [this]() {
+                   actions_->toggle_all_mods(false);
+                 });
+
+  // Refresh (modlistcontextmenu.cpp:96) - MO2's OrganizerCore::refresh.
+  menu.addSeparator();
+  auto reload = engine::IconManager::instance().resolve_icon("view-refresh",
+                                                             QStyle::SP_BrowserReload);
+  menu.addAction(reload, QObject::tr("Refresh"), w_, [this]() {
+    actions_->reload_mod_list();
+  });
+}
+
+void ModContextMenu::add_all_mods_menu(QMenu &parent) {
+  auto add       = engine::IconManager::instance().resolve_icon("list-add");
+  auto *all_mods = parent.addMenu(add, QObject::tr("All Mods"));
+  add_global_actions(*all_mods);
+}
+
 void ModContextMenu::set_on_data_mod_info(
     std::function<void(const QString &, int)> cb) {
   on_data_mod_info_cb_ = std::move(cb);
@@ -61,16 +138,33 @@ void ModContextMenu::setup_mod_list_context_menu() {
   QObject::connect(
       w_->mod_view_, &QWidget::customContextMenuRequested, w_,
       [this](const QPoint &pos) {
-        auto idx = w_->mod_view_->indexAt(pos);
-        if (!idx.isValid())
-          return;
-
-        int row = idx.row();
-        if (row < 0 || row >= w_->mod_model_->mods().size())
-          return;
-        const auto &entry = w_->mod_model_->mods()[row];
+        const auto global_pos = w_->mod_view_->viewport()->mapToGlobal(pos);
+        auto idx              = w_->mod_view_->indexAt(pos);
 
         QMenu menu;
+
+        if (!idx.isValid()) {
+          // A click that misses every row lands on the whole-list menu, the
+          // same menu MO2 installs on the view (modlistcontextmenu.cpp:24-29)
+          // and shows for a context-menu request with no model index.
+          add_global_actions(menu);
+          menu.exec(global_pos);
+          return;
+        }
+
+        int row = idx.row();
+        if (row < 0 || row >= w_->mod_model_->mods().size()) {
+          add_global_actions(menu);
+          menu.exec(global_pos);
+          return;
+        }
+        const auto &entry = w_->mod_model_->mods()[row];
+
+        // MO2 ModListContextMenu ctor (modlistcontextmenu.cpp:230-234): the
+        // whole-list menu is the first entry of EVERY row menu, whichever
+        // type the row is - it is added before the type dispatch.
+        add_all_mods_menu(menu);
+        menu.addSeparator();
 
         if (entry.is_overwrite) {
           // MO2 ModListContextMenu::addOverwriteActions. The move/sync/clear

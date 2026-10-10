@@ -51,6 +51,13 @@ public:
   void send_to_last_conflict(const QString &id);
   void priority_move_selected(int step);
   void toggle_selected_mods(bool enabled);
+  // MO2 ModListGlobalContextMenu "Enable all"/"Disable all"
+  // (modlistcontextmenu.cpp:73-87): every mod the mod list currently shows.
+  // With no filter that is every mod; with one it is the filtered set, read
+  // off the view's row visibility so there is no second copy of the filter.
+  void toggle_all_mods(bool enabled);
+  // MO2's global "Refresh" (modlistcontextmenu.cpp:96): re-read the mods dir.
+  void reload_mod_list();
   void toggle_root_override(const QList<int> &rows, bool on);
 
   // Mirror/backup for external mods (Workspace-0pi5). mirror_mod copies the
