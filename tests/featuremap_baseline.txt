@@ -1,0 +1,16 @@
+1:USVFS controller (dll loading)	usvfs_x64.dll
+6:BSA/archive extraction	BSAExtractor
+U190	textviewer.cpp:60-276
+U191	textviewer.cpp:173-192
+U192	finddialog.ui
+U250	textviewer.cpp
+U264	sortabletreewidget.cpp
+U267	taskdialog.ui
+U268	report.cpp
+U269	eventfilter.cpp
+U270	steamutility.cpp
+U271	versioning.cpp
+U274	pluginrequirements.cpp
+U275	imodrepositorybridge.cpp
+U276	nxmurl.cpp
+U277	executableinfo.cpp
