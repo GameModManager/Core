@@ -43,9 +43,6 @@ Everything in backticks is a **pointer**, and a pointer must resolve:
 - The MO2 column cites MO2 and the GMM column cites GMM. An MO2 file quoted in
   the GMM column is a column mistake, not evidence.
 
-`tests/featuremap_scan.py` enforces all of it in the suite. See
-[the guard](#the-guard).
-
 **Verification** (second token in Status): `✔` re-verified against the vendored
 MO2 source and the live `src/` tree; `·` carried over unverified, a lead not a
 finding. A `✔` means the row was checked, not that the feature is complete.
@@ -61,29 +58,6 @@ the baseline until the tree is vendored. That is a known gap, not a fabrication.
 
 `[win]` = blocked by the standing decision not to write Windows code until MO2
 parity. Excluded from the parity denominator.
-
----
-
-### The guard
-
-```bash
-python3 tests/featuremap_scan.py --doc docs/featuremap.md --repo . \
-    --mo2 ../../references --baseline tests/featuremap_baseline.txt
-```
-
-Runs as `featuremap_test` in the suite. It fails when a pointer resolves
-nowhere (new violation), when a pointer that used to be broken now resolves
-(the fix landed - drop it from the baseline), when a section cell, the TOTAL or
-the parity line disagrees with the rows, or when it parses **zero rows**: a
-guard that cannot see the file it guards must fail, never pass.
-
-After fixing a broken pointer, regenerate the baseline - the regenerated file is
-the review:
-
-```bash
-python3 tests/featuremap_scan.py --doc docs/featuremap.md --repo . \
-    --mo2 ../../references --baseline tests/featuremap_baseline.txt --update
-```
 
 ---
 
@@ -1521,16 +1495,13 @@ went `❌` to `🚀`: it was counted as missing, it is not missing, GMM colours
 the level tag per level where MO2 tints whole lines, and the formula excludes
 a GMM-exclusive capability from the denominator. That dropped scoring to 770.
 Then U226 went `🚫` to `✅`: its own cell read "already shipped" while its
-marker said "will not port", which is the cell-disagrees-with-its-row defect
-the guard now catches. A shipped feature is scored, so it came back, and
+marker said "will not port". A shipped feature is scored, so it came back, and
 scoring is 771 again.
 
 **381 / 770 = 49.5% became 382 / 771 = 49.5%.** The percentage did not move;
 the numerator and the denominator both gained the same row. Nothing was
 reclassified out of scoring to buy the number. The other thirteen status moves
 were `❌` to `✅` or `⚠️`, all scored.
-`featuremap_test` recounts all of this from the rows and fails if the table,
-the TOTAL or the lines above disagree.
 
 **4. Settings** was re-verified row by row and is no longer a missing-row
 surface: 57 `❌` became 1. An audit of every `Settings` getter followed: each
@@ -1549,10 +1520,8 @@ leads, not findings. The `✔` rows concentrate in sections 3, 4, 15, 21, 18 and
 `taskdialog.ui` is not vendored under `references/`, so its MO2 half is still
 `·`.
 
-**16 pointers still do not resolve** and are listed in
-`tests/featuremap_baseline.txt`, one line each. All 16 are honest gaps, not
+**16 pointers still do not resolve**. All 16 are honest gaps, not
 rot: 14 name real MO2 uibase files that `references/` does not vendor, and 2
 name a build output (`usvfs_x64.dll`) and a libbsparse class (`BSAExtractor`)
 that are not in any tree here. Every one of those rows carries `·`. When
-uibase is vendored the 14 resolve and the guard will fail until the baseline is
-regenerated, which is the point.
+uibase is vendored the 14 resolve.
