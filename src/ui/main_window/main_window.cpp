@@ -39,6 +39,7 @@
 #include "ui/widgets/console_panel.h"
 #include "ui/widgets/debug_window.h"
 #include "ui/widgets/exec_controls_bar.h"
+#include "ui/widgets/file_dialog_memory.h"
 #include "ui/widgets/game_path_banner.h"
 #include "ui/widgets/main_tab_container.h"
 #include "ui/widgets/main_toolbar.h"
@@ -340,6 +341,10 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
               // Connects the tab's signals (first sight of the new
               // instance) and populates it from the current model.
               mod_list_->refresh_plugins_tab();
+            } else if (cap == "archives") {
+              // The listing is derived from the plugin database, so it needs
+              // no wiring - only a first-show populate.
+              mod_list_->refresh_archives_tab();
             }
           });
 
@@ -463,8 +468,8 @@ void MainWindow::set_active_profile(
 }
 
 bool MainWindow::prompt_for_game_path() {
-  const QString dir =
-      QFileDialog::getExistingDirectory(this, tr("Choose game directory"));
+  const QString dir = FileDialogMemory::get_existing_directory(
+      "game-directory", this, tr("Choose game directory"), QString());
   if (dir.isEmpty() || current_instance_root_.empty())
     return false;
   // write_key read-modify-writes the whole file, so app-owned sections

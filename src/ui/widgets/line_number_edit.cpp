@@ -5,6 +5,7 @@
 #include <QPaintEvent>
 #include <QScrollBar>
 #include <QTextBlock>
+#include <QTextEdit>
 
 namespace ui {
 
@@ -39,8 +40,28 @@ LineNumberPlainTextEdit::LineNumberPlainTextEdit(QWidget *parent)
           &LineNumberPlainTextEdit::updateLineNumberAreaWidth);
   connect(this, &QPlainTextEdit::updateRequest, this,
           &LineNumberPlainTextEdit::updateLineNumberArea);
+  connect(this, &QPlainTextEdit::cursorPositionChanged, this,
+          &LineNumberPlainTextEdit::highlight_current_line);
 
+  highlight_current_line();
   updateLineNumberAreaWidth(0);
+}
+
+void LineNumberPlainTextEdit::highlight_current_line() {
+  // MO2 TextEditor::highlightCurrentLine (texteditor.cpp:13-14 connect, the
+  // body further down): the line under the caret is tinted, and only while
+  // the edit is writable. QPalette::AlternateBase rather than MO2's fixed
+  // yellow-lighter-160 so the tint follows the active KDE colour scheme.
+  QList<QTextEdit::ExtraSelection> selections;
+  if (!isReadOnly()) {
+    QTextEdit::ExtraSelection selection;
+    selection.format.setBackground(palette().color(QPalette::AlternateBase));
+    selection.format.setProperty(QTextFormat::FullWidthSelection, true);
+    selection.cursor = textCursor();
+    selection.cursor.clearSelection();
+    selections.append(selection);
+  }
+  setExtraSelections(selections);
 }
 
 int LineNumberPlainTextEdit::lineNumberAreaWidth() const {
