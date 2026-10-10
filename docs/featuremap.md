@@ -737,7 +737,7 @@ port - their cited GMM symbol names were invented, the features are not.
 | Download context menu | ✅ `downloadlistview.cpp:231-322` (incl. 7 batch Delete/Hide entries) | ⚠️ Show in Folder, Open on <source>, Remove, Un-Hide All + 3 Delete batches + 3 Hide batches - `downloads_tab.cpp:1342`; Query Info and Cancel still absent | ⚠️ ✔ |
 | U217 Downloads keyboard Enter/Delete state gating | ✅ `downloadlistview.cpp:326+` | ⚠️ `eventFilter` on the table gates by `download_shortcut_for`; Delete on a live download removes where MO2 cancels - `downloads_tab.cpp:1228` | ⚠️ ✔ |
 | U225 Downloads drag accepted only over downloadTab rect | ✅ `mainwindow.cpp:3947` | 🚫 accepts over the whole tab widget, a deliberate superset - `downloads_tab.cpp:261` | 🚫 ✔ |
-| U226 MoveAction -> TargetMoveAction coercion on drop | ✅ `mainwindow.cpp:4034-4044` | 🚫 already shipped - `downloads_tab.cpp:870` | 🚫 ✔ |
+| U226 MoveAction -> TargetMoveAction coercion on drop | ✅ `mainwindow.cpp:4034-4044` | ✅ already shipped - `downloads_tab.cpp:870` | ✅ ✔ |
 | U243 IDownloadManager API + downloadmanagerproxy requestDownload slot | ✅ `mainwindow.cpp:1576` | ❌ ABI-shaped, same v3 decision as the plugin-API rows | ❌ ✔ |
 | U279 ServerInfo per-server speed history + preferred-servers drag lists (NEXUS-LENS: genericize/provider-scope) | ✅ `serverinfo.cpp`, `settingsdialognexus.cpp:366` | 🚫 no mirror list, so nothing to rank or time | 🚫 ✔ |
 
@@ -1442,7 +1442,7 @@ column.
 | 12. Plugin Management | 29 | 6 | 3 | 13 | 0 | 0 | 0 |
 | 13. LOOT Integration | 10 | 2 | 1 | 7 | 0 | 0 | 0 |
 | 14. Profile Management | 29 | 5 | 3 | 4 | 0 | 0 | 0 |
-| 15. Download Management | 22 | 15 | 6 | 18 | 10 | 0 | 0 |
+| 15. Download Management | 23 | 15 | 6 | 18 | 9 | 0 | 0 |
 | 16. Nexus Integration | 8 | 10 | 2 | 20 | 0 | 0 | 0 |
 | 17. Source Providers | 4 | 0 | 7 | 1 | 0 | 0 | 0 |
 | 18. Mod List Features | 26 | 12 | 3 | 10 | 0 | 0 | 0 |
@@ -1479,21 +1479,21 @@ column.
 | 49. CLI Help Grammar | 0 | 1 | 0 | 1 | 0 | 0 | 0 |
 | 50. My Games Resolution | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
 | 51. Conflict Scan Refresh | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
-| **TOTAL** | **381** | **165** | **178** | **224** | **54** | **41** | **62** |
+| **TOTAL** | **382** | **165** | **178** | **224** | **53** | **41** | **62** |
 
 ### The arithmetic
 
 ```
 rows in file                          1043
-scored rows (ok + part + miss)         770
+scored rows (ok + part + miss)         771
 
-MO2 parity        ok   / scored        381 /  770  = 49.5%
-partial           part / scored        165 /  770  = 21.4%
-missing           miss / scored        224 /  770  = 29.1%
+MO2 parity        ok   / scored        382 /  771  = 49.5%
+partial           part / scored        165 /  771  = 21.4%
+missing           miss / scored        224 /  771  = 29.1%
 GMM-exclusive     surp / all rows      178 / 1043  = 17.1%   (not scored)
 ```
 
-**Parity is 381 / 770 = 49.5%.** 224 rows are outright missing and 165 partial.
+**Parity is 382 / 771 = 49.5%.** 224 rows are outright missing and 165 partial.
 The largest untouched surfaces are **44. Tutorial** and **46. Notifications /
 Problems** (zero matched rows), then **16. Nexus** and **15. Downloads**, which
 carry the most missing rows in absolute terms.
@@ -1515,13 +1515,20 @@ foreign mods (`mod_list_controller.cpp:4618`), custom browser
 (`web_link.cpp:46`), enable/disable and send-to-priority
 (`plugin_context_menu.cpp:42`, `:48`).
 
-**The scored denominator fell from 771 to 770, and that needs saying plainly:**
-the Log Highlighter row moved `❌` to `🚀`. It was counted as missing; it is
-not missing, GMM colours the level tag per level where MO2 tints whole lines,
-which is a GMM-exclusive capability and therefore out of the denominator by the
-formula at the top of this file. One row left scoring because the claim got
-better, not because it got hidden. The other eleven moves were `❌` to `✅` or
-`⚠️`, all scored, none of them shrinking the denominator.
+**The scored denominator moved 771 to 770 and back again, and that needs
+saying plainly rather than burying in a cell.** First the Log Highlighter row
+went `❌` to `🚀`: it was counted as missing, it is not missing, GMM colours
+the level tag per level where MO2 tints whole lines, and the formula excludes
+a GMM-exclusive capability from the denominator. That dropped scoring to 770.
+Then U226 went `🚫` to `✅`: its own cell read "already shipped" while its
+marker said "will not port", which is the cell-disagrees-with-its-row defect
+the guard now catches. A shipped feature is scored, so it came back, and
+scoring is 771 again.
+
+**381 / 770 = 49.5% became 382 / 771 = 49.5%.** The percentage did not move;
+the numerator and the denominator both gained the same row. Nothing was
+reclassified out of scoring to buy the number. The other thirteen status moves
+were `❌` to `✅` or `⚠️`, all scored.
 `featuremap_test` recounts all of this from the rows and fails if the table,
 the TOTAL or the lines above disagree.
 
