@@ -2,6 +2,7 @@
 
 #include <QColor>
 #include <QDateTime>
+#include <QList>
 #include <QMap>
 #include <QMessageBox>
 #include <QSettings>
@@ -336,6 +337,11 @@ public:
   void set_modinfo_window_geometry(const QByteArray &g);
   int modinfo_last_tab() const;  // key: modinfo/last_tab
   void set_modinfo_last_tab(int index);
+  // Mod Info tab order (MO2 GeometrySettings::modInfoTabOrder). The saved
+  // value is the visual tab sequence as ModInfoTabId integers, so a tab added
+  // in a later release is appended in its natural place rather than lost.
+  QList<int> modinfo_tab_order() const;  // key: modinfo/tab_order
+  void set_modinfo_tab_order(const QList<int> &order);
 
   // preview ------------------------------------------------------------------
   // Transparency checkerboard style for image previews (PreviewWindow and

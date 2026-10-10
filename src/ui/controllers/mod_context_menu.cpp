@@ -479,6 +479,22 @@ void ModContextMenu::setup_mod_list_context_menu() {
                          });
         }
 
+        // MO2 addBackupActions "Restore hidden files"
+        // (modlistcontextmenu.cpp:520-526): offered only on a mod carrying
+        // FLAG_HIDDEN_FILES. MO2 puts it on the backup row because that is
+        // where hidden files come from; GMM has no backup row type, so it
+        // sits with the other "this mod's files need attention" action.
+        if (entry.has_hidden_files) {
+          auto *restore =
+              menu.addAction(engine::IconManager::instance().resolve_icon("edit-clear"),
+                             QObject::tr("Restore Hidden Files"), w_, [this, mod_id]() {
+                               actions_->restore_hidden_files({mod_id});
+                             });
+          restore->setStatusTip(
+              QObject::tr("Strip the hidden suffix from every hidden file in the "
+                          "selected mod(s), making them visible to the game again."));
+        }
+
         menu.addSeparator();
         menu.addAction(engine::IconManager::instance().resolve_icon("dialog-ok"),
                        QObject::tr("Enable Selected"), w_, [this]() {
@@ -673,21 +689,38 @@ void ModContextMenu::add_category_menus(QMenu &menu, const QString &mod_id) {
     auto *act = change_menu->addAction(QString::fromStdString(cat->name));
     act->setCheckable(true);
     act->setChecked(current.contains(cat->id));
-    QObject::connect(act, &QAction::triggered, w_,
-                     [this, mod_id, cat, load_current, apply](bool checked) {
-                       QVector<int> ids = load_current();
-                       if (checked) {
-                         if (!ids.contains(cat->id))
-                           ids.append(cat->id);
-                       } else {
-                         ids.removeAll(cat->id);
-                       }
-                       apply(ids);
-                     });
   }
 
+  // MO2 ModListContextMenu::addCategoryContextMenus
+  // (modlistcontextmenu.cpp:344-346) applies on aboutToHide, not on click:
+  // the checkbox states are the edit, and the submenu closing commits them.
+  // Checking three categories therefore writes one CSV, not three, and the
+  // user can undo a tick by ticking it again before leaving.
+  // The id order is the CSV order, primary first: an id already primary
+  // keeps its slot, a newly checked id lands after the ones already there.
+  QObject::connect(change_menu, &QMenu::aboutToHide, w_,
+                   [this, current, cats, apply, change_menu]() {
+                     // `cats` order matches the actions added above, one for one.
+                     QVector<int> ids;
+                     for (const auto *cat : cats)
+                       if (current.contains(cat->id))
+                         ids.append(cat->id);
+                     const auto acts = change_menu->actions();
+                     for (size_t i = 0;
+                          i < cats.size() && i < static_cast<size_t>(acts.size());
+                          ++i) {
+                       if (acts.at(static_cast<qsizetype>(i))->isChecked() &&
+                           !ids.contains(cats[i]->id))
+                         ids.append(cats[i]->id);
+                     }
+                     if (ids != current)
+                       apply(ids);
+                   });
+
   // "Primary Category": radio buttons for the checked categories only (MO2
-  // parity). Selecting one moves it to the front of the CSV.
+  // parity). Selecting one moves it to the front of the CSV. MO2 commits on
+  // aboutToHide (modlistcontextmenu.cpp:351-355) and only when a radio is
+  // actually checked, so opening the menu and leaving it alone writes nothing.
   auto *primary_menu =
       menu.addMenu(engine::IconManager::instance().resolve_icon("view-sort"),
                    QObject::tr("Primary Category"));
@@ -701,15 +734,24 @@ void ModContextMenu::add_category_menus(QMenu &menu, const QString &mod_id) {
                                                     : QString::number(id));
       act->setCheckable(true);
       act->setChecked(id == current.first());
+      act->setData(id);
       group->addAction(act);
-      QObject::connect(act, &QAction::triggered, w_,
-                       [this, mod_id, id, load_current, apply]() {
-                         QVector<int> ids = load_current();
+    }
+    QObject::connect(primary_menu, &QMenu::aboutToHide, w_,
+                     [current, apply, primary_menu]() {
+                       for (const auto *act : primary_menu->actions()) {
+                         if (!act->isChecked())
+                           continue;
+                         const int id = act->data().toInt();
+                         if (id == current.first())
+                           return;  // unchanged: the menu was opened and left alone
+                         QVector<int> ids = current;
                          ids.removeAll(id);
                          ids.prepend(id);
                          apply(ids);
-                       });
-    }
+                         return;
+                       }
+                     });
   }
 }
 

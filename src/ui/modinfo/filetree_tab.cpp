@@ -3,6 +3,7 @@
 #include "engine/log/logger.h"
 #include "engine/util/fs_utils.h"
 #include "ui/settings/settings.h"
+#include "ui/preview/preview_window.h"
 #include "ui/theme/icon_manager.h"
 #include "ui/viewer/file_viewer.h"
 
@@ -102,13 +103,25 @@ void FiletreeTab::show_menu(const QPoint &pos) {
   auto *open = menu.addAction(tr("&Open"));
   QObject::connect(open, &QAction::triggered, this, &FiletreeTab::on_open);
 
+  // MO2 FileTree::addFileMenus (filetree.cpp:741-748): the Preview entry is
+  // DISABLED, not hidden, when the file has no preview handler, and says why.
+  // A directory counts as unpreviewable - PreviewDialog has nothing to show.
+  const bool previewable =
+      QFileInfo(path).isFile() && ui::preview::PreviewWindow::supports(path);
+
   auto *preview = menu.addAction(tr("&Preview"));
   QObject::connect(preview, &QAction::triggered, this, &FiletreeTab::on_preview);
+  preview->setEnabled(previewable);
+  preview->setStatusTip(previewable ? tr("Previews this file within GameModManager")
+                                    : tr("This file is a directory or has no preview "
+                                         "handler associated with it"));
 
-  // MO2 FileTree parity (Workspace-co2 row 411): bold the default
-  // (first-enabled) menu entry - the action a plain double-click runs.
+  // MO2 Workspace-co2 row 411: bold the default (first-enabled) menu entry -
+  // the action a plain double-click runs. A disabled Preview is not a
+  // candidate, so the bolding falls back to Open.
   auto *default_action =
-      Settings::instance().double_clicks_open_previews() ? preview : open;
+      Settings::instance().double_clicks_open_previews() && previewable ? preview
+                                                                        : open;
   QFont default_font = default_action->font();
   default_font.setBold(true);
   default_action->setFont(default_font);

@@ -76,6 +76,11 @@ public:
   // there is no archive to reinstall from.
   void reinstall_mod(const QString &mod_id);
 
+  // MO2 ModListViewActions::restoreHiddenFiles (modlistviewactions.cpp:1053):
+  // strip the hidden suffix from every file under each of `mod_ids` and
+  // refresh the mod list flags. Confirms first, MO2's exact wording.
+  void restore_hidden_files(const QStringList &mod_ids);
+
   // Resolve the live external source folder for a mod row: content_dir
   // when it is still a directory, else the game's external mods dir.
   // Empty when neither exists (not an external mod, or its source is
