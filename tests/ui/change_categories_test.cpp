@@ -53,9 +53,9 @@ namespace {
 // Zebra) differs from ASCENDING-ID order (3, 5) and from the stored
 // primary-first order (5, 3). Any rebuild-from-menu-order regression shows up
 // here as a reordered CSV.
-constexpr int kAppleId = 3;
-constexpr int kZebraId = 5;
-constexpr const char *kModId = "Foo_mod";
+constexpr int kAppleId            = 3;
+constexpr int kZebraId            = 5;
+constexpr const char *kModId      = "Foo_mod";
 constexpr const char *kPrimaryCsv = "5,3";
 
 void write_file(const fs::path &p, const std::string &content) {
@@ -134,8 +134,8 @@ TEST_CASE("Change Categories: open and leave writes nothing", "[ui][categories]"
       engine::Instance::from_root(inst_root).path_for(engine::InstanceKind::Mods);
   fs::create_directories(mods_dir / kModId);
   const fs::path meta_ini = mods_dir / kModId / "meta.ini";
-  write_file(meta_ini, std::string("[General]\npriority=0\ncategory=") + kPrimaryCsv +
-                           "\n");
+  write_file(meta_ini,
+             std::string("[General]\npriority=0\ncategory=") + kPrimaryCsv + "\n");
 
   engine::GameKnowledge knowledge;
   knowledge.set("testgame", "mods_subpath", "Mods");
@@ -144,11 +144,15 @@ TEST_CASE("Change Categories: open and leave writes nothing", "[ui][categories]"
   w.set_game_knowledge(&knowledge);
   w.show();
   w.set_game_info("testgame", "Test Game", "Default", {}, inst_root);
-  REQUIRE(pump_until([&w] { return !w.is_loading(); }));
+  REQUIRE(pump_until([&w] {
+    return !w.is_loading();
+  }));
 
   auto *model = w.findChild<ui::ModList *>();
   REQUIRE(model != nullptr);
-  REQUIRE(pump_until([&] { return find_mod_row(model, kModId) >= 0; }));
+  REQUIRE(pump_until([&] {
+    return find_mod_row(model, kModId) >= 0;
+  }));
 
   seed_categories();
 
@@ -246,8 +250,8 @@ TEST_CASE("Change Categories: a tick still commits on hide", "[ui][categories]")
       engine::Instance::from_root(inst_root).path_for(engine::InstanceKind::Mods);
   fs::create_directories(mods_dir / kModId);
   const fs::path meta_ini = mods_dir / kModId / "meta.ini";
-  write_file(meta_ini, std::string("[General]\npriority=0\ncategory=") + kPrimaryCsv +
-                           "\n");
+  write_file(meta_ini,
+             std::string("[General]\npriority=0\ncategory=") + kPrimaryCsv + "\n");
 
   engine::GameKnowledge knowledge;
   knowledge.set("testgame", "mods_subpath", "Mods");
@@ -256,11 +260,15 @@ TEST_CASE("Change Categories: a tick still commits on hide", "[ui][categories]")
   w.set_game_knowledge(&knowledge);
   w.show();
   w.set_game_info("testgame", "Test Game", "Default", {}, inst_root);
-  REQUIRE(pump_until([&w] { return !w.is_loading(); }));
+  REQUIRE(pump_until([&w] {
+    return !w.is_loading();
+  }));
 
   auto *model = w.findChild<ui::ModList *>();
   REQUIRE(model != nullptr);
-  REQUIRE(pump_until([&] { return find_mod_row(model, kModId) >= 0; }));
+  REQUIRE(pump_until([&] {
+    return find_mod_row(model, kModId) >= 0;
+  }));
 
   seed_categories();
 

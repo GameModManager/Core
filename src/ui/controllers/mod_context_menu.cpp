@@ -713,7 +713,7 @@ void ModContextMenu::add_category_menus(QMenu &menu, const QString &mod_id) {
                      // its primary silently flipped by a menu that was only
                      // opened and closed.
                      QVector<int> ids = current;
-                     const auto acts = change_menu->actions();
+                     const auto acts  = change_menu->actions();
                      for (size_t i = 0;
                           i < cats.size() && i < static_cast<size_t>(acts.size());
                           ++i) {
