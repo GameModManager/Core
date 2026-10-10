@@ -3,6 +3,7 @@
 #include "engine/log/logger.h"
 #include "engine/profile/profile.h"
 #include "engine/profile/profile_creation.h"
+#include "engine/util/fs_utils.h"
 #include "ui/profile/profile_create_dialog.h"
 #include "ui/profile/profile_settings_widget.h"
 #include "ui/widgets/task_dialog.h"
@@ -211,16 +212,34 @@ void ProfileManagerDialog::on_rename() {
     return;
   }
 
-  bool ok                = false;
-  const QString new_name = QInputDialog::getText(
-      this, tr("Rename Profile"), tr("New name:"), QLineEdit::Normal, old_name, &ok);
-  if (!ok || new_name.trimmed().isEmpty() || new_name.trimmed() == old_name) {
+  bool ok          = false;
+  QString new_name = QInputDialog::getText(this, tr("Rename Profile"), tr("New name:"),
+                                           QLineEdit::Normal, old_name, &ok);
+  if (!ok)
     return;
+
+  // MO2 ProfilesDialog::on_renameButton_clicked (profilesdialog.cpp:296-305)
+  // re-prompts until the name is usable, warning with the same "Invalid name"
+  // text the copy path uses rather than accepting a name no folder can carry.
+  QString fixed;
+  while (true) {
+    fixed = QString::fromStdString(
+        engine::sanitize_directory_name(new_name.trimmed().toStdString()));
+    if (!fixed.isEmpty())
+      break;
+    QMessageBox::warning(this, tr("Invalid name"), tr("Invalid profile name"));
+    const QString retry = QInputDialog::getText(
+        this, tr("Rename Profile"), tr("New name:"), QLineEdit::Normal, new_name, &ok);
+    if (!ok)
+      return;
+    new_name = retry;
   }
+  if (fixed == old_name)
+    return;
 
   std::string error;
   if (!engine::profile::rename_profile(profiles_dir_, old_name.toStdString(),
-                                       new_name.trimmed().toStdString(), &error)) {
+                                       fixed.toStdString(), &error)) {
     show_error(this, tr("Rename Profile"), error);
     return;
   }
@@ -230,16 +249,24 @@ void ProfileManagerDialog::on_rename() {
 
 void configure_delete_profile_dialog(TaskDialog &dlg, const QString &profile_name,
                                      const QString &profile_dir) {
+  // The name leads its clause rather than dangling mid-sentence: one quoted
+  // occurrence, and a wrap can only land on a clause boundary, never inside
+  // the quotes or between a name and its verb.
   dlg.title(QObject::tr("Delete Profile"))
-      .main(QObject::tr("Delete profile \"%1\"? This removes the profile "
-                        "directory and all profile-specific files (including "
-                        "profile-specific save games, if any).")
+      .main(QObject::tr("Delete this profile? \"%1\" and its profile-specific "
+                        "files, including save games, will be removed.")
                 .arg(profile_name))
       .content(QObject::tr("This cannot be undone."))
       .details(profile_dir)
       .icon(QMessageBox::Question)
       .add_button({QObject::tr("Yes"), "", QMessageBox::Yes})
       .add_button({QObject::tr("No"), "", QMessageBox::No});
+}
+
+bool profile_needs_broken_confirm(const std::filesystem::path &dir) {
+  std::error_code ec;
+  return !std::filesystem::is_directory(dir, ec) ||
+         !std::filesystem::exists(dir / "settings.ini", ec);
 }
 
 void ProfileManagerDialog::on_delete_profile() {
@@ -254,14 +281,26 @@ void ProfileManagerDialog::on_delete_profile() {
     return;
   }
 
+  const auto dir  = profiles_dir_ / name.toStdString();
+  auto dir_string = QString::fromStdString(dir.string());
+
   TaskDialog dlg(this, {});
-  configure_delete_profile_dialog(
-      dlg, name, QString::fromStdString((profiles_dir_ / name.toStdString()).string()));
+  configure_delete_profile_dialog(dlg, name, dir_string);
   if (dlg.exec() != QMessageBox::Yes) {
     return;
   }
 
-  engine::profile::ProfileManager profile(profiles_dir_ / name.toStdString());
+  if (profile_needs_broken_confirm(dir) &&
+      QMessageBox::question(
+          this, tr("Profile broken"),
+          tr("This profile you're about to delete seems to be broken or the path is "
+             "invalid. I'm about to delete the following folder: \"%1\". Proceed?")
+              .arg(dir_string),
+          QMessageBox::Yes | QMessageBox::No) == QMessageBox::No) {
+    return;
+  }
+
+  engine::profile::ProfileManager profile(dir);
   const auto result = profile.remove(/*is_active=*/false);
   switch (result) {
   case engine::profile::ProfileRemoveResult::Removed:

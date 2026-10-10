@@ -385,6 +385,30 @@ void ModActions::toggle_selected_mods(bool enabled) {
   }
 }
 
+void ModActions::toggle_all_mods(bool enabled) {
+  // isRowHidden is apply_mod_filter's own output, so "the mods the list is
+  // showing" needs no second copy of the filter state. Pseudo-rows never
+  // toggle, the same guard toggle_selected_mods applies.
+  const int rows = w_->mod_model_->rowCount();
+  for (int r = 0; r < rows; ++r) {
+    if (w_->mod_view_->isRowHidden(r, QModelIndex()))
+      continue;
+    const auto &entry = w_->mod_model_->mods()[r];
+    if (entry.is_separator || entry.is_overwrite || entry.is_game_native ||
+        entry.is_merged || entry.enabled == enabled)
+      continue;
+    w_->mod_model_->setData(w_->mod_model_->index(r, ModList::Name),
+                            enabled ? Qt::Checked : Qt::Unchecked, Qt::CheckStateRole);
+    if (sync_mod_enable_state_cb_)
+      sync_mod_enable_state_cb_(entry.id, enabled);
+  }
+}
+
+void ModActions::reload_mod_list() {
+  if (load_mods_from_game_cb_)
+    load_mods_from_game_cb_();
+}
+
 void ModActions::toggle_root_override(const QList<int> &rows, bool on) {
   for (int r : rows) {
     if (r < 0 || r >= w_->mod_model_->mods().size())

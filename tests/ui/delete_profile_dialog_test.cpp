@@ -124,6 +124,21 @@ TEST_CASE("delete profile confirmation routes through TaskDialog", "[ui]") {
     }
     check(dir_in_details, "the profile dir path moves into the details pane");
     check(has_icon(dlg), "the confirmation shows the Question icon");
+
+    // The name reads as a clause of its own, not dangling mid-sentence: one
+    // quoted occurrence, intact, so a wrap can only land on a space. Dropping
+    // the string back to 'Delete profile "X"?' re-breaks the quotes and the
+    // name off the start of a line once the label re-wraps.
+    QString main_text;
+    for (auto *l : dlg.findChildren<QLabel *>()) {
+      if (l->text().contains("Survival"))
+        main_text = l->text();
+    }
+    check(main_text.count("Survival") == 1, "the name appears exactly once");
+    check(main_text.contains("\"" + QStringLiteral("Survival") + "\""),
+          "the name keeps one intact quoted pair");
+    check(!main_text.contains(QStringLiteral("profile \"Survival\"?")),
+          "the name no longer dangles mid-sentence after 'profile'");
   }
 
   // ---- No rejects --------------------------------------------------------
@@ -168,7 +183,22 @@ TEST_CASE("delete profile confirmation routes through TaskDialog", "[ui]") {
           "the confirmation builds a ui::TaskDialog (not an ad-hoc box)");
     check(region.find("configure_delete_profile_dialog") != std::string::npos,
           "on_delete_profile routes through the shared configure seam");
-    check(region.find("QMessageBox::question") == std::string::npos,
-          "the QMessageBox::question confirmation is gone from Delete Profile");
+
+    // The ratchet is "the PRIMARY confirmation is not an ad-hoc
+    // QMessageBox::question". MO2 asks a SECOND time when the profile cannot
+    // be loaded (profilesdialog.cpp:250-262), so one question call is allowed
+    // - but only the broken-profile one, and only one.
+    const auto first_question = region.find("QMessageBox::question");
+    if (first_question != std::string::npos) {
+      const auto second = region.find("QMessageBox::question", first_question + 1);
+      check(second == std::string::npos,
+            "at most one QMessageBox::question (the broken-profile guard)");
+      check(region.find("Profile broken") != std::string::npos,
+            "the only QMessageBox::question is the MO2 broken-profile guard");
+      check(region.find("configure_delete_profile_dialog") < first_question,
+            "the TaskDialog confirmation is asked first");
+    } else {
+      check(true, "no QMessageBox::question at all");
+    }
   }
 }

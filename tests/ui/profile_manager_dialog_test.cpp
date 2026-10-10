@@ -169,3 +169,39 @@ TEST_CASE("profile manager dialog", "[ui]") {
     REQUIRE(delete_btn->isEnabled());
   }
 }
+
+// MO2 ProfilesDialog asks a second time before removing a profile it could
+// not load, naming the folder (profilesdialog.cpp:250-262). The modal Question
+// itself cannot be driven offscreen, so the predicate behind it is the seam.
+TEST_CASE("profile broken-folder confirm gate", "[ui][profile]") {
+  const fs::path root = make_profiles_dir("broken");
+  qputenv("XDG_CONFIG_HOME", (root / "config").c_str());
+  qputenv("QT_QPA_PLATFORM", "offscreen");
+  int test_argc     = 1;
+  char test_argv0[] = "test";
+  char *test_argv[] = {test_argv0, nullptr};
+  QApplication app(test_argc, test_argv);
+  QCoreApplication::setOrganizationName("GameModManager");
+  QCoreApplication::setApplicationName("GameModManager");
+
+  const fs::path profiles_dir = root / "profiles";
+  REQUIRE(engine::profile::create_fresh_profile(profiles_dir, "Whole").success);
+
+  // A folder that is a working profile: no extra confirm.
+  CHECK_FALSE(ui::profile_needs_broken_confirm(profiles_dir / "Whole"));
+
+  // Negative control, the two ways the same predicate can fail: settings.ini
+  // stripped, then the folder gone. If the predicate were dead (always false)
+  // both of these are what would fail.
+  fs::remove(profiles_dir / "Whole" / "settings.ini");
+  CHECK(ui::profile_needs_broken_confirm(profiles_dir / "Whole"));
+  CHECK(ui::profile_needs_broken_confirm(profiles_dir / "NeverExisted"));
+
+  // Unrelated churn stays green: a profile repopulated by repair() is whole
+  // again and the gate closes.
+  engine::profile::ProfileManager repaired(profiles_dir / "Whole");
+  repaired.repair();
+  CHECK_FALSE(ui::profile_needs_broken_confirm(profiles_dir / "Whole"));
+
+  fs::remove_all(root);
+}

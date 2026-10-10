@@ -10,6 +10,7 @@
 #include <KSyntaxHighlighting/Theme>
 #endif
 
+#include <QDesktopServices>
 #include <QDirIterator>
 #include <QEvent>
 #include <QFile>
@@ -24,6 +25,7 @@
 #include <QSortFilterProxyModel>
 #include <QSplitter>
 #include <QStandardItemModel>
+#include <QUrl>
 #include <QVBoxLayout>
 
 #include <algorithm>
@@ -70,6 +72,24 @@ GenericFilesTab::GenericFilesTab(QWidget *parent) : ModInfoTab(parent) {
   find_btn->setEnabled(false);
   find_btn_ = find_btn;
   editor_bar->addWidget(find_btn);
+
+  // MO2 TextEditorToolbar's Word wrap (texteditor.cpp:473-475): checkable,
+  // and checked exactly when the editor is wrapping, so the button states the
+  // mode rather than flipping a blind copy of it.
+  wrap_btn_ = new QPushButton(tr("Word Wrap"), right);
+  wrap_btn_->setCheckable(true);
+  wrap_btn_->setToolTip(tr("Wrap long lines at the edge of the editor"));
+  wrap_btn_->setChecked(editor_->lineWrapMode() == QPlainTextEdit::WidgetWidth);
+  editor_bar->addWidget(wrap_btn_);
+
+  // MO2's Open in Explorer (texteditor.cpp:477), renamed for a cross-platform
+  // app: it opens the containing folder of the loaded file, which is what a
+  // file manager shows either way.
+  explore_btn_ = new QPushButton(tr("Open in File Manager"), right);
+  explore_btn_->setToolTip(tr("Show this file in the system file manager"));
+  explore_btn_->setEnabled(false);
+  editor_bar->addWidget(explore_btn_);
+
   editor_bar->addStretch(1);
   right_layout->addLayout(editor_bar);
 
@@ -96,6 +116,12 @@ GenericFilesTab::GenericFilesTab(QWidget *parent) : ModInfoTab(parent) {
   // so selectionModel() is nullptr (QObject::connect nullptr warning).
   // rebuild_list() connects after setModel() swaps in a fresh one.
   connect(save_btn_, &QPushButton::clicked, this, &GenericFilesTab::save_editor);
+  connect(wrap_btn_, &QPushButton::toggled, this, [this](bool on) {
+    // MO2 TextEditor::toggleWordWrap (texteditor.cpp:142-145).
+    editor_->setLineWrapMode(on ? QPlainTextEdit::WidgetWidth : QPlainTextEdit::NoWrap);
+  });
+  connect(explore_btn_, &QPushButton::clicked, this,
+          &GenericFilesTab::open_in_file_manager);
   connect(editor_, &QPlainTextEdit::textChanged, this, [this]() {
     editor_dirty_ = editor_->isEnabled() && editor_->toPlainText() != last_loaded_text_;
     save_btn_->setEnabled(editor_dirty_);
@@ -116,6 +142,7 @@ void GenericFilesTab::set_mod(const ModInfoData &data) {
   editor_->setEnabled(false);
   save_btn_->setEnabled(false);
   find_btn_->setEnabled(false);
+  explore_btn_->setEnabled(false);
   editor_dirty_ = false;
   last_loaded_text_.clear();
 
@@ -205,6 +232,18 @@ void GenericFilesTab::load_editor(const QString &path) {
   editor_dirty_ = false;
   save_btn_->setEnabled(false);
   find_btn_->setEnabled(true);
+  explore_btn_->setEnabled(true);
+}
+
+void GenericFilesTab::open_in_file_manager() {
+  if (editor_path_.isEmpty())
+    return;
+  // MO2 hands the FILE to shell::Explore, which selects it inside its folder.
+  // GMM opens the containing folder instead: QDesktopServices has no
+  // cross-platform "reveal", and the file is already named in the list the
+  // action was taken from.
+  QDesktopServices::openUrl(
+      QUrl::fromLocalFile(QFileInfo(editor_path_).absolutePath()));
 }
 
 // Picks a KSyntaxHighlighting theme that matches the editor's palette so the

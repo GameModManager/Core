@@ -36,6 +36,9 @@ public:
   void set_plugins(const std::vector<engine::GamePlugin> &plugins);
   void sync_enabled(const std::vector<engine::GamePlugin> &plugins);
   void refresh_counters();
+  /// Name filter over the table, driven by the shared RightFilterBar text.
+  /// See PluginView::apply_filter.
+  void apply_filter(const QString &text);
   void set_contained_plugins(const QVector<QString> &contained);
   void set_master_plugins(const QVector<QString> &masters);
   [[nodiscard]] QStringList selected_plugin_names() const;

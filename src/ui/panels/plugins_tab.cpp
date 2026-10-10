@@ -104,6 +104,10 @@ void PluginsTab::refresh_counters() {
   view_->refresh_counters();
 }
 
+void PluginsTab::apply_filter(const QString &text) {
+  view_->apply_filter(text);
+}
+
 void PluginsTab::set_contained_plugins(const QVector<QString> &contained) {
   view_->set_contained_plugins(contained);
 }

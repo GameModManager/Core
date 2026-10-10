@@ -27,6 +27,7 @@
 #include <QCoreApplication>
 #include <QLineEdit>
 #include <QTest>
+#include <QTreeWidget>
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -148,6 +149,40 @@ TEST_CASE("filter bar: Ctrl+F focuses the filter, Escape clears it", "[ui][filte
     // The deliberate right-panel deviation: there is no single owning view to
     // hand focus to, so Escape must NOT jump across the window to the mod list.
     CHECK_FALSE(view->hasFocus());
+  }
+
+  SECTION("Ctrl+F from inside the right-panel list focuses the shared bar") {
+    // Focus in the right panel's LIST, not its bar - the state the user is in
+    // when they press Ctrl+F. The shortcut's pane scope already answers "which
+    // bar", so the answer has to be the right panel's, not the mod list's.
+    auto *panel = right_bar->parentWidget();
+    REQUIRE(panel != nullptr);
+    auto *list = panel->findChild<QTreeWidget *>();
+    REQUIRE(list != nullptr);
+    right_edit->setText("Sky");
+    list->setFocusPolicy(Qt::StrongFocus);
+    list->setFocus();
+    REQUIRE(list->hasFocus());
+    REQUIRE_FALSE(right_edit->hasFocus());
+    QTest::keyClick(&w, Qt::Key_F, Qt::ControlModifier);
+    CHECK(right_edit->hasFocus());
+    CHECK(right_edit->selectedText() == "Sky");
+    CHECK_FALSE(mod_edit->hasFocus());
+  }
+
+  SECTION("Escape from inside the right-panel list clears the shared bar") {
+    auto *panel = right_bar->parentWidget();
+    REQUIRE(panel != nullptr);
+    auto *list = panel->findChild<QTreeWidget *>();
+    REQUIRE(list != nullptr);
+    right_edit->setText("Sky");
+    mod_edit->setText("Uno");
+    list->setFocusPolicy(Qt::StrongFocus);
+    list->setFocus();
+    REQUIRE(list->hasFocus());
+    QTest::keyClick(&w, Qt::Key_Escape);
+    CHECK(right_edit->text().isEmpty());  // proves the shortcut fired
+    CHECK(mod_edit->text() == "Uno");     // the other pane's filter untouched
   }
 
   SECTION("Escape leaves the other pane's filter alone") {

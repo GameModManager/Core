@@ -651,8 +651,31 @@ PluginView::PluginView(QWidget *parent) : QWidget(parent) {
   counter_display_ = make_lcd_counter(this);
   header->addWidget(counter_display_);
   layout->addLayout(header);
+
   layout->addWidget(table_);
 
+  // No filter input here: the Plugins tab is filtered by the shared
+  // RightFilterBar below the tab bar, the same bar every other tab uses.
+  // Ctrl+F and Escape reach it through MainWindow's pane-scoped shortcut pair
+  // (main_window.cpp:407-408), which is the pair MO2's setFilterShortcuts
+  // installs for the plugin list too (mainwindow.cpp:464-466).
+
+  refresh_counters();
+}
+
+void PluginView::apply_filter(const QString &text) {
+  filter_text_         = text;
+  const QString needle = text.trimmed();
+  for (int i = 0; i < table_->rowCount(); ++i) {
+    if (static_cast<size_t>(i) >= names_.size())
+      break;
+    // Hiding, not removing: the row keeps its enable state and its place in
+    // the load order, and MO2's counter reads visible rows only.
+    const bool match =
+        needle.isEmpty() || QString::fromStdString(names_[static_cast<size_t>(i)])
+                                .contains(needle, Qt::CaseInsensitive);
+    table_->setRowHidden(i, !match);
+  }
   refresh_counters();
 }
 
@@ -798,7 +821,9 @@ void PluginView::set_plugins(const std::vector<engine::GamePlugin> &plugins) {
   syncing_ = false;
   apply_highlights();
   relayout_flag_rows();
-  refresh_counters();
+  // A rebuild starts every row visible, so an active filter has to be
+  // re-applied or a Refresh would silently show the whole list again.
+  apply_filter(filter_text_);
 }
 
 void PluginView::relayout_flag_rows() {

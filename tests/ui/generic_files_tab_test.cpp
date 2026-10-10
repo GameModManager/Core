@@ -60,6 +60,14 @@ static bool contains(const QStringList &names, const char *needle) {
   return names.contains(QLatin1String(needle));
 }
 
+static QPushButton *find_push_button(QWidget &root, const char *text) {
+  for (auto *btn : root.findChildren<QPushButton *>()) {
+    if (btn->text() == QLatin1String(text))
+      return btn;
+  }
+  return nullptr;
+}
+
 TEST_CASE("generic files tab", "[ui]") {
   qputenv("QT_QPA_PLATFORM", "offscreen");
   const std::filesystem::path base = "/tmp/gmm_generic_files";
@@ -183,4 +191,64 @@ TEST_CASE("generic files tab", "[ui]") {
             "selecting a text file loads its contents into the editor");
     }
   }
+}
+
+// MO2 TextEditorToolbar (texteditor.cpp:471-492): the Word wrap action is
+// checkable and drives the editor's wrap mode, and Open in Explorer is a
+// per-file tool that is inert until a file is loaded.
+TEST_CASE("generic files tab word wrap and open-in-file-manager", "[ui][toolbar]") {
+  qputenv("QT_QPA_PLATFORM", "offscreen");
+  const std::filesystem::path base = "/tmp/gmm_generic_files_toolbar";
+  std::filesystem::remove_all(base);
+  const std::filesystem::path mod_dir = base / "TestMod";
+  std::filesystem::create_directories(mod_dir);
+  write_file(mod_dir / "readme.txt", "txt content\n");
+  int test_argc     = 1;
+  char test_argv0[] = "test";
+  char *test_argv[] = {test_argv0, test_argv0, nullptr};
+  QApplication app(test_argc, test_argv);
+
+  ui::ModInfoData data;
+  data.id      = "TestMod";
+  data.name    = "Test Mod";
+  data.mod_dir = QDir(QString::fromStdString(mod_dir.string()));
+
+  ui::TextFilesTab tab;
+  tab.set_mod(data);
+  auto *editor  = tab.findChild<QPlainTextEdit *>();
+  auto *wrap    = find_push_button(tab, "Word Wrap");
+  auto *explore = find_push_button(tab, "Open in File Manager");
+  check(editor && wrap && explore, "the two per-file tools are on the editor bar");
+  if (!editor || !wrap || !explore)
+    return;
+
+  check(wrap->isCheckable(), "Word Wrap is a checkable action, as in MO2");
+  // The button states the editor's mode rather than flipping a blind copy.
+  check(wrap->isChecked() == (editor->lineWrapMode() == QPlainTextEdit::WidgetWidth),
+        "Word Wrap is checked exactly when the editor wraps");
+
+  // Consumer check: the editor's wrap mode is what actually moves.
+  wrap->setChecked(!wrap->isChecked());
+  check(editor->lineWrapMode() ==
+            (wrap->isChecked() ? QPlainTextEdit::WidgetWidth : QPlainTextEdit::NoWrap),
+        "toggling Word Wrap switches the editor's wrap mode");
+
+  // Negative control, the other direction of the same toggle: clicking back
+  // restores the mode it started in, so the check above is a real switch and
+  // not a write that happens to always land on one value.
+  wrap->setChecked(!wrap->isChecked());
+  check(editor->lineWrapMode() ==
+            (wrap->isChecked() ? QPlainTextEdit::WidgetWidth : QPlainTextEdit::NoWrap),
+        "toggling back restores the original wrap mode");
+
+  // Per-file tool: no file loaded, nothing to reveal.
+  check(!explore->isEnabled(), "Open in File Manager is inert with no file loaded");
+
+  auto *list  = tab.findChild<QListView *>();
+  auto *model = qobject_cast<QStandardItemModel *>(list->model());
+  list->selectionModel()->setCurrentIndex(model->index(0, 0),
+                                          QItemSelectionModel::ClearAndSelect);
+  check(explore->isEnabled(), "Open in File Manager arms once a file is loaded");
+
+  std::filesystem::remove_all(base);
 }

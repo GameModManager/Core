@@ -44,6 +44,23 @@ public:
   /// MO2-style plugin counter (PluginListView::updatePluginCount parity).
   void refresh_counters();
 
+  /// MO2's espFilterEdit (mainwindow.ui) as PluginListView wires it
+  /// (pluginlistview.cpp:259-262): a name filter over the plugin table. Rows
+  /// that do not match are hidden, not removed, so enable state and the
+  /// load order are untouched; the counter then reports the active count of
+  /// what is still visible, which is the MO2 behaviour
+  /// (pluginlistview.cpp:86, :165).
+  ///
+  /// The text comes from the shared RightFilterBar below the tab bar, the same
+  /// bar Data, Downloads, Saves and Conflicts use - there is no plugin-side
+  /// input. RightPanel routes it here so the match is on the plugin NAME
+  /// alone, which is what espFilterEdit does; the generic all-column pass the
+  /// other tabs get would also hide a row on its Priority or Mod Index text.
+  /// The last text is remembered so a Refresh (set_plugins) re-applies the
+  /// filter the user is still looking at instead of silently showing
+  /// everything again.
+  void apply_filter(const QString &text);
+
   /// MO2 parity - highlight rows owned by the selected mod / master plugins.
   void set_contained_plugins(const QVector<QString> &contained);
   void set_master_plugins(const QVector<QString> &masters);
@@ -136,6 +153,8 @@ private:
   std::vector<PluginType> rows_type_;
   QSet<QString> contained_names_;
   QSet<QString> master_names_;
+  // Last text handed to apply_filter, so set_plugins can re-apply it.
+  QString filter_text_;
   bool syncing_ = false;
 };
 
