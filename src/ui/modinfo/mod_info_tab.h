@@ -34,6 +34,11 @@ public:
 
   [[nodiscard]] bool has_data() const { return has_data_; }
 
+signals:
+  /// Emitted when the tab crosses the has-data boundary. MO2 wires this to
+  /// setTabsColors (modinfodialog.cpp:264).
+  void has_data_changed();
+
 protected:
   const ModInfoData &current() const { return current_; }
 

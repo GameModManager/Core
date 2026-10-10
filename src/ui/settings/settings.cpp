@@ -852,6 +852,25 @@ void Settings::set_modinfo_window_geometry(const QByteArray &g) {
   settings_.setValue("modinfo/window_geometry", g);
 }
 
+QList<int> Settings::modinfo_tab_order() const {
+  QList<int> out;
+  for (const auto &raw : settings_.value("modinfo/tab_order").toStringList()) {
+    bool ok      = false;
+    const int id = raw.toInt(&ok);
+    if (ok)
+      out.append(id);
+  }
+  return out;
+}
+
+void Settings::set_modinfo_tab_order(const QList<int> &order) {
+  QStringList ids;
+  ids.reserve(order.size());
+  for (int id : order)
+    ids << QString::number(id);
+  settings_.setValue("modinfo/tab_order", ids);
+}
+
 QByteArray Settings::listdialog_window_geometry() const {
   return settings_.value("listdialog/window_geometry").toByteArray();
 }
