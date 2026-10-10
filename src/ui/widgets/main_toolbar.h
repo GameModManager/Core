@@ -5,9 +5,18 @@
 
 class QBoxLayout;
 class QFrame;
+class QIcon;
 class QMenu;
+class QString;
 
 namespace ui {
+
+// One pinned executable shortcut on the toolbar.
+struct ExecShortcut {
+  QString path;   // game-relative binary path
+  QString title;  // entry label, also the button tooltip
+  QIcon icon;     // the icon already resolved for the button
+};
 
 class MainToolbar : public QWidget {
   Q_OBJECT
@@ -30,6 +39,10 @@ public:
 
   void set_vertical(bool vertical);
   void set_icon_size(int size);
+
+  // The pinned executable shortcuts in toolbar order, with the path, title and
+  // icon the buttons already carry. Feeds the Run menu.
+  [[nodiscard]] QList<ExecShortcut> exec_shortcuts() const;
 
   // Re-resolve the built-in buttons (Switch Instance, Settings, Instance
   // Options) through IconManager after the icon-pack setting changes.

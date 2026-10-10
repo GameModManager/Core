@@ -7,6 +7,7 @@
 
 #include "ui/instance_options/instance_options_widget.h"
 #include "ui/widgets/error_popup.h"
+#include "ui/widgets/file_dialog_memory.h"
 #include <QApplication>
 #include <QCheckBox>
 #include <QClipboard>
@@ -2000,8 +2001,8 @@ void LaunchController::run_exe_in_prefix() {
     return;
   }
 
-  const QString file = QFileDialog::getOpenFileName(
-      w_, tr("Run an .exe in this prefix"),
+  const QString file = FileDialogMemory::get_open_file_name(
+      "proton-run-exe", w_, tr("Run an .exe in this prefix"),
       QString::fromStdString(w_->current_game_dir_.string()),
       tr("Windows executables (*.exe);;All files (*)"));
   if (file.isEmpty())

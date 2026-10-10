@@ -17,6 +17,7 @@ namespace ui {
 class ConflictsTab;
 class ExecControlsBar;
 class RightFilterBar;
+class ArchivesTab;
 class DataTab;
 class DownloadsTab;
 class PluginsTab;
@@ -42,6 +43,7 @@ public:
   [[nodiscard]] ConflictsTab *conflicts_tab() const;
   [[nodiscard]] DataTab *data_tab() const;
   [[nodiscard]] PluginsTab *plugins_tab() const;
+  [[nodiscard]] ArchivesTab *archives_tab() const;
 
   // Materializing accessors (Workspace-j6ty): build the real tab on first
   // call when the game supports the capability, then return it. Returns
@@ -52,6 +54,7 @@ public:
   SavesTab *ensure_saves_tab();
   ConflictsTab *ensure_conflicts_tab();
   PluginsTab *ensure_plugins_tab();
+  ArchivesTab *ensure_archives_tab();
 
   // Switch the tab bar to the Downloads tab (no-op when the game has no
   // downloads capability). Used when a download arrives so the user sees

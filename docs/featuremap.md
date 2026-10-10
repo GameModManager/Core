@@ -269,7 +269,7 @@ port - their cited GMM symbol names were invented, the features are not.
 | U133 General > Miscellaneous checkboxes (center dialogs, instance-change confirm, Alt menubar, previews on double-click) | ✅ `settingsdialog.ui:264-325` | ⚠️ 1 of 4: previews on double-click - `settings_content_widget.cpp:137` | ⚠️ ✔ |
 | U134 General buttons (Reset Dialog Choices, Configure Mod Categories) | ✅ `settingsdialog.ui:343-372` | ✅ both: reset at `:232`, categories dialog `categories_dialog.h:21` | ✅ ✔ |
 | U138 Paths tab (7 path rows + %BASE_DIR% hint + writability footer) | ✅ `settingsdialog.ui:846-1054` | ✅ 7 rows + hint + working variable expansion + footer naming every configured path that is missing or read-only - `settings_content_widget.cpp:1035` | ✅ ✔ |
-| U139 Paths error strings (create failed, invalid game install) | ✅ `settingsdialogpaths.cpp:100-101`, `:236-237` | ⏳ commits silently, no mkdir, no warning | ⏳ ✔ |
+| U139 Paths error strings (create failed, invalid game install) | ✅ `settingsdialogpaths.cpp:100-101`, `:236-237` | ⚠️ create failed ships verbatim and no path commits without creating it; "invalid game install" degrades to MO2's weaker portable check (the folder must exist and be non-empty), because no per-game binary name is known for every game - `settings_content_widget.cpp` | ⚠️ ✔ |
 | U140 Nexus settings tab full page (account, statistics, connection, options, servers groups) (NEXUS-LENS: genericize/provider-scope) | ✅ `settingsdialog.ui:1056-1504` | ⚠️ Sources tab stands in - `settings_content_widget.cpp:65` | ⚠️ ✔ |
 | U142 Nexus custom browser picker file dialog | ✅ `settingsdialognexus.cpp:500-510` | ⏳ downstream of the dead custom-browser feature | ⏳ ✔ |
 | U143 Settings > Plugins tab (plugin details, Enabled 3-state tooltip, settings table, blacklist) | ✅ `settingsdialog.ui:1506-1746` | ⚠️ details, table, blacklist real. MO2's 3-state checkbox has no counterpart here: `Enabled` is a real 2-state box over a per-instance override with global fallback (global write, then per-instance when the instance root is non-empty) - `settings_content_widget.cpp:1300-1308`; the tooltip states neither, it only says a disabled GMM plugin is not loaded on the next start - `settings_content_widget.cpp:1310` | ⚠️ ✔ |
@@ -282,7 +282,7 @@ port - their cited GMM symbol names were invented, the features are not.
 | U151 Settings tabs use scroll areas with grouped GroupBoxes | ✅ `settingsdialog.ui:28`, `:1062` | ⏳ plain pages + GroupBoxes, no scroll areas | ⏳ ✔ |
 | U223 Per-plugin translators (every loaded plugin file basename) | ✅ `mainwindow.cpp:2930-2931` | ⏳ one translator from `language()`, none per plugin - `app/core.cpp:136` | ⏳ ✔ |
 | U262 QuestionBoxMemory per-dialog choice persistence (.ui + IDs) | ✅ `questionboxmemory` (uibase) | ✅ `dialog_choices/` keys - `settings.cpp:360` | ✅ ✔ |
-| U263 FileDialogMemory::restore (remembers dir per named dialog) | ✅ `mainwindow.cpp:478` | ⏳ every QFileDialog opens in the field's own path | ⏳ ✔ |
+| U263 FileDialogMemory::restore (remembers dir per named dialog) | ✅ `mainwindow.cpp:478` | ⚠️ `FileDialogMemory` ships with the `paths/recent` store (restored at startup, saved on shutdown) and 10 named dialogs routed through it; the rest either live in parked modpack code or are handed an explicit start directory, which MO2 also never overrides - `file_dialog_memory.cpp:14` | ⚠️ ✔ |
 | U287 splash.png + useSplash display component | ✅ `src/splash.png` | ⏳ cosmetic, no component | ⏳ ✔ |
 
 ## 5. Executable Management
@@ -306,7 +306,7 @@ port - their cited GMM symbol names were invented, the features are not.
 | Executable editor widget | ✅ `EditExecutablesDialog` | ✅ `ContentWidget` (mode-agnostic) - `executables_entry.h:84` | ✅ · |
 | Executables list proxy model | ✅ `ExecutablesListProxy` | ❌ | ❌ · |
 | U004 Ctrl+E = Executables... | ✅ `mainwindow.ui:1697-1717` | ❌ | ❌ · |
-| U016 Run menu (one action per pinned exe, statusTip, objectName) | ✅ `mainwindow.cpp:755-795` | ⚠️ exec controls bar only, Run menu unproven - `exec_controls_bar.cpp:224` | ⚠️ · |
+| U016 Run menu (one action per pinned exe, statusTip, objectName) | ✅ `mainwindow.cpp:755-795` | ✅ a Run menu entry per toolbar-pinned executable, with its icon, title label, `custom__` object name and path status tip, hidden when nothing is pinned and rebuilt on aboutToShow - `menu_bar.cpp` | ✅ · |
 | U022 Toolbar context menu "Remove '%1' from the toolbar" | ✅ `mainwindow.cpp:3785-3805` | ✅ names the shortcut being removed - `main_toolbar.cpp:141` | ✅ ✔ |
 | U024 Link button menu (Toolbar and Menu / Desktop / Start Menu shortcuts) | ✅ `mainwindow.cpp:360-367`, `:2695-2719` | ⚠️ desktop only - `launch_controller.cpp:1340` | ⚠️ · |
 | U051 Executables combo sentinels ("<Edit...>", "(no executables)") | ✅ `mainwindow.cpp:1866-1920` | ✅ kAddNewEntryText = "<Edit...>" - `exec_controls_bar.h:22` | ✅ · |
@@ -1086,7 +1086,7 @@ port - their cited GMM symbol names were invented, the features are not.
 | Downloads tab | ✅ `DownloadsTab` | ✅ `downloads_tab` (drag-drop, watcher, compact) - `downloads_tab.h:46` | ✅ · |
 | Saves tab | ✅ `SavesTab` | ✅ `saves_tab` (background scan, hover info) - `saves_tab.h:27` | ✅ · |
 | Conflicts tab | ✅ | ✅ `conflicts_tab` (image diff) - `conflicts_tab.h:22` | ✅ · |
-| Archives tab | ✅ | ✅ `archives_tab` - `archives_tab.h:9` | ✅ · |
+| Archives tab | ✅ | ✅ `archives_tab` (lists the archives the enabled plugin files load, marks the ones not on disk) - `archives_tab.h:9` | ✅ ✔ |
 | Right panel tab system | ✅ | ✅ `right_panel` + `tab_panels` - `right_panel.h:25` | ✅ · |
 | Main tab container (Full UI mode) | ❌ | 🚀 `MainTabContainer` - `main_tab_container.h:18` | 🚀 · |
 | Desktop shortcut management | ✅ `env::Shortcut` (IShellLink COM) | 🚫 COM shell link, no Linux subject | 🚫 · [win] |
@@ -1110,7 +1110,7 @@ port - their cited GMM symbol names were invented, the features are not.
 | U102 Status bar visibility compensates central-widget bottom margin | ✅ `statusbar.cpp:175-192` | ❌ | ❌ · |
 | U103 StatusBarAction icon+label wrapper | ✅ `statusbar.cpp:195+` | ❌ | ❌ · |
 | U187 PreviewDialog (Preview / Close buttons) | ✅ `previewdialog.ui` | ⚠️ window exists, modal dialog parity unproven - `preview_window.h:61` | ⚠️ · |
-| U219 Menu aboutToShow refresh pattern (lazy rebuild) + wheel-block combo | ✅ `mainwindow.cpp:455-474` | ❌ | ❌ · |
+| U219 Menu aboutToShow refresh pattern (lazy rebuild) + wheel-block combo | ✅ `mainwindow.cpp:455-474` | ✅ the Run menu is rebuilt from its provider when about to open, never on a pin/unpin callback; the wheel block was already there - `menu_bar.cpp`, `mod_filter_bar.cpp:63` | ✅ ✔ |
 | U224 languageChange rebuilds help menu + resetActionIcons | ✅ `mainwindow.cpp:564-600` | ❌ | ❌ · |
 | U241 IPreviewPlugin gating Preview menu | ✅ `filetree.cpp:741` | ⚠️ registry exists, Preview-menu gating unproven - `preview_registry.h:14` | ⚠️ · |
 | U264 SortableTreeWidget + setCustomizableColumns | ✅ `sortabletreewidget.cpp` (uibase) | ❌ | ❌ · |
@@ -1190,7 +1190,7 @@ app can never end up unreachable - see `tray_decision.h:66`.
 | U191 TextViewer read-only INI write TaskDialog (Clear flag / Allow once / Skip) | ✅ `textviewer.cpp:173-192` | ❌ no read-only surface to gate: the only text editor lists files under the mod folder, all writable - `generic_files_tab.cpp:121` | ❌ · |
 | U192 FindDialog (find-only, Find Next, Close) | ✅ `finddialog.ui` | ✅ pattern + Match case + Find Next + Close, wraps - `find_dialog.h:22` | ✅ · |
 | U248 TextEditor toolbar per-file (Save, Word wrap toggle, Open in Explorer) + dirty flag | ✅ `texteditor.cpp:468-491` | ✅ Save, checkable Word wrap, Open in File Manager, Find, dirty-flag-driven Save - `generic_files_tab.cpp:79`, `:88`, `:239` | ✅ ✔ |
-| U249 Line-number gutter + current-line highlight + TextEditorHighlighter | ✅ `texteditor.cpp:13-14` | ⚠️ highlighter + gutter, current-line unproven - `generic_files_tab.cpp:59` | ⚠️ · |
+| U249 Line-number gutter + current-line highlight + TextEditorHighlighter | ✅ `texteditor.cpp:13-14` | ✅ all three; the current line is tinted from `QPalette::AlternateBase` so it follows the KDE colour scheme rather than MO2's fixed yellow - `line_number_edit.cpp` | ✅ ✔ |
 | U250 TextViewer multi-file tabs w/ per-tab Save + Find | ✅ `textviewer.cpp` | ❌ | ❌ · |
 
 ## 36. Browser
@@ -1343,7 +1343,7 @@ app can never end up unreachable - see `tray_decision.h:66`.
 | Feature | MO2 | GMM | Status |
 |---------|-----|-----|--------|
 | U152 File tree context menu protocol (Add as Executable, Reveal, Hide/Un-Hide, Open block, Preview bolding, Save/Refresh/Expand/Collapse) | ✅ `filetree.cpp:640-810` | ⚠️ Hide/Un-Hide + Refresh w/ tips; other blocks unproven - `data_tab.cpp:811` | ⚠️ · |
-| U153 MenuItem status-tip protocol (hint + "Disabled because:" + disabledHint) | ✅ `filetree.cpp:60-115` | ⚠️ tips exist, "Disabled because:" unproven - `data_tab.cpp:815` | ⚠️ · |
+| U153 MenuItem status-tip protocol (hint + "Disabled because:" + disabledHint) | ✅ `filetree.cpp:60-115` | ✅ `set_menu_tip()` composes both on every file-tree entry; MO2's punctuation rules carried over - `data_tab.cpp` | ✅ ✔ |
 | U154 File tree multi-select detail captions ("only has %1 file(s)") | ✅ `filetree.cpp:618-626` | ❌ | ❌ · |
 
 ## 49. CLI Help Grammar
@@ -1380,8 +1380,8 @@ column.
 | 1. Virtual Filesystem | 5 | 2 | 4 | 1 | 0 | 5 | 5 |
 | 2. Launch Pipeline | 6 | 5 | 5 | 14 | 0 | 2 | 17 |
 | 3. Error Handling & Diagnostics | 8 | 9 | 0 | 0 | 28 | 11 | 35 |
-| 4. Settings & Configuration | 26 | 29 | 6 | 1 | 12 | 24 | 0 |
-| 5. Executable Management | 10 | 5 | 4 | 8 | 0 | 0 | 0 |
+| 4. Settings & Configuration | 26 | 31 | 6 | 1 | 12 | 22 | 0 |
+| 5. Executable Management | 11 | 4 | 4 | 8 | 0 | 0 | 0 |
 | 6. Mod Management | 24 | 5 | 9 | 8 | 0 | 0 | 1 |
 | 7. Mod Categories | 6 | 5 | 0 | 9 | 0 | 0 | 0 |
 | 8. Mod Conflict Detection | 4 | 2 | 3 | 7 | 0 | 0 | 0 |
@@ -1406,12 +1406,12 @@ column.
 | 27. Plugin Host System | 0 | 1 | 12 | 3 | 0 | 0 | 0 |
 | 28. Sort System | 0 | 0 | 5 | 0 | 0 | 0 | 0 |
 | 29. Instance Management | 3 | 1 | 6 | 7 | 0 | 0 | 0 |
-| 30. UI Layer | 27 | 8 | 17 | 12 | 2 | 0 | 2 |
+| 30. UI Layer | 28 | 8 | 17 | 11 | 2 | 0 | 2 |
 | 31. Log System | 9 | 2 | 3 | 2 | 0 | 0 | 0 |
 | 32. System Tray | 4 | 1 | 0 | 0 | 0 | 0 | 0 |
 | 33. Self Updater | 2 | 3 | 0 | 4 | 0 | 0 | 0 |
 | 34. Multi-Process / IPC | 4 | 2 | 0 | 1 | 0 | 0 | 0 |
-| 35. Text Editor | 3 | 2 | 0 | 3 | 0 | 0 | 0 |
+| 35. Text Editor | 4 | 1 | 0 | 3 | 0 | 0 | 0 |
 | 36. Browser | 0 | 1 | 0 | 6 | 0 | 0 | 0 |
 | 37. Dialogs | 3 | 1 | 0 | 8 | 0 | 0 | 1 |
 | 38. Platform Abstraction | 2 | 1 | 14 | 1 | 0 | 0 | 0 |
@@ -1424,25 +1424,25 @@ column.
 | 45. TaskDialog Component | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
 | 46. Notifications / Problems System | 0 | 0 | 0 | 3 | 0 | 0 | 0 |
 | 47. Backup / Restore (Load Order + Mod List) | 0 | 0 | 3 | 0 | 0 | 0 | 0 |
-| 48. File Tree Menu Protocol | 0 | 2 | 0 | 1 | 0 | 0 | 0 |
+| 48. File Tree Menu Protocol | 1 | 1 | 0 | 1 | 0 | 0 | 0 |
 | 49. CLI Help Grammar | 0 | 1 | 0 | 1 | 0 | 0 | 0 |
 | 50. My Games Resolution | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
 | 51. Conflict Scan Refresh | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
-| **TOTAL** | **365** | **166** | **177** | **238** | **54** | **43** | **62** |
+| **TOTAL** | **369** | **165** | **177** | **237** | **54** | **41** | **62** |
 
 ### The arithmetic
 
 ```
 rows in file                          1043
-scored rows (ok + part + miss)         769
+scored rows (ok + part + miss)         771
 
-MO2 parity        ok   / scored        365 /  769  = 47.5%
-partial           part / scored        166 /  769  = 21.6%
-missing           miss / scored        238 /  769  = 30.9%
+MO2 parity        ok   / scored        369 /  771  = 47.9%
+partial           part / scored        165 /  771  = 21.4%
+missing           miss / scored        237 /  771  = 30.7%
 GMM-exclusive     surp / all rows      177 / 1043  = 17.0%   (not scored)
 ```
 
-**Parity is 365 / 769 = 47.5%.** 238 rows are outright missing and 166 partial.
+**Parity is 369 / 771 = 47.9%.** 237 rows are outright missing and 165 partial.
 The largest untouched surfaces are **44. Tutorial** and **46. Notifications /
 Problems** (zero matched rows), then **16. Nexus** and **15. Downloads**, which
 carry the most missing rows in absolute terms.

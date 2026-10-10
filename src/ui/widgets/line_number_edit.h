@@ -22,6 +22,7 @@ protected:
 private slots:
   void updateLineNumberAreaWidth(int newBlockCount);
   void updateLineNumberArea(const QRect &rect, int dy);
+  void highlight_current_line();
 
 private:
   QWidget *line_number_area_;
