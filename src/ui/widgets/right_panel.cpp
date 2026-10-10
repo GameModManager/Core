@@ -165,13 +165,20 @@ QTableWidget *RightPanel::current_table() const {
 void RightPanel::apply_filter() {
   const QString text = filter_bar_->filter_text().trimmed().toLower();
 
+  // The Plugins tab filters on the plugin NAME alone, the way MO2's
+  // espFilterEdit does (PluginListSortProxy::updateFilter,
+  // pluginlistview.cpp:259-262). The generic pass below matches any column's
+  // text, which on this tab would also hide rows on their Priority or Mod
+  // Index digits. PluginView::apply_filter hides the rows and recounts the
+  // MO2-style active-of-visible counter itself.
+  if (auto *pt = qobject_cast<PluginsTab *>(tab_widget_->currentWidget())) {
+    pt->apply_filter(text);
+    return;
+  }
+
   auto *table = current_table();
   if (table) {
     filter_bar_->apply_to(table);
-    // The Plugins-tab counter is MO2-style (enabled + filter-visible), so
-    // it must track the filter as it is typed.
-    if (auto *pt = plugins_tab())
-      pt->refresh_counters();
     // DownloadsTab: re-apply the "hide installed" filter on top of the
     // text filter. set_filter_text feeds it the current text so the
     // re-apply hides rows that fail either filter instead of unhiding the

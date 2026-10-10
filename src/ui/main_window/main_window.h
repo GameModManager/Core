@@ -251,15 +251,14 @@ private:
   void update_title();
   // MO2 setFilterShortcuts (references/modorganizer/src/mainwindow.cpp:204-232):
   // Ctrl+F focuses + selects the active filter input, Escape clears it.
-  // One window-scoped pair for both bars - the right-panel bar is the target
-  // while it holds focus, the mod-list bar otherwise. Registered after
-  // setup_mod_list() and RightPanel's construction, which is where both bars
-  // come into existence.
   // `left_pane` and the right panel each get their own Ctrl+F / Escape pair
   // (see add_filter_shortcuts). Called once, after both panes exist.
   void setup_filter_shortcuts(QWidget *left_pane);
-  void focus_active_filter();
-  void clear_active_filter();
+  // `pane` is the widget the firing shortcut was scoped to. It names which of
+  // the two bars is the active filter, so it - not "whichever bar happens to
+  // hold focus" - decides where Ctrl+F goes and what Escape clears.
+  void focus_active_filter(QWidget *pane);
+  void clear_active_filter(QWidget *pane);
   // One Ctrl+F / Escape pair scoped to `owner` and its children (MO2's
   // setFilterShortcuts, which registers the pair on the list widget and its
   // filter edit with WidgetWithChildrenShortcut). Scoping them to the pane

@@ -383,12 +383,16 @@ void MainWindow::add_filter_shortcuts(QWidget *owner) {
   // in the window, which is how Escape ends up clearing the mod-list filter
   // while the user is in the plugins table.
   find_filter->setContext(Qt::WidgetWithChildrenShortcut);
-  connect(find_filter, &QShortcut::activated, this, &MainWindow::focus_active_filter);
+  connect(find_filter, &QShortcut::activated, this, [this, owner]() {
+    focus_active_filter(owner);
+  });
 
   auto *clear_filter = new QShortcut(QKeySequence(Qt::Key_Escape), owner);
   clear_filter->setAutoRepeat(false);
   clear_filter->setContext(Qt::WidgetWithChildrenShortcut);
-  connect(clear_filter, &QShortcut::activated, this, &MainWindow::clear_active_filter);
+  connect(clear_filter, &QShortcut::activated, this, [this, owner]() {
+    clear_active_filter(owner);
+  });
 }
 
 void MainWindow::setup_filter_shortcuts(QWidget *left_pane) {
@@ -399,25 +403,30 @@ void MainWindow::setup_filter_shortcuts(QWidget *left_pane) {
   //
   // Two pairs, one per pane: the left pane owns the mod list and its filter
   // bar, the right panel owns its tab contents and its own bar. Registering
-  // on the pane means whichever pane the focus is in is the one that answers,
-  // so focus_active_filter's "already in a bar, else the mod list" preference
-  // is now settled by focus rather than guessed.
+  // on the pane means whichever pane the focus is in is the one that answers.
   add_filter_shortcuts(left_pane);
   add_filter_shortcuts(right_panel_);
 }
 
-void MainWindow::focus_active_filter() {
+void MainWindow::focus_active_filter(QWidget *pane) {
   // MO2 gives each list its own pair of hooks (mainwindow.cpp:464-466); here
-  // one pair per pane serves that pane's bar, and the bar the user is already
-  // in wins while the mod list is the fallback.
-  if (right_panel_ && right_panel_->filter_bar()->filter_has_focus())
-    right_panel_->filter_bar()->focus_filter();
-  else if (filter_bar_)
+  // one pair per pane serves that pane's bar. `pane` is the widget the firing
+  // shortcut was scoped to, which already answers "which pane is the user in".
+  // Asking "does the right bar hold focus" instead cannot answer that for any
+  // tab whose table holds the focus instead of its bar - that is the normal
+  // state - so the key fell through to the mod list's bar from inside the
+  // right panel.
+  if (pane == right_panel_) {
+    if (right_panel_)
+      right_panel_->filter_bar()->focus_filter();
+    return;
+  }
+  if (filter_bar_)
     filter_bar_->focus_filter();
 }
 
-void MainWindow::clear_active_filter() {
-  if (right_panel_ && right_panel_->filter_bar()->filter_has_focus()) {
+void MainWindow::clear_active_filter(QWidget *pane) {
+  if (pane == right_panel_) {
     // MO2 hands focus back to the list that owns the filter. GMM's right
     // panel shares ONE bar across its lazily built tabs (plugins, downloads,
     // conflicts, saves, data), so there is no single view to return to -
