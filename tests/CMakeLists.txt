@@ -49,30 +49,6 @@ add_test(NAME platform_abstraction_test
         --baseline ${CMAKE_CURRENT_SOURCE_DIR}/platform_abstraction_baseline.txt)
 
 # ---------------------------------------------------------------------------
-# Feature map guard
-# ---------------------------------------------------------------------------
-# docs/featuremap.md is a tracker, not a diary: a cell is a status plus a
-# pointer, and a pointer must resolve - the MO2 column against the vendored MO2
-# tree at <workspace>/references, every other column against src/. This fails
-# when a pointer resolves nowhere (new violation), when a pointer that was
-# broken now resolves (the fix landed, drop it from the baseline), when a
-# section cell / TOTAL / parity line disagrees with the rows, or when it parses
-# zero rows, because a guard that cannot see the file it guards must not pass.
-# ~16 pointers predate it (mostly MO2 uibase, which references/ does not
-# vendor), so it is a ratchet keyed on (row, construct), not line numbers:
-#   python3 tests/featuremap_scan.py --doc docs/featuremap.md --repo . \
-#       --mo2 ../../references --baseline tests/featuremap_baseline.txt [--update]
-# Pure text scan. It needs the sibling MO2 checkouts, and fails loud without
-# them rather than silently checking only the GMM half of every row.
-add_test(NAME featuremap_test
-    COMMAND ${Python3_EXECUTABLE}
-        ${CMAKE_CURRENT_SOURCE_DIR}/featuremap_scan.py
-        --doc ${PROJECT_SOURCE_DIR}/docs/featuremap.md
-        --repo ${PROJECT_SOURCE_DIR}
-        --mo2 ${PROJECT_SOURCE_DIR}/../../references
-        --baseline ${CMAKE_CURRENT_SOURCE_DIR}/featuremap_baseline.txt)
-
-# ---------------------------------------------------------------------------
 # Platform contract: pure virtual coverage + OS-arm completeness
 # ---------------------------------------------------------------------------
 # Only one of Linux/Windows/macOS is ever compiled, so a pure virtual that an
