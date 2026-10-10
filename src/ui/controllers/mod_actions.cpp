@@ -4,6 +4,7 @@
 #include "engine/mod/meta/categories.h"
 #include "engine/mod/meta/mod_meta.h"
 #include "engine/plugin_host/category_factory.h"
+#include "engine/util/fs_utils.h"
 #include "ui/main_window/main_window.h"
 #include "ui/settings/settings.h"
 #include "ui/widgets/error_popup.h"
@@ -484,6 +485,73 @@ void ModActions::reinstall_mod(const QString &mod_id) {
                                                     source_type, source_id, 0, folder);
       },
       Qt::QueuedConnection);
+}
+
+// MO2 ModListViewActions::restoreHiddenFiles (modlistviewactions.cpp:1053):
+// MO2 caps the confirmation list at 20 names and always asks first - the
+// single-mod case gets a different title and body from the multi case.
+void ModActions::restore_hidden_files(const QStringList &mod_ids) {
+  if (mod_ids.isEmpty())
+    return;
+
+  constexpr int kMaxListed = 20;
+  if (mod_ids.size() == 1) {
+    if (QMessageBox::question(w_, QObject::tr("Are you sure?"),
+                              QObject::tr("About to restore all hidden files in:\n") +
+                                  mod_ids.first(),
+                              QMessageBox::Ok | QMessageBox::Cancel) != QMessageBox::Ok)
+      return;
+  } else {
+    QStringList listed = mod_ids.mid(0, kMaxListed);
+    if (mod_ids.size() > kMaxListed)
+      listed << "...";
+    if (QMessageBox::question(
+            w_, QObject::tr("Confirm"),
+            QObject::tr(
+                "Restore all hidden files in the following mods?<br><ul>%1</ul>")
+                .arg(QStringLiteral("<li>%1</li>").arg(listed.join("</li><li>"))),
+            QMessageBox::Yes | QMessageBox::No) != QMessageBox::Yes)
+      return;
+  }
+
+  int restored = 0;
+  int failed   = 0;
+  for (const auto &mod_id : mod_ids) {
+    // The hidden list is derived, not stored: walk the mod folder and strip
+    // the suffix off everything that carries it. Same walk the has_hidden_files
+    // flag itself comes from, so the two can never disagree.
+    const auto folder = w_->mods_dir_path() / mod_id.toStdString();
+    std::error_code ec;
+    for (std::filesystem::recursive_directory_iterator it(folder, ec), end; it != end;
+         it.increment(ec)) {
+      if (ec)
+        break;
+      std::error_code file_ec;
+      if (it->is_regular_file(file_ec) && !file_ec && engine::unhide_file(it->path()))
+        ++restored;
+      else if (file_ec)
+        ++failed;
+    }
+    bool still_hidden = false;
+    std::error_code walk_ec;
+    for (std::filesystem::recursive_directory_iterator it(folder, walk_ec), end;
+         it != end && !still_hidden; it.increment(walk_ec)) {
+      if (walk_ec)
+        break;
+      std::error_code f_ec;
+      if (it->is_regular_file(f_ec) && !f_ec && engine::is_hidden_file(it->path()))
+        still_hidden = true;
+    }
+    w_->mod_model_->set_hidden_files(mod_id, still_hidden);
+    // The renames invalidate this mod's cached conflict file list, exactly
+    // as a per-file hide does (ModListController::on_data_hide).
+    w_->conflict_invalidate_pending_.insert(mod_id.toStdString());
+  }
+  if (refresh_data_tab_cb_)
+    refresh_data_tab_cb_();
+  set_action_status(QObject::tr("Restored %n hidden file(s)", "", restored));
+  if (failed)
+    set_action_status(QObject::tr("%1 file(s) could not be restored").arg(failed));
 }
 
 QString ModActions::create_separator_named(const QString &name, const QString &color) {

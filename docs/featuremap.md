@@ -426,14 +426,14 @@ port - their cited GMM symbol names were invented, the features are not.
 | U029 Category setup: GMM ruling = opt-in per-instance Nexus mapping import, no MO2 first-run chooser (NEXUS-LENS: genericize/provider-scope) | ✅ `mainwindow.cpp:1281-1300` | ⚠️ opt-in import exists, not wired - `source_pages.cpp:345` | ⚠️ · |
 | U030 Category migration dialog (Import / Open / Disable Mappings / Don't show again) (NEXUS-LENS: genericize/provider-scope) | ✅ `mainwindow.cpp:1312-1345` | ❌ | ❌ · |
 | U076 Category menus as QPushButton-with-menu (addMenuAsPushButton) | ✅ `modlistcontextmenu.cpp:264-271` | ❌ | ❌ · |
-| U078 "Change Categories" menu (recursive checkable items, parent check icon, aboutToHide apply) | ✅ `modlistcontextmenu.cpp:110-156` | ⚠️ menus exist, apply-on-hide unproven - `mod_context_menu.cpp:459` | ⚠️ · |
-| U079 "Primary Category" menu (QRadioButton per assigned category) | ✅ `modlistcontextmenu.cpp:180-215` | ⚠️ radio menu exists, apply-on-hide unproven - `mod_context_menu.cpp:541` | ⚠️ · |
+| U078 "Change Categories" menu (recursive checkable items, parent check icon, aboutToHide apply) | ✅ `modlistcontextmenu.cpp:110-156` | ⚠️ commits on aboutToHide now, but the list stays flat: MO2 nests a submenu per parent category, wraps each entry in a QWidgetAction+QCheckBox and paints a check icon on the parent; ours is a plain checkable QAction list - `mod_context_menu.cpp:689` | ⚠️ ✔ |
+| U079 "Primary Category" menu (QRadioButton per assigned category) | ✅ `modlistcontextmenu.cpp:180-215` | ✅ one exclusive checkable action per assigned category, committed on aboutToHide only when a radio is actually checked - `mod_context_menu.cpp:758` | ✅ ✔ |
 | U112 Category column "Non-MO" for foreign + auto-unset on removal | ✅ `modlist.cpp:222-244` | ⚠️ not a category column: the game-native band carries it, `is_game_native` plus its pseudo-row - `mod_list_model.h:71` | ⚠️ · |
 | U126 Separator display strips "_separator" suffix | ✅ `modlist.cpp:110-122` | ✅ display name is the folder minus the suffix, MO2 getDisplayName - `mod_scanner.cpp:439` | ✅ ✔ |
 | U171 Categories dialog (Refresh from Nexus, import column, drag-assign pane) (NEXUS-LENS: genericize/provider-scope) | ✅ `categoriesdialog.ui` | ⚠️ CRUD exists, Nexus pane unproven - `categories_dialog.h:21` | ⚠️ · |
 | U172 Category import dialog (Merge/Replace strategy + mapping options) | ✅ `categoryimportdialog.ui` | ❌ | ❌ · |
 | U196 "No category found" install dialog (Proceed / Disable / Stop && Configure) (NEXUS-LENS: genericize/provider-scope) | ✅ `installationmanager.cpp:672-682` | ❌ | ❌ · |
-| U229 Category menu commits on aboutToHide | ✅ `modlistcontextmenu.cpp:145-151` | ❌ | ❌ · |
+| U229 Category menu commits on aboutToHide | ✅ `modlistcontextmenu.cpp:145-151`; MO2 holds categories in an unordered `std::set<int>` (`:136`) with the primary separate via `setPrimaryCategory` | ✅ both submenus commit on aboutToHide, so N ticks write one CSV and an un-tick before leaving cancels; opening and leaving writes nothing because the id list is seeded from the current primary-first CSV and only the checkbox deltas are applied - `mod_context_menu.cpp:706`, covered by `change_categories_test.cpp:107`. MO2 has no CSV order to normalise, so the primary-first order is ours alone | ✅ ✔ |
 
 ## 8. Mod Conflict Detection
 
@@ -484,8 +484,8 @@ port - their cited GMM symbol names were invented, the features are not.
 | U161 Data tab checkboxes + tooltips (conflicts/archives/hidden filters, Refresh tip) | ✅ `mainwindow.ui:1095-1195` | ⚠️ refresh + status-tips only - `data_tab.cpp:830` | ⚠️ · |
 | U211 markConverted (converted/working flag) | ✅ `modlistviewactions` | ❌ | ❌ · |
 | U212 validated flag (ignore missing data) | ✅ `modinfo` | ✅ writes `[General] validated=true`, read at `:599` - `mod_scanner.cpp:853` | ✅ · |
-| U213 hidden files list (restoreHiddenFiles) | ✅ `modinforegular` | ❌ | ❌ · |
-| U218 FileTree menu ordering + bold-first-enabled via doubleClicksOpenPreviews | ✅ `filetree.cpp:749-772` | ❌ | ❌ · |
+| U213 hidden files list (restoreHiddenFiles) | ✅ `modinforegular` | ✅ confirm dialog (single-mod wording differs, multi capped at 20 names), strips the hidden suffix from every file under each selected mod and refreshes the flags - `mod_actions.cpp:493` | ✅ ✔ |
+| U218 FileTree menu ordering + bold-first-enabled via doubleClicksOpenPreviews | ✅ `filetree.cpp:749-772` | ⚠️ bolds the first enabled entry and falls back to Open when Preview is disabled, but the order itself is fixed: MO2 puts Preview first when double-clicks-open-previews is on and Open first when off; ours is always Open, Preview - `filetree_tab.cpp:109` | ⚠️ ✔ |
 
 ## 10. Mod Info Dialog
 
@@ -501,10 +501,10 @@ port - their cited GMM symbol names were invented, the features are not.
 | Conflicts tab | ✅ `ConflictsTab` `modinfodialogconflicts.h` | ✅ `conflicts_tab` - `conflicts_tab.cpp:182` | ✅ · |
 | Notes tab (comments + notes + color) | ✅ `NotesTab` `modinfodialogtab.h` | ✅ `notes_tab` - `notes_tab.cpp:24` | ✅ · |
 | Generic files tab | ❌ | 🚀 `generic_files_tab` - `generic_files_tab.cpp:1` | 🚀 · |
-| Tab reordering | ✅ `onTabMoved` + `saveTabOrder` | ⚠️ internal `tab_order_` vector, not draggable - `mod_info_dialog.cpp:58` | ⚠️ · |
-| Tab color coding (data presence) | ✅ `setTabsColors` | ❌ | ❌ · |
+| Tab reordering | ✅ `onTabMoved` + `saveTabOrder` | ✅ tabs draggable; QTabBar::tabMoved saves the visual sequence - `mod_info_dialog.cpp:78` | ✅ ✔ |
+| Tab color coding (data presence) | ✅ `setTabsColors` | ✅ a tab with no data for this mod wears Disabled WindowText, one with data wears the palette default; re-colours live via ModInfoTab::has_data_changed - `mod_info_dialog.cpp:211` | ✅ ✔ |
 | Mod navigation (prev/next) | ✅ `onPreviousMod`, `onNextMod` | ✅ separator-aware nav - `mod_info_dialog.cpp:99` | ✅ · |
-| Mod info tab order persistence | ✅ `GeometrySettings::modInfoTabOrder()` | ❌ | ❌ · |
+| Mod info tab order persistence | ✅ `GeometrySettings::modInfoTabOrder()` | ✅ saved as ModInfoTabId integers and re-applied on open; a stale or duplicate id sequence is ignored and the natural order kept - `mod_info_dialog.cpp:237` | ✅ ✔ |
 
 ## 11. Version & Update Management
 
@@ -838,7 +838,7 @@ port - their cited GMM symbol names were invented, the features are not.
 | U095 Mod list header tooltips (13 exact strings) | ✅ `modlist.cpp:1345-1387` | ⚠️ 11 shipped, 7 verbatim; Source ID wording is ours - `mod_list_model.cpp:553` | ⚠️ ✔ |
 | U106 Mod list 13 columns | ✅ `modlist.h:83-96` (COL_NAME…COL_NOTES) | ⚠️ 11 shipped; Content, Author, Uploader, Source Game, Notes absent - `mod_list_model.h:115` | ⚠️ ✔ |
 | Mod list default-hidden column set | ✅ `modlistview.cpp:817-824` | ⚠️ hides Source ID, Installation + own Source, Changed - `mod_list_model.cpp:576` | ⚠️ ✔ |
-| U110 Editable-cell rules (priority/version/ModID; foreign guards; auto-priority) | ✅ `modlist.cpp:620-650` | ❌ | ❌ · |
+| U110 Editable-cell rules (priority/version/ModID; foreign guards; auto-priority) | ✅ `modlist.cpp:620-650` | ⚠️ Priority is now editable and moves the mod; Version and ModID are not editable and there is no automatic-priority concept, so MO2's `!hasAutomaticPriority()` guard has nothing to key on - `mod_list_model.cpp:730` | ⚠️ ✔ |
 | U111 Version column "?" when empty + canBeUpdated | ✅ `modlist.cpp:198-206` | ✅ "?" for an empty version on a mod whose source can be re-queried; EditRole keeps the raw value - `mod_list_model.cpp:29` | ✅ ✔ |
 | U113 Priority cell hidden for automatic-priority mods | ✅ `modlist.cpp:207-213` | ❌ | ❌ · |
 | U127 HIGHLIGHT_CENTER centers Name cell alignment | ✅ `modlist.cpp:640-647` | ❌ | ❌ · |
@@ -1154,7 +1154,7 @@ port - their cited GMM symbol names were invented, the features are not.
 | U187 PreviewDialog (Preview / Close buttons) | ✅ `previewdialog.ui` | ⚠️ window exists, modal dialog parity unproven - `preview_window.h:61` | ⚠️ · |
 | U219 Menu aboutToShow refresh pattern (lazy rebuild) + wheel-block combo | ✅ `mainwindow.cpp:455-474` | ✅ the Run menu is rebuilt from its provider when about to open, never on a pin/unpin callback; the wheel block was already there - `menu_bar.cpp`, `mod_filter_bar.cpp:63` | ✅ ✔ |
 | U224 languageChange rebuilds help menu + resetActionIcons | ✅ `mainwindow.cpp:564-600` | ❌ | ❌ · |
-| U241 IPreviewPlugin gating Preview menu | ✅ `filetree.cpp:741` | ⚠️ registry exists, Preview-menu gating unproven - `preview_registry.h:14` | ⚠️ · |
+| U241 IPreviewPlugin gating Preview menu | ✅ `filetree.cpp:741` | ✅ Preview is disabled, not hidden, when the registry has no handler and the status tip says why; a directory counts as unpreviewable - `filetree_tab.cpp:109` | ✅ ✔ |
 | U264 SortableTreeWidget + setCustomizableColumns | ✅ `sortabletreewidget.cpp` (uibase) | ⚠️ `SortableTreeWidget` ships with local-move-only and items_moved - `sortable_tree_widget.h:22`; MO2's setCustomizableColumns does not | ⚠️ · |
 | U265 ExpanderWidget / LinkLabel / LineEditClear UI primitives | ✅ `uibase src` | ✅ all three: `ExpanderWidget`, `LinkLabel`, `LineEditClear` under `src/ui/widgets/` | ✅ · |
 | U269 EventFilter generic event filter (uibase) | ✅ `eventfilter.cpp` (uibase) | ✅ `EventFilter` - `event_filter.h:23` | ✅ · |
@@ -1425,10 +1425,10 @@ column.
 | 4. Settings & Configuration | 29 | 28 | 6 | 1 | 12 | 22 | 0 |
 | 5. Executable Management | 12 | 4 | 4 | 7 | 0 | 0 | 0 |
 | 6. Mod Management | 24 | 5 | 9 | 8 | 0 | 0 | 1 |
-| 7. Mod Categories | 7 | 6 | 0 | 7 | 0 | 0 | 0 |
+| 7. Mod Categories | 9 | 5 | 0 | 6 | 0 | 0 | 0 |
 | 8. Mod Conflict Detection | 4 | 2 | 3 | 7 | 0 | 0 | 0 |
-| 9. Mod Content Analysis | 6 | 7 | 0 | 13 | 0 | 0 | 0 |
-| 10. Mod Info Dialog | 10 | 1 | 1 | 2 | 0 | 0 | 0 |
+| 9. Mod Content Analysis | 7 | 8 | 0 | 11 | 0 | 0 | 0 |
+| 10. Mod Info Dialog | 13 | 0 | 1 | 0 | 0 | 0 | 0 |
 | 11. Version & Update Management | 3 | 1 | 2 | 12 | 0 | 0 | 0 |
 | 12. Plugin Management | 29 | 6 | 3 | 13 | 0 | 0 | 0 |
 | 13. LOOT Integration | 10 | 2 | 1 | 7 | 0 | 0 | 0 |
@@ -1436,7 +1436,7 @@ column.
 | 15. Download Management | 23 | 15 | 6 | 18 | 9 | 0 | 0 |
 | 16. Nexus Integration | 8 | 10 | 2 | 20 | 0 | 0 | 0 |
 | 17. Source Providers | 4 | 0 | 7 | 1 | 0 | 0 | 0 |
-| 18. Mod List Features | 26 | 12 | 3 | 10 | 0 | 0 | 0 |
+| 18. Mod List Features | 26 | 13 | 3 | 9 | 0 | 0 | 0 |
 | 19. Mod Context Menu | 16 | 5 | 0 | 11 | 0 | 0 | 0 |
 | 20. Plugin Context Menu | 12 | 0 | 0 | 0 | 0 | 0 | 0 |
 | 21. Archive & Installation | 10 | 3 | 4 | 2 | 0 | 0 | 0 |
@@ -1448,7 +1448,7 @@ column.
 | 27. Plugin Host System | 0 | 1 | 12 | 3 | 0 | 0 | 0 |
 | 28. Sort System | 0 | 0 | 5 | 0 | 0 | 0 | 0 |
 | 29. Instance Management | 3 | 1 | 6 | 7 | 0 | 0 | 0 |
-| 30. UI Layer | 30 | 9 | 17 | 8 | 2 | 0 | 2 |
+| 30. UI Layer | 31 | 8 | 17 | 8 | 2 | 0 | 2 |
 | 31. Log System | 9 | 2 | 4 | 1 | 0 | 0 | 0 |
 | 32. System Tray | 4 | 1 | 0 | 0 | 0 | 0 | 0 |
 | 33. Self Updater | 2 | 3 | 0 | 4 | 0 | 0 | 0 |
@@ -1470,7 +1470,7 @@ column.
 | 49. CLI Help Grammar | 0 | 1 | 0 | 1 | 0 | 0 | 0 |
 | 50. My Games Resolution | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
 | 51. Conflict Scan Refresh | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
-| **TOTAL** | **382** | **166** | **178** | **224** | **52** | **41** | **62** |
+| **TOTAL** | **389** | **165** | **178** | **218** | **52** | **41** | **62** |
 
 ### The arithmetic
 
@@ -1478,16 +1478,24 @@ column.
 rows in file                          1043
 scored rows (ok + part + miss)         772
 
-MO2 parity        ok   / scored        382 /  772  = 49.5%
-partial           part / scored        166 /  772  = 21.5%
-missing           miss / scored        224 /  772  = 29.0%
+MO2 parity        ok   / scored        389 /  772  = 50.4%
+partial           part / scored        165 /  772  = 21.4%
+missing           miss / scored        218 /  772  = 28.2%
 GMM-exclusive     surp / all rows      178 / 1043  = 17.1%   (not scored)
 ```
 
-**Parity is 382 / 772 = 49.5%.** 224 rows are outright missing and 166 partial.
+**Parity is 389 / 772 = 50.4%.** 218 rows are outright missing and 165 partial.
 The largest untouched surfaces are **44. Tutorial** and **46. Notifications /
 Problems** (zero matched rows), then **16. Nexus** and **15. Downloads**, which
 carry the most missing rows in absolute terms.
+
+**This batch moved parity from 49.5% to 50.4%** (`382 / 772` to `389 / 772`).
+Ten rows changed, all scored, none reclassified out of scoring: seven `❌`/`⚠️`
+to `✅` (U079 primary-category menu, U229 category commit-on-hide, U213 restore
+hidden files, tab reordering, tab colour coding, tab order persistence, U241
+preview gating) and three into `⚠️` (U078, U110, U218 - each still missing a
+named half of MO2's subject). The denominator did not move, so no row was
+reclassified to flatter the ratio.
 
 **Correction.** An earlier commit here claimed two inherited summary errors:
 that category 51 held a partial row, and that the TOTAL understated partial by
