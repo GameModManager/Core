@@ -324,11 +324,11 @@ private:
   void apply_installed_filter();
 
   // The batch context-menu actions (MO2 DownloadListView
-  // ::downloadContextMenu, downloadlistview.cpp:300-325). `hide` picks the
-  // Hide/Un-Hide family, otherwise the Delete family: hide flags the rows and
-  // re-applies the row filter, delete trashes each archive and drops the
-  // entry. Both confirm once for the whole batch rather than per row.
-  void apply_batch(DownloadBatch batch, bool hide);
+  // ::downloadContextMenu, downloadlistview.cpp:300-325). The Hide family flags
+  // the rows and re-applies the row filter, the Delete family trashes each
+  // archive and drops the entry. Both confirm once for the whole batch rather
+  // than per row.
+  //
   // Confirm-then-trash every entry in the batch, and report the count. No-op
   // when the batch is empty.
   void remove_batch(DownloadBatch batch);
@@ -336,8 +336,6 @@ private:
   // row filter. Emits entry_removed-free: nothing is deleted, so the manifest
   // is rewritten through the existing entry change path.
   void hide_batch(DownloadBatch batch, bool unhide);
-  // Re-apply setRowHidden for every entry, on top of the other filters.
-  void apply_hidden_rows();
 
   // Derive the origin metadata for an install from a download entry:
   // source_type ("nexus"/"loverslab"/""), source_id, file_id, and the
