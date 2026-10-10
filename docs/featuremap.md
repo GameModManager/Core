@@ -258,13 +258,13 @@ port - their cited GMM symbol names were invented, the features are not.
 | Collapsible separators settings | ✅ `InterfaceSettings` (ascending, descending, highlight, icons) | ⚠️ 9 keys, zero readers; fold state itself real - `settings.h:46` | ⚠️ ✔ |
 | Save filters toggle | ✅ `InterfaceSettings::saveFilters()` | ⚠️ dead; no mod list filter exists - `settings_content_widget.cpp:481` | ⚠️ ✔ |
 | Auto-collapse on hover | ✅ `InterfaceSettings::autoCollapseOnHover()` | ⚠️ zero readers - `settings_content_widget.cpp:483` | ⚠️ ✔ |
-| Display foreign mods | ✅ `InterfaceSettings::displayForeign()` | ⚠️ zero readers; unmanaged mods always shown - `settings_content_widget.cpp:479` | ⚠️ ✔ |
+| Display foreign mods | ✅ `InterfaceSettings::displayForeign()` | ✅ read on every model build; unmanaged mods always shown - `mod_list_controller.cpp:4618` | ✅ ✔ |
 | Meta downloads display | ✅ `InterfaceSettings::metaDownloads()` | 🚫 no meta-download concept | 🚫 ✔ |
 | Hide downloads after installation | ✅ `InterfaceSettings::hideDownloadsAfterInstallation()` | ⚠️ GMM filters rows, never auto-removes - `downloads_tab.cpp:905` | ⚠️ ✔ |
 | Show download notifications | ✅ `InterfaceSettings::showDownloadNotifications()` | ✅ gates the status-bar notice - `downloads_controller.cpp:116` | ✅ ✔ |
 | Hide API counter | ✅ `InterfaceSettings::hideAPICounter()` | ⚠️ hides a counter that does not exist - `source_pages.cpp:277` | ⚠️ ✔ |
 | Lock GUI during executables | ✅ `InterfaceSettings::lockGUI()` | ⚠️ Locker ships for downloads, no setting or launch trigger - `ui_locker.cpp:14` | ⚠️ ✔ |
-| Center dialogs on parent | ✅ `GeometrySettings::centerDialogs()` | ⚠️ zero readers - `settings_content_widget.cpp:211` | ⚠️ ✔ |
+| Center dialogs on parent | ✅ `GeometrySettings::centerDialogs()` | ✅ read by the shared placement helper, used by 4 dialogs - `dialog_placement.cpp:11` | ✅ ✔ |
 | Show change game confirmation | ✅ `InterfaceSettings::showChangeGameConfirmation()` | ❌ key only: no UI row, no reader | ❌ ✔ |
 | Close to system tray instead of quitting | ❌ per-executable flag only, no global toggle | 🚀 checkbox, default off, ignored without a tray - `settings.cpp:221` | 🚀 ✔ |
 | Show menubar on Alt | ✅ `InterfaceSettings::showMenubarOnAlt()` | ⏳ MO2 gates Alt on `UILocker`, GMM has no Alt reveal | ⏳ ✔ |
@@ -279,7 +279,7 @@ port - their cited GMM symbol names were invented, the features are not.
 | Base directory variable (%BASE_DIR%) | ✅ `PathSettings::BaseDirVariable` | ✅ `$BASE_DIRECTORY`/`%BASE_DIR%` expanded in `expand_instance_path` - `instance.cpp:26` | ✅ ✔ |
 | Recent directories | ✅ `PathSettings::recent()` | ⏳ no setting | ⏳ ✔ |
 | Offline mode | ✅ `NetworkSettings::offlineMode()` | ✅ reaches NetworkOptions - `network_options_bridge.cpp:31` | ✅ ✔ |
-| Custom browser command | ✅ `NetworkSettings::customBrowserCommand()` | ⚠️ dead; every link uses QDesktopServices - `settings_content_widget.cpp:1260` | ⚠️ ✔ |
+| Custom browser command | ✅ `NetworkSettings::customBrowserCommand()` | ✅ every WebLink open routes through it - `web_link.cpp:46` | ✅ ✔ |
 | Download speed tracking per server | ✅ `NetworkSettings::setDownloadSpeed()` | 🚀 rolling average per mirror - `source/nexus/provider.cpp:441` | 🚀 ✔ |
 | Server preference list | ✅ `NetworkSettings::servers()` | 🚀 rank orders mirror selection - `source/nexus/provider.cpp:245` | 🚀 ✔ |
 | Nexus endorsement integration setting | ✅ `NexusSettings::endorsementIntegration()` | ✅ `settings.h:161` + applied `nexus_source_panel.cpp:41` | ✅ ✔ |
@@ -903,8 +903,8 @@ port - their cited GMM symbol names were invented, the features are not.
 | Set ESP lock (from context) | ✅ `setESPLock` | ✅ `lock_requested` signal - `plugin_context_menu.h:35` | ✅ · |
 | Open origin explorer | ✅ `openOriginExplorer` | ✅ on the plugin context menu - `plugin_context_menu.cpp:91` | ✅ · |
 | Open origin information | ✅ `openOriginInformation` | ✅ on the plugin context menu - `plugin_context_menu.cpp:97` | ✅ · |
-| Enable/disable plugin | ✅ `PluginListContextMenu` | ❌ | ❌ · |
-| Send-to priority | ✅ `sendToPriority` | ❌ | ❌ · |
+| Enable/disable plugin | ✅ `PluginListContextMenu` | ✅ Enable/Disable selected per row - `plugin_context_menu.cpp:42` | ✅ ✔ |
+| Send-to priority | ✅ `sendToPriority` | ✅ "Send to..." + priority dialog - `plugin_context_menu.cpp:48` | ✅ ✔ |
 | Lock/unlock plugin | ✅ `setESPLock` | ✅ Lock/Unlock load order - `plugin_context_menu.cpp:24` | ✅ · |
 | U085 Plugin "Enable all"/"Disable all" + confirm dialog | ✅ `pluginlistcontextmenu.cpp:36-48` | ✅ both on every row's menu and on empty space, confirm + already-in-state note - `mod_list_controller.cpp:3323` | ✅ · |
 | U086 Lock/Unlock load-order labels conditional on lock state | ✅ `pluginlistcontextmenu.cpp:56-77` | ✅ one action per state found across the selection, so a mixed selection gets both - `plugin_context_menu.cpp:71` | ✅ ✔ |
@@ -1177,7 +1177,7 @@ port - their cited GMM symbol names were invented, the features are not.
 | Log copy to clipboard | ✅ `LogList::copyToClipboard()` | ✅ QShortcut Copy on output_ - `console_panel.cpp:37` | ✅ · |
 | Log open logs folder | ✅ `LogList::openLogsFolder()` | ✅ menu item + profile-bar item, both to the logger's own dir - `console_panel.cpp:164` | ✅ · |
 | Log clear | ✅ `LogList::clear()` | ✅ `ConsolePanel::clear()` - `console_panel.h:18` | ✅ · |
-| Log highlighter | ✅ `LogHighlighter` | ❌ | ❌ · |
+| Log highlighter | ✅ `LogHighlighter` | 🚀 the level tag is coloured inline, per level, so the message text is never tinted - `console_panel.cpp:106` | 🚀 · |
 | Log level filtering | ✅ | ✅ `Logger::set_level()` - `logger.h:27` | ✅ · |
 | Group logging (begin/end) | ❌ | 🚀 `begin_group()` / `end_group()` - `logger.h:31` | 🚀 · |
 | Replay buffer (256 entries) | ❌ | 🚀 late subscriber replay - `logger.cpp:50` | 🚀 · |
@@ -1431,7 +1431,7 @@ column.
 | 1. Virtual Filesystem | 5 | 2 | 4 | 1 | 0 | 5 | 5 |
 | 2. Launch Pipeline | 6 | 5 | 5 | 14 | 0 | 2 | 17 |
 | 3. Error Handling & Diagnostics | 8 | 9 | 0 | 0 | 28 | 11 | 35 |
-| 4. Settings & Configuration | 26 | 31 | 6 | 1 | 12 | 22 | 0 |
+| 4. Settings & Configuration | 29 | 28 | 6 | 1 | 12 | 22 | 0 |
 | 5. Executable Management | 12 | 4 | 4 | 7 | 0 | 0 | 0 |
 | 6. Mod Management | 24 | 5 | 9 | 8 | 0 | 0 | 1 |
 | 7. Mod Categories | 7 | 6 | 0 | 7 | 0 | 0 | 0 |
@@ -1447,7 +1447,7 @@ column.
 | 17. Source Providers | 4 | 0 | 7 | 1 | 0 | 0 | 0 |
 | 18. Mod List Features | 26 | 12 | 3 | 10 | 0 | 0 | 0 |
 | 19. Mod Context Menu | 16 | 5 | 0 | 11 | 0 | 0 | 0 |
-| 20. Plugin Context Menu | 10 | 0 | 0 | 2 | 0 | 0 | 0 |
+| 20. Plugin Context Menu | 12 | 0 | 0 | 0 | 0 | 0 | 0 |
 | 21. Archive & Installation | 10 | 3 | 4 | 2 | 0 | 0 | 0 |
 | 22. Deploy System | 0 | 1 | 9 | 0 | 2 | 0 | 0 |
 | 23. Overwrite System | 8 | 2 | 3 | 0 | 0 | 0 | 0 |
@@ -1458,7 +1458,7 @@ column.
 | 28. Sort System | 0 | 0 | 5 | 0 | 0 | 0 | 0 |
 | 29. Instance Management | 3 | 1 | 6 | 7 | 0 | 0 | 0 |
 | 30. UI Layer | 30 | 9 | 17 | 8 | 2 | 0 | 2 |
-| 31. Log System | 9 | 2 | 3 | 2 | 0 | 0 | 0 |
+| 31. Log System | 9 | 2 | 4 | 1 | 0 | 0 | 0 |
 | 32. System Tray | 4 | 1 | 0 | 0 | 0 | 0 | 0 |
 | 33. Self Updater | 2 | 3 | 0 | 4 | 0 | 0 | 0 |
 | 34. Multi-Process / IPC | 4 | 2 | 0 | 1 | 0 | 0 | 0 |
@@ -1479,21 +1479,21 @@ column.
 | 49. CLI Help Grammar | 0 | 1 | 0 | 1 | 0 | 0 | 0 |
 | 50. My Games Resolution | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
 | 51. Conflict Scan Refresh | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
-| **TOTAL** | **376** | **168** | **177** | **227** | **54** | **41** | **62** |
+| **TOTAL** | **381** | **165** | **178** | **224** | **54** | **41** | **62** |
 
 ### The arithmetic
 
 ```
 rows in file                          1043
-scored rows (ok + part + miss)         771
+scored rows (ok + part + miss)         770
 
-MO2 parity        ok   / scored        376 /  771  = 48.8%
-partial           part / scored        168 /  771  = 21.8%
-missing           miss / scored        227 /  771  = 29.4%
-GMM-exclusive     surp / all rows      177 / 1043  = 17.0%   (not scored)
+MO2 parity        ok   / scored        381 /  770  = 49.5%
+partial           part / scored        165 /  770  = 21.4%
+missing           miss / scored        224 /  770  = 29.1%
+GMM-exclusive     surp / all rows      178 / 1043  = 17.1%   (not scored)
 ```
 
-**Parity is 376 / 771 = 48.8%.** 227 rows are outright missing and 168 partial.
+**Parity is 381 / 770 = 49.5%.** 224 rows are outright missing and 165 partial.
 The largest untouched surfaces are **44. Tutorial** and **46. Notifications /
 Problems** (zero matched rows), then **16. Nexus** and **15. Downloads**, which
 carry the most missing rows in absolute terms.
@@ -1503,18 +1503,27 @@ that category 51 held a partial row, and that the TOTAL understated partial by
 one against "173 actual". Neither was true. Category 51 holds a single `✅`
 row, so its cell is `1 | 0`, and `main` reconciled exactly at 172 partial.
 
-**This pass moved parity up by 0.9 points, and every move is a row the live
-tree contradicts, not a re-scoping.** Eight rows changed status against a
-named line of code: U004 Ctrl+E (`menu_bar.cpp:261`), U114 header tooltips
-(`plugin_view.cpp:560`), U112 game-native band (`mod_list_model.h:71`), U126
-separator display name (`mod_scanner.cpp:439`), U163 filter panel controls
-(`category_filter_panel.cpp:67`, `:84`, `:88`), U264 `SortableTreeWidget`
-(`sortable_tree_widget.h:22`), U265 `ExpanderWidget` / `LinkLabel` /
-`LineEditClear`, U269 `EventFilter` (`event_filter.h:23`). Five went `❌` to
-`✅`, three to `⚠️`; the scored denominator is unchanged at 771, so nothing was
-reclassified out of scoring to buy the number. `featuremap_test` recounts all
-of this from the rows and fails if the table, the TOTAL or the line above
-disagrees.
+**This pass moved parity from 47.9% to 49.5%, and every move is a row the live
+tree contradicts.** Twelve rows changed status against a named line: U004
+Ctrl+E (`menu_bar.cpp:261`), U114 header tooltips (`plugin_view.cpp:560`), U112
+game-native band (`mod_list_model.h:71`), U126 separator display name
+(`mod_scanner.cpp:439`), U163 filter panel controls (`category_filter_panel.cpp:67`,
+`:84`, `:88`), U264 `SortableTreeWidget` (`sortable_tree_widget.h:22`), U265
+`ExpanderWidget` / `LinkLabel` / `LineEditClear`, U269 `EventFilter`
+(`event_filter.h:23`), center-dialogs (`dialog_placement.cpp:11`), display
+foreign mods (`mod_list_controller.cpp:4618`), custom browser
+(`web_link.cpp:46`), enable/disable and send-to-priority
+(`plugin_context_menu.cpp:42`, `:48`).
+
+**The scored denominator fell from 771 to 770, and that needs saying plainly:**
+the Log Highlighter row moved `❌` to `🚀`. It was counted as missing; it is
+not missing, GMM colours the level tag per level where MO2 tints whole lines,
+which is a GMM-exclusive capability and therefore out of the denominator by the
+formula at the top of this file. One row left scoring because the claim got
+better, not because it got hidden. The other eleven moves were `❌` to `✅` or
+`⚠️`, all scored, none of them shrinking the denominator.
+`featuremap_test` recounts all of this from the rows and fails if the table,
+the TOTAL or the lines above disagree.
 
 **4. Settings** was re-verified row by row and is no longer a missing-row
 surface: 57 `❌` became 1. An audit of every `Settings` getter followed: each
@@ -1527,7 +1536,7 @@ completions - a missing column, a missing link - not unread settings - and 24
 
 ### Confidence
 
-316 of 1043 rows carry `✔` (both sides re-read); the rest carry `·` and are
+318 of 1043 rows carry `✔` (both sides re-read); the rest carry `·` and are
 leads, not findings. The `✔` rows concentrate in sections 3, 4, 15, 21, 18 and
 30. Section 45's `TaskDialog` row is a stale `❌` corrected here; uibase's
 `taskdialog.ui` is not vendored under `references/`, so its MO2 half is still
