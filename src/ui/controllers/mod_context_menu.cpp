@@ -696,22 +696,33 @@ void ModContextMenu::add_category_menus(QMenu &menu, const QString &mod_id) {
   // the checkbox states are the edit, and the submenu closing commits them.
   // Checking three categories therefore writes one CSV, not three, and the
   // user can undo a tick by ticking it again before leaving.
-  // The id order is the CSV order, primary first: an id already primary
-  // keeps its slot, a newly checked id lands after the ones already there.
+  // The id order is the CSV order, primary first: an id already in the CSV
+  // keeps its slot and a newly checked id lands after the ones already there.
+  // MO2 has no such order to keep - it holds the categories in a
+  // std::set<int> (modlistcontextmenu.cpp:136) and the primary separately via
+  // setPrimaryCategory, applying per-id membership in setCategories
+  // (modlistviewactions.cpp:1235-1241) - so this primary-first CSV, and the
+  // ordering it must preserve, are ours alone.
   QObject::connect(change_menu, &QMenu::aboutToHide, w_,
                    [this, current, cats, apply, change_menu]() {
                      // `cats` order matches the actions added above, one for one.
-                     QVector<int> ids;
-                     for (const auto *cat : cats)
-                       if (current.contains(cat->id))
-                         ids.append(cat->id);
+                     // Seed from `current` (the CSV's own primary-first order)
+                     // and apply only the deltas. Rebuilding from `cats` would
+                     // re-sort every id into the alphabetized menu order, so a
+                     // mod whose primary is not alphabetically first would have
+                     // its primary silently flipped by a menu that was only
+                     // opened and closed.
+                     QVector<int> ids = current;
                      const auto acts = change_menu->actions();
                      for (size_t i = 0;
                           i < cats.size() && i < static_cast<size_t>(acts.size());
                           ++i) {
-                       if (acts.at(static_cast<qsizetype>(i))->isChecked() &&
-                           !ids.contains(cats[i]->id))
-                         ids.append(cats[i]->id);
+                       if (acts.at(static_cast<qsizetype>(i))->isChecked()) {
+                         if (!ids.contains(cats[i]->id))
+                           ids.append(cats[i]->id);
+                       } else {
+                         ids.removeAll(cats[i]->id);
+                       }
                      }
                      if (ids != current)
                        apply(ids);
