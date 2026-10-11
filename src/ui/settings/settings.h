@@ -20,6 +20,11 @@ public:
   static Settings &instance();
 
   // interface ------------------------------------------------------------
+  // Grey the interface out during operations that lock it (MO2
+  // InterfaceSettings::lockGUI, settings.cpp:2168). Key: interface/lock_gui.
+  // Defaults ON, MO2's default.
+  bool lock_gui() const;
+  void set_lock_gui(bool on);
   QString language() const;
   void set_language(const QString &tag);
   bool smooth_scrolling() const;

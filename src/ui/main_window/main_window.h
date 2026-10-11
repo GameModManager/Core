@@ -207,9 +207,11 @@ public:
   // Lock or unlock the whole mod manager interface. Locking blocks user
   // interaction (mouse + keyboard) across the main window and greys it out,
   // so long-running operations like archive installs can't race the user.
-  // Always re-enable when the operation finishes or cancels - every path
-  // that disables must re-enable on completion/failure.
-  void set_ui_enabled(bool enabled);
+  // The reason decides whether Settings::lock_gui() is honoured; see
+  // ui::LockReason. Always unlock when the operation finishes or cancels -
+  // every path that locks must unlock on completion/failure.
+  void lock_ui(LockReason reason);
+  void unlock_ui();
 
   // Apply saved window geometry after show() - needed for Wayland where
   // restoreGeometry() before platform-window creation is silently ignored.

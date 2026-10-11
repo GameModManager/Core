@@ -254,7 +254,7 @@ port - their cited GMM symbol names were invented, the features are not.
 | Hide downloads after installation | ✅ `InterfaceSettings::hideDownloadsAfterInstallation()` | ⚠️ GMM filters rows, never auto-removes - `downloads_tab.cpp:905` | ⚠️ ✔ |
 | Show download notifications | ✅ `InterfaceSettings::showDownloadNotifications()` | ✅ gates the status-bar notice - `downloads_controller.cpp:116` | ✅ ✔ |
 | Hide API counter | ✅ `InterfaceSettings::hideAPICounter()` | ⚠️ hides a counter that does not exist - `source_pages.cpp:277` | ⚠️ ✔ |
-| Lock GUI during executables | ✅ `InterfaceSettings::lockGUI()` | ⚠️ Locker ships for downloads, no setting or launch trigger - `ui_locker.cpp:14` | ⚠️ ✔ |
+| Lock GUI during executables | ✅ `InterfaceSettings::lockGUI()` | ⚠️ setting created and gating the Locker, but the only locks are installs (OutputRequired, which overrides the setting) and there is no launch trigger - `settings.cpp:15`, `ui_locker.cpp:15` | ⚠️ ✔ |
 | Center dialogs on parent | ✅ `GeometrySettings::centerDialogs()` | ✅ read by the shared placement helper, used by 4 dialogs - `dialog_placement.cpp:11` | ✅ ✔ |
 | Show change game confirmation | ✅ `InterfaceSettings::showChangeGameConfirmation()` | ❌ key only: no UI row, no reader | ❌ ✔ |
 | Close to system tray instead of quitting | ❌ per-executable flag only, no global toggle | 🚀 checkbox, default off, ignored without a tray - `settings.cpp:221` | 🚀 ✔ |
