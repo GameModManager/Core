@@ -278,3 +278,92 @@ TEST_CASE("list_profiles returns sorted names and handles missing dir", "[engine
   const auto profiles = engine::profile::list_profiles(profiles_dir);
   REQUIRE(profiles == std::vector<std::string>({"Alpha", "Mid", "Zeta"}));
 }
+
+// ---------------------------------------------------------------------------
+// Rename a mod in every profile (MO2 Profile::renameModInAllProfiles)
+// ---------------------------------------------------------------------------
+
+// A mod's identity is its folder name, and each profile records that name
+// with the mod's priority (line order) and enabled state. Renaming the folder
+// without touching the other profiles' modlist.txt orphans the entry there:
+// the mod comes back as an unmanaged "new mod" and loses both its load order
+// and its enabled state. This proves the rewrite reaches every profile,
+// preserves line order and the '+'/'-'/'*' spec, and leaves the rest alone.
+TEST_CASE("rename_mod_in_all_profiles rewrites every profile's modlist",
+          "[engine]") {
+  auto root               = make_temp_dir("rename_mod");
+  const auto profiles_dir = root / "profiles";
+
+  const std::string alpha_before =
+      "+SkyUI\n-SomeOtherMod\n+Old Mod Name\n*Foreign Mod\n# a comment\n";
+  const std::string beta_before  = "+Old Mod Name\n-Disabled One\n";
+  const std::string gamma_before = "+Totally Unrelated\n";
+
+  REQUIRE(engine::profile::create_fresh_profile(profiles_dir, "Alpha").success);
+  REQUIRE(engine::profile::create_fresh_profile(profiles_dir, "Beta").success);
+  REQUIRE(engine::profile::create_fresh_profile(profiles_dir, "Gamma").success);
+  write_text(profiles_dir / "Alpha" / "modlist.txt", alpha_before);
+  write_text(profiles_dir / "Beta" / "modlist.txt", beta_before);
+  write_text(profiles_dir / "Gamma" / "modlist.txt", gamma_before);
+
+  const std::size_t rewritten = engine::profile::rename_mod_in_all_profiles(
+      profiles_dir, "Old Mod Name", "New Mod Name");
+  // Alpha and Beta reference the mod; Gamma does not and is skipped.
+  REQUIRE(rewritten == 2);
+
+  // Alpha: the name moved, and the load-order line positions, the disabled
+  // line and the comment are all byte-for-byte as they were.
+  const std::string alpha_after = read_text(profiles_dir / "Alpha" / "modlist.txt");
+  REQUIRE(alpha_after ==
+          "+SkyUI\n-SomeOtherMod\n+New Mod Name\n*Foreign Mod\n# a comment\n");
+
+  // Beta: the spec character survives the rewrite.
+  const std::string beta_after = read_text(profiles_dir / "Beta" / "modlist.txt");
+  REQUIRE(beta_after == "+New Mod Name\n-Disabled One\n");
+
+  // Gamma never mentioned the mod and is left exactly as it was.
+  REQUIRE(read_text(profiles_dir / "Gamma" / "modlist.txt") == gamma_before);
+
+  // A rename to the same name, or of a mod no profile lists, changes nothing.
+  REQUIRE(engine::profile::rename_mod_in_all_profiles(profiles_dir, "New Mod Name",
+                                                       "New Mod Name") == 0);
+  REQUIRE(engine::profile::rename_mod_in_all_profiles(profiles_dir, "No Such Mod",
+                                                       "Whatever") == 0);
+  REQUIRE(read_text(profiles_dir / "Alpha" / "modlist.txt") == alpha_after);
+}
+
+// The round trip through ProfileManager is what the user actually gets: after
+// the rewrite, loading the profile resolves the mod under its new name and
+// keeps the priority its line position encoded. Without the rewrite the old
+// name is gone from the file and the mod re-enters as a new unmanaged mod with
+// default priority and enabled state.
+TEST_CASE("a renamed mod keeps its priority and enabled state in another profile",
+          "[engine]") {
+  auto root               = make_temp_dir("rename_priority");
+  const auto profiles_dir = root / "profiles";
+  REQUIRE(engine::profile::create_fresh_profile(profiles_dir, "Other").success);
+  // Highest priority first. The mod under rename is disabled and sits in the
+  // middle, so its encoded priority is the middle of three.
+  write_text(profiles_dir / "Other" / "modlist.txt",
+             "+Top Mod\n-Old Mod Name\n+Bottom Mod\n");
+
+  engine::profile::ProfileManager profile(profiles_dir / "Other");
+  profile.refresh_mod_status({"Top Mod", "Old Mod Name", "Bottom Mod"}, {});
+  REQUIRE(engine::profile::rename_mod_in_all_profiles(profiles_dir, "Old Mod Name",
+                                                       "New Mod Name") == 1);
+
+  // Reload from the rewritten file under the new name.
+  engine::profile::ProfileManager reloaded(profiles_dir / "Other");
+  reloaded.refresh_mod_status({"Top Mod", "New Mod Name", "Bottom Mod"}, {});
+  REQUIRE(reloaded.priority_of("New Mod Name") == 1);
+  const auto mods = reloaded.mods();
+  REQUIRE(mods.size() == 3);
+  bool found = false;
+  for (const auto &m : mods) {
+    if (m.mod_id == "New Mod Name") {
+      found = true;
+      REQUIRE_FALSE(m.enabled);  // the '-' spec survived
+    }
+  }
+  REQUIRE(found);
+}
