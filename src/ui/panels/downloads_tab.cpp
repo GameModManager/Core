@@ -75,9 +75,25 @@ static const std::vector<std::string> &download_archive_exts() {
   return exts;
 }
 
+// The suffix an in-progress download carries on disk until every byte has
+// arrived (MO2 downloadmanager.cpp:57). Kept next to the scanner so the name
+// the fetcher writes and the name the scanner skips cannot drift apart.
+static constexpr const char *kUnfinishedSuffix = ".unfinished";
+
 // Case-insensitive check: does `path` carry one of the supported archive
 // extensions?
 static bool is_archive_path(const std::filesystem::path &path) {
+  // A partial download is never a finished archive, whatever it is named.
+  // MO2 filters the ".unfinished" name explicitly (downloadmanager.cpp:405);
+  // its own extension check alone would not, because the suffix replaces the
+  // real extension.
+  const std::string name = path.filename().string();
+  std::string lower_name;
+  for (char c : name)
+    lower_name.push_back(
+        static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
+  if (lower_name.ends_with(kUnfinishedSuffix))
+    return false;
   std::string lower;
   for (char c : path.extension().string())
     lower.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
@@ -489,6 +505,15 @@ bool DownloadsTab::add_download(const std::string &id, const std::string &name,
   return true;
 }
 
+// MO2 DownloadManager::isInfoIncomplete (downloadmanager.cpp:1480-1492): a
+// Nexus download whose mod or file id never resolved is missing the identity
+// every other row carries, and cannot be re-queried later.
+bool DownloadsTab::info_is_incomplete(const DownloadEntry &entry) {
+  if (entry.nexus_domain.empty() || entry.file_path.empty())
+    return false;
+  return entry.parent_mod_id.empty() || entry.file_id <= 0;
+}
+
 void DownloadsTab::update_tooltip(DownloadEntry &entry) {
   if (!entry.name_item)
     return;
@@ -498,6 +523,13 @@ void DownloadsTab::update_tooltip(DownloadEntry &entry) {
     lines << tr("Pending download");
   } else {
     lines << (entry.name_item->text());
+  }
+  // MO2 isInfoIncomplete (downloadmanager.cpp:1480-1492): a Nexus download
+  // whose file or mod id never resolved cannot be re-queried later, and the
+  // row is missing the identity every other row carries. Say so here rather
+  // than leaving the user to wonder why "Open on <source>" is unavailable.
+  if (info_is_incomplete(entry)) {
+    lines << tr("Information missing, re-download this file from the mod page.");
   }
   if (!entry.page_url.empty())
     lines << QString::fromStdString(entry.page_url);
@@ -510,6 +542,16 @@ void DownloadsTab::update_tooltip(DownloadEntry &entry) {
   if (!entry.file_path.empty())
     lines << QString::fromStdString(entry.file_path.string());
   entry.name_item->setToolTip(lines.join('\n'));
+
+  // MO2's DecorationRole branch on the Name cell (downloadlist.cpp:233-240)
+  // marks an incomplete row with the warning icon, so the defect is visible
+  // without hovering. Same icon key the mod list uses for a row that does not
+  // describe what the game will see.
+  const bool incomplete = info_is_incomplete(entry);
+  entry.name_item->setIcon(incomplete
+                               ? engine::IconManager::instance().resolve_icon(
+                                     "plugin-warning", QStyle::SP_MessageBoxWarning)
+                               : QIcon());
 }
 
 void DownloadsTab::update_filetime(DownloadEntry &entry) {

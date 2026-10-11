@@ -115,11 +115,22 @@ bool FetchStage::execute(Mod &mod, PipelineContext &ctx) {
 
   auto dest_path = dest_dir / mod.archive_filename;
 
+  // An in-progress download lands under "<name>.unfinished" and is renamed to
+  // the final name only once every byte is in (MO2 downloadmanager.cpp:247,
+  // :2475). Until then the file on disk is honest about being partial: a
+  // crash, a kill, or an abort leaves "<name>.zip.unfinished", never a
+  // truncated archive wearing the real name that the folder scanner and any
+  // external archiver would happily pick up as a finished download.
+  auto partial_path = dest_path;
+  partial_path += ".unfinished";
+
   // Resume support: if a partial download already exists (a paused download
-  // was aborted and kept its file), continue from its size via HTTP Range.
+  // was aborted and kept its .unfinished file), continue from its size via
+  // HTTP Range. The partial name is the only place a half-written archive can
+  // live, so it is the only file whose size is a valid resume offset.
   ctx.download_resume_from = 0;
-  if (std::filesystem::exists(dest_path, ec)) {
-    auto sz = std::filesystem::file_size(dest_path, ec);
+  if (std::filesystem::exists(partial_path, ec)) {
+    auto sz = std::filesystem::file_size(partial_path, ec);
     if (!ec && sz > 0) {
       ctx.download_resume_from = static_cast<int64_t>(sz);
       Logger::instance().debug("[FetchStage] Resuming partial download of " +
@@ -130,10 +141,10 @@ bool FetchStage::execute(Mod &mod, PipelineContext &ctx) {
 
   Logger::instance().debug(
       "[FetchStage] Starting download: " + mod.download_source_type + " mod " +
-      mod.download_source_id + " to " + dest_path.string() +
+      mod.download_source_id + " to " + partial_path.string() +
       " resume_from=" + std::to_string(ctx.download_resume_from));
 
-  if (!provider->fetch(mod, ctx, dest_path)) {
+  if (!provider->fetch(mod, ctx, partial_path)) {
     Logger::instance().error("[FetchStage] Provider fetch returned false for " +
                              mod.id);
     // The provider reports its own cause to the log; the stage can only name
@@ -141,13 +152,13 @@ bool FetchStage::execute(Mod &mod, PipelineContext &ctx) {
     // the file would have landed.
     ctx.error_message = "the download from " + provider->display_name() + " failed (" +
                         mod.download_source_type + " mod " + mod.download_source_id +
-                        " -> " + dest_path.string() +
+                        " -> " + partial_path.string() +
                         ") - nothing was written there; see the log for the cause";
     return false;
   }
 
   // Some providers (e.g. SteamWorkshop) are metadata-only - no file produced
-  if (!std::filesystem::exists(dest_path)) {
+  if (!std::filesystem::exists(partial_path)) {
     mod.archive_filename.clear();
     mod.state = ModState::Downloaded;
     Logger::instance().debug("[FetchStage] Metadata updated, no archive file");
@@ -157,19 +168,35 @@ bool FetchStage::execute(Mod &mod, PipelineContext &ctx) {
   // The bytes are on disk; check them against the digest the pack declared for
   // them. This is the only point in the install where a pin can be tested -
   // afterwards the archive is extracted and its identity is gone. A mismatch
-  // stops the install: the file left at dest_path is not the file the pack
-  // named, and installing it would put unverified content in the instance.
-  const Source::VerifyResult verified = verify_downloaded_archive(mod, dest_path);
+  // stops the install: the file left behind is not the file the pack named,
+  // and installing it would put unverified content in the instance.
+  const Source::VerifyResult verified = verify_downloaded_archive(mod, partial_path);
   if (verified.verdict == Source::PinVerdict::Mismatch) {
     Logger::instance().error("[FetchStage] Digest mismatch for " + mod.id + ": " +
                              verified.message);
     ctx.error_message = "the downloaded archive is not the file this pack asked for (" +
                         verified.message +
                         "). Nothing was installed; the file is still at " +
-                        dest_path.string() + " if you want to look at it";
+                        partial_path.string() + " if you want to look at it";
     return false;
   }
   Logger::instance().debug("[FetchStage] Download verification: " + verified.message);
+
+  // Every byte is in and the bytes are the ones we wanted: drop the
+  // ".unfinished" marker by renaming onto the final archive name. This is the
+  // same "don't rename but remove the .unfinished extension" step MO2 does on
+  // completion (downloadmanager.cpp:2475). From here on the file on disk is a
+  // finished archive under its real name.
+  std::filesystem::rename(partial_path, dest_path, ec);
+  if (ec) {
+    Logger::instance().error("[FetchStage] Failed to finalize download for " + mod.id +
+                             ": " + ec.message());
+    ctx.error_message = std::string("the download finished but the completed archive "
+                                    "could not be renamed to ") +
+                        dest_path.string() + " (it is still at " +
+                        partial_path.string() + ")";
+    return false;
+  }
 
   // Add archive to mod files for subsequent stages
   ModFile mf;
