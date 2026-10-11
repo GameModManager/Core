@@ -281,9 +281,9 @@ port - their cited GMM symbol names were invented, the features are not.
 | Download handler registration | ✅ `Settings::registerDownloadHandlers()` | 🚫 Windows-only shell integration | 🚫 ✔ |
 | Steam app ID override | ✅ `SteamSettings::appID()` | 🚫 GMM has no Steam client | 🚫 ✔ |
 | Steam login (credential store) | ✅ `SteamSettings::login()` (Windows Credential Store) | 🚫 Windows credential store only | 🚫 ✔ |
-| First start detection | ✅ `Settings::firstStart()` | ⏳ no stored app version | ⏳ ✔ |
-| MO version tracking in settings | ✅ `Settings::version()` | ⏳ `VERSION` is a compile define, never persisted | ⏳ ✔ |
-| Settings migration (auto-upgrade between versions) | ✅ `Settings::processUpdates()` | ⏳ `processUpdates()` has 5 MO2 callers, 0 GMM | ⏳ ✔ |
+| First start detection | ✅ `Settings::firstStart()` | ✅ an empty ini is a fresh install, an ini without `settings/version` is a pre-migration one - `settings_migration.cpp:71` | ✅ ✔ |
+| MO version tracking in settings | ✅ `Settings::version()` | ✅ `VERSION` compile define persisted as `settings/version` and read back - `settings_migration.cpp:57` | ✅ ✔ |
+| Settings migration (auto-upgrade between versions) | ✅ `Settings::processUpdates()` | ⚠️ gate runs and stamps, move table still empty - `settings_migration.cpp:96` | ⚠️ ✔ |
 | BSA date backdating | ✅ `settingsdialogworkarounds` (on_bsaDateBtn_clicked) | ⏳ no button, no equivalent | ⏳ ✔ |
 | Reset geometry settings | ✅ `settingsdialogworkarounds` (on_resetGeometryBtn_clicked) | ✅ resets every stored dialog geometry - `settings_content_widget.cpp:226` | ✅ ✔ |
 | Reset dialog choices | ✅ `settingsdialoggeneral` (onResetDialogs) | ✅ General-tab Reset button, `settings_content_widget.cpp:232` → `settings.cpp:373` | ✅ ✔ |
@@ -1422,7 +1422,7 @@ column.
 | 1. Virtual Filesystem | 5 | 2 | 4 | 1 | 0 | 5 | 5 |
 | 2. Launch Pipeline | 6 | 5 | 5 | 14 | 0 | 2 | 17 |
 | 3. Error Handling & Diagnostics | 8 | 10 | 0 | 0 | 27 | 11 | 35 |
-| 4. Settings & Configuration | 29 | 28 | 6 | 1 | 12 | 22 | 0 |
+| 4. Settings & Configuration | 31 | 29 | 6 | 1 | 12 | 19 | 0 |
 | 5. Executable Management | 12 | 4 | 4 | 7 | 0 | 0 | 0 |
 | 6. Mod Management | 24 | 5 | 9 | 8 | 0 | 0 | 1 |
 | 7. Mod Categories | 9 | 5 | 0 | 6 | 0 | 0 | 0 |
@@ -1470,24 +1470,33 @@ column.
 | 49. CLI Help Grammar | 0 | 1 | 0 | 1 | 0 | 0 | 0 |
 | 50. My Games Resolution | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
 | 51. Conflict Scan Refresh | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
-| **TOTAL** | **389** | **165** | **178** | **218** | **52** | **41** | **62** |
+| **TOTAL** | **391** | **166** | **178** | **218** | **52** | **38** | **62** |
 
 ### The arithmetic
 
 ```
 rows in file                          1043
-scored rows (ok + part + miss)         772
+scored rows (ok + part + miss)         775
 
-MO2 parity        ok   / scored        389 /  772  = 50.4%
-partial           part / scored        165 /  772  = 21.4%
-missing           miss / scored        218 /  772  = 28.2%
+MO2 parity        ok   / scored        391 /  775  = 50.5%
+partial           part / scored        166 /  775  = 21.4%
+missing           miss / scored        218 /  775  = 28.1%
 GMM-exclusive     surp / all rows      178 / 1043  = 17.1%   (not scored)
 ```
 
-**Parity is 389 / 772 = 50.4%.** 218 rows are outright missing and 165 partial.
+**Parity is 391 / 775 = 50.5%.** 218 rows are outright missing and 166 partial.
 The largest untouched surfaces are **44. Tutorial** and **46. Notifications /
 Problems** (zero matched rows), then **16. Nexus** and **15. Downloads**, which
 carry the most missing rows in absolute terms.
+
+**Settings migration stage 0 moved parity from 50.4% to 50.5%** (`389 / 772` to
+`391 / 775`). Three `⏳` rows in category 4 changed, all against real symbols, and
+the denominator grew by three because a `⏳` row entering scoring counts in it:
+first-start detection and version tracking are now `✅` (the ini carries
+`settings/version`, and an empty ini is distinguished from a pre-migration one),
+settings migration itself is `⚠️` not `✅` because the gate runs but the move
+table is still empty. No `✅` was claimed for a mechanism that has not yet moved a
+key. Stages 2-7 fill that table.
 
 **This batch moved parity from 49.5% to 50.4%** (`382 / 772` to `389 / 772`).
 Ten rows changed, all scored, none reclassified out of scoring: seven `❌`/`⚠️`

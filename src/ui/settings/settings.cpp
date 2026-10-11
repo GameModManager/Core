@@ -1,9 +1,14 @@
 #include "ui/settings/settings.h"
 
 #include "engine/util/fs_utils.h"
+#include "ui/settings/settings_migration.h"
 #include "ui/widgets/mod_list_model.h"
 
 #include <algorithm>
+
+Settings::Settings() {
+  settings_migration::migrate(settings_);
+}
 
 Settings &Settings::instance() {
   static Settings s;

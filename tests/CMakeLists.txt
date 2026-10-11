@@ -769,6 +769,15 @@ gmm_catch2_test(qsettings_native_format_test ui/qsettings_native_format_test.cpp
     LIBS gmm_ui Qt6::Core
     PROPERTIES ENVIRONMENT_MODIFICATION "GMM_TEST_NATIVE_QSETTINGS=set:1")
 
+# The settings migration: a data-loss path, so it gets the one test the design
+# note calls for. Drives settings_migration::migrate() - the exact call the
+# private Settings ctor makes - against its own sandboxed QSettings handle with
+# its own move table, seeds awkward values (escapes, ini separators, a newline,
+# empty string, empty list, QColor, QDateTime, QByteArray) and asserts they
+# cross verbatim. Non-UI: no widget, no event loop.
+gmm_catch2_test(settings_migration_test ui/settings_migration_test.cpp
+    LIBS gmm_ui Qt6::Core)
+
 gmm_catch2_test(remove_mods_dialog_test ui/remove_mods_dialog_test.cpp
     UI
     LIBS gmm_ui
