@@ -1608,6 +1608,15 @@ QWidget *SettingsContentWidget::build_workarounds_tab() {
       tr("Not wired to anything yet: every mod is installed by extracting it, "
          "so no file ever lives only inside an archive for the file views to "
          "have to read."));
+  auto *lock_gui_box =
+      new QCheckBox(tr("Lock the interface while it works"), misc_group);
+  lock_gui_box->setChecked(s.lock_gui());
+  lock_gui_box->setToolTip(
+      tr("Grey the mod list, panels and menus out while an operation runs, so "
+         "it cannot be interrupted halfway. Install always locks anyway - the "
+         "install's own output is what finishes it, and two at once cannot "
+         "happen. Game launching uses its own lock, which this does not "
+         "change."));
 
   misc_form->addRow(tr("Skip file suffixes"), skip_suffixes);
   misc_form->addRow(tr("Skip directories"), skip_dirs);
@@ -1615,6 +1624,7 @@ QWidget *SettingsContentWidget::build_workarounds_tab() {
   misc_form->addRow(tr("Overwrite capture delay"), delay_spin);
   misc_form->addRow(QString(), core_box);
   misc_form->addRow(QString(), archive_box);
+  misc_form->addRow(QString(), lock_gui_box);
   layout->addWidget(misc_group);
 
   connect(skip_suffixes, &QLineEdit::editingFinished, this, [&s, skip_suffixes]() {
@@ -1636,6 +1646,9 @@ QWidget *SettingsContentWidget::build_workarounds_tab() {
   });
   connect(archive_box, &QCheckBox::toggled, this, [&s](bool on) {
     s.set_experimental_archive_parsing(on);
+  });
+  connect(lock_gui_box, &QCheckBox::toggled, this, [&s](bool on) {
+    s.set_lock_gui(on);
   });
 
   layout->addStretch(1);

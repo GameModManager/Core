@@ -12,6 +12,14 @@ Settings &Settings::instance() {
 
 // interface ----------------------------------------------------------------
 
+bool Settings::lock_gui() const {
+  return settings_.value("interface/lock_gui", true).toBool();
+}
+
+void Settings::set_lock_gui(bool on) {
+  settings_.setValue("interface/lock_gui", on);
+}
+
 QString Settings::language() const {
   return settings_.value("language", "en_US").toString();
 }
