@@ -4097,3 +4097,94 @@ TEST_CASE("priority cell edit moves the mod and refuses bad input",
 
   std::filesystem::remove_all(cfg);
 }
+
+// MO2 ModList::data (modlist.cpp:207-210): COL_PRIORITY returns an invalid
+// QVariant for a mod whose priority is fixed, so the cell renders blank rather
+// than printing a number the user cannot type over. MO2's fixed-priority set is
+// isBackup() || isOverwrite() (modinfo.h:660); ours is the rows flags() already
+// refuses to make editable - Overwrite, MERGED, the game-native band and
+// separators.
+//
+// The consumer is the view's paint of Qt::DisplayRole for the Priority column,
+// so the check reads the role the view reads. Reading the role directly is the
+// only seam here: QTableView does not cache rendered cell text, so there is no
+// widget to assert on without standing up a delegate.
+TEST_CASE("priority cell is blank for a mod whose priority is fixed",
+          "[ui][mo2-parity]") {
+  qputenv("QT_QPA_PLATFORM", "offscreen");
+  qputenv("TZ", "UTC");
+  tzset();
+  const std::filesystem::path cfg = "/tmp/gmm_mod_list_fixed_priority/config";
+  std::filesystem::remove_all("/tmp/gmm_mod_list_fixed_priority");
+  std::filesystem::create_directories(cfg);
+  qputenv("XDG_CONFIG_HOME", cfg.c_str());
+  int test_argc     = 1;
+  char test_argv0[] = "test";
+  char *test_argv[] = {test_argv0, nullptr};
+  QApplication app(test_argc, test_argv);
+  QCoreApplication::setOrganizationName("GameModManager");
+  QCoreApplication::setApplicationName("GameModManager");
+
+  ui::ModList model;
+  QVector<ui::ModEntry> entries;
+  // One regular mod, and one instance of every fixed-priority row kind, all
+  // four with a priority that WOULD print. Same shape, one flag apart.
+  for (const char *id : {"A", "Overwrite", "+MERGED", "SEP"}) {
+    ui::ModEntry m;
+    m.id       = QString::fromLatin1(id);
+    m.name     = m.id;
+    m.enabled  = true;
+    m.priority = 7;
+    if (m.id == QLatin1String("Overwrite"))
+      m.is_overwrite = true;
+    else if (m.id == QLatin1String("+MERGED"))
+      m.is_merged = true;
+    else if (m.id == QLatin1String("SEP"))
+      m.is_separator = true;
+    entries.append(m);
+  }
+  ui::ModEntry native;
+  native.id             = QStringLiteral("Dawnguard.esm");
+  native.name           = QStringLiteral("Dawnguard.esm");
+  native.enabled        = true;
+  native.priority       = 7;
+  native.is_game_native = true;
+  entries.append(native);
+  model.reset_with_order(entries);
+
+  const auto cell = [&model](const char *id, int role) {
+    return model.data(model.index(row_with_id(model, id), ui::ModList::Priority), role);
+  };
+
+  // The branch: every fixed-priority row paints blank.
+  for (const char *id : {"Overwrite", "+MERGED", "SEP", "Dawnguard.esm"}) {
+    INFO(id);
+    CHECK(!cell(id, Qt::DisplayRole).isValid());
+    CHECK(cell(id, Qt::DisplayRole).toString().isEmpty());
+  }
+
+  // Negative control, same entry one attribute apart: a regular mod with a
+  // priority still prints it. reset_with_order renumbers by row, so the
+  // expected text comes from the row rather than a literal. Without this, a
+  // guard that blanked the whole column would satisfy every check above.
+  REQUIRE(model.priority_of(QStringLiteral("A")) >= 0);
+  CHECK(cell("A", Qt::DisplayRole).toString() ==
+        QString::number(model.priority_of(QStringLiteral("A"))));
+  CHECK(cell("A", Qt::DisplayRole).isValid());
+
+  // Unrelated churn stays green: every other column of a fixed-priority row
+  // still reads, and the priority is still on the row itself - the cell is
+  // hidden, not lost.
+  CHECK(model
+            .data(model.index(row_with_id(model, "SEP"), ui::ModList::Name),
+                  Qt::DisplayRole)
+            .toString() == QStringLiteral("SEP"));
+  CHECK(model.priority_of(QStringLiteral("Dawnguard.esm")) >= 0);
+  CHECK(model
+            .data(model.index(row_with_id(model, "A"), ui::ModList::Version),
+                  Qt::DisplayRole)
+            .toString()
+            .isEmpty());
+
+  std::filesystem::remove_all(cfg);
+}
