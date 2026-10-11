@@ -333,7 +333,11 @@ TEST_CASE("pipeline worker", "[ui]") {
 
   // --- 3) Pause an in-flight download: cooperative abort, partial kept.
   fake->set_barrier(false);
-  const std::filesystem::path partial = downloads / "p.zip";
+  // An in-progress download lives under the ".unfinished" name and is renamed
+  // onto the final archive name only once every byte is in, so a paused
+  // download leaves p.zip.unfinished and NOT p.zip.
+  const std::filesystem::path partial    = downloads / "p.zip.unfinished";
+  const std::filesystem::path final_path = downloads / "p.zip";
   start("p");
   check(fake->wait_entered(1, 5000), "paused download started");
   check(wait_until(
@@ -353,6 +357,9 @@ TEST_CASE("pipeline worker", "[ui]") {
   check(!has_completion("p"), "paused download never reports complete");
   check(std::filesystem::exists(partial) && std::filesystem::file_size(partial) > 0,
         "partial file is kept on disk for a later resume (Range)");
+  check(!std::filesystem::exists(final_path),
+        "a paused download never wears the final archive name (negative control "
+        "for the rename-only-on-completion rule)");
 
   // --- 4) Pause a QUEUED download (all slots busy, never started).
   fake->set_barrier(true);
