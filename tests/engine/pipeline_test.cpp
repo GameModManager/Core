@@ -172,7 +172,7 @@ public:
   std::string source_type() const override { return "test-unfinished"; }
   bool fetch(const Mod &, PipelineContext &ctx,
              const std::filesystem::path &dest_path) override {
-    seen_dest = dest_path.string();
+    seen_dest        = dest_path.string();
     seen_resume_from = ctx.download_resume_from;
     std::ofstream(dest_path, std::ios::binary | std::ios::app) << "archive";
     return true;
@@ -1149,7 +1149,7 @@ TEST_CASE("pipeline", "[engine]") {
     auto mods = tmp.root / "mods";
     std::filesystem::create_directories(mods);
     auto provider = std::make_unique<TestUnfinishedProvider>();
-    auto *raw    = provider.get();
+    auto *raw     = provider.get();
     engine::Source::Registry::instance().register_provider(std::move(provider));
 
     Mod mod;
@@ -1164,8 +1164,7 @@ TEST_CASE("pipeline", "[engine]") {
     REQUIRE(stage.execute(mod, ctx));
 
     // The bytes went to the .unfinished name, not the final name.
-    REQUIRE(raw->seen_dest ==
-            (tmp.root / "downloads" / "Pack.7z.unfinished").string());
+    REQUIRE(raw->seen_dest == (tmp.root / "downloads" / "Pack.7z.unfinished").string());
     // A clean first run has nothing to resume from.
     REQUIRE(raw->seen_resume_from == 0);
     // And the completed archive is under its real name with the marker gone.
@@ -1183,14 +1182,13 @@ TEST_CASE("pipeline", "[engine]") {
       std::ofstream(tmp.root / "downloads" / "Pack.7z.unfinished",
                     std::ios::binary | std::ios::trunc)
           << "12345";
-      Mod again                   = mod;
+      Mod again = mod;
       PipelineContext resume_ctx;
-      resume_ctx.mods_dir         = mods;
+      resume_ctx.mods_dir = mods;
       REQUIRE(stage.execute(again, resume_ctx));
       REQUIRE(raw->seen_resume_from == 5);
       REQUIRE(std::filesystem::exists(tmp.root / "downloads" / "Pack.7z"));
-      REQUIRE(!std::filesystem::exists(
-          tmp.root / "downloads" / "Pack.7z.unfinished"));
+      REQUIRE(!std::filesystem::exists(tmp.root / "downloads" / "Pack.7z.unfinished"));
       std::printf("PASS: FetchStage resumes from the .unfinished partial, not the "
                   "final name\n");
     }

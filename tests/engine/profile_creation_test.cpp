@@ -289,8 +289,7 @@ TEST_CASE("list_profiles returns sorted names and handles missing dir", "[engine
 // the mod comes back as an unmanaged "new mod" and loses both its load order
 // and its enabled state. This proves the rewrite reaches every profile,
 // preserves line order and the '+'/'-'/'*' spec, and leaves the rest alone.
-TEST_CASE("rename_mod_in_all_profiles rewrites every profile's modlist",
-          "[engine]") {
+TEST_CASE("rename_mod_in_all_profiles rewrites every profile's modlist", "[engine]") {
   auto root               = make_temp_dir("rename_mod");
   const auto profiles_dir = root / "profiles";
 
@@ -326,9 +325,9 @@ TEST_CASE("rename_mod_in_all_profiles rewrites every profile's modlist",
 
   // A rename to the same name, or of a mod no profile lists, changes nothing.
   REQUIRE(engine::profile::rename_mod_in_all_profiles(profiles_dir, "New Mod Name",
-                                                       "New Mod Name") == 0);
+                                                      "New Mod Name") == 0);
   REQUIRE(engine::profile::rename_mod_in_all_profiles(profiles_dir, "No Such Mod",
-                                                       "Whatever") == 0);
+                                                      "Whatever") == 0);
   REQUIRE(read_text(profiles_dir / "Alpha" / "modlist.txt") == alpha_after);
 }
 
@@ -350,7 +349,7 @@ TEST_CASE("a renamed mod keeps its priority and enabled state in another profile
   engine::profile::ProfileManager profile(profiles_dir / "Other");
   profile.refresh_mod_status({"Top Mod", "Old Mod Name", "Bottom Mod"}, {});
   REQUIRE(engine::profile::rename_mod_in_all_profiles(profiles_dir, "Old Mod Name",
-                                                       "New Mod Name") == 1);
+                                                      "New Mod Name") == 1);
 
   // Reload from the rewritten file under the new name.
   engine::profile::ProfileManager reloaded(profiles_dir / "Other");

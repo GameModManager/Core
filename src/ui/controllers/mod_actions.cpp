@@ -870,9 +870,9 @@ void ModActions::apply_rename(int row, const QString &name) {
     const std::size_t rewritten = engine::profile::rename_mod_in_all_profiles(
         profiles_dir, entry.id.toStdString(), new_id.toStdString());
     if (rewritten > 0) {
-      engine::Logger::instance().debug(
-          "Mod rename propagated to " + std::to_string(rewritten) +
-          " profile modlist file(s)");
+      engine::Logger::instance().debug("Mod rename propagated to " +
+                                       std::to_string(rewritten) +
+                                       " profile modlist file(s)");
     }
   }
 

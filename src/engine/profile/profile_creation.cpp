@@ -334,7 +334,7 @@ std::size_t rename_mod_in_all_profiles(const std::filesystem::path &profiles_dir
     if (!std::filesystem::exists(modlist, ec) || ec) {
       // MO2 logs "Profile has no modlist.txt" (profile.cpp:325) and moves on.
       Logger::instance().warn("profile " + profile_dir +
-                               " has no modlist.txt; mod rename skipped there");
+                              " has no modlist.txt; mod rename skipped there");
       continue;
     }
 
@@ -361,8 +361,8 @@ std::size_t rename_mod_in_all_profiles(const std::filesystem::path &profiles_dir
         continue;
       }
       // '+'/'-'/'*' is the enabled/disabled/foreign spec; a bare name has none.
-      const bool has_spec = t[0] == '+' || t[0] == '-' || t[0] == '*';
-      const char spec    = has_spec ? t[0] : '\0';
+      const bool has_spec            = t[0] == '+' || t[0] == '-' || t[0] == '*';
+      const char spec                = has_spec ? t[0] : '\0';
       const std::string trimmed_name = trim(has_spec ? t.substr(1) : t);
       if (trimmed_name == old_name) {
         saw_old = true;

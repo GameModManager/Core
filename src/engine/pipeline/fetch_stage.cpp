@@ -192,9 +192,9 @@ bool FetchStage::execute(Mod &mod, PipelineContext &ctx) {
     Logger::instance().error("[FetchStage] Failed to finalize download for " + mod.id +
                              ": " + ec.message());
     ctx.error_message = std::string("the download finished but the completed archive "
-                                   "could not be renamed to ") +
-                        dest_path.string() + " (it is still at " + partial_path.string() +
-                        ")";
+                                    "could not be renamed to ") +
+                        dest_path.string() + " (it is still at " +
+                        partial_path.string() + ")";
     return false;
   }
 
