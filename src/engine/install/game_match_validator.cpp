@@ -8,7 +8,7 @@ namespace engine::Install {
 namespace {
 
   // Alias -> canonical catalog id. Mirrors the MO2 GameShortName aliases in
-  // source/nxm/nxm_router.cpp but resolves to GMM's long canonical ids
+  // uri/router.cpp but resolves to GMM's long canonical ids
   // ("skyrimspecialedition", not "skyrimse"). Keys are lowercase; input is
   // lowercased before lookup.
   const std::unordered_map<std::string, std::string> &aliases() {

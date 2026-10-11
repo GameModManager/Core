@@ -1,4 +1,4 @@
-#include "engine/source/router.h"
+#include "engine/uri/router.h"
 
 #include "engine/source/download/manager.h"
 
@@ -10,7 +10,7 @@
 #include <unordered_map>
 #include <vector>
 
-namespace engine::Source {
+namespace engine::Uri {
 
 namespace {
 
@@ -404,4 +404,4 @@ Router::derive_source_from_direct_url(const std::string &direct_url) {
   return out;
 }
 
-}  // namespace engine::Source
+}  // namespace engine::Uri

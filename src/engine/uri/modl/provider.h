@@ -4,7 +4,7 @@
 
 #include <string>
 
-namespace engine::Source::Modl {
+namespace engine::Uri::Modl {
 
 // Transport for the modl:// protocol, in the same family as nxm://: a URI
 // handler, not a provenance. It downloads a plain https URL the caller
@@ -20,16 +20,22 @@ namespace engine::Source::Modl {
 // (where do the bytes come from) rather than a source one.
 //
 // source_type() is a transport identifier, never a Mod::download_source_type.
-class Provider : public Interface {
+//
+// This is the ONE crossing between the two sides, and it is a declared one:
+// Provider derives from engine::Source::Interface, the abstract five-pure-
+// virtual base, and nothing else. It never includes a concrete provider, so
+// a modl:// handler cannot read a Nexus API key or a Steam session.
+class Provider : public Source::Interface {
 public:
   std::string source_type() const override { return "direct"; }
   bool fetch(const ::engine::Mod &mod, ::engine::PipelineContext &ctx,
              const std::filesystem::path &dest_path) override;
-  SourceDownloadInfo resolve_download_info(const ::engine::Mod &mod) const override;
+  Source::SourceDownloadInfo
+  resolve_download_info(const ::engine::Mod &mod) const override;
   std::string display_name() const override;
 };
 
 // The single shared transport instance. Stateless, so one is enough.
-[[nodiscard]] Interface &transport();
+[[nodiscard]] Source::Interface &transport();
 
-}  // namespace engine::Source::Modl
+}  // namespace engine::Uri::Modl

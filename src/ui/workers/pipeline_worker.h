@@ -2,7 +2,7 @@
 
 #include "engine/mod/model/mod.h"
 #include "engine/pipeline/pipeline.h"
-#include "engine/source/router.h"
+#include "engine/uri/router.h"
 
 #include <QObject>
 #include <QThread>
@@ -110,7 +110,7 @@ public slots:
   // file from a paused download is continued via HTTP Range. Concurrent
   // downloads run on the fetch pool (kMaxConcurrentDownloads transfers in
   // parallel); excess downloads queue until a slot frees.
-  void download_mod(const std::string &id, const engine::Source::NxmLink &link,
+  void download_mod(const std::string &id, const engine::Uri::NxmLink &link,
                     const std::string &game_id, const std::string &mods_dir);
 
   // Download only, by pre-assembled URL (LoversLab and other no-API sites).
@@ -124,7 +124,7 @@ public slots:
   // (full modl:// form) goes in download_page_url for the meta.ini [Modl]
   // section. Same pause/progress/resume contract as download_mod_url.
   // Not gated by the Nexus one-at-a-time rule.
-  void download_modl(const std::string &id, const engine::Source::ModlLink &link,
+  void download_modl(const std::string &id, const engine::Uri::ModlLink &link,
                      const std::string &game_id, const std::string &mods_dir);
 
   // Request a pause of an in-flight download (cooperative: the transfer

@@ -678,7 +678,7 @@ port - their cited GMM symbol names were invented, the features are not.
 | Manifest serialization (JSON) | ❌ | 🚀 `serialize`/`deserialize` + legacy-label repairs - `downloads_tab.cpp:1186` | 🚀 ✔ |
 | Content-Disposition filename parsing | ❌ | 🚀 RFC 6266/5987 incl. `filename*`, `..` reject - `curl_download.cpp:136` | 🚀 ✔ |
 | HTTP Range resume | ❌ | ⚠️ `CURLOPT_RESUME_FROM_LARGE`; repeat link refused first - `downloads_controller.cpp:826` | ⚠️ ✔ |
-| NXM protocol download handler | ✅ `addNXMDownload()` (nxm:// link processing) | ✅ `NxmIpcServer` -> `NxmRouter::parse` -> `handle_nxm_download`; `modl://` shares it - `nxm_router.cpp:57` | ✅ ✔ |
+| NXM protocol download handler | ✅ `addNXMDownload()` (nxm:// link processing) | ✅ `NxmIpcServer` -> `Uri::Router::parse` -> `handle_nxm_download`; `modl://` shares it - `uri/router.cpp:57` | ✅ ✔ |
 | Plugin download API (startDownloadURLs, etc.) | ✅ `IDownloadManager` plugin API | ❌ ABI-shaped: no download surface in v1/v2, needs a v3 decision - `projects/ABI/include/` | ❌ ✔ |
 | Nexus collection link rejection | ✅ `nxmInfo.isCollection()` "Collections Not Supported" `downloadmanager.cpp:740` | ⚠️ rejects malformed collection links; collection import is a planned epic - `downloads_controller.cpp:691` - Workspace-kdfn | ⚠️ ✔ |
 | Duplicate download detection (file name + auto-rename) | ✅ `getDownloadFileName(baseName, renameToUnique)` | ✅ Overwrite/Rename/Ignore, MO2's 1-based `N_` naming - `downloads_tab.cpp:800` | ✅ ✔ |
@@ -736,7 +736,7 @@ port - their cited GMM symbol names were invented, the features are not.
 
 | Feature | MO2 | GMM | Status |
 |---------|-----|-----|--------|
-| NXM handler registration | ✅ `registerAsNXMHandler` | ✅ `Source::Router` + `nxm_ipc` - `source/router.h:46` | ✅ · |
+| NXM handler registration | ✅ `registerAsNXMHandler` | ✅ `Uri::Router` + `nxm_ipc` - `uri/router.h:65` | ✅ · |
 | Nexus account / auth | ✅ | ✅ `nexus_account` + `nexus_auth` - `nexus/auth.h:39` | ✅ · |
 | Nexus HTTP API | ✅ | ✅ `nexus_http` + `nexus_servers` - `nexus/http.h:15` | ✅ · |
 | Endorsement system | ✅ `ModInfo::endorse()` | ⚠️ UI + setting only, opens browser - `nexus_source_panel.cpp:41` | ⚠️ · |
@@ -788,8 +788,8 @@ port - their cited GMM symbol names were invented, the features are not.
 | Remote cache | ✅ | ✅ `MasterlistManager` (24h TTL, temp-file download, offline cache reuse) - `sort/sorter/loot/masterlists.h:21` | ✅ · |
 | Steam Workshop client (Web API) | ❌ | 🚀 `WorkshopClient` (SQLite cache, dead IDs) - `steam/workshop_client.h:29` | 🚀 · |
 | LoversLab session-cookie auth | ❌ | 🚀 `LoversLabAuth` (Cloudflare stripping) - `loverslab/auth.h:41` | 🚀 · |
-| Managed games tracking | ❌ | 🚀 `ManagedGames` (source_id, website_url, nexus_domain) - `nxm/managed_games.h:23` | 🚀 · |
-| modl:// protocol handler (mod.pub / MO2 modlhandler) | ❌ | 🚀 `modl://` (Win registry + XDG desktop) - `nxm_router.cpp:239` | 🚀 · |
+| Managed games tracking | ❌ | 🚀 `ManagedGames` (source_id, website_url, nexus_domain) - `source/managed_games.h:23` | 🚀 · |
+| modl:// protocol handler (mod.pub / MO2 modlhandler) | ❌ | 🚀 `modl://` (Win registry + XDG desktop) - `uri/router.cpp:239` | 🚀 · |
 | ModPub metadata provider (mod.pub API) | ❌ | 🚀 `ModPubProvider` (page scrape, mod_id, Refresh) - `modpub/provider.h:64` | 🚀 · |
 | modl:// transport-protocol distinction (origin attribution) | ❌ | 🚀 transport not source; real origin attributed - `install_stage.cpp:331` | 🚀 · |
 | U275 ModRepositoryFileInfo + imodrepositorybridge repository abstraction | ✅ `imodrepositorybridge.cpp` (uibase) | ❌ | ❌ · |

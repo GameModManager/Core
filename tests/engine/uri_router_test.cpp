@@ -1,5 +1,5 @@
-// Test for engine::Source::Router::parse + Source::Router::parse_modl.
-#include "engine/source/router.h"
+// Test for engine::Uri::Router::parse + engine::Uri::Router::parse_modl.
+#include "engine/uri/router.h"
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -9,7 +9,7 @@ namespace {
 
 void expect_link(const std::string &url, const std::string &domain, long long mod,
                  long long file, const std::string &key = "", long long expire = 0) {
-  const auto link = engine::Source::Router::parse(url);
+  const auto link = engine::Uri::Router::parse(url);
   INFO(url);
   REQUIRE(link.nexus_domain == domain);
   REQUIRE(link.mod_id == mod);
@@ -20,7 +20,7 @@ void expect_link(const std::string &url, const std::string &domain, long long mo
 
 void expect_modl(const std::string &url, const std::string &game,
                  const std::string &direct) {
-  const auto link = engine::Source::Router::parse_modl(url);
+  const auto link = engine::Uri::Router::parse_modl(url);
   INFO(url);
   REQUIRE(link.valid());
   REQUIRE(link.game_id == game);
@@ -59,7 +59,7 @@ TEST_CASE("nxm router parse", "[engine]") {
 
   // Legacy NMM form (no game domain): domain stays "nexus", ids still parsed.
   const auto legacy =
-      engine::Source::Router::parse("nxm://nexus/mods/68?key=abc&expire=1");
+      engine::Uri::Router::parse("nxm://nexus/mods/68?key=abc&expire=1");
   REQUIRE(legacy.nexus_domain == "nexus");
   REQUIRE(legacy.mod_id == 68);
   REQUIRE(legacy.file_id == 0);
@@ -70,8 +70,8 @@ TEST_CASE("nxm router parse collection links", "[engine]") {
   // after NXMUrl::collectionId/collectionRevision so the fields line up.
   {
     const auto link =
-        engine::Source::Router::parse("nxm://skyrimspecialedition/collections/"
-                                      "hygge-for-lore-and-4096/revisions/7");
+        engine::Uri::Router::parse("nxm://skyrimspecialedition/collections/"
+                                   "hygge-for-lore-and-4096/revisions/7");
     REQUIRE(link.valid());
     REQUIRE(link.nexus_domain == "skyrimspecialedition");
     REQUIRE(link.is_collection);
@@ -87,7 +87,7 @@ TEST_CASE("nxm router parse collection links", "[engine]") {
   // published revision.
   {
     const auto link =
-        engine::Source::Router::parse("nxm://skyrimspecialedition/collections/abcd");
+        engine::Uri::Router::parse("nxm://skyrimspecialedition/collections/abcd");
     REQUIRE(link.is_collection);
     REQUIRE(link.collection_id == "abcd");
     REQUIRE(link.collection_revision == 0);
@@ -96,7 +96,7 @@ TEST_CASE("nxm router parse collection links", "[engine]") {
   // Query strings ride on whichever segment carries them, and the literal
   // "nexus" authority is unwrapped the same way it is for mod links.
   {
-    const auto link = engine::Source::Router::parse(
+    const auto link = engine::Uri::Router::parse(
         "nxm://nexus/cyberpunk2077/collections/neon-noir/revisions/2?key=abc");
     REQUIRE(link.nexus_domain == "cyberpunk2077");
     REQUIRE(link.is_collection);
@@ -107,7 +107,7 @@ TEST_CASE("nxm router parse collection links", "[engine]") {
   // A mod link is not a collection, and a collection-looking path under an
   // unwrapped "nexus" authority keeps its real game domain.
   {
-    const auto mod = engine::Source::Router::parse(
+    const auto mod = engine::Uri::Router::parse(
         "nxm://skyrimspecialedition/mods/184625/files/781833");
     REQUIRE_FALSE(mod.is_collection);
     REQUIRE(mod.collection_id.empty());
@@ -115,7 +115,7 @@ TEST_CASE("nxm router parse collection links", "[engine]") {
   }
   {
     const auto link =
-        engine::Source::Router::parse("nxm://nexus/collections/abcd/revisions/3");
+        engine::Uri::Router::parse("nxm://nexus/collections/abcd/revisions/3");
     REQUIRE(link.nexus_domain == "nexus");
     REQUIRE(link.is_collection);
     REQUIRE(link.collection_id == "abcd");
@@ -125,7 +125,7 @@ TEST_CASE("nxm router parse collection links", "[engine]") {
   // A revision that is not a positive number stays 0 rather than becoming a
   // bogus pin - the collection adapter rejects it instead of guessing.
   {
-    const auto link = engine::Source::Router::parse(
+    const auto link = engine::Uri::Router::parse(
         "nxm://skyrimspecialedition/collections/abcd/revisions/abc");
     REQUIRE(link.is_collection);
     REQUIRE(link.collection_id == "abcd");
@@ -164,7 +164,7 @@ TEST_CASE("modl router parse", "[engine]") {
 
   // Edge: empty host. modl:///?url=... is a malformed link with no game.
   const auto empty_host =
-      engine::Source::Router::parse_modl("modl:///?url=https%3A%2F%2Fa.b%2Fc");
+      engine::Uri::Router::parse_modl("modl:///?url=https%3A%2F%2Fa.b%2Fc");
   REQUIRE_FALSE(empty_host.valid());
 
   // Edge: scheme case insensitivity (HTTPS:// is valid per RFC 3986).
@@ -179,29 +179,29 @@ TEST_CASE("modl router parse", "[engine]") {
   // (Raw value > 12k; the encoded form is padded with safe ASCII.)
   const std::string too_long_url =
       "modl://falloutnv/?url=https%3A%2F%2Fa.b%2F" + std::string(15000, 'a');
-  const auto too_long = engine::Source::Router::parse_modl(too_long_url);
+  const auto too_long = engine::Uri::Router::parse_modl(too_long_url);
   REQUIRE_FALSE(too_long.valid());
 
   // Malformed: empty host, missing url param, non-https scheme, wrong scheme.
-  const auto no_url = engine::Source::Router::parse_modl("modl://falloutnv/");
+  const auto no_url = engine::Uri::Router::parse_modl("modl://falloutnv/");
   REQUIRE_FALSE(no_url.valid());
 
   const auto wrong_scheme =
-      engine::Source::Router::parse_modl("modl://falloutnv/?url=http%3A%2F%2Fa.b%2Fc");
+      engine::Uri::Router::parse_modl("modl://falloutnv/?url=http%3A%2F%2Fa.b%2Fc");
   REQUIRE_FALSE(wrong_scheme.valid());
 
   const auto no_scheme =
-      engine::Source::Router::parse_modl("modl://falloutnv/?url=javascript%3Aalert(1)");
+      engine::Uri::Router::parse_modl("modl://falloutnv/?url=javascript%3Aalert(1)");
   REQUIRE_FALSE(no_scheme.valid());
 
-  const auto nxm_misparse = engine::Source::Router::parse_modl(
-      "nxm://skyrimspecialedition/mods/68/files/528");
+  const auto nxm_misparse =
+      engine::Uri::Router::parse_modl("nxm://skyrimspecialedition/mods/68/files/528");
   REQUIRE_FALSE(nxm_misparse.valid());
 
   // Unrecognized host passes through (caller checks plugin game_id match).
   // The passthrough is lowercased so callers can compare case-insensitively.
   const auto unknown =
-      engine::Source::Router::parse_modl("modl://NotAGame/?url=https%3A%2F%2Fa.b%2Fc");
+      engine::Uri::Router::parse_modl("modl://NotAGame/?url=https%3A%2F%2Fa.b%2Fc");
   REQUIRE(unknown.valid());
   REQUIRE(unknown.game_id == "notagame");
   REQUIRE(unknown.direct_url == "https://a.b/c");
@@ -209,7 +209,7 @@ TEST_CASE("modl router parse", "[engine]") {
 
 TEST_CASE("Router::derive_source_from_direct_url - modl transport source attribution",
           "[engine]") {
-  using engine::Source::Router;
+  using engine::Uri::Router;
   {
     // Empty input -> empty result.
     const auto d = Router::derive_source_from_direct_url("");

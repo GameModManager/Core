@@ -4,7 +4,26 @@
 #include <string>
 #include <vector>
 
-namespace engine::Source {
+// URI handlers: what GameModManager does with a scheme:// URL it is invoked
+// with. engine::Source is the provenance side - where bytes come from, who the
+// account is, what the API says. A URI handler answers a different question:
+// what did the user just click, and which instance owns it.
+//
+// Why "Uri" and not "Protocol": the schemes are already enumerated once, by
+// engine::ProtocolHandler in src/platform/platform.h, which names Nxm / Gmm /
+// Modl for OS registration. That enum is the LEAF - registering with the OS is
+// the same job behind three different libraries, so it belongs in the platform
+// adaptor. This namespace is the superordinate it enumerates: it owns the
+// grammar each of those schemes is parsed by. Naming it "Protocol" would put
+// two different jobs under one word and invite the platform enum to leak in.
+//
+// The fence: nothing here may include a concrete provider (engine/source/
+// nexus/** and friends) or name a provider type. An nxm:// link resolves to a
+// *game*; the Nexus API call that follows happens later, in the pipeline,
+// against the provenance side. scripts/check_uri_fence.sh fails when that is
+// ever crossed - it is the enforcement for this comment, not the comment
+// itself.
+namespace engine::Uri {
 
 // Parsed components of an nxm:// URL.
 //
@@ -74,6 +93,10 @@ public:
   // URL); page_url is the direct URL when known, empty otherwise. Exposed
   // here next to parse_modl so both transport parsing and source attribution
   // live in one testable header.
+  //
+  // "modpub" is a bare string literal, not a type from engine::Source. That is
+  // a soft coupling with no declared type behind it; it predates the fence and
+  // tightening it would change the mod metadata contract.
   struct DerivedSource {
     std::string source_type;  // "modpub" or "" (manual)
     std::string source_id;    // currently empty for the modl flow
@@ -83,4 +106,4 @@ public:
   derive_source_from_direct_url(const std::string &direct_url);
 };
 
-}  // namespace engine::Source
+}  // namespace engine::Uri
