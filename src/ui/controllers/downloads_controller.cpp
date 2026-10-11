@@ -35,6 +35,7 @@
 #include "engine/plugin_host/plugin_loader.h"
 #include "engine/pipeline/registry/stage_registry.h"
 #include "engine/source/loverslab/auth.h"
+#include "engine/source/nexus/auth.h"
 #include "engine/source/loverslab/provider.h"
 #include "engine/source/modpub/provider.h"
 #include "engine/source/nexus/provider.h"
@@ -464,6 +465,25 @@ void DownloadsController::wire_downloads_tab() {
                              "the mod page."));
       return;
     }
+    // A Nexus resume re-requests a signed CDN URL: the one the first attempt got
+    // is either expired or single-use, so the bytes cannot simply be
+    // continued without credentials. A still-valid download key in the link
+    // is a credential of its own; without one, an API key is required
+    // (MO2 wraps resume in loggedInAction, downloadstab.cpp:112). Resuming
+    // without either would burn the retry budget and fail with a 403 the user
+    // has no way to act on, so refuse first and say what to do.
+    if (it_nxm != w_->nxm_links_.end() && it_nxm->second.key.empty() &&
+        !engine::Source::Nexus::Auth::instance().has_api_key()) {
+      engine::Logger::instance().warn(
+          "[Downloads] Resume refused for '" + id +
+          "': the Nexus link has no download key and no API key is configured");
+      w_->on_notification(tr("Cannot resume"),
+                          tr("Resuming this download from Nexus needs an API "
+                             "key. Add one under Settings > Sources, then "
+                             "resume again."));
+      return;
+    }
+
     auto *dtab = w_->right_panel_->downloads_tab();
     if (dtab)
       dtab->mark_downloading(id);
