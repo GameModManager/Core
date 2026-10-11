@@ -26,7 +26,7 @@
 #include "engine/index/conflict_engine.h"
 #include "engine/mod/meta/mod_meta.h"
 #include "engine/profile/profile.h"
-#include "engine/source/router.h"
+#include "engine/uri/router.h"
 #include "platform/platform.h"
 #include "ui/ui_locker.h"
 
@@ -41,7 +41,7 @@ class QCheckBox;
 class QTreeWidget;
 class QTimer;
 
-namespace engine::Source {
+namespace engine::Uri {
 struct NxmLink;
 }
 namespace engine {
@@ -49,7 +49,7 @@ class GameKnowledge;
 class PluginLoader;
 class ManagedGames;
 class NxmIpcServer;
-using NxmLink = Source::NxmLink;
+using NxmLink = Uri::NxmLink;
 struct ConflictStats;
 class StyleManager;
 class Platform;
@@ -189,7 +189,7 @@ public:
 
   // modl:// download routing - call when a modl:// link is received. Same
   // delegation pattern as handle_nxm_download.
-  void handle_modl_download(const engine::Source::ModlLink &link);
+  void handle_modl_download(const engine::Uri::ModlLink &link);
 
   [[nodiscard]] ModView *mod_view() const { return mod_view_; }
   [[nodiscard]] QSplitter *console_splitter() const { return console_splitter_; }
@@ -344,7 +344,7 @@ private:
   std::unordered_map<std::string, engine::NxmLink> nxm_links_;
   // In-flight/known modl:// downloads keyed by the download id, kept so a
   // paused download can be resumed with its original modl link.
-  std::unordered_map<std::string, engine::Source::ModlLink> modl_links_;
+  std::unordered_map<std::string, engine::Uri::ModlLink> modl_links_;
   // In-flight/known LoversLab downloads keyed by the download id, kept so a
   // paused download can be resumed with its original ?do=download URL.
   std::unordered_map<std::string, std::string> url_downloads_;

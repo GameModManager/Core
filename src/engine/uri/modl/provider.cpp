@@ -1,4 +1,4 @@
-#include "engine/source/modl/provider.h"
+#include "engine/uri/modl/provider.h"
 
 #include "engine/log/logger.h"
 #include "engine/mod/model/mod.h"
@@ -10,7 +10,7 @@
 #include <filesystem>
 #include <string>
 
-namespace engine::Source::Modl {
+namespace engine::Uri::Modl {
 
 bool Provider::fetch(const Mod &mod, PipelineContext &ctx,
                      const std::filesystem::path &dest_path) {
@@ -61,8 +61,8 @@ bool Provider::fetch(const Mod &mod, PipelineContext &ctx,
   return true;
 }
 
-SourceDownloadInfo Provider::resolve_download_info(const Mod &mod) const {
-  SourceDownloadInfo info;
+Source::SourceDownloadInfo Provider::resolve_download_info(const Mod &mod) const {
+  Source::SourceDownloadInfo info;
   if (mod.download_url.empty())
     return info;
 
@@ -95,9 +95,9 @@ std::string Provider::display_name() const {
   return "Direct URL";
 }
 
-Interface &transport() {
+Source::Interface &transport() {
   static Provider instance;
   return instance;
 }
 
-}  // namespace engine::Source::Modl
+}  // namespace engine::Uri::Modl

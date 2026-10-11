@@ -5,7 +5,7 @@
 #include "engine/mod/model/mod.h"
 #include "engine/source/download/manager.h"
 #include "engine/source/modpub/provider.h"
-#include "engine/source/router.h"
+#include "engine/uri/router.h"
 #include "engine/log/logger.h"
 #include "ui/settings/settings.h"
 
@@ -223,7 +223,7 @@ void PipelineWorker::install_mod(const std::string &id, const std::string &zip_p
 }
 
 void PipelineWorker::download_mod(const std::string &id,
-                                  const engine::Source::NxmLink &link,
+                                  const engine::Uri::NxmLink &link,
                                   const std::string &game_id,
                                   const std::string &mods_dir) {
   (void)game_id;
@@ -265,7 +265,7 @@ void PipelineWorker::download_mod_url(const std::string &id, const std::string &
 }
 
 void PipelineWorker::download_modl(const std::string &id,
-                                   const engine::Source::ModlLink &link,
+                                   const engine::Uri::ModlLink &link,
                                    const std::string &game_id,
                                    const std::string &mods_dir) {
   (void)game_id;
@@ -286,7 +286,7 @@ void PipelineWorker::download_modl(const std::string &id,
   // no source, so the mod is "manual" - FetchStage hands the already-resolved
   // URL to the direct-URL transport.
   const auto derived =
-      engine::Source::Router::derive_source_from_direct_url(link.direct_url);
+      engine::Uri::Router::derive_source_from_direct_url(link.direct_url);
   mod.download_source_type =
       derived.source_type.empty() ? std::string("manual") : derived.source_type;
   // source_id:

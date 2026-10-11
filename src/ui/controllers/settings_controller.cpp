@@ -54,7 +54,7 @@
 #include "engine/sort/sorter/registry.h"
 #include "engine/source/loverslab/provider.h"
 #include "engine/source/nexus/provider.h"
-#include "engine/source/nxm/managed_games.h"
+#include "engine/source/managed_games.h"
 #include "engine/source/steam/provider.h"
 #include "ui/fomod/fomod_wizard_dialog.h"
 #include "ui/game_selection/game_selection_widget.h"
@@ -1550,7 +1550,7 @@ void SettingsController::import_modpack(const QString &preset_file) {
   wizard.exec();
 }
 
-void SettingsController::handle_collection_link(const engine::Source::NxmLink &link,
+void SettingsController::handle_collection_link(const engine::Uri::NxmLink &link,
                                                 const std::string &game_id) {
   // What the active instance is FOR, read from its own instance.toml rather
   // than from the game currently selected in the UI, because that is what an

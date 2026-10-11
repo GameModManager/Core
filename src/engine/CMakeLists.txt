@@ -107,8 +107,8 @@ instance/mod_state.cpp
     game/registry/game_capabilities.cpp
     game/registry/game_knowledge.cpp
     modpack/pack/source_detector.cpp
-    source/nxm/nxm_router.cpp
-    source/nxm/managed_games.cpp
+    uri/router.cpp
+    source/managed_games.cpp
     sort/sorter/abi.cpp
     sort/sorter/registry.cpp
     sort/sorter/loot/sorter.cpp
@@ -152,7 +152,7 @@ install/conflict_resolver.cpp
     source/steam/provider.cpp
     source/loverslab/fetch.cpp
     source/loverslab/provider.cpp
-    source/modl/provider.cpp
+    uri/modl/provider.cpp
     source/modpub/provider.cpp
     source/git/git_info.cpp
     source/nexus/auth.cpp

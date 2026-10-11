@@ -4,8 +4,8 @@
 #include "engine/source/registry.h"
 #include "engine/instance/instance.h"
 #include "engine/log/logger.h"
-#include "engine/source/modl/provider.h"
 #include "engine/source/update_policy.h"
+#include "engine/uri/modl/provider.h"
 
 #include <sstream>
 
@@ -20,7 +20,7 @@ Source::Interface *fetch_provider_for(const Mod &mod) {
   // from an unrecognized host carries no provenance and the mod stays
   // "manual" while the bytes still come down.
   if (!mod.download_url.empty())
-    return &Source::Modl::transport();
+    return &Uri::Modl::transport();
   return nullptr;
 }
 
