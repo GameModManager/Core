@@ -90,7 +90,8 @@ static bool is_archive_path(const std::filesystem::path &path) {
   const std::string name = path.filename().string();
   std::string lower_name;
   for (char c : name)
-    lower_name.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
+    lower_name.push_back(
+        static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
   if (lower_name.ends_with(kUnfinishedSuffix))
     return false;
   std::string lower;
@@ -547,10 +548,10 @@ void DownloadsTab::update_tooltip(DownloadEntry &entry) {
   // without hovering. Same icon key the mod list uses for a row that does not
   // describe what the game will see.
   const bool incomplete = info_is_incomplete(entry);
-  entry.name_item->setIcon(incomplete ? engine::IconManager::instance().resolve_icon(
-                                            "plugin-warning",
-                                            QStyle::SP_MessageBoxWarning)
-                                      : QIcon());
+  entry.name_item->setIcon(incomplete
+                               ? engine::IconManager::instance().resolve_icon(
+                                     "plugin-warning", QStyle::SP_MessageBoxWarning)
+                               : QIcon());
 }
 
 void DownloadsTab::update_filetime(DownloadEntry &entry) {
