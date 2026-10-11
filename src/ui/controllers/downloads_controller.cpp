@@ -38,9 +38,9 @@
 #include "engine/source/loverslab/provider.h"
 #include "engine/source/modpub/provider.h"
 #include "engine/source/nexus/provider.h"
-#include "engine/source/nxm/managed_games.h"
+#include "engine/source/managed_games.h"
 #include "engine/source/registry.h"
-#include "engine/source/router.h"
+#include "engine/uri/router.h"
 #include "engine/source/steam/provider.h"
 #include "ui/install/install_progress_dialog.h"
 #include "ui/main_window/main_window.h"
@@ -297,7 +297,7 @@ void DownloadsController::setup_nxm_ipc() {
               // Try nxm first; fall back to modl (the protocol is a
               // generic URL forwarder, not nxm-specific - keep the signal
               // name for backward-compat with older builds).
-              auto nxm = engine::Source::Router::parse(raw);
+              auto nxm = engine::Uri::Router::parse(raw);
               if (nxm.valid()) {
                 engine::Logger::instance().debug(
                     "[NXM-Parse] Parsed NXM link: domain=" + nxm.nexus_domain +
@@ -310,7 +310,7 @@ void DownloadsController::setup_nxm_ipc() {
               }
               engine::Logger::instance().debug(
                   "[NXM-Parse] NXM parse failed, trying modl://");
-              auto modl = engine::Source::Router::parse_modl(raw);
+              auto modl = engine::Uri::Router::parse_modl(raw);
               if (modl.valid()) {
                 engine::Logger::instance().debug(
                     "[NXM-Parse] Parsed modl link: game_id=" + modl.game_id +
@@ -740,7 +740,7 @@ void DownloadsController::hide_install_progress() {
     w_->install_progress_dialog_->hide();
 }
 
-void DownloadsController::handle_nxm_download(const engine::Source::NxmLink &link) {
+void DownloadsController::handle_nxm_download(const engine::Uri::NxmLink &link) {
   engine::Logger::instance().debug("[NXM-Download] handle_nxm_download called");
   if (!link.valid()) {
     engine::Logger::instance().warn(
@@ -968,7 +968,7 @@ void DownloadsController::handle_nxm_download(const engine::Source::NxmLink &lin
                                    " file " + file_id);
 }
 
-void DownloadsController::handle_modl_download(const engine::Source::ModlLink &link) {
+void DownloadsController::handle_modl_download(const engine::Uri::ModlLink &link) {
   if (!link.valid()) {
     engine::Logger::instance().warn("Invalid modl link received");
     return;
@@ -1031,7 +1031,7 @@ void DownloadsController::handle_modl_download(const engine::Source::ModlLink &l
   // Source attribution comes from the direct URL's host (modl is a
   // transport, not a source). mod.pub -> ModPub; anything else -> Manual.
   const auto derived =
-      engine::Source::Router::derive_source_from_direct_url(link.direct_url);
+      engine::Uri::Router::derive_source_from_direct_url(link.direct_url);
   std::string source_label;
   std::string row_name;
   std::string page_url;

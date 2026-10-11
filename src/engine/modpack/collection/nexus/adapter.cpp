@@ -7,7 +7,7 @@
 #include "engine/network/nexus_v2/client.h"
 #include "engine/network/nexus_v2/premium.h"
 #include "engine/source/nexus/auth.h"
-#include "engine/source/router.h"
+#include "engine/uri/router.h"
 
 #include <cctype>
 
@@ -120,7 +120,7 @@ namespace {
   // not a request for the latest revision, so it is rejected here instead of
   // being silently downgraded to whatever revision happens to be published.
   bool parse_nxm_collection(const std::string &url, CollectionRef &ref) {
-    const Source::NxmLink link = Source::Router::parse(url);
+    const Uri::NxmLink link = Uri::Router::parse(url);
     if (!link.valid() || !link.is_collection || link.collection_id.empty())
       return false;
     if (link.collection_revision <= 0 && url.find("/revisions/") != std::string::npos)
@@ -137,7 +137,7 @@ namespace {
   // does get its own line: routing it to the collection API would ask for a
   // collection called "nxm://skyrim/mods/1234/files/5678".
   std::string unrecognized_message(const std::string &source_id) {
-    const Source::NxmLink link = Source::Router::parse(source_id);
+    const Uri::NxmLink link = Uri::Router::parse(source_id);
     if (!link.valid())
       return "'" + source_id +
              "' is not a Nexus collection reference. Expected one of:\n"
@@ -172,7 +172,7 @@ CollectionRef parse_source_id(const std::string &source_id) {
     return parse_url(source_id);
   // Any other nxm:// link is a mod link. Leaving the slug empty is what keeps
   // it from being sent to the collection API verbatim.
-  if (Source::Router::parse(source_id).valid())
+  if (Uri::Router::parse(source_id).valid())
     return ref;
   const auto at = source_id.find('@');
   if (at != std::string::npos) {
