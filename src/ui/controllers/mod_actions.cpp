@@ -476,8 +476,10 @@ void ModActions::reinstall_mod(const QString &mod_id) {
   auto source_id   = meta.source_id();
 
   // One install at a time: the UI stays locked until install_complete /
-  // install_canceled, the same contract the Downloads tab uses.
-  w_->set_ui_enabled(false);
+  // install_canceled, the same contract the Downloads tab uses. OutputRequired
+  // because the install's output is what completes it - MO2 overrides the
+  // lock_gui setting for exactly this case.
+  w_->lock_ui(LockReason::OutputRequired);
   QMetaObject::invokeMethod(
       w_->pipeline_thread_->worker(),
       [this, archive, source_type, source_id, folder]() {
