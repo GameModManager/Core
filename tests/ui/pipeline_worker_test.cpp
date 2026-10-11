@@ -295,8 +295,17 @@ TEST_CASE("pipeline worker", "[ui]") {
         "the two transfers were in flight at the same time (parallel pool)");
   check(fake->started() == 2 && fake->completed() == 2,
         "no extra fetches after the two completed");
-  check(std::filesystem::exists(downloads / "a.zip") &&
-            std::filesystem::exists(downloads / "b.zip"),
+  // The provider bumps completed() as the last thing inside fetch(), but the
+  // final archive name only appears once FetchStage has verified the bytes and
+  // renamed <name>.unfinished onto it. Waiting on the file itself, not on the
+  // counter, is what makes this assertion about the rename rather than about
+  // a race the fetch already won.
+  check(wait_until(
+            [&] {
+              return std::filesystem::exists(downloads / "a.zip") &&
+                     std::filesystem::exists(downloads / "b.zip");
+            },
+            5000),
         "both archives landed in the instance downloads dir");
   check(wait_until(
             [&] {
