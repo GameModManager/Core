@@ -682,6 +682,13 @@ gmm_catch2_test(status_bar_test ui/status_bar_test.cpp
     UI
     LIBS gmm_ui)
 
+# lock_gui: the Workarounds gate on ui::Locker. Off suppresses a plain LockUI
+# lock; OutputRequired overrides it, which is the branch a suppression-only
+# test would not catch.
+gmm_catch2_test(ui_locker_test ui/ui_locker_test.cpp
+    UI
+    LIBS gmm_ui)
+
 gmm_catch2_test(instance_options_panel_test ui/instance_options_panel_test.cpp
     UI
     LIBS gmm_ui ${CMAKE_DL_LIBS}

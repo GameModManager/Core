@@ -174,7 +174,7 @@ void DownloadsController::setup_pipeline() {
                  const std::string &error_message,
                  const std::string &installed_folder) {
             hide_install_progress();
-            w_->set_ui_enabled(true);
+            w_->unlock_ui();
             auto *dt = w_->right_panel_->downloads_tab();
             if (dt) {
               if (success) {
@@ -226,7 +226,7 @@ void DownloadsController::setup_pipeline() {
   connect(w_->pipeline_thread_->worker(), &PipelineWorker::install_canceled, this,
           [this](const std::string &) {
             hide_install_progress();
-            w_->set_ui_enabled(true);
+            w_->unlock_ui();
             save_download_manifest();
           });
 
@@ -412,8 +412,10 @@ void DownloadsController::wire_downloads_tab() {
               return;
             // Lock the interface for the duration of the install so the user
             // can't race it (re-trigger, edit the mod list, quit mid-copy).
-            // Released by install_complete / install_canceled.
-            w_->set_ui_enabled(false);
+            // Released by install_complete / install_canceled. OutputRequired
+            // because the install's output is what completes it - MO2
+            // overrides the lock_gui setting for exactly this case.
+            w_->lock_ui(LockReason::OutputRequired);
             QMetaObject::invokeMethod(
                 w_->pipeline_thread_->worker(),
                 [this, mod_id, fp, source_type, source_id, file_id, display_name,
