@@ -192,7 +192,7 @@ gmm_catch2_test(game_icons_test engine/game_icons_test.cpp)
 # from a mod folder under a game path containing spaces. A pure file read, so
 # this runs whether or not git is installed.
 gmm_catch2_test(git_info_test engine/git_info_test.cpp)
-gmm_catch2_test(nxm_router_test engine/nxm_router_test.cpp)
+gmm_catch2_test(uri_router_test engine/uri_router_test.cpp)
 gmm_catch2_test(pack_source_detector_test engine/pack_source_detector_test.cpp)
 gmm_catch2_test(scanner_test engine/scanner_test.cpp)
 # The enable/disable sentinel reason: a refused write has to report what the

@@ -38,10 +38,10 @@
 #include "engine/mod/model/mod.h"
 #include "engine/pipeline/pipeline.h"
 #include "engine/source/loverslab/provider.h"
-#include "engine/source/modl/provider.h"
 #include "engine/source/modpub/provider.h"
 #include "engine/source/nexus/provider.h"
 #include "engine/source/registry.h"
+#include "engine/uri/modl/provider.h"
 
 namespace ui {
 namespace {
@@ -357,7 +357,7 @@ namespace {
       registry.register_provider(
           std::make_unique<engine::Source::LoversLab::Provider>());
     if (registry.provider_for("direct") == nullptr)
-      registry.register_provider(std::make_unique<engine::Source::Modl::Provider>());
+      registry.register_provider(std::make_unique<engine::Uri::Modl::Provider>());
     if (registry.provider_for("modpub") == nullptr)
       registry.register_provider(std::make_unique<engine::Source::ModPub::Provider>());
   }

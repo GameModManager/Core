@@ -66,8 +66,8 @@
 #include "engine/source/loverslab/provider.h"
 #include "engine/source/modpub/provider.h"
 #include "engine/source/nexus/provider.h"
-#include "engine/source/nxm/managed_games.h"
-#include "engine/source/router.h"
+#include "engine/source/managed_games.h"
+#include "engine/uri/router.h"
 #include "engine/source/registry.h"
 #include "ui/main_window/conflict_scan_worker.h"
 #include "ui/main_window/loot_sort_worker.h"
@@ -2062,7 +2062,7 @@ void ModListController::load_meta_for_mods() {
       if (meta.source_type() == "modl" && meta.has_section("Modl")) {
         const std::string file_url = meta.get("Modl", "file_url");
         const auto derived =
-            engine::Source::Router::derive_source_from_direct_url(file_url);
+            engine::Uri::Router::derive_source_from_direct_url(file_url);
         if (derived.source_type == "modpub") {
           // Commit "modpub" if we can extract a numeric mod id. The
           // [ModPub] section is only seeded when absent - existing keys

@@ -1,4 +1,4 @@
-#include "engine/source/nxm/managed_games.h"
+#include "engine/source/managed_games.h"
 
 #include <algorithm>
 #include <fstream>

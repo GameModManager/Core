@@ -11,9 +11,9 @@
 #include "engine/modpack/model.h"
 #include "ui/main_window/main_window.h"
 
-namespace engine::Source {
+namespace engine::Uri {
 struct NxmLink;
-}  // namespace engine::Source
+}  // namespace engine::Uri
 
 namespace ui {
 
@@ -96,7 +96,7 @@ public slots:
   // active instance (only when that instance is for the collection's game), a
   // named instance of that game, or a brand new one. Nothing is fetched before
   // that answer, so cancelling costs nothing at all.
-  void handle_collection_link(const engine::Source::NxmLink &link,
+  void handle_collection_link(const engine::Uri::NxmLink &link,
                               const std::string &game_id);
 
   // File > Export Modpack: capture instance snapshot, open export wizard,
