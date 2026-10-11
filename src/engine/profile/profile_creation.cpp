@@ -5,6 +5,8 @@
 #include "engine/profile/safe_write_file.h"
 
 #include <algorithm>
+#include <fstream>
+#include <sstream>
 #include <system_error>
 
 namespace engine::profile {
@@ -285,6 +287,108 @@ std::vector<std::string> list_profiles(const std::filesystem::path &profiles_dir
   }
   std::sort(names.begin(), names.end());
   return names;
+}
+
+namespace {
+
+  // Read a whole file, or return empty when it cannot be opened. Failure to
+  // read a modlist.txt is not fatal here: it means that profile cannot be
+  // updated, which is reported by not counting it.
+  std::string read_whole_file(const std::filesystem::path &path) {
+    std::ifstream in(path, std::ios::binary);
+    if (!in)
+      return {};
+    std::ostringstream buf;
+    buf << in.rdbuf();
+    return buf.str();
+  }
+
+  std::string rtrim(const std::string &s) {
+    std::size_t end = s.size();
+    while (end > 0 && (s[end - 1] == ' ' || s[end - 1] == '\t' || s[end - 1] == '\r'))
+      --end;
+    return s.substr(0, end);
+  }
+
+  std::string trim(const std::string &s) {
+    std::size_t begin = 0;
+    while (begin < s.size() && (s[begin] == ' ' || s[begin] == '\t'))
+      ++begin;
+    const std::string rest = s.substr(begin);
+    return rtrim(rest);
+  }
+
+}  // namespace
+
+std::size_t rename_mod_in_all_profiles(const std::filesystem::path &profiles_dir,
+                                       const std::string &old_name,
+                                       const std::string &new_name) {
+  if (old_name.empty() || new_name.empty() || old_name == new_name) {
+    return 0;
+  }
+
+  std::size_t rewritten = 0;
+  std::error_code ec;
+  for (const auto &profile_dir : list_profiles(profiles_dir)) {
+    const auto modlist = profiles_dir / profile_dir / "modlist.txt";
+    if (!std::filesystem::exists(modlist, ec) || ec) {
+      // MO2 logs "Profile has no modlist.txt" (profile.cpp:325) and moves on.
+      Logger::instance().warn("profile " + profile_dir +
+                               " has no modlist.txt; mod rename skipped there");
+      continue;
+    }
+
+    const std::string content = read_whole_file(modlist);
+    if (content.empty()) {
+      continue;
+    }
+
+    // Rewrite only the mod name, preserving each line's '+'/'-'/'*' spec and
+    // its order. Order is the load order, so it must survive byte for byte;
+    // comments and blank lines are passed through untouched (MO2
+    // renameModInList, profile.cpp:356-371). The mod's priority is derived
+    // from line position, so reordering would silently change load order.
+    std::string out;
+    out.reserve(content.size() + new_name.size());
+    std::istringstream stream(content);
+    std::string line;
+    bool saw_old = false;
+    while (std::getline(stream, line)) {
+      const std::string t = trim(line);
+      if (t.empty() || t[0] == '#') {
+        out += line;
+        out += '\n';
+        continue;
+      }
+      // '+'/'-'/'*' is the enabled/disabled/foreign spec; a bare name has none.
+      const bool has_spec = t[0] == '+' || t[0] == '-' || t[0] == '*';
+      const char spec    = has_spec ? t[0] : '\0';
+      const std::string trimmed_name = trim(has_spec ? t.substr(1) : t);
+      if (trimmed_name == old_name) {
+        saw_old = true;
+        if (spec)
+          out += spec;
+        out += new_name;
+      } else {
+        // Preserve the original line, including its spacing, when unchanged.
+        out += line;
+      }
+      out += '\n';
+    }
+
+    if (!saw_old) {
+      continue;  // this profile does not reference the mod
+    }
+
+    if (!safe_write_file(modlist, out)) {
+      Logger::instance().error("failed to rewrite mod rename in " + modlist.string());
+      continue;
+    }
+    ++rewritten;
+    Logger::instance().debug("mod rename applied in profile " + profile_dir + ": " +
+                             old_name + " -> " + new_name);
+  }
+  return rewritten;
 }
 
 }  // namespace engine::profile

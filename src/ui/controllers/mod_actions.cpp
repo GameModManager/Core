@@ -3,6 +3,7 @@
 #include "engine/log/logger.h"
 #include "engine/mod/meta/categories.h"
 #include "engine/mod/meta/mod_meta.h"
+#include "engine/profile/profile_creation.h"
 #include "engine/plugin_host/category_factory.h"
 #include "engine/util/fs_utils.h"
 #include "ui/main_window/main_window.h"
@@ -856,6 +857,22 @@ void ModActions::apply_rename(int row, const QString &name) {
       auto meta = engine::ModMeta::load(mods_dir, new_id.toStdString());
       meta.set("GameModManager", "folder", new_id.toStdString());
       meta.save(mods_dir, new_id.toStdString());
+    }
+  }
+
+  // Every profile records a mod by its folder name, so the folder rename just
+  // orphaned this mod's entry in every profile but the active one: there it
+  // would silently come back as an unmanaged "new mod", losing both its load
+  // order and its enabled state (MO2 Profile::renameModInAllProfiles). The
+  // active profile is updated by the model below, so the rest are done here.
+  const auto profiles_dir = w_->profiles_dir_path();
+  if (!profiles_dir.empty()) {
+    const std::size_t rewritten = engine::profile::rename_mod_in_all_profiles(
+        profiles_dir, entry.id.toStdString(), new_id.toStdString());
+    if (rewritten > 0) {
+      engine::Logger::instance().debug(
+          "Mod rename propagated to " + std::to_string(rewritten) +
+          " profile modlist file(s)");
     }
   }
 

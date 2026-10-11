@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <filesystem>
 #include <functional>
 #include <string>
@@ -83,5 +84,22 @@ list_profiles(const std::filesystem::path &profiles_dir);
 // no NUL. Returns false with *error set when invalid.
 [[nodiscard]] bool is_valid_profile_name(const std::string &name,
                                          std::string *error = nullptr);
+
+// Rewrite `old_name` to `new_name` in every profile's modlist.txt under
+// profiles_dir (MO2's Profile::renameModInAllProfiles, profile.cpp:317).
+//
+// A mod's identity is its folder name, and every profile records that name in
+// its own modlist.txt with the mod's priority and enabled state. Renaming the
+// folder therefore orphans the entry in every profile but the active one: the
+// mod silently reverts to "new mod" defaults in those profiles, losing both
+// its load order and its enabled state. Every profile is updated here, so the
+// rename stays true everywhere.
+//
+// Returns the number of profile files that were actually rewritten. A profile
+// whose modlist.txt is missing or does not mention the mod is skipped, not an
+// error: the mod simply is not in that profile's list.
+std::size_t rename_mod_in_all_profiles(const std::filesystem::path &profiles_dir,
+                                       const std::string &old_name,
+                                       const std::string &new_name);
 
 }  // namespace engine::profile
