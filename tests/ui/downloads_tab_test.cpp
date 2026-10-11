@@ -1912,3 +1912,68 @@ TEST_CASE("a downloads column shown from the menu survives a restart",
           "the choice is recorded on the restored header");
   }
 }
+
+// MO2 DownloadManager::isInfoIncomplete (downloadmanager.cpp:1480-1492): a
+// Nexus download whose mod or file id never resolved is missing the identity
+// every other row carries and cannot be re-queried later, so the Name cell
+// carries a warning icon and the tooltip says why (downloadlist.cpp:233-240,
+// :213-232). Other sources are never incomplete - none of them support
+// re-querying - and a queued row has no id yet, so neither is flagged.
+TEST_CASE("a Nexus download with unresolved ids is marked incomplete", "[ui]") {
+  qputenv("QT_QPA_PLATFORM", "offscreen");
+  const std::filesystem::path cfg = "/tmp/gmm_downloads_incomplete/config";
+  std::filesystem::remove_all("/tmp/gmm_downloads_incomplete");
+  std::filesystem::create_directories(cfg);
+  qputenv("XDG_CONFIG_HOME", cfg.c_str());
+
+  char test_argv0[] = "downloads_tab_test";
+  char *test_argv[] = {test_argv0, nullptr};
+  int test_argc     = 1;
+  QApplication app(test_argc, test_argv);
+  const auto dl_dir = std::filesystem::path("/tmp/gmm_downloads_incomplete/dl");
+  std::filesystem::create_directories(dl_dir);
+  write_file(dl_dir / "Complete.zip", 256);
+  write_file(dl_dir / "NoModId.zip", 256);
+  write_file(dl_dir / "NoFileId.zip", 256);
+  write_file(dl_dir / "Manual.zip", 256);
+
+  TestDownloadsTab tab;
+
+  // Every id present: nothing is wrong with this row.
+  tab.add_download("32444-1234", "Complete", "Nexus Mods", dl_dir / "Complete.zip",
+                   "skyrimspecialedition", 1234, "32444");
+  // Domain present but the mod page id never resolved.
+  tab.add_download("nxm-1", "NoModId", "Nexus Mods", dl_dir / "NoModId.zip",
+                   "skyrimspecialedition", 0, "");
+  // Domain present but the file id never resolved.
+  tab.add_download("nxm-2", "NoFileId", "Nexus Mods", dl_dir / "NoFileId.zip",
+                   "skyrimspecialedition", 0, "32444");
+  // Not a Nexus download at all: never incomplete.
+  tab.add_download("manual-1", "Manual", "Manual", dl_dir / "Manual.zip");
+
+  const auto name_item = [&](const char *name) {
+    const int row = row_with_name(tab.table(), name);
+    REQUIRE(row >= 0);
+    return tab.table()->item(row, 0);
+  };
+
+  check(name_item("Complete")->icon().isNull(),
+        "a Nexus row with both ids carries no warning");
+  check(!name_item("NoModId")->icon().isNull(),
+        "a Nexus row missing its mod id is warned about");
+  check(!name_item("NoFileId")->icon().isNull(),
+        "a Nexus row missing its file id is warned about");
+  check(name_item("Manual")->icon().isNull(),
+        "a non-Nexus row is never marked incomplete");
+
+  // The tooltip names the fix, not just the condition.
+  const auto tip = name_item("NoModId")->toolTip();
+  check(tip.contains(QStringLiteral("Information missing")),
+        "the incomplete row's tooltip says the information is missing");
+
+  // A complete row's tooltip is unchanged by the new branch - the warning
+  // must not leak onto rows that are fine.
+  const auto ok_tip = name_item("Complete")->toolTip();
+  check(!ok_tip.contains(QStringLiteral("Information missing")),
+        "a complete row's tooltip carries no warning line");
+}

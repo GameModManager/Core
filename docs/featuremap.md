@@ -485,7 +485,7 @@ port - their cited GMM symbol names were invented, the features are not.
 | U211 markConverted (converted/working flag) | ✅ `modlistviewactions` | ❌ | ❌ · |
 | U212 validated flag (ignore missing data) | ✅ `modinfo` | ✅ writes `[General] validated=true`, read at `:599` - `mod_scanner.cpp:853` | ✅ · |
 | U213 hidden files list (restoreHiddenFiles) | ✅ `modinforegular` | ✅ confirm dialog (single-mod wording differs, multi capped at 20 names), strips the hidden suffix from every file under each selected mod and refreshes the flags - `mod_actions.cpp:493` | ✅ ✔ |
-| U218 FileTree menu ordering + bold-first-enabled via doubleClicksOpenPreviews | ✅ `filetree.cpp:749-772` | ⚠️ bolds the first enabled entry and falls back to Open when Preview is disabled, but the order itself is fixed: MO2 puts Preview first when double-clicks-open-previews is on and Open first when off; ours is always Open, Preview - `filetree_tab.cpp:109` | ⚠️ ✔ |
+| U218 FileTree menu ordering + bold-first-enabled via doubleClicksOpenPreviews | ✅ `filetree.cpp:749-772` | ✅ Preview leads when double-clicks-open-previews is on and Open leads when it is off, in both the file tree and the conflicts tab; bold-first-enabled unchanged - `filetree_tab.cpp:125` | ✅ ✔ |
 
 ## 10. Mod Info Dialog
 
@@ -639,7 +639,7 @@ port - their cited GMM symbol names were invented, the features are not.
 | Mod status signal | ✅ `Profile::modStatusChanged` signal | ✅ EventBus `kModStateChanged` - `event_bus.h:36` | ✅ · |
 | Tweaked INI creation | ✅ `Profile::createTweakedIniFile()` | ✅ `write_tweaked_ini()` - `profile_switching.cpp:34` | ✅ · |
 | Profile settings as arbitrary key/value | ✅ `Profile::setting()`, `storeSetting()` | ✅ `get_setting()` / `set_setting()` - `profile.h:225` | ✅ · |
-| Rename mod across all profiles | ✅ `Profile::renameModInAllProfiles()` | ❌ | ❌ · |
+| Rename mod across all profiles | ✅ `Profile::renameModInAllProfiles()` | ✅ every profile's modlist.txt rewritten in place, line order and enabled/disabled/foreign spec preserved - `profile_creation.cpp:323` | ✅ ✔ |
 | Active mods retrieval | ✅ `Profile::getActiveMods()` | ❌ | ❌ · |
 | Profile existence check | ✅ `Profile::exists()` | ✅ `Profile::exists()` - `profile.h:101` | ✅ · |
 | Profile find settings (auto-detect) | ✅ `Profile::findProfileSettings()` | ✅ `detect_local_settings()` - `profile_creation.cpp:38` | ✅ · |
@@ -683,9 +683,9 @@ port - their cited GMM symbol names were invented, the features are not.
 | Nexus collection link rejection | ✅ `nxmInfo.isCollection()` "Collections Not Supported" `downloadmanager.cpp:740` | ⚠️ rejects malformed collection links; collection import is a planned epic - `downloads_controller.cpp:691` - Workspace-kdfn | ⚠️ ✔ |
 | Duplicate download detection (file name + auto-rename) | ✅ `getDownloadFileName(baseName, renameToUnique)` | ✅ Overwrite/Rename/Ignore, MO2's 1-based `N_` naming - `downloads_tab.cpp:800` | ✅ ✔ |
 | Duplicate NXM prevention (mod+file ID dedup) | ✅ checks pending+active for (modID, fileID) `downloadmanager.cpp:788` | ✅ `blocks_refetch` refuses Downloading/Complete/Installed at all 3 link entry points - `downloads_controller.cpp:826` | ✅ ✔ |
-| .unfinished extension for in-progress files | ✅ `UNFINISHED[]` `downloadmanager.cpp:57` | ❌ writes the final name; scan guards on `has_active_download()` - `downloads_tab.cpp:682` | ❌ ✔ |
+| .unfinished extension for in-progress files | ✅ `UNFINISHED[]` `downloadmanager.cpp:57` | ✅ the partial lands as `<name>.unfinished` and is renamed to the final archive name only once every byte has arrived - `fetch_stage.cpp:125` | ✅ ✔ |
 | HTTP/2 download support | ✅ `QHttp2Configuration` (16 MiB windows, Windows QNAM) | 🚀 HTTP/3 via `use_http3` with ALPN fallback to HTTP/2 - `network_manager.cpp:800` | 🚀 ✔ |
-| Login-gated resume | ✅ `m_core.loggedInAction(...)` `downloadstab.cpp:112` | ❌ no session check before resume | ❌ ✔ |
+| Login-gated resume | ✅ `m_core.loggedInAction(...)` `downloadstab.cpp:112` | ✅ a Nexus resume with neither a still-valid download key nor an API key is refused with the reason - `downloads_controller.cpp:476` | ✅ ✔ |
 | Empty URL resume prevention | ✅ "No known download urls." `downloadmanager.cpp:1072` | ✅ refuses to resume, now posts to the status bar - `downloads_controller.cpp:421` | ✅ ✔ |
 | Orphan meta file cleanup | ✅ `refreshList()` `downloadmanager.cpp` | 🚫 no download sidecar is written, so no orphan class | 🚫 ✔ |
 | Server preference sorting (mirror priority) | ✅ `ServerByPreference`, `evaluateFileInfoMap()` | 🚫 one signed CDN URL per request, no mirror list to order | 🚫 ✔ |
@@ -721,7 +721,7 @@ port - their cited GMM symbol names were invented, the features are not.
 | U097 Download status colors (READY/UNINSTALLED/PAUSED foregrounds) | ✅ `downloadlist.cpp:205-211` | ⚠️ mapping not one-to-one: 6 GMM states vs 9 - `downloads_tab.cpp:1105` | ⚠️ ✔ |
 | U108 Download list 8 columns (4 hidden by default, ini override) | ✅ `downloadlist.h:38-51` = NAME, STATUS, SIZE, FILETIME, MODNAME, VERSION, ID ("Nexus ID"), SOURCEGAME | ⚠️ 6 shipped; Mod name, Version, Source Game absent, Source is ours - `downloads_tab.cpp:127` | ⚠️ ✔ |
 | U109 Downloads header right-click per-column checkbox menu (QWidgetAction) | ✅ `downloadlistview.cpp:178-210` | ✅ `ColumnToggleHeaderView` labels from `column_names()` - `right_panel.cpp:277` | ✅ ✔ |
-| U124 Warning_16 icon on download Name cell when metadata incomplete | ✅ `downloadlist.cpp:233-240` | ❌ no `DecorationRole` branch, no incomplete state | ❌ ✔ |
+| U124 Warning_16 icon on download Name cell when metadata incomplete | ✅ `downloadlist.cpp:233-240` | ✅ warning icon on the Name cell plus a tooltip naming the fix; non-Nexus and queued rows are never flagged - `downloads_tab.cpp:510` | ✅ ✔ |
 | U162 Downloads bar buttons (Refresh / Query download info / show-hidden tips) | ✅ `mainwindow.ui:1319-1430` | ⚠️ no bar; F5 refresh + watcher cover 2 of 3 jobs - `menu_bar.cpp:192` | ⚠️ ✔ |
 | U216 Double-click download row (READY->install, PAUSED->resume) | ✅ `downloadlistview.cpp:164-177` | ✅ `on_cell_double_clicked()` past Complete installs - `downloads_tab.cpp:922` | ✅ ✔ |
 | Download list header tooltips | ❌ (MO2 has none) | 🚀 6, one per shipped column - `downloads_tab.cpp:158` | 🚀 ✔ |
@@ -840,7 +840,7 @@ port - their cited GMM symbol names were invented, the features are not.
 | Mod list default-hidden column set | ✅ `modlistview.cpp:817-824` | ⚠️ hides Source ID, Installation + own Source, Changed - `mod_list_model.cpp:576` | ⚠️ ✔ |
 | U110 Editable-cell rules (priority/version/ModID; foreign guards; auto-priority) | ✅ `modlist.cpp:620-650` | ⚠️ Priority is now editable and moves the mod; Version and ModID are not editable and there is no automatic-priority concept, so MO2's `!hasAutomaticPriority()` guard has nothing to key on - `mod_list_model.cpp:730` | ⚠️ ✔ |
 | U111 Version column "?" when empty + canBeUpdated | ✅ `modlist.cpp:198-206` | ✅ "?" for an empty version on a mod whose source can be re-queried; EditRole keeps the raw value - `mod_list_model.cpp:29` | ✅ ✔ |
-| U113 Priority cell hidden for automatic-priority mods | ✅ `modlist.cpp:207-213` | ❌ | ❌ · |
+| U113 Priority cell hidden for automatic-priority mods | ✅ `modlist.cpp:207-213` | ✅ an invalid QVariant for the rows flags() already refuses to make editable: Overwrite, MERGED, the game-native band and separators - `mod_list_model.cpp:401` | ✅ ✔ |
 | U127 HIGHLIGHT_CENTER centers Name cell alignment | ✅ `modlist.cpp:640-647` | ❌ | ❌ · |
 | U136 Mod List settings (separator colors, out-of-MO mods, remember filters, update-on-install, drag collapse) | ✅ `settingsdialog.ui:557-635` | ⚠️ tab exists, 5 checkboxes unproven - `settings_content_widget.cpp:68` | ⚠️ · |
 | U137 Collapsible Separators settings group (sort-direction, highlights, icon toggles, per-profile) | ✅ `settingsdialog.ui:653-830` | ⚠️ 12 keys shipped, plugin-highlight nuance unproven - `settings.h:35` | ⚠️ · |
@@ -1149,7 +1149,7 @@ port - their cited GMM symbol names were invented, the features are not.
 | U070 StatusBar carries Nexus API stats + user account (requestsChanged/credentialsReceived) (NEXUS-LENS: genericize/provider-scope) | ✅ `mainwindow.cpp:270-276`; one `m_api` label + tooltip | ⚠️ per-source metered budgets, no account half - `status_bar.h:30` | ⚠️ ✔ |
 | U100 Status bar "%1 - %2 - %3" game/instance/profile message | ✅ `statusbar.cpp:144-162` | ✅ `context_label_text()`, transient text restores it - `status_bar.h:19` | ✅ ✔ |
 | U101 Status bar progress ("Loading...", 0-100, max width 300, spacers) | ✅ `statusbar.cpp:22-38`, `:63-80` | ✅ `QProgressBar` at max width 300, label takes over as "Loading...", driven from the LOOT stage reports - `status_bar.cpp:73` | ✅ ✔ |
-| U102 Status bar visibility compensates central-widget bottom margin | ✅ `statusbar.cpp:175-192` | ❌ | ❌ · |
+| U102 Status bar visibility compensates central-widget bottom margin | ✅ `statusbar.cpp:175-192` | ✅ the central widget takes the bottom margin it already has on top while the bar is hidden, and gives it back - `settings_controller.cpp:774` | ✅ ✔ |
 | U103 StatusBarAction icon+label wrapper | ✅ `statusbar.cpp:195+` | ❌ | ❌ · |
 | U187 PreviewDialog (Preview / Close buttons) | ✅ `previewdialog.ui` | ⚠️ window exists, modal dialog parity unproven - `preview_window.h:61` | ⚠️ · |
 | U219 Menu aboutToShow refresh pattern (lazy rebuild) + wheel-block combo | ✅ `mainwindow.cpp:455-474` | ✅ the Run menu is rebuilt from its provider when about to open, never on a pin/unpin callback; the wheel block was already there - `menu_bar.cpp`, `mod_filter_bar.cpp:63` | ✅ ✔ |
@@ -1158,7 +1158,7 @@ port - their cited GMM symbol names were invented, the features are not.
 | U264 SortableTreeWidget + setCustomizableColumns | ✅ `sortabletreewidget.cpp` (uibase) | ⚠️ `SortableTreeWidget` ships with local-move-only and items_moved - `sortable_tree_widget.h:22`; MO2's setCustomizableColumns does not | ⚠️ · |
 | U265 ExpanderWidget / LinkLabel / LineEditClear UI primitives | ✅ `uibase src` | ✅ all three: `ExpanderWidget`, `LinkLabel`, `LineEditClear` under `src/ui/widgets/` | ✅ · |
 | U269 EventFilter generic event filter (uibase) | ✅ `eventfilter.cpp` (uibase) | ✅ `EventFilter` - `event_filter.h:23` | ✅ · |
-| U295 statusbar visibilityChanged margin compensation (see U102) | ✅ `statusbar.cpp` | ❌ | ❌ · |
+| U295 statusbar visibilityChanged margin compensation (see U102) | ✅ `statusbar.cpp` | ✅ the same compensation - `settings_controller.cpp:774` | ✅ ✔ |
 
 ## 31. Log System
 
@@ -1427,16 +1427,16 @@ column.
 | 6. Mod Management | 24 | 5 | 9 | 8 | 0 | 0 | 1 |
 | 7. Mod Categories | 9 | 5 | 0 | 6 | 0 | 0 | 0 |
 | 8. Mod Conflict Detection | 4 | 2 | 3 | 7 | 0 | 0 | 0 |
-| 9. Mod Content Analysis | 7 | 8 | 0 | 11 | 0 | 0 | 0 |
+| 9. Mod Content Analysis | 8 | 7 | 0 | 11 | 0 | 0 | 0 |
 | 10. Mod Info Dialog | 13 | 0 | 1 | 0 | 0 | 0 | 0 |
 | 11. Version & Update Management | 3 | 1 | 2 | 12 | 0 | 0 | 0 |
 | 12. Plugin Management | 29 | 6 | 3 | 13 | 0 | 0 | 0 |
 | 13. LOOT Integration | 10 | 2 | 1 | 7 | 0 | 0 | 0 |
-| 14. Profile Management | 29 | 5 | 3 | 4 | 0 | 0 | 0 |
-| 15. Download Management | 23 | 15 | 6 | 18 | 9 | 0 | 0 |
+| 14. Profile Management | 30 | 5 | 3 | 3 | 0 | 0 | 0 |
+| 15. Download Management | 26 | 15 | 6 | 15 | 9 | 0 | 0 |
 | 16. Nexus Integration | 8 | 10 | 2 | 20 | 0 | 0 | 0 |
 | 17. Source Providers | 4 | 0 | 7 | 1 | 0 | 0 | 0 |
-| 18. Mod List Features | 26 | 13 | 3 | 9 | 0 | 0 | 0 |
+| 18. Mod List Features | 27 | 13 | 3 | 8 | 0 | 0 | 0 |
 | 19. Mod Context Menu | 16 | 5 | 0 | 11 | 0 | 0 | 0 |
 | 20. Plugin Context Menu | 12 | 0 | 0 | 0 | 0 | 0 | 0 |
 | 21. Archive & Installation | 10 | 3 | 4 | 2 | 0 | 0 | 0 |
@@ -1448,7 +1448,7 @@ column.
 | 27. Plugin Host System | 0 | 1 | 12 | 3 | 0 | 0 | 0 |
 | 28. Sort System | 0 | 0 | 5 | 0 | 0 | 0 | 0 |
 | 29. Instance Management | 3 | 1 | 6 | 7 | 0 | 0 | 0 |
-| 30. UI Layer | 31 | 8 | 17 | 8 | 2 | 0 | 2 |
+| 30. UI Layer | 33 | 8 | 17 | 6 | 2 | 0 | 2 |
 | 31. Log System | 9 | 2 | 4 | 1 | 0 | 0 | 0 |
 | 32. System Tray | 4 | 1 | 0 | 0 | 0 | 0 | 0 |
 | 33. Self Updater | 2 | 3 | 0 | 4 | 0 | 0 | 0 |
@@ -1470,7 +1470,7 @@ column.
 | 49. CLI Help Grammar | 0 | 1 | 0 | 1 | 0 | 0 | 0 |
 | 50. My Games Resolution | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
 | 51. Conflict Scan Refresh | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
-| **TOTAL** | **391** | **166** | **178** | **218** | **52** | **38** | **62** |
+| **TOTAL** | **399** | **165** | **178** | **211** | **52** | **38** | **62** |
 
 ### The arithmetic
 
@@ -1478,16 +1478,26 @@ column.
 rows in file                          1043
 scored rows (ok + part + miss)         775
 
-MO2 parity        ok   / scored        391 /  775  = 50.5%
-partial           part / scored        166 /  775  = 21.4%
-missing           miss / scored        218 /  775  = 28.1%
+MO2 parity        ok   / scored        399 /  775  = 51.5%
+partial           part / scored        165 /  775  = 21.3%
+missing           miss / scored        211 /  775  = 27.2%
 GMM-exclusive     surp / all rows      178 / 1043  = 17.1%   (not scored)
 ```
 
-**Parity is 391 / 775 = 50.5%.** 218 rows are outright missing and 166 partial.
+**Parity is 399 / 775 = 51.5%.** 211 rows are outright missing and 165 partial.
 The largest untouched surfaces are **44. Tutorial** and **46. Notifications /
 Problems** (zero matched rows), then **16. Nexus** and **15. Downloads**, which
 carry the most missing rows in absolute terms.
+
+**Seven MO2 gaps closed moved parity from 50.5% to 51.5%** (`391 / 775` to
+`399 / 775`). The denominator is unchanged at 775: every flipped row moved
+within the scored set, and none entered or left it. Seven `❌` rows became
+`✅` (the in-progress `.unfinished` name, the login-gated resume, the
+rename-across-profiles, the incomplete-download icon, the hidden priority cell,
+and the status-bar margin compensation that U295 mirrors) and one `⚠️` row
+became `✅` (U218, the file tree menu order). Every MO2 pointer behind them was
+re-read in `references/modorganizer` and every GMM pointer re-resolved against
+the tree before the row was flipped.
 
 **Settings migration stage 0 moved parity from 50.4% to 50.5%** (`389 / 772` to
 `391 / 775`). Three `⏳` rows in category 4 changed, all against real symbols, and

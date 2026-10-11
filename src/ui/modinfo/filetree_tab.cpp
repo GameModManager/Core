@@ -116,6 +116,15 @@ void FiletreeTab::show_menu(const QPoint &pos) {
                                     : tr("This file is a directory or has no preview "
                                          "handler associated with it"));
 
+  // MO2 FileTree::addFileMenus (filetree.cpp:751-760): the order of the first
+  // two entries follows doubleClicksOpenPreviews, because that is the action a
+  // plain double-click runs. With previews on, Preview leads; with them off,
+  // Open leads. Both orders bold the same entry as before.
+  if (Settings::instance().double_clicks_open_previews()) {
+    menu.removeAction(preview);
+    menu.insertAction(open, preview);
+  }
+
   // MO2 Workspace-co2 row 411: bold the default (first-enabled) menu entry -
   // the action a plain double-click runs. A disabled Preview is not a
   // candidate, so the bolding falls back to Open.

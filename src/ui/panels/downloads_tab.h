@@ -313,6 +313,13 @@ private:
   // on-disk path, the source page, and a pending notice while no archive has
   // landed yet.
   void update_tooltip(DownloadEntry &entry);
+  // MO2 DownloadManager::isInfoIncomplete (downloadmanager.cpp:1480-1492): a
+  // Nexus download whose mod or file id never resolved is missing the identity
+  // every other row carries and cannot be re-queried later. Other sources are
+  // never incomplete - none of them support re-querying, so a warning would
+  // name a fix that does not exist. A queued row has not been given an id yet,
+  // which is why MO2 gates the same branch on state >= STATE_READY.
+  static bool info_is_incomplete(const DownloadEntry &entry);
   void replace_bar_with_label(const std::string &id, const QString &text,
                               const QColor &bg, const QColor &fg);
   void on_cell_double_clicked(int row, int column);
