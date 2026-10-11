@@ -75,9 +75,24 @@ static const std::vector<std::string> &download_archive_exts() {
   return exts;
 }
 
+// The suffix an in-progress download carries on disk until every byte has
+// arrived (MO2 downloadmanager.cpp:57). Kept next to the scanner so the name
+// the fetcher writes and the name the scanner skips cannot drift apart.
+static constexpr const char *kUnfinishedSuffix = ".unfinished";
+
 // Case-insensitive check: does `path` carry one of the supported archive
 // extensions?
 static bool is_archive_path(const std::filesystem::path &path) {
+  // A partial download is never a finished archive, whatever it is named.
+  // MO2 filters the ".unfinished" name explicitly (downloadmanager.cpp:405);
+  // its own extension check alone would not, because the suffix replaces the
+  // real extension.
+  const std::string name = path.filename().string();
+  std::string lower_name;
+  for (char c : name)
+    lower_name.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
+  if (lower_name.ends_with(kUnfinishedSuffix))
+    return false;
   std::string lower;
   for (char c : path.extension().string())
     lower.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));

@@ -164,6 +164,27 @@ public:
     return {};
   }
 };
+
+// Records the exact path fetch() was handed and writes partial bytes there,
+// so a test can prove the in-progress file is the ".unfinished" one.
+class TestUnfinishedProvider final : public Source::Interface {
+public:
+  std::string source_type() const override { return "test-unfinished"; }
+  bool fetch(const Mod &, PipelineContext &ctx,
+             const std::filesystem::path &dest_path) override {
+    seen_dest = dest_path.string();
+    seen_resume_from = ctx.download_resume_from;
+    std::ofstream(dest_path, std::ios::binary | std::ios::app) << "archive";
+    return true;
+  }
+  Source::SourceDownloadInfo resolve_download_info(const Mod &) const override {
+    Source::SourceDownloadInfo info;
+    info.archive_name = "Pack.7z";
+    return info;
+  }
+  std::string seen_dest;
+  int64_t seen_resume_from = 0;
+};
 }  // namespace
 
 TEST_CASE("pipeline", "[engine]") {
@@ -1116,5 +1137,62 @@ TEST_CASE("pipeline", "[engine]") {
     REQUIRE(fetch_provider_for(registered) != transport);
     std::printf("PASS: fetch_provider_for routes a resolved direct URL to the "
                 "transport\n");
+  }
+
+  // An in-progress download is written to "<name>.unfinished" and renamed to
+  // the final name only once every byte is in (MO2 downloadmanager.cpp:247,
+  // :2475). The consumer is the filesystem itself: a partial archive must
+  // never sit under the real name that the downloads-folder scanner picks up
+  // as a finished download.
+  {
+    TempDir tmp;
+    auto mods = tmp.root / "mods";
+    std::filesystem::create_directories(mods);
+    auto provider = std::make_unique<TestUnfinishedProvider>();
+    auto *raw    = provider.get();
+    engine::Source::Registry::instance().register_provider(std::move(provider));
+
+    Mod mod;
+    mod.id                   = "unfinished";
+    mod.download_source_type = "test-unfinished";
+    mod.download_source_id   = "198";
+    mod.download_nxm.file_id = 489053;
+
+    FetchStage stage;
+    PipelineContext ctx;
+    ctx.mods_dir = mods;
+    REQUIRE(stage.execute(mod, ctx));
+
+    // The bytes went to the .unfinished name, not the final name.
+    REQUIRE(raw->seen_dest ==
+            (tmp.root / "downloads" / "Pack.7z.unfinished").string());
+    // A clean first run has nothing to resume from.
+    REQUIRE(raw->seen_resume_from == 0);
+    // And the completed archive is under its real name with the marker gone.
+    REQUIRE(std::filesystem::exists(tmp.root / "downloads" / "Pack.7z"));
+    REQUIRE(!std::filesystem::exists(tmp.root / "downloads" / "Pack.7z.unfinished"));
+    REQUIRE(mod.files.size() == 1);
+    REQUIRE(mod.files[0].relative_path ==
+            (tmp.root / "downloads" / "Pack.7z").string());
+    std::printf("PASS: FetchStage downloads to <name>.unfinished and finalizes on "
+                "completion\n");
+
+    // A leftover partial is resumed from, and the resume offset is the
+    // .unfinished file's size - the only place a half-written archive can be.
+    {
+      std::ofstream(tmp.root / "downloads" / "Pack.7z.unfinished",
+                    std::ios::binary | std::ios::trunc)
+          << "12345";
+      Mod again                   = mod;
+      PipelineContext resume_ctx;
+      resume_ctx.mods_dir         = mods;
+      REQUIRE(stage.execute(again, resume_ctx));
+      REQUIRE(raw->seen_resume_from == 5);
+      REQUIRE(std::filesystem::exists(tmp.root / "downloads" / "Pack.7z"));
+      REQUIRE(!std::filesystem::exists(
+          tmp.root / "downloads" / "Pack.7z.unfinished"));
+      std::printf("PASS: FetchStage resumes from the .unfinished partial, not the "
+                  "final name\n");
+    }
   }
 }
