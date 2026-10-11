@@ -273,7 +273,7 @@ QVariant ModList::data(const QModelIndex &index, int role) const {
       case Flags:
         return QString();  // icons come via kFlagIconsRole
       case Priority:
-        return mod.priority;
+        return QVariant();  // separators have a fixed priority
       }
     }
     // EditRole carries the raw separator name so name-based lookups keep
@@ -393,6 +393,13 @@ QVariant ModList::data(const QModelIndex &index, int role) const {
     case Changed:
       return mod.changed_ts > 0 ? format_epoch_ts(mod.changed_ts) : QString();
     case Priority:
+      // MO2 ModList::data (modlist.cpp:207-210): a mod whose priority is
+      // fixed returns an invalid QVariant, so the cell renders blank. The
+      // number is not editable there (flags() below drops ItemIsEditable for
+      // exactly these rows), so printing it only advertises a number the user
+      // cannot change.
+      if (mod.is_overwrite || mod.is_merged || mod.is_game_native)
+        return QVariant();
       return mod.priority;
     }
   }

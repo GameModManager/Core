@@ -214,6 +214,14 @@ void ConflictsInfoTab::show_menu(Group &group, const QPoint &pos) {
     preview->setToolTip(tr("This file has no preview handler associated with it"));
   }
 
+  // MO2 FileTree::addFileMenus (filetree.cpp:751-760), same menu as the file
+  // tree: the order of the first two entries follows doubleClicksOpenPreviews,
+  // because that is the action a plain double-click runs.
+  if (Settings::instance().double_clicks_open_previews()) {
+    menu.removeAction(preview);
+    menu.insertAction(open, preview);
+  }
+
   // MO2 FileTree parity (Workspace-co2 row 411): bold the default
   // (first-enabled) menu entry - the action a plain double-click runs.
   auto *default_action =
