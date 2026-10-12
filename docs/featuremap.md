@@ -590,9 +590,9 @@ port - their cited GMM symbol names were invented, the features are not.
 | Feature | MO2 | GMM | Status |
 |---------|-----|-----|--------|
 | LOOT sort execution | ✅ `Loot::sort()` | ✅ `Sorter::Loot` - `mod_list_controller.cpp:2909` | ✅ · |
-| LOOT report generation | ✅ `Loot::createReport()` | ⚠️ JSON carries the per-plugin findings, the game-wide messages and the run statistics; still no HTML/markdown rendering - `sorter.cpp:544` | ⚠️ ✔ |
-| LOOT report viewer (markdown + web) | ✅ `LootDialog` + `MarkdownDocument` | ❌ | ❌ · |
-| LOOT progress display | ✅ `LootDialog::setProgress()` | ✅ `on_loot_progress(int, QString)` - `mod_list_controller.cpp:2973` | ✅ · |
+| LOOT report generation | ✅ `Loot::createReport()` | ⚠️ JSON carries the per-plugin findings, the game-wide messages and the run statistics, all three parsed; the messages and the stats line are rendered as markdown in the LOOT popup, the per-plugin sections are not (they stay in the plugin tooltips) and there is no web viewer - `sorter.cpp:182`, `loot_report_dialog.cpp:10` | ⚠️ ✔ |
+| LOOT report viewer (markdown + web) | ✅ `LootDialog` + `MarkdownDocument` | ⚠️ a report pane that opens when the sort starts and carries the markdown (Qt's own parser, no QWebEngineView): game-wide messages + stats, plus "No messages." and the failure text. Absent: MO2's web view, the per-plugin sections and the sorted-plugin-list markdown - `loot_report_dialog.cpp:71` | ⚠️ ✔ |
+| LOOT progress display | ✅ `LootDialog::setProgress()` | ✅ the stage name goes to the status bar and to the popup's progress line, one per stage - `mod_list_controller.cpp:3353` | ✅ ✔ |
 | LOOT dirty info details | ✅ `Dirty` (CRC, ITM, deleted refs, navmesh, utility) | ⚠️ no CRC field - `plugin_info.h:24` | ⚠️ · |
 | LOOT incompatibilities details | ✅ `File` (name + displayName) | ✅ name + displayName - `plugin_info.h:17` | ✅ · |
 | LOOT missing masters | ✅ `Plugin::missingMasters` | ✅ `missing_masters_html()` - `plugin_view.cpp:183` | ✅ · |
@@ -603,7 +603,7 @@ port - their cited GMM symbol names were invented, the features are not.
 | LOOT plugin flags (loadsArchive, isMaster, isLightMaster) | ✅ `Plugin` struct per-plugin metadata | ✅ master/light/medium + archives - `plugin_info.h:52` | ✅ · |
 | LOOT cancel/terminate | ✅ `Loot::cancel()` terminates lootcli process | ❌ | ❌ · |
 | LOOT statistics (timing, versions) | ✅ `Stats` struct (execution time, lootcli version) | ✅ emitted by gmm_lootcli, parsed by the engine, summarised in the status bar - `sorter.cpp:519`, `sorter.h:47` | ✅ ✔ |
-| LOOT general messages | ✅ `Report::messages` (non-plugin-specific) | ✅ the report's top-level "messages" array is parsed and relayed at their own level - `mod_list_controller.cpp:3372` (per-plugin messages render in the tooltip - `plugin_view.cpp:164`) | ✅ ✔ |
+| LOOT general messages | ✅ `Report::messages` (non-plugin-specific) | ✅ the report's top-level "messages" array is parsed and shown in the LOOT popup's report pane, first, ahead of anything per-plugin, each at the level LOOT gave it (MO2 `Loot::Message::toMarkdown`) - `loot_report_dialog.cpp:10`, shown from `mod_list_controller.cpp:3401` (per-plugin messages render in the tooltip - `plugin_view.cpp:164`) | ✅ ✔ |
 | LOOT PluginList integration (addLootReport) | ✅ `PluginList::addLootReport()` | ✅ `set_loot_reports()` side-map - `plugin_database.h:192` | ✅ · |
 | LOOT log level setting | ✅ `DiagnosticsSettings::lootLogLevel()` | ❌ | ❌ · |
 | LOOT async pipe communication | ✅ `AsyncPipe` (Windows Named Pipe IPC) | ❌ | ❌ · |
@@ -1139,7 +1139,7 @@ port - their cited GMM symbol names were invented, the features are not.
 | U009 F5 = Refresh | ✅ `mainwindow.ui:1989` | ✅ QKeySequence::Refresh - `menu_bar.cpp:193` | ✅ ✔ |
 | U012 Help menu tree (Help on UI, Documentation, Wiki, Discord, Report Issue, Tutorials submenu, About) - see U008 ruling | ✅ `mainwindow.cpp:1096-1162` (flat) | ⚠️ 6 of 7; Discord absent, 4 fold into More, Tutorials gated - `menu_bar.cpp:331` | ⚠️ ✔ |
 | U017 Toolbar right-align spacer before last separator | ✅ `mainwindow.cpp:713-744` | ❌ no right-align spacer | ❌ · |
-| U018 Toolbar menu-buttons use QToolButton::InstantPopup | ✅ `mainwindow.cpp:746-753` | ✅ on the Instance Options button once its menu is attached; the exec shortcuts carry no menu, so MO2's setupActionMenu has nothing else to convert - `main_toolbar.cpp:137` | ✅ ✔ |
+| U018 Toolbar menu-buttons use QToolButton::InstantPopup | ✅ `mainwindow.cpp:746-753` | ⚠️ the idiom, not the construct, and deliberately: our one toolbar button that owns a menu (Instance Options) has a second action on its body, and InstantPopup documents that "the button's own action is NOT triggered", so applying it there deletes the Instance Options panel. It is a split control instead - MenuButtonPopup, body opens the panel, arrow opens the menu. MO2's four converted buttons (Browse Mod Page, Tools, Help, Endorse MO) are menu-only and have no GMM toolbar counterpart - `main_toolbar.cpp:119` | ⚠️ ✔ |
 | U019 View > Toolbars submenu (9 checkables: menu/toolbar/statusbar, 3 icon sizes, 3 style modes) | ✅ `mainwindow.ui:1558-1578` | ✅ all 9: menu bar + toolbar + status bar toggles, 3 icon sizes, 3 exclusive button styles - `menu_bar.cpp:69` | ✅ ✔ |
 | U021 Popup menu on toolbar/central-widget edges (Toolbars + View Log) | ✅ `mainwindow.cpp:821-840` | ❌ | ❌ · |
 | U023 Open Folder menu (12 entries: game/MyGames/INIs, instance/mods/profile/downloads, install/plugins/stylesheets/logs) | ✅ `mainwindow.cpp:2663-2693` | ⚠️ 11 FolderKinds handled, menu layout unproven - `mod_list_controller.cpp:3544` | ⚠️ · |
@@ -1431,7 +1431,7 @@ column.
 | 10. Mod Info Dialog | 13 | 0 | 1 | 0 | 0 | 0 | 0 |
 | 11. Version & Update Management | 3 | 1 | 2 | 12 | 0 | 0 | 0 |
 | 12. Plugin Management | 32 | 5 | 3 | 11 | 0 | 0 | 0 |
-| 13. LOOT Integration | 11 | 2 | 1 | 6 | 0 | 0 | 0 |
+| 13. LOOT Integration | 11 | 3 | 1 | 5 | 0 | 0 | 0 |
 | 14. Profile Management | 30 | 5 | 3 | 3 | 0 | 0 | 0 |
 | 15. Download Management | 31 | 12 | 6 | 13 | 9 | 0 | 0 |
 | 16. Nexus Integration | 8 | 10 | 2 | 20 | 0 | 0 | 0 |
@@ -1448,7 +1448,7 @@ column.
 | 27. Plugin Host System | 0 | 1 | 12 | 3 | 0 | 0 | 0 |
 | 28. Sort System | 0 | 0 | 5 | 0 | 0 | 0 | 0 |
 | 29. Instance Management | 3 | 1 | 6 | 7 | 0 | 0 | 0 |
-| 30. UI Layer | 31 | 8 | 17 | 8 | 2 | 0 | 2 |
+| 30. UI Layer | 30 | 9 | 17 | 8 | 2 | 0 | 2 |
 | 31. Log System | 9 | 2 | 4 | 1 | 0 | 0 | 0 |
 | 32. System Tray | 4 | 1 | 0 | 0 | 0 | 0 | 0 |
 | 33. Self Updater | 2 | 3 | 0 | 4 | 0 | 0 | 0 |
@@ -1470,7 +1470,7 @@ column.
 | 49. CLI Help Grammar | 0 | 1 | 0 | 1 | 0 | 0 | 0 |
 | 50. My Games Resolution | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
 | 51. Conflict Scan Refresh | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
-| **TOTAL** | **421** | **151** | **178** | **203** | **52** | **38** | **62** |
+| **TOTAL** | **420** | **153** | **178** | **202** | **52** | **38** | **62** |
 
 ### The arithmetic
 
@@ -1478,18 +1478,53 @@ column.
 rows in file                          1043
 scored rows (ok + part + miss)         775
 
-MO2 parity        ok   / scored        421 /  775  = 54.3%
-partial           part / scored        151 /  775  = 19.5%
-missing           miss / scored        203 /  775  = 26.2%
+MO2 parity        ok   / scored        420 /  775  = 54.2%
+partial           part / scored        153 /  775  = 19.7%
+missing           miss / scored        202 /  775  = 26.1%
 GMM-exclusive     surp / all rows      178 / 1043  = 17.1%   (not scored)
 ```
 
-**Parity is 421 / 775 = 54.3%.** 203 rows are outright missing and 151 partial.
+**Parity is 420 / 775 = 54.2%.** 202 rows are outright missing and 153 partial.
 The largest untouched surfaces are **44. Tutorial** and **46. Notifications /
 Problems** (zero matched rows), then **16. Nexus** and **15. Downloads**, which
 carry the most missing rows in absolute terms.
 
-**This batch moved parity from 52.5% to 54.3%** (`407 / 775` to `421 / 775`).
+**This batch moved parity from 54.3% to 54.2%** (`421 / 775` to `420 / 775`).
+Four rows changed, every one scored before and after, so the denominator did
+not move at 775 and nothing was reclassified. The net move is DOWN, and that is
+the honest direction: one row was corrected from `✅` to `⚠️` because the code
+it claimed was wrong, and the two rows that gained are `❌` to `⚠️`, which is
+partial progress inside the scored set and does not touch the numerator.
+
+Two shipped regressions were corrected:
+- `U018` - the Instance Options toolbar button had been switched to
+  `QToolButton::InstantPopup` the moment a menu was attached, citing MO2's
+  `setupActionMenu`. Qt documents `InstantPopup` as "the button's own action is
+  NOT triggered", so the body click stopped opening the Instance Options panel
+  and the panel was reachable only from the menu's "Install recommended
+  packages" entry. It is a split control again: body opens the panel, arrow
+  opens the dropdown (`main_toolbar.cpp:119`). MO2's four `InstantPopup`
+  conversions are menu-only buttons, none of which has a GMM counterpart, so
+  the row keeps no `✅`.
+- `LOOT general messages` - the game-wide LOOT messages went to the log the
+  console panel renders because there was no popup to put them in. MO2 shows
+  them in the `LootDialog` report pane, ahead of the per-plugin sections, and
+  does not also log them (`LootDialog::log` forwards lootcli's log lines, not
+  the report's messages). The popup exists now, so the console stand-in is
+  gone and the row cites what actually shows them.
+
+One row gained, and what is deliberately still missing is written down rather
+than rounded up: `LOOT report viewer (markdown + web)` went `❌` to `⚠️`. The
+report pane is real - it opens when the sort starts, carries the markdown
+through Qt's own parser, and shows the game-wide messages, the stats line, the
+empty case and the failure case. It is not MO2's `QWebEngineView` +
+`markdown.html`, and it renders neither the per-plugin sections nor the sorted
+plugin list markdown. `LOOT report generation` was already `⚠️` and stays `⚠️`
+with its cell corrected: markdown rendering exists now, so "still no
+HTML/markdown rendering" was no longer true.
+
+### The previous batch moved parity from 52.5% to 54.3% (`407 / 775` to `421 / 775`)
+
 Fourteen rows changed, every one scored before and after, so the denominator
 did not move and nothing was reclassified to flatter the ratio.
 

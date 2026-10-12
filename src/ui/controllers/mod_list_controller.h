@@ -2,6 +2,7 @@
 
 #include <QList>
 #include <QObject>
+#include <QPointer>
 #include <QString>
 #include <QStringList>
 #include <filesystem>
@@ -19,6 +20,8 @@ class QMenu;
 class QVBoxLayout;
 
 namespace ui {
+
+class LootReportDialog;
 
 // Visit-on-source-site info for a mod's Source column / context menu
 // (label + URL). Resolved from the mod's source_type/source_id by
@@ -228,6 +231,12 @@ private:
   // Owns the four toolbar actions and their dialogs; the
   // engine does the file work.
   std::unique_ptr<BackupActions> backup_actions_;
+
+  // MO2's LOOT report popup (loot.cpp:960-984 runLoot opens the LootDialog
+  // when the sort starts). Created when a sort starts, filled when it ends,
+  // deleted by the user closing it - QPointer so a closed popup goes null
+  // instead of dangling.
+  QPointer<LootReportDialog> loot_dialog_;
 };
 
 }  // namespace ui
