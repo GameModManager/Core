@@ -801,10 +801,23 @@ void DownloadsTab::set_file_path(const std::string &id,
   if (entry.row < 0)
     return;
   entry.file_path = path;
+  // FetchStage renamed the partial onto this path, so the row owns no orphan
+  // any more and must not trash a same-named partial a later download creates.
+  entry.partial_path.clear();
   // The archive only exists now, so this is the first moment Filetime has
   // something to show.
   update_filetime(entry);
   update_tooltip(entry);
+}
+
+void DownloadsTab::note_partial_archive(const std::string &id,
+                                        const std::string &archive_name) {
+  if (archive_name.empty() || downloads_dir_.empty())
+    return;
+  auto &entry = entry_for(id);
+  if (entry.row < 0)
+    return;
+  entry.partial_path = downloads_dir_ / (archive_name + kUnfinishedSuffix);
 }
 
 void DownloadsTab::set_downloads_dir(const std::filesystem::path &dir) {
@@ -1475,13 +1488,18 @@ void DownloadsTab::remove_entry(const std::string &id) {
     return;
   auto &entry = it->second;
 
-  // Trash the archive file (if any) before dropping the entry.
-  if (!entry.file_path.empty() && std::filesystem::exists(entry.file_path)) {
-    if (!engine::remove_path(entry.file_path)) {
-      QMessageBox::warning(
-          this, tr("Remove"),
-          tr("Failed to move \"%1\" to the trash bin.")
-              .arg(QString::fromStdString(entry.file_path.filename().string())));
+  // Trash whatever bytes the row owns: the archive when it completed, and the
+  // "<archive>.unfinished" partial when it did not. A paused Nexus/modl/URL row
+  // has an EMPTY file_path, so before partial_path existed this trashed
+  // nothing, dropped the row, and stranded the partial on disk forever - and
+  // the scanner hides ".unfinished", so nothing surfaced it either.
+  for (const auto *path : {&entry.file_path, &entry.partial_path}) {
+    if (path->empty() || !std::filesystem::exists(*path))
+      continue;
+    if (!engine::remove_path(*path)) {
+      QMessageBox::warning(this, tr("Remove"),
+                           tr("Failed to move \"%1\" to the trash bin.")
+                               .arg(QString::fromStdString(path->filename().string())));
       return;
     }
   }
@@ -1505,11 +1523,17 @@ std::string DownloadsTab::serialize() const {
   QJsonArray arr;
   for (const auto &[id, entry] : downloads_) {
     QJsonObject obj;
-    obj["id"]         = QString::fromStdString(id);
-    obj["name"]       = entry.name_item ? entry.name_item->text() : QString();
-    obj["source"]     = entry.source_item ? entry.source_item->text() : QString();
-    obj["size"]       = entry.size_item ? entry.size_item->text() : QString();
-    obj["file_path"]  = QString::fromStdString(entry.file_path.string());
+    obj["id"]        = QString::fromStdString(id);
+    obj["name"]      = entry.name_item ? entry.name_item->text() : QString();
+    obj["source"]    = entry.source_item ? entry.source_item->text() : QString();
+    obj["size"]      = entry.size_item ? entry.size_item->text() : QString();
+    obj["file_path"] = QString::fromStdString(entry.file_path.string());
+    // Just the name: the partial always lives in the downloads dir, so the
+    // dir is re-applied on load. Persisted because a row that was paused at
+    // shutdown comes back Failed (deserialize below) and still has to be able
+    // to take its orphan with it.
+    obj["partial_file"] =
+        QString::fromStdString(entry.partial_path.filename().string());
     obj["state"]      = static_cast<int>(entry.state);
     obj["total_size"] = static_cast<qint64>(entry.total_size);
     // Origin metadata - kept for update checks and the future
@@ -1533,14 +1557,15 @@ void DownloadsTab::deserialize(const std::string &json,
     return;
 
   for (const auto &val : doc.array()) {
-    auto obj        = val.toObject();
-    auto id         = obj["id"].toString().toStdString();
-    auto name       = obj["name"].toString().toStdString();
-    auto source     = obj["source"].toString().toStdString();
-    auto size_text  = obj["size"].toString();
-    auto file_path  = std::filesystem::path(obj["file_path"].toString().toStdString());
-    auto state      = static_cast<DownloadState>(obj["state"].toInt());
-    auto total_size = static_cast<int64_t>(obj["total_size"].toDouble());
+    auto obj       = val.toObject();
+    auto id        = obj["id"].toString().toStdString();
+    auto name      = obj["name"].toString().toStdString();
+    auto source    = obj["source"].toString().toStdString();
+    auto size_text = obj["size"].toString();
+    auto file_path = std::filesystem::path(obj["file_path"].toString().toStdString());
+    const auto partial_file  = obj["partial_file"].toString().toStdString();
+    auto state               = static_cast<DownloadState>(obj["state"].toInt());
+    auto total_size          = static_cast<int64_t>(obj["total_size"].toDouble());
     const auto file_id       = obj["file_id"].toInt();
     const auto parent_mod_id = obj["parent_mod_id"].toString().toStdString();
     const auto nexus_domain  = obj["domain"].toString().toStdString();
@@ -1619,9 +1644,11 @@ void DownloadsTab::deserialize(const std::string &json,
     if (!inserted)
       continue;
 
-    auto &entry         = it->second;
-    entry.row           = table_->rowCount();
-    entry.file_path     = file_path;
+    auto &entry     = it->second;
+    entry.row       = table_->rowCount();
+    entry.file_path = file_path;
+    entry.partial_path =
+        partial_file.empty() ? std::filesystem::path{} : downloads_dir / partial_file;
     entry.state         = state;
     entry.total_size    = total_size;
     entry.parent_mod_id = parent_mod_id;
