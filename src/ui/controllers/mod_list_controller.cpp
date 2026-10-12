@@ -86,6 +86,7 @@
 #include "ui/widgets/exec_controls_bar.h"
 #include "ui/widgets/file_dialog_memory.h"
 #include "ui/widgets/list_dialog.h"
+#include "ui/widgets/loot_report_dialog.h"
 #include "ui/widgets/mod_filter_bar.h"
 #include "ui/widgets/mod_list_model.h"
 #include "ui/widgets/mod_table_view.h"
@@ -3312,6 +3313,17 @@ void ModListController::run_loot_sort() {
   }
   if (w_->status_bar_)
     w_->status_bar_->set_status(tr("Sorting load order with LOOT…"));
+  // The report popup opens when the sort starts, not when it finishes
+  // (MO2 runLoot, loot.cpp:960-984: the LootDialog is exec()ed right after
+  // loot.start(), so it is on screen for the whole run). Reused if the user
+  // left the previous one open.
+  if (!loot_dialog_) {
+    loot_dialog_ = new ui::LootReportDialog(w_);
+    loot_dialog_->setAttribute(Qt::WA_DeleteOnClose);
+  }
+  loot_dialog_->set_stage(tr("Running LOOT..."));
+  loot_dialog_->show();
+  loot_dialog_->raise();
   w_->loot_sort_thread_->start(std::move(request));
 }
 
@@ -3327,14 +3339,23 @@ void ModListController::on_loot_progress(int stage, const QString &) {
       tr("Parsing LOOT messages…"),  // 7
       tr("Load order sorted"),       // 8
   };
-  if (!w_->status_bar_)
+  if (!w_->status_bar_ && !loot_dialog_)
     return;
+  QString text;
   if (stage >= 0 && stage < kStageNames.size() && !kStageNames.at(stage).isEmpty())
-    w_->status_bar_->set_status(kStageNames.at(stage));
+    text = kStageNames.at(stage);
+  // MO2 LootDialog::setProgress (lootdialog.cpp:96-107) writes the same stage
+  // name into the dialog's progress line; ours has two places to write it.
+  if (!text.isEmpty()) {
+    if (w_->status_bar_)
+      w_->status_bar_->set_status(text);
+    if (loot_dialog_)
+      loot_dialog_->set_stage(text);
+  }
   // MO2 StatusBar::setProgress drives its bar from a step counter exactly
   // like this. Stages 1..8 are the whole run, so stage 8 is 100% and hides
   // the bar again; anything below 0 leaves it alone.
-  if (stage >= 0 && stage < kStageNames.size())
+  if (w_->status_bar_ && stage >= 0 && stage < kStageNames.size())
     w_->status_bar_->set_progress(stage * 100 / (kStageNames.size() - 1));
 }
 
@@ -3346,17 +3367,21 @@ void ModListController::on_loot_finished(engine::Sorter::Loot::Result result) {
     w_->status_bar_->set_progress(-1);
   if (!result.ok) {
     engine::Logger::instance().warn("LOOT sort failed: " + result.error);
+    const QString reason = QString::fromStdString(result.error);
     if (w_->status_bar_)
-      w_->status_bar_->set_status(
-          tr("LOOT sort failed: %1").arg(QString::fromStdString(result.error)));
+      w_->status_bar_->set_status(tr("LOOT sort failed: %1").arg(reason));
+    if (loot_dialog_)
+      loot_dialog_->show_error(reason);
     return;
   }
 
   std::string err;
   if (!w_->plugins_db_.apply_load_order(result.sorted_names, &err)) {
+    const QString reason = QString::fromStdString(err);
     if (w_->status_bar_)
-      w_->status_bar_->set_status(
-          tr("LOOT sort could not be applied: %1").arg(QString::fromStdString(err)));
+      w_->status_bar_->set_status(tr("LOOT sort could not be applied: %1").arg(reason));
+    if (loot_dialog_)
+      loot_dialog_->show_error(reason);
     return;
   }
   w_->plugins_db_.save_profile(w_->profiles_dir_path(), w_->current_profile_name_);
@@ -3365,19 +3390,15 @@ void ModListController::on_loot_finished(engine::Sorter::Loot::Result result) {
   // tooltips and emblems reflect this sort.
   w_->plugins_db_.clear_loot_reports();
   w_->plugins_db_.set_loot_reports(result.reports);
-  // Game-wide LOOT messages (MO2 Loot::Report::messages, loot.cpp:261-269):
-  // MO2 shows them above the plugin list in the Loot dialog. There is no
-  // dialog here, so they go to the log the console panel renders - at the
-  // level LOOT gave them, never flattened into one string.
-  for (const auto &message : result.general_messages) {
-    const std::string text = "LOOT: " + message.text;
-    if (message.level == "error")
-      engine::Logger::instance().error(text);
-    else if (message.level == "warning")
-      engine::Logger::instance().warn(text);
-    else
-      engine::Logger::instance().info(text);
-  }
+  // Game-wide LOOT messages (MO2 Loot::Report::messages, loot.cpp:244-250):
+  // MO2 puts them in the Loot dialog's report pane, first, ahead of the
+  // per-plugin sections - the popup, and nowhere else. MO2 does NOT also log
+  // them: LootDialog::log (lootdialog.cpp:275-283) forwards lootcli's own log
+  // lines at Warning and above to MO2's log, not the report's messages. So
+  // the console relay that stood in for the missing popup is gone, because the
+  // popup is here.
+  if (loot_dialog_)
+    loot_dialog_->show_report(result.general_messages, result.stats);
   refresh_plugins_tab();
   if (w_->status_bar_) {
     QString summary =

@@ -46,6 +46,7 @@ set(UI_SOURCES
     widgets/executables_dialog.h
     widgets/executables_dialog.cpp
     widgets/console_panel.cpp
+    widgets/loot_report_dialog.cpp
     widgets/find_dialog.cpp
     widgets/status_bar.cpp
     widgets/instance_switcher_dialog.cpp
