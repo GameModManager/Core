@@ -35,6 +35,7 @@
 #include "ui/panels/tab_panels.h"
 
 #include <QApplication>
+#include <QCheckBox>
 #include <QMenu>
 #include <QTableWidget>
 
@@ -251,4 +252,64 @@ TEST_CASE("a hidden download stays hidden across a restart and can be un-hidden"
     REQUIRE(row2 >= 0);
     CHECK(!third.table()->isRowHidden(row2));
   }
+}
+
+// MO2's showHiddenBox ("Hidden files", mainwindow.ui:1426) shows the flagged
+// rows WITHOUT clearing the flag: setShowHidden only feeds refreshList, which
+// tests the flag when the list is built (downloadmanager.cpp:102), and
+// m_Hidden is untouched. Unticking the box therefore hides the same rows
+// again - that is the whole difference between this box and Un-Hide All.
+TEST_CASE("the Hidden files box reveals flagged rows without clearing the flag",
+          "[ui][mo2-parity]") {
+  qputenv("QT_QPA_PLATFORM", "offscreen");
+  TempRoot root("gmm_dl_showhidden");
+  qputenv("XDG_CONFIG_HOME", (root.path / "config").c_str());
+  int argc     = 1;
+  char argv0[] = "test";
+  char *argv[] = {argv0, nullptr};
+  QApplication app(argc, argv);
+
+  const auto dl  = root.path / "downloads";
+  const auto zip = dl / "Keep.zip";
+  write_zip(zip);
+
+  TestDownloadsTab tab;
+  tab.set_downloads_dir(dl);
+  tab.add_download("keep", "Keep", "Manual", zip);
+  tab.mark_complete("keep", true);
+
+  QMenu hide;
+  tab.add_context_menu_actions(hide, "keep");
+  auto *act = find_action(hide, "Hide Uninstalled...");
+  REQUIRE(act != nullptr);
+  act->trigger();
+
+  const int row = row_with_name(tab.table(), "Keep");
+  REQUIRE(row >= 0);
+  CHECK(tab.table()->isRowHidden(row));
+
+  auto *box = tab.findChild<QCheckBox *>("showHiddenBox");
+  REQUIRE(box != nullptr);
+  CHECK(!box->isChecked());
+
+  box->setChecked(true);
+  CHECK(!tab.table()->isRowHidden(row));
+
+  // The flag survived: the manifest still records the row as hidden, and
+  // unticking the box puts it back out of sight rather than leaving it shown
+  // forever.
+  const std::string while_shown = tab.serialize();
+  CHECK(while_shown.find("\"hidden\":true") != std::string::npos);
+  box->setChecked(false);
+  CHECK(tab.table()->isRowHidden(row));
+
+  // Un-Hide All is the other, permanent way out, and the two must not be
+  // confused for one another.
+  QMenu unhide;
+  tab.add_context_menu_actions(unhide, "keep");
+  auto *clear = find_action(unhide, "Un-Hide All...");
+  REQUIRE(clear != nullptr);
+  clear->trigger();
+  box->setChecked(false);
+  CHECK(!tab.table()->isRowHidden(row));
 }
