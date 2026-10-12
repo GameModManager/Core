@@ -660,10 +660,10 @@ port - their cited GMM symbol names were invented, the features are not.
 
 | Feature | MO2 | GMM | Status |
 |---------|-----|-----|--------|
-| Download state machine | ✅ `DownloadState` (14 states) | ⚠️ 6 states, `Removed` reserved and never assigned - `downloads_tab.h:35` | ⚠️ ✔ |
+| Download state machine | ✅ `DownloadState` (14 states) | ⚠️ 7 states, 6 of them assigned; `Removed` is still reserved and never assigned - `downloads_tab.h:51` | ⚠️ ✔ |
 | Pause/resume downloads | ✅ `pauseDownload`, `resumeDownload` | ✅ pause = menu only; resume also row double-click - `downloads_controller.cpp:402` | ✅ ✔ |
-| Cancel downloads | ✅ `cancelDownload` | ⚠️ no Cancel action or state; Pause is the only abort - `network_manager.cpp:1231` | ⚠️ ✔ |
-| Download speed tracking | ✅ `downloadSpeed` rolling average | ⚠️ instantaneous only, no rolling average or history - `downloads_tab.cpp:461`; the row bar renders `%p% - speed - ~remaining` like MO2 (downloadmanager.cpp:1747-1750) and drops the estimate when it cannot be made - `downloads_tab.cpp:589` | ⚠️ ✔ |
+| Cancel downloads | ✅ `cancelDownload` | ✅ Cancel on a running row's context menu and on the Delete key, the `Cancelled` state (below READY, so neither Delete batch sweeps it up) and a dropped `.unfinished` partial - `downloads_tab.h:51`, `pipeline_worker.cpp:444`, `downloads_tab.cpp:814` | ✅ ✔ |
+| Download speed tracking | ✅ `downloadSpeed` rolling average | ✅ average over the transfer's own elapsed time with MO2's five-second floor and a per-run resume base, off a steady clock - `average_download_speed()` `downloads_tab.cpp:223`; the row bar renders `%p% - speed - ~remaining` like MO2 (downloadmanager.cpp:1747-1750) and drops the estimate when it cannot be made - `downloads_tab.cpp:667`. No per-server history, which rows below carry | ✅ ✔ |
 | MD5 lookup | ✅ `queryInfoMd5` | ❌ nothing computes an MD5 - `collection/nexus/parser.cpp:136` | ❌ ✔ |
 | Download meta files (sidecar) | ✅ `createMetaFile` | ⚠️ written for installed mods, never next to a download - `downloads_tab.cpp:775` | ⚠️ ✔ |
 | Hidden downloads | ✅ `isHidden`, `restoreDownload` | ✅ `DownloadEntry::hidden`, persisted in the manifest so a row stays hidden across restarts, with Un-Hide All - `downloads_tab.cpp:297` | ✅ ✔ |
@@ -725,8 +725,8 @@ port - their cited GMM symbol names were invented, the features are not.
 | U162 Downloads bar buttons (Refresh / Query download info / show-hidden tips) | ✅ `mainwindow.ui:1319-1430` | ⚠️ no bar; F5 refresh + watcher cover 2 of 3 jobs - `menu_bar.cpp:192` | ⚠️ ✔ |
 | U216 Double-click download row (READY->install, PAUSED->resume) | ✅ `downloadlistview.cpp:164-177` | ✅ `on_cell_double_clicked()` past Complete installs - `downloads_tab.cpp:922` | ✅ ✔ |
 | Download list header tooltips | ❌ (MO2 has none) | 🚀 6, one per shipped column - `downloads_tab.cpp:158` | 🚀 ✔ |
-| Download context menu | ✅ `downloadlistview.cpp:231-322` (incl. 7 batch Delete/Hide entries) | ⚠️ Show in Folder, Open on <source>, Remove, Un-Hide All + 3 Delete batches + 3 Hide batches - `downloads_tab.cpp:1342`; Query Info and Cancel still absent | ⚠️ ✔ |
-| U217 Downloads keyboard Enter/Delete state gating | ✅ `downloadlistview.cpp:326+` | ⚠️ `eventFilter` on the table gates by `download_shortcut_for`; Delete on a live download removes where MO2 cancels - `downloads_tab.cpp:1228` | ⚠️ ✔ |
+| Download context menu | ✅ `downloadlistview.cpp:231-322` (incl. 7 batch Delete/Hide entries) | ⚠️ Show in Folder, Open on <source>, Cancel, Pause, Remove, Un-Hide All + 3 Delete batches + 3 Hide batches - `downloads_tab.cpp:1428`; Query Info still absent | ⚠️ ✔ |
+| U217 Downloads keyboard Enter/Delete state gating | ✅ `downloadlistview.cpp:326+`; Delete on STATE_DOWNLOADING goes to `issueCancel`, not `issueDelete` (`:345-349`) | ✅ `eventFilter` on the table gates by `download_shortcut_for`; Delete on a live row cancels and Delete on a finished row removes - `downloads_tab.cpp:163` | ✅ ✔ |
 | U225 Downloads drag accepted only over downloadTab rect | ✅ `mainwindow.cpp:3947` | 🚫 accepts over the whole tab widget, a deliberate superset - `downloads_tab.cpp:261` | 🚫 ✔ |
 | U226 MoveAction -> TargetMoveAction coercion on drop | ✅ `mainwindow.cpp:4034-4044` | ✅ already shipped - `downloads_tab.cpp:870` | ✅ ✔ |
 | U243 IDownloadManager API + downloadmanagerproxy requestDownload slot | ✅ `mainwindow.cpp:1576` | ❌ ABI-shaped, same v3 decision as the plugin-API rows | ❌ ✔ |
@@ -1433,7 +1433,7 @@ column.
 | 12. Plugin Management | 29 | 6 | 3 | 13 | 0 | 0 | 0 |
 | 13. LOOT Integration | 10 | 2 | 1 | 7 | 0 | 0 | 0 |
 | 14. Profile Management | 30 | 5 | 3 | 3 | 0 | 0 | 0 |
-| 15. Download Management | 26 | 15 | 6 | 15 | 9 | 0 | 0 |
+| 15. Download Management | 29 | 12 | 6 | 15 | 9 | 0 | 0 |
 | 16. Nexus Integration | 8 | 10 | 2 | 20 | 0 | 0 | 0 |
 | 17. Source Providers | 4 | 0 | 7 | 1 | 0 | 0 | 0 |
 | 18. Mod List Features | 27 | 13 | 3 | 8 | 0 | 0 | 0 |
@@ -1470,7 +1470,7 @@ column.
 | 49. CLI Help Grammar | 0 | 1 | 0 | 1 | 0 | 0 | 0 |
 | 50. My Games Resolution | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
 | 51. Conflict Scan Refresh | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
-| **TOTAL** | **397** | **165** | **178** | **213** | **52** | **38** | **62** |
+| **TOTAL** | **400** | **162** | **178** | **213** | **52** | **38** | **62** |
 
 ### The arithmetic
 
@@ -1478,13 +1478,13 @@ column.
 rows in file                          1043
 scored rows (ok + part + miss)         775
 
-MO2 parity        ok   / scored        397 /  775  = 51.2%
-partial           part / scored        165 /  775  = 21.3%
+MO2 parity        ok   / scored        400 /  775  = 51.6%
+partial           part / scored        162 /  775  = 20.9%
 missing           miss / scored        213 /  775  = 27.5%
 GMM-exclusive     surp / all rows      178 / 1043  = 17.1%   (not scored)
 ```
 
-**Parity is 397 / 775 = 51.2%.** 213 rows are outright missing and 165 partial.
+**Parity is 400 / 775 = 51.6%.** 213 rows are outright missing and 162 partial.
 The largest untouched surfaces are **44. Tutorial** and **46. Notifications /
 Problems** (zero matched rows), then **16. Nexus** and **15. Downloads**, which
 carry the most missing rows in absolute terms.
@@ -1523,6 +1523,15 @@ hidden files, tab reordering, tab colour coding, tab order persistence, U241
 preview gating) and three into `⚠️` (U078, U110, U218 - each still missing a
 named half of MO2's subject). The denominator did not move, so no row was
 reclassified to flatter the ratio.
+
+**Downloads parity work moved parity from 51.2% to 51.6%** (`397 / 775` to
+`400 / 775`). Three `⚠️` rows became `✅`, all inside category 15 and all
+scored before and after, so the denominator did not move: cancel downloads (the
+`Cancelled` state, a Cancel action and a Cancel-on-Delete key that abandon the
+`.unfinished` partial), download speed tracking (the rolling average with MO2's
+five-second floor and a per-run resume base), and U217 keyboard gating. The
+state-machine row stays `⚠️` and the context-menu row stays `⚠️` because each
+still names a half MO2 has and this build does not.
 
 **Correction.** An earlier commit here claimed two inherited summary errors:
 that category 51 held a partial row, and that the TOTAL understated partial by

@@ -39,6 +39,7 @@
 #include <QVBoxLayout>
 
 #include <algorithm>
+#include <chrono>
 #include <cstdint>
 #include <filesystem>
 #include <functional>
@@ -62,6 +63,8 @@ static QString state_label(DownloadState s) {
     return QCoreApplication::translate("DownloadsTab", "Failed");
   case DownloadState::Removed:
     return QCoreApplication::translate("DownloadsTab", "Removed");
+  case DownloadState::Cancelled:
+    return QCoreApplication::translate("DownloadsTab", "Cancelled");
   }
   return QCoreApplication::translate("DownloadsTab", "Unknown");
 }
@@ -148,6 +151,15 @@ static std::string loverslab_drop_url(const QMimeData *data) {
 
 // --- DownloadsTab ---
 
+// Monotonic milliseconds, so a clock change (NTP step, DST, the user moving
+// the date) cannot make a running download's elapsed time jump backwards and
+// report a negative rate. steady_clock is the one clock that does not.
+static int64_t monotonic_ms() {
+  return std::chrono::duration_cast<std::chrono::milliseconds>(
+             std::chrono::steady_clock::now().time_since_epoch())
+      .count();
+}
+
 DownloadShortcut download_shortcut_for(DownloadState state, int qt_key) {
   switch (state) {
   case DownloadState::Complete:
@@ -158,8 +170,12 @@ DownloadShortcut download_shortcut_for(DownloadState state, int qt_key) {
       return DownloadShortcut::Remove;
     break;
   case DownloadState::Downloading:
+    // MO2 DownloadListView::keyPressEvent (downloadlistview.cpp:345-349)
+    // routes Delete on a STATE_DOWNLOADING row to issueCancel, not
+    // issueDelete: there is no finished archive to trash and the download
+    // manager owns the transfer, so the transfer is the thing to stop.
     if (qt_key == Qt::Key_Delete)
-      return DownloadShortcut::Remove;
+      return DownloadShortcut::Cancel;
     if (qt_key == Qt::Key_Space)
       return DownloadShortcut::Pause;
     break;
@@ -169,6 +185,13 @@ DownloadShortcut download_shortcut_for(DownloadState state, int qt_key) {
       return DownloadShortcut::Remove;
     if (qt_key == Qt::Key_Space)
       return DownloadShortcut::Resume;
+    break;
+  case DownloadState::Cancelled:
+    // A cancelled row has no archive and no resumable partial, so Delete is
+    // the only thing a key can do to it - Space must not offer a Resume that
+    // has nothing to resume.
+    if (qt_key == Qt::Key_Delete)
+      return DownloadShortcut::Remove;
     break;
   case DownloadState::Removed:
     break;
@@ -197,6 +220,21 @@ QString format_remaining_time(int64_t remaining_bytes, double bytes_per_second) 
   return QString::number(seconds) + "s";
 }
 
+double average_download_speed(int64_t downloaded, int64_t base,
+                              double elapsed_seconds) {
+  // MO2 suppresses downloadSpeed for the first five seconds
+  // (downloadmanager.cpp:2449): a transfer shorter than that averages over
+  // too little time to mean anything, and the number flaps as each chunk
+  // lands. The same floor keeps the ETA next to it honest.
+  constexpr double kMinimumSeconds = 5.0;
+  if (elapsed_seconds < kMinimumSeconds || elapsed_seconds <= 0.0)
+    return 0.0;
+  const int64_t transferred = downloaded - base;
+  if (transferred <= 0)
+    return 0.0;
+  return static_cast<double>(transferred) / elapsed_seconds;
+}
+
 bool download_in_batch(DownloadState state, DownloadBatch batch) {
   if (state == DownloadState::Removed)
     return false;
@@ -204,8 +242,11 @@ bool download_in_batch(DownloadState state, DownloadBatch batch) {
     return true;
   // An in-flight row has not finished, so it is neither installed nor
   // uninstalled - MO2's issueDeleteCompleted / issueDeleteUninstalled skip
-  // anything below STATE_READY.
-  if (state == DownloadState::Downloading || state == DownloadState::Paused)
+  // anything below STATE_READY. A cancelled row sits below STATE_READY in
+  // MO2's enum too (downloadmanager.h:144 vs :150), so it is skipped the
+  // same way rather than swept up by "Delete Uninstalled Downloads...".
+  if (state == DownloadState::Downloading || state == DownloadState::Paused ||
+      state == DownloadState::Cancelled)
     return false;
   const bool installed = state == DownloadState::Installed;
   return batch == DownloadBatch::Installed ? installed : !installed;
@@ -609,9 +650,27 @@ void DownloadsTab::update_progress(const std::string &id, int64_t downloaded,
 
   entry.total_size = total;
 
+  // MO2 reports the AVERAGE speed since the transfer (re)started, not the
+  // instantaneous rate libcurl hands us (downloadmanager.cpp:2448-2451).
+  // The instantaneous figure is what makes a download row unreadable - it
+  // swings to zero between chunks and spikes on every read - and the same
+  // wobble lands in the ETA beside it. The first tick of a run stamps the
+  // base byte count and the start time; every later tick measures against
+  // them. `speed` stays the per-call fallback so a caller that cannot supply
+  // a monotonic clock still moves the row.
+  if (entry.speed_started_ms == 0) {
+    entry.speed_started_ms = monotonic_ms();
+    entry.speed_base       = downloaded;
+  }
+  const double elapsed =
+      static_cast<double>(monotonic_ms() - entry.speed_started_ms) / 1000.0;
+  const double avg_speed =
+      average_download_speed(downloaded, entry.speed_base, elapsed);
+  const double shown_speed = avg_speed > 0.0 ? avg_speed : speed;
+
   // Size column: show only download speed while downloading
-  if (speed > 0.0) {
-    entry.size_item->setText(format_size(static_cast<int64_t>(speed)) + "/s");
+  if (shown_speed > 0.0) {
+    entry.size_item->setText(format_size(static_cast<int64_t>(shown_speed)) + "/s");
   } else {
     entry.size_item->setText(QString());
   }
@@ -625,14 +684,14 @@ void DownloadsTab::update_progress(const std::string &id, int64_t downloaded,
   }
   entry.progress_bar->setValue(pct);
 
-  if (speed > 0.0) {
-    QString speed_str = format_size(static_cast<int64_t>(speed)) + "/s";
+  if (shown_speed > 0.0) {
+    QString speed_str = format_size(static_cast<int64_t>(shown_speed)) + "/s";
     if (total > 0) {
       // MO2 renders "%p% - speed - ~remaining"
       // (downloadmanager.cpp:1747-1750). The estimate is dropped when it
       // cannot be made, so a just-started row does not claim "~0s".
       QString format    = "%p% - " + speed_str;
-      const QString eta = format_remaining_time(total - downloaded, speed);
+      const QString eta = format_remaining_time(total - downloaded, shown_speed);
       if (!eta.isEmpty())
         format += " - ~" + eta;
       entry.progress_bar->setFormat(format);
@@ -752,12 +811,57 @@ void DownloadsTab::mark_paused(const std::string &id) {
   replace_bar_with_label(id, tr("Paused"), QColor("#FF9800"), QColor(Qt::white));
 }
 
+void DownloadsTab::mark_cancelled(const std::string &id) {
+  auto &entry = entry_for(id);
+  if (entry.row < 0)
+    return;
+
+  const auto prev_state = entry.state;
+  entry.state           = DownloadState::Cancelled;
+
+  // Cancel means "give up on this", so the partial goes with it: the row has
+  // no Resume action (a resumed row would resume from a file we no longer
+  // hold) and a ".unfinished" file the scanner deliberately skips would
+  // otherwise sit in the downloads dir forever, owned by nobody. MO2 leaves
+  // its .unfinished file in place (downloadmanager.cpp:1665-1668 only aborts
+  // the reply); this build drops it, which is why the difference is called
+  // out rather than discovered.
+  //
+  // A failure to delete is reported, never swallowed: leaving bytes on disk
+  // the user asked to have removed is exactly the silent partial failure
+  // this row's own history is about.
+  if (!entry.partial_path.empty() && std::filesystem::exists(entry.partial_path)) {
+    if (!engine::remove_path(entry.partial_path)) {
+      QMessageBox::warning(
+          this, tr("Cancel"),
+          tr("The transfer was cancelled, but \"%1\" could not be deleted.")
+              .arg(QString::fromStdString(entry.partial_path.filename().string())));
+    }
+  }
+  entry.partial_path.clear();
+
+  replace_bar_with_label(id, state_label(entry.state), QColor("#f44336"),
+                         QColor(Qt::white));
+  entry.size_item->setText(QString());
+
+  // Cancelling the last in-flight row releases the scan guard, so the
+  // downloads dir is re-read - exactly what finishing a download does.
+  if (prev_state == DownloadState::Downloading && !has_active_download())
+    on_downloads_dir_changed();
+}
+
 void DownloadsTab::mark_downloading(const std::string &id) {
   auto &entry = entry_for(id);
   if (entry.row < 0)
     return;
 
   entry.state = DownloadState::Downloading;
+
+  // A (re)started transfer re-times the running average from here, so a resume
+  // never reports the whole archive's average as if this run had just fetched
+  // it.
+  entry.speed_started_ms = 0;
+  entry.speed_base       = 0;
 
   // Drop any label/bar currently in the Status column and start fresh.
   if (entry.progress_bar) {
@@ -789,6 +893,7 @@ bool DownloadsTab::blocks_refetch(const std::string &id) const {
     return true;
   case DownloadState::Paused:
   case DownloadState::Failed:
+  case DownloadState::Cancelled:
   case DownloadState::Removed:
     break;
   }
@@ -1316,6 +1421,14 @@ void DownloadsTab::add_context_menu_actions(QMenu &menu, const std::string &id) 
   install_action->setEnabled(can_install);
 
   if (entry.state == DownloadState::Downloading) {
+    // MO2's order for a running row (downloadlistview.cpp:262-272) is Cancel,
+    // Pause, Reveal in Explorer. Cancel and Pause stop the same transfer; what
+    // differs is what the row is afterwards - Cancel abandons the partial,
+    // Pause keeps it so Resume can carry on from there.
+    menu.addAction(icon_for("dialog-cancel", QStyle::SP_DialogCancelButton),
+                   tr("Cancel"), this, [this, id]() {
+                     emit cancel_requested(id);
+                   });
     menu.addAction(icon_for("media-playback-pause", QStyle::SP_MediaPause), tr("Pause"),
                    this, [this, id]() {
                      emit pause_requested(id);
@@ -1460,6 +1573,11 @@ bool DownloadsTab::eventFilter(QObject *watched, QEvent *event) {
         return true;
       case DownloadShortcut::Pause:
         emit pause_requested(id);
+        return true;
+      case DownloadShortcut::Cancel:
+        // Same abort the menu's Cancel action performs, through the same
+        // signal, so the key and the menu cannot drift apart.
+        emit cancel_requested(id);
         return true;
       case DownloadShortcut::Resume:
         emit resume_requested(id);
@@ -1724,6 +1842,12 @@ void DownloadsTab::deserialize(const std::string &json,
         fg = QColor(Qt::white);
       } else if (state == DownloadState::Removed) {
         fg = QColor("#B8860B");
+      } else if (state == DownloadState::Cancelled) {
+        // Same red as a failure: the row is not going to finish on its own,
+        // and MO2 paints STATE_CANCELED through the same failure branch
+        // (downloadmanager.cpp:1665-1668 calls m_DownloadFailed).
+        bg = QColor("#f44336");
+        fg = QColor(Qt::white);
       }
       auto *item = new QTableWidgetItem(state_label(state));
       item->setFlags(item->flags() & ~Qt::ItemIsEditable);
