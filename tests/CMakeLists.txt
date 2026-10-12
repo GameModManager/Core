@@ -576,6 +576,20 @@ gmm_catch2_test(save_info_dialog_test ui/save_info_dialog_test.cpp
     UI
     LIBS gmm_ui Qt6::Test)
 
+# The Instance Options toolbar button keeps both halves: body opens the
+# panel, side arrow opens the dropdown (QToolButton splits the two by hit
+# test, so real mouse events are needed to reach it).
+gmm_catch2_test(main_toolbar_split_test ui/main_toolbar_split_test.cpp
+    UI
+    DEFINES GMM_TEST_RESOURCES_DIR="${PROJECT_SOURCE_DIR}/resources"
+    LIBS gmm_ui)
+
+# The LOOT report popup body: MO2's General messages section plus the stats
+# line, with each message at the level LOOT gave it.
+gmm_catch2_test(loot_report_dialog_test ui/loot_report_dialog_test.cpp
+    UI
+    LIBS gmm_ui)
+
 gmm_catch2_test(mod_list_model_test ui/mod_list_model_test.cpp
     UI
     LIBS gmm_ui

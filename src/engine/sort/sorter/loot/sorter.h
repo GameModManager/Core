@@ -57,7 +57,8 @@ namespace Sorter {
       std::vector<std::string> messages;      // [level] lines relayed from the CLI
       // Game-wide LOOT messages from the report's top-level "messages" array
       // (the ones MO2 shows in LootDialog::showReport above the plugin list).
-      // `level` is the JSON "type": "info" | "warn" | "error".
+      // `level` is the JSON "type" after loot_message_level normalisation
+      // (sorter.cpp:103-109): "info" | "warning" | "error", never "warn".
       struct Message {
         std::string level;
         std::string text;
