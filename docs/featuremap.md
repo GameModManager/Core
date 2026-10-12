@@ -228,9 +228,9 @@ port - their cited GMM symbol names were invented, the features are not.
 
 | Feature | MO2 | GMM | Status |
 |---------|-----|-----|--------|
-| Executables blacklist | ✅ `Settings::isExecutableBlacklisted` `settings.cpp:305` | ⚠️ line edit, zero readers - `settings_content_widget.cpp:1298` | ⚠️ ✔ |
-| Skip file suffixes | ✅ `Settings::skipFileSuffixes` | ⚠️ line edit, no scanner reader - `settings_content_widget.cpp:1296` | ⚠️ ✔ |
-| Skip directories | ✅ `Settings::skipDirectories` | ⚠️ line edit, zero readers - `settings_content_widget.cpp:1297` | ⚠️ ✔ |
+| Executables blacklist | ✅ `Settings::isExecutableBlacklisted` `settings.cpp:305` | ✅ read on every launch-list build and applied by `is_blacklisted_executable()`, which drops a named binary before the existence check so it never reaches the list - `launch_controller.cpp:388`, `fs_utils.cpp:339` | ✅ ✔ |
+| Skip file suffixes | ✅ `Settings::skipFileSuffixes` | ✅ `apply_workarounds()` hands the list to the engine, `is_hidden_file()` matches it case-insensitively against a lowercased name, and the scanner, deploy, conflict scan and data tab all call that predicate - `settings.cpp:631`, `fs_utils.cpp:358` | ✅ ✔ |
+| Skip directories | ✅ `Settings::skipDirectories` | ✅ the same bridge: `is_skipped_directory()` is read by the scanner, deploy and the conflict scan, so a listed directory's subtree never enters the listing - `settings.cpp:631`, `fs_utils.cpp:384` | ✅ ✔ |
 | Force load libraries | ✅ `ExecutableForcedLoadSetting` | ⚠️ profile key copied, zero readers - `profile_creation.cpp:205` | ⚠️ ✔ |
 | USVFS log level | ✅ `Settings::logLevel` | ✅ Logger + console panel - `app/core.cpp:170`, `console_panel.cpp:53` | ✅ ✔ |
 | USVFS spawn delay | ✅ `Settings::spawnDelay` | 🚫 Windows-shaped, no Linux subject | 🚫 ✔ |
@@ -253,10 +253,10 @@ port - their cited GMM symbol names were invented, the features are not.
 | Meta downloads display | ✅ `InterfaceSettings::metaDownloads()` | 🚫 no meta-download concept | 🚫 ✔ |
 | Hide downloads after installation | ✅ `InterfaceSettings::hideDownloadsAfterInstallation()` | ⚠️ GMM filters rows, never auto-removes - `downloads_tab.cpp:905` | ⚠️ ✔ |
 | Show download notifications | ✅ `InterfaceSettings::showDownloadNotifications()` | ✅ gates the status-bar notice - `downloads_controller.cpp:116` | ✅ ✔ |
-| Hide API counter | ✅ `InterfaceSettings::hideAPICounter()` | ⚠️ hides a counter that does not exist - `source_pages.cpp:277` | ⚠️ ✔ |
+| Hide API counter | ✅ `InterfaceSettings::hideAPICounter()` | ⚠️ gates the status bar's per-source metered readouts, which are budget counters rather than MO2's Nexus pool; the counter it hides exists and is drawn - `status_bar.cpp:163` | ⚠️ ✔ |
 | Lock GUI during executables | ✅ `InterfaceSettings::lockGUI()` | ⚠️ setting created and gating the Locker, but the only locks are installs (OutputRequired, which overrides the setting) and there is no launch trigger - `settings.cpp:15`, `ui_locker.cpp:15` | ⚠️ ✔ |
 | Center dialogs on parent | ✅ `GeometrySettings::centerDialogs()` | ✅ read by the shared placement helper, used by 4 dialogs - `dialog_placement.cpp:11` | ✅ ✔ |
-| Show change game confirmation | ✅ `InterfaceSettings::showChangeGameConfirmation()` | ❌ key only: no UI row, no reader | ❌ ✔ |
+| Show change game confirmation | ✅ `InterfaceSettings::showChangeGameConfirmation()` | ✅ the checkbox builds and writes the key, and `InstanceSwitch::Ask` is read on every instance switch - `settings_content_widget.cpp:240`, `instance_settings.cpp:182` | ✅ ✔ |
 | Close to system tray instead of quitting | ❌ per-executable flag only, no global toggle | 🚀 checkbox, default off, ignored without a tray - `settings.cpp:221` | 🚀 ✔ |
 | Show menubar on Alt | ✅ `InterfaceSettings::showMenubarOnAlt()` | ⏳ MO2 gates Alt on `UILocker`, GMM has no Alt reveal | ⏳ ✔ |
 | Double-clicks open previews | ✅ `InterfaceSettings::doubleClicksOpenPreviews()` | ✅ three file trees - `filetree_tab.cpp:111` | ✅ ✔ |
@@ -700,7 +700,7 @@ port - their cited GMM symbol names were invented, the features are not.
 | Mark installed / mark uninstalled | ✅ `markInstalled()` `downloadmanager.cpp:1540` | ✅ both; uninstalled re-lands on Complete, archive still on disk - `downloads_tab.cpp:577` | ✅ ✔ |
 | Install from download (double-click / context menu) | ✅ `downloadlistview.cpp` install action | ✅ row double-click + menu; origin provenance via `source_info_for` - `downloads_tab.cpp:922` | ✅ ✔ |
 | Download status color coding | ✅ `downloadlist.cpp:205-211` (darkGreen/Yellow/Red) | ⚠️ 6 states to 3 colours, hex not palette - `downloads_tab.cpp:522` | ⚠️ ✔ |
-| Remaining time estimation | ✅ `downloadmanager.cpp` ETA calculation | ❌ renders `"%p% - <speed>"`, no time component - `downloads_tab.cpp:476` | ❌ ✔ |
+| Remaining time estimation | ✅ `downloadmanager.cpp` ETA calculation | ✅ `format_remaining_time()` picks the largest unit that fits and returns nothing when no estimate is possible, so the row bar drops the segment rather than print a rate it cannot make - `downloads_tab.cpp:202`, used at `:704`; the consumer is asserted by a real row's progress-bar format in `downloads_shortcut_test.cpp` | ✅ ✔ |
 | Batch delete operations (all/installed/uninstalled) | ✅ `downloadlistview.cpp:300-306` | ✅ three scoped actions, one confirm listing the rows, to trash with a restore note - `downloads_tab.cpp:201` | ✅ ✔ |
 | Batch hide operations + un-hide all | ✅ `downloadlistview.cpp:312-322` (4 batch actions) | ✅ Hide Installed/Uninstalled/All + Un-Hide All, persisted per row - `downloads_tab.h:80` | ✅ ✔ |
 | Filter widget for downloads | ✅ `FilterWidget` (fuzzy match) | ⚠️ shared right-panel bar, composed with the installed filter - `right_panel.cpp:175` | ⚠️ ✔ |
@@ -859,7 +859,7 @@ port - their cited GMM symbol names were invented, the features are not.
 | Reinstall mod | ✅ `reinstallMod` | ✅ re-runs the install pipeline on the archive the mod's meta records, resolved in the downloads dir - `ModMeta::install_archive` + `mod_context_menu.cpp:365` | ✅ · |
 | Create backup | ✅ `createBackup` | ⚠️ deploy-level only, no user action - `deploy_utils.cpp:165` | ⚠️ · |
 | Restore backup | ✅ `restoreBackup` | ⚠️ deploy-level only, no user action - `deploy_utils.cpp:195` | ⚠️ · |
-| Restore hidden files | ✅ `restoreHiddenFiles` | ❌ | ❌ · |
+| Restore hidden files | ✅ `restoreHiddenFiles` | ✅ "Restore Hidden Files" on a flagged row, confirming, then a walk that strips the suffix off every hidden file in the selected mods and re-derives the flag from the result - `mod_context_menu.cpp:490`, `mod_actions.cpp:496` | ✅ ✔ |
 | Mark as converted | ✅ `markConverted` | ❌ | ❌ · |
 | Ignore missing data | ✅ `ignoreMissingData` | ✅ `mark_validated()` - `mod_context_menu.cpp:339` | ✅ · |
 | Ignore update | ✅ `setIgnoreUpdate` | ❌ | ❌ · |
@@ -1176,7 +1176,7 @@ port - their cited GMM symbol names were invented, the features are not.
 | Log initialization (spdlog, UTC timestamps, pattern) | ✅ `initLogging()` | ⚠️ localtime not UTC, no spdlog/pattern - `logger.cpp:151` | ⚠️ · |
 | Log to stdout (via Console attach) | ✅ `logToStdout()` | ✅ fprintf stdout - `logger.cpp:122` | ✅ · |
 | U020 View > Log checkable action toggles log dock | ✅ `mainwindow.cpp:816-819` | ✅ Show Console toggle - `menu_bar.cpp:122` | ✅ · |
-| U057 errorReported() scans newest log first 50000 lines for ERROR | ✅ `mainwindow.cpp:993-1022` | ❌ | ❌ · |
+| U057 errorReported() scans newest log first 50000 lines for ERROR | ⚠️ `MainWindow::errorReported()` exists at `mainwindow.cpp:993-1022` but MO2 NEVER CALLS IT - the only two hits in the tree are its own definition and its declaration, so it is dead code in MO2, not a shipped behaviour to port | ❌ | ❌ · |
 | U157 Log list context menu (Copy/Copy all/Clear all/Open folder/Level submenu) | ✅ `loglist.cpp:250-290` | ✅ all five, level re-renders from the replay buffer - `console_panel.cpp:171` | ✅ · |
 | U158 Log file creation failure critical dialog | ✅ `loglist.cpp:384-385` | ✅ `set_log_file` returns the open result and startup raises a critical naming the path - `app/core.cpp:165` | ✅ · |
 | U294 logDock QDockWidget (area 8 bottom, View>Log toggle) | ✅ `mainwindow.ui:1510` | ⚠️ toggle exists, QDockWidget bottom area unproven - `menu_bar.cpp:122` | ⚠️ · |
@@ -1422,7 +1422,7 @@ column.
 | 1. Virtual Filesystem | 5 | 2 | 4 | 1 | 0 | 5 | 5 |
 | 2. Launch Pipeline | 6 | 5 | 5 | 14 | 0 | 2 | 17 |
 | 3. Error Handling & Diagnostics | 8 | 10 | 0 | 0 | 27 | 11 | 35 |
-| 4. Settings & Configuration | 31 | 29 | 6 | 1 | 12 | 19 | 0 |
+| 4. Settings & Configuration | 35 | 26 | 6 | 0 | 12 | 19 | 0 |
 | 5. Executable Management | 12 | 4 | 4 | 7 | 0 | 0 | 0 |
 | 6. Mod Management | 24 | 5 | 9 | 8 | 0 | 0 | 1 |
 | 7. Mod Categories | 9 | 5 | 0 | 6 | 0 | 0 | 0 |
@@ -1433,11 +1433,11 @@ column.
 | 12. Plugin Management | 29 | 6 | 3 | 13 | 0 | 0 | 0 |
 | 13. LOOT Integration | 10 | 2 | 1 | 7 | 0 | 0 | 0 |
 | 14. Profile Management | 30 | 5 | 3 | 3 | 0 | 0 | 0 |
-| 15. Download Management | 30 | 12 | 6 | 14 | 9 | 0 | 0 |
+| 15. Download Management | 31 | 12 | 6 | 13 | 9 | 0 | 0 |
 | 16. Nexus Integration | 8 | 10 | 2 | 20 | 0 | 0 | 0 |
 | 17. Source Providers | 4 | 0 | 7 | 1 | 0 | 0 | 0 |
 | 18. Mod List Features | 27 | 13 | 3 | 8 | 0 | 0 | 0 |
-| 19. Mod Context Menu | 16 | 5 | 0 | 11 | 0 | 0 | 0 |
+| 19. Mod Context Menu | 17 | 5 | 0 | 10 | 0 | 0 | 0 |
 | 20. Plugin Context Menu | 12 | 0 | 0 | 0 | 0 | 0 | 0 |
 | 21. Archive & Installation | 10 | 3 | 4 | 2 | 0 | 0 | 0 |
 | 22. Deploy System | 0 | 1 | 9 | 0 | 2 | 0 | 0 |
@@ -1470,7 +1470,7 @@ column.
 | 49. CLI Help Grammar | 0 | 1 | 0 | 1 | 0 | 0 | 0 |
 | 50. My Games Resolution | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
 | 51. Conflict Scan Refresh | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
-| **TOTAL** | **401** | **162** | **178** | **212** | **52** | **38** | **62** |
+| **TOTAL** | **407** | **159** | **178** | **209** | **52** | **38** | **62** |
 
 ### The arithmetic
 
@@ -1478,13 +1478,13 @@ column.
 rows in file                          1043
 scored rows (ok + part + miss)         775
 
-MO2 parity        ok   / scored        401 /  775  = 51.7%
-partial           part / scored        162 /  775  = 20.9%
-missing           miss / scored        212 /  775  = 27.4%
+MO2 parity        ok   / scored        407 /  775  = 52.5%
+partial           part / scored        159 /  775  = 20.5%
+missing           miss / scored        209 /  775  = 27.0%
 GMM-exclusive     surp / all rows      178 / 1043  = 17.1%   (not scored)
 ```
 
-**Parity is 401 / 775 = 51.7%.** 212 rows are outright missing and 162 partial.
+**Parity is 407 / 775 = 52.5%.** 209 rows are outright missing and 159 partial.
 The largest untouched surfaces are **44. Tutorial** and **46. Notifications /
 Problems** (zero matched rows), then **16. Nexus** and **15. Downloads**, which
 carry the most missing rows in absolute terms.
@@ -1535,6 +1535,21 @@ leaves the persisted flags alone). The state-machine row stays `⚠️` and the
 context-menu row stays `⚠️` because each still names a half MO2 has and this
 build does not. U177's Explorer button shipped but its row stays `⚠️`: the
 drag&drop hint is withheld because the dialog's drag has no drop target.
+
+**Six rows in this batch were found to be marked WORSE than the tree says.**
+Each was checked by reading the cited GMM symbol AND following it to a live
+consumer, not by grepping for the row's own words: remaining time estimation
+(`❌` -> `✅`, the estimate exists and a test reads a real row's bar format),
+restore hidden files (`❌` -> `✅`), show change game confirmation (`❌` ->
+`✅`, the checkbox and the `InstanceSwitch::Ask` reader both exist), and the
+three Workarounds rows - executables blacklist, skip file suffixes and skip
+directories - all of which said "zero readers" while `apply_workarounds()`
+feeds the engine predicates that the scanner, deploy and the conflict scan
+already call, with a test for each. A seventh row, hide API counter, kept its
+`⚠️` but its claim that it "hides a counter that does not exist" is false: the
+per-source metered readouts it gates are real and drawn. These corrections are
+counted, not hidden: they account for six of the ten rows between 51.2% and
+52.5%, and none of them moved in or out of the scored set.
 
 **Correction.** An earlier commit here claimed two inherited summary errors:
 that category 51 held a partial row, and that the TOTAL understated partial by
