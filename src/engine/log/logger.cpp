@@ -149,7 +149,12 @@ std::string Logger::make_timestamp() const {
   auto time_t_now = system_clock::to_time_t(now);
   auto ms         = duration_cast<milliseconds>(now.time_since_epoch()) % 1000;
 
-  const std::tm tm_buf = engine::local_time(time_t_now);
+  // UTC, not local time (MO2 initLogging, log.cpp). A log is the one artefact
+  // a user pastes into a bug report, and two reporters in two timezones (or
+  // across a DST step) have to be able to line their lines up without first
+  // converting. local_time() stays the right call for anything the user reads
+  // as a wall-clock time, such as a backup's filename stamp.
+  const std::tm tm_buf = engine::utc_time(time_t_now);
 
   char buf[16];
   std::snprintf(buf, sizeof(buf), "%02d:%02d:%02d", tm_buf.tm_hour, tm_buf.tm_min,

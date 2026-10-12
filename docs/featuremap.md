@@ -210,7 +210,7 @@ port - their cited GMM symbol names were invented, the features are not.
 | Environment timezone collection | ✅ `Environment::timezone()` `env.h:190` | 🚫 a field of the environment dump above | 🚫 ✔ [win] |
 | Core dump creation (self + other process) | ✅ `env::coredump()` / `coredumpOther()` `env.cpp:1242` | ⚠️ self only: POSIX handler writes a backtrace - `crash_handler.cpp:166` | ⚠️ ✔ |
 | Log list (in-app viewer, 1000 entries) | ✅ `LogModel` + `LogList` `loglist.h`, `MaxLines = 1000` | ⚠️ `ConsolePanel` ships, now capped at 1000 - `console_panel.h` | ⚠️ ✔ |
-| Log initialization and configuration | ✅ `initLogging()` (`main.cpp`) | ✅ reads setting, calls `Logger::set_level`; local time - `app/core.cpp:170` | ✅ ✔ |
+| Log initialization and configuration | ✅ `initLogging()` (`main.cpp`) | ✅ reads setting, calls `Logger::set_level`; log lines stamped in UTC - `app/core.cpp:170`, `logger.cpp:151` | ✅ ✔ |
 | Log blacklisting (privacy - username masking) | ✅ `log::getDefault().addToBlacklist()` | ✅ `Logger::sanitize()` rewrites home dir to `{USER}` - `logger.cpp:139` | ✅ ✔ |
 | Console attach/alloc (CLI) | ✅ `env::Console` (`AttachConsole`/`AllocConsole`) | 🚫 Win32 console API; `ConsolePanel` is a different thing | 🚫 ✔ [win] |
 | CopyEventFilter (Ctrl+C in views) | ✅ `copyeventfilter.h` event filter | ✅ Qt copies rows natively; explicit Copy too - `console_panel.cpp:39` | ✅ ✔ |
@@ -1173,7 +1173,7 @@ port - their cited GMM symbol names were invented, the features are not.
 | Group logging (begin/end) | ❌ | 🚀 `begin_group()` / `end_group()` - `logger.h:31` | 🚀 · |
 | Replay buffer (256 entries) | ❌ | 🚀 late subscriber replay - `logger.cpp:50` | 🚀 · |
 | Fork-safe append | ❌ | 🚀 `Logger::raw_append()` - `logger.h:47` | 🚀 · |
-| Log initialization (spdlog, UTC timestamps, pattern) | ✅ `initLogging()` | ⚠️ localtime not UTC, no spdlog/pattern - `logger.cpp:151` | ⚠️ · |
+| Log initialization (spdlog, UTC timestamps, pattern) | ✅ `initLogging()` | ⚠️ UTC timestamps ship off the existing `utc_time()` primitive; no spdlog and no spdlog pattern, the format is the logger's own - `logger.cpp:151` | ⚠️ ✔ |
 | Log to stdout (via Console attach) | ✅ `logToStdout()` | ✅ fprintf stdout - `logger.cpp:122` | ✅ · |
 | U020 View > Log checkable action toggles log dock | ✅ `mainwindow.cpp:816-819` | ✅ Show Console toggle - `menu_bar.cpp:122` | ✅ · |
 | U057 errorReported() scans newest log first 50000 lines for ERROR | ⚠️ `MainWindow::errorReported()` exists at `mainwindow.cpp:993-1022` but MO2 NEVER CALLS IT - the only two hits in the tree are its own definition and its declaration, so it is dead code in MO2, not a shipped behaviour to port | ❌ | ❌ · |
