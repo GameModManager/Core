@@ -351,8 +351,10 @@ void run_golden_report_case(const fs::path &base) {
   require(result.general_messages[0].level == "info", "general info level");
   require(result.general_messages[0].text.find("Shorthand") != std::string::npos,
           "general info text");
-  require(result.general_messages[1].level == "warning", "general warn maps to warning");
-  require(result.general_messages[1].text.find("master is missing") != std::string::npos,
+  require(result.general_messages[1].level == "warning",
+          "general warn maps to warning");
+  require(result.general_messages[1].text.find("master is missing") !=
+              std::string::npos,
           "general warn text");
 
   // Run statistics (MO2 Loot::reportStats, loot.cpp:853-860).
