@@ -1149,7 +1149,7 @@ port - their cited GMM symbol names were invented, the features are not.
 | U070 StatusBar carries Nexus API stats + user account (requestsChanged/credentialsReceived) (NEXUS-LENS: genericize/provider-scope) | ✅ `mainwindow.cpp:270-276`; one `m_api` label + tooltip | ⚠️ per-source metered budgets, no account half - `status_bar.h:30` | ⚠️ ✔ |
 | U100 Status bar "%1 - %2 - %3" game/instance/profile message | ✅ `statusbar.cpp:144-162` | ✅ `context_label_text()`, transient text restores it - `status_bar.h:19` | ✅ ✔ |
 | U101 Status bar progress ("Loading...", 0-100, max width 300, spacers) | ✅ `statusbar.cpp:22-38`, `:63-80` | ✅ `QProgressBar` at max width 300, label takes over as "Loading...", driven from the LOOT stage reports - `status_bar.cpp:73` | ✅ ✔ |
-| U102 Status bar visibility compensates central-widget bottom margin | ✅ `statusbar.cpp:175-192` | ✅ the central widget takes the bottom margin it already has on top while the bar is hidden, and gives it back - `settings_controller.cpp:774` | ✅ ✔ |
+| U102 Status bar visibility compensates central-widget bottom margin | ✅ `statusbar.cpp:175-192` | ❌ the toggle hides the bar and nothing more - `settings_controller.cpp:766`. It once looked like compensation, but it copied the central widget's TOP margin, which is 0 on a QMainWindow, so hiding the bar set bottom=0 and no pixel moved; that dead code is deleted, not reinstated. MO2 reads the margin off the central widget LAYOUT (a non-null 6px designer margin), ours is a `QTabWidget` whose `layout()` is null - `Workspace-wuxf` | ❌ ✔ |
 | U103 StatusBarAction icon+label wrapper | ✅ `statusbar.cpp:195+` | ❌ | ❌ · |
 | U187 PreviewDialog (Preview / Close buttons) | ✅ `previewdialog.ui` | ⚠️ window exists, modal dialog parity unproven - `preview_window.h:61` | ⚠️ · |
 | U219 Menu aboutToShow refresh pattern (lazy rebuild) + wheel-block combo | ✅ `mainwindow.cpp:455-474` | ✅ the Run menu is rebuilt from its provider when about to open, never on a pin/unpin callback; the wheel block was already there - `menu_bar.cpp`, `mod_filter_bar.cpp:63` | ✅ ✔ |
@@ -1158,7 +1158,7 @@ port - their cited GMM symbol names were invented, the features are not.
 | U264 SortableTreeWidget + setCustomizableColumns | ✅ `sortabletreewidget.cpp` (uibase) | ⚠️ `SortableTreeWidget` ships with local-move-only and items_moved - `sortable_tree_widget.h:22`; MO2's setCustomizableColumns does not | ⚠️ · |
 | U265 ExpanderWidget / LinkLabel / LineEditClear UI primitives | ✅ `uibase src` | ✅ all three: `ExpanderWidget`, `LinkLabel`, `LineEditClear` under `src/ui/widgets/` | ✅ · |
 | U269 EventFilter generic event filter (uibase) | ✅ `eventfilter.cpp` (uibase) | ✅ `EventFilter` - `event_filter.h:23` | ✅ · |
-| U295 statusbar visibilityChanged margin compensation (see U102) | ✅ `statusbar.cpp` | ✅ the same compensation - `settings_controller.cpp:774` | ✅ ✔ |
+| U295 statusbar visibilityChanged margin compensation (see U102) | ✅ `statusbar.cpp` | ❌ the same absence, for the same reason - `settings_controller.cpp:766` - `Workspace-wuxf` | ❌ ✔ |
 
 ## 31. Log System
 
@@ -1448,7 +1448,7 @@ column.
 | 27. Plugin Host System | 0 | 1 | 12 | 3 | 0 | 0 | 0 |
 | 28. Sort System | 0 | 0 | 5 | 0 | 0 | 0 | 0 |
 | 29. Instance Management | 3 | 1 | 6 | 7 | 0 | 0 | 0 |
-| 30. UI Layer | 33 | 8 | 17 | 6 | 2 | 0 | 2 |
+| 30. UI Layer | 31 | 8 | 17 | 8 | 2 | 0 | 2 |
 | 31. Log System | 9 | 2 | 4 | 1 | 0 | 0 | 0 |
 | 32. System Tray | 4 | 1 | 0 | 0 | 0 | 0 | 0 |
 | 33. Self Updater | 2 | 3 | 0 | 4 | 0 | 0 | 0 |
@@ -1470,7 +1470,7 @@ column.
 | 49. CLI Help Grammar | 0 | 1 | 0 | 1 | 0 | 0 | 0 |
 | 50. My Games Resolution | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
 | 51. Conflict Scan Refresh | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
-| **TOTAL** | **399** | **165** | **178** | **211** | **52** | **38** | **62** |
+| **TOTAL** | **397** | **165** | **178** | **213** | **52** | **38** | **62** |
 
 ### The arithmetic
 
@@ -1478,13 +1478,13 @@ column.
 rows in file                          1043
 scored rows (ok + part + miss)         775
 
-MO2 parity        ok   / scored        399 /  775  = 51.5%
+MO2 parity        ok   / scored        397 /  775  = 51.2%
 partial           part / scored        165 /  775  = 21.3%
-missing           miss / scored        211 /  775  = 27.2%
+missing           miss / scored        213 /  775  = 27.5%
 GMM-exclusive     surp / all rows      178 / 1043  = 17.1%   (not scored)
 ```
 
-**Parity is 399 / 775 = 51.5%.** 211 rows are outright missing and 165 partial.
+**Parity is 397 / 775 = 51.2%.** 213 rows are outright missing and 165 partial.
 The largest untouched surfaces are **44. Tutorial** and **46. Notifications /
 Problems** (zero matched rows), then **16. Nexus** and **15. Downloads**, which
 carry the most missing rows in absolute terms.
@@ -1498,6 +1498,14 @@ and the status-bar margin compensation that U295 mirrors) and one `⚠️` row
 became `✅` (U218, the file tree menu order). Every MO2 pointer behind them was
 re-read in `references/modorganizer` and every GMM pointer re-resolved against
 the tree before the row was flipped.
+
+**The status-bar margin compensation was one of those seven and is now
+withdrawn.** U102 and U295 went back to `❌`, taking parity from 51.5% back
+down to **397 / 775 = 51.2%**. The shipped code copied the central widget's
+top margin onto its bottom, and that margin is `0` on a `QMainWindow`, so
+hiding the status bar set bottom to `0` and no pixel moved; the dead code is
+deleted. Both rows stay `❌` until a real margin is chosen and applied -
+`Workspace-wuxf`.
 
 **Settings migration stage 0 moved parity from 50.4% to 50.5%** (`389 / 772` to
 `391 / 775`). Three `⏳` rows in category 4 changed, all against real symbols, and

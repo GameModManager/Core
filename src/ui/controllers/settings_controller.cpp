@@ -765,16 +765,6 @@ void SettingsController::connect_menu_actions() {
   });
   connect(w_->menu_bar_, &AppMenuBar::toggle_status_bar, this, [this](bool visible) {
     w_->statusBar()->setVisible(visible);
-    // MO2 StatusBar::visibilityChanged (statusbar.cpp:175-192): the status
-    // bar supplies the window's bottom breathing room, so hiding it lets the
-    // central content touch the bottom border. Give the central widget the
-    // same bottom margin it already has on top while it is hidden, and take
-    // it back when the bar returns.
-    if (auto *central = w_->centralWidget()) {
-      auto m = central->contentsMargins();
-      m.setBottom(visible ? 0 : m.top());
-      central->setContentsMargins(m);
-    }
   });
   connect(w_->menu_bar_, &AppMenuBar::toggle_console, this, [this](bool visible) {
     if (visible) {
