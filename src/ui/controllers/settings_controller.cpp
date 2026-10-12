@@ -151,46 +151,24 @@ void SettingsController::set_game_info(const std::string &game_id,
   w_->current_instance_root_ = instance_root;
   if (!instance_root.empty()) {
     // Per-instance category registry (categories.dat): user edits made in the
-    // Categories dialog persist here. On first run for an instance we seed the
-    // factory from the game plugin's declared core set (or "Default") and
-    // persist it so subsequent loads read the file; on later runs we load the
-    // persisted file directly (user edits preserved).
+    // Categories dialog persist here.
     //
-    // Reset the factory first: the previous instance's categories must not
-    // leak into the new one. applyCoreSet() is additive by design and load()
-    // only replaces when categories.dat exists - a previous instance with a
-    // categories.dat loads cleanly, but the no-dat fallback (applyCoreSet
-    // with the new game's core set) would otherwise stack on top of the
-    // previous instance's state. Same outcome on the categories.dat path:
-    // clearing first keeps the factory in a deterministic state and matches
-    // what every UI consumer expects (the active instance's categories).
-    engine::Category::Factory::instance().clear();
+    // activate_game() is the whole of the per-game story: it drops whatever
+    // the previous instance had and lays down THIS game's own - the
+    // categories its plugin declared, plus its core category set (or
+    // "Default"). The previous code cleared the factory and then picked a set
+    // by hand, which is what let one game's instance show another game's
+    // categories. A persisted categories.dat then replaces that wholesale,
+    // because it is the user's own edited set for this instance; on first run
+    // there is no file yet, so the activated set is written out.
+    const std::string core_set =
+        w_->knowledge_ ? w_->knowledge_->get(game_id, "core_category_set") : "";
+    engine::Category::Factory::instance().activate_game(game_id, core_set);
     const auto dat_path = instance_root / "categories.dat";
-    if (std::filesystem::exists(dat_path)) {
+    if (std::filesystem::exists(dat_path))
       engine::Category::Factory::instance().load(dat_path);
-      // If the dat was empty or stale, seed from the game's core category set.
-      if (engine::Category::Factory::instance().categories().empty()) {
-        const auto core_set_fallback =
-            w_->knowledge_ ? w_->knowledge_->get(game_id, "core_category_set")
-                           : std::string();
-        if (!core_set_fallback.empty()) {
-          engine::Category::Factory::instance().applyCoreSet(core_set_fallback);
-        } else {
-          engine::Category::Factory::instance().applyCoreSet("Default");
-        }
-        engine::Category::Factory::instance().save(dat_path);
-      }
-    } else {
-      const auto core_set = w_->knowledge_
-                                ? w_->knowledge_->get(game_id, "core_category_set")
-                                : std::string();
-      if (!core_set.empty()) {
-        engine::Category::Factory::instance().applyCoreSet(core_set);
-      } else {
-        engine::Category::Factory::instance().applyCoreSet("Default");
-      }
+    else
       engine::Category::Factory::instance().save(dat_path);
-    }
     w_->current_instance_ = engine::Instance::from_root(instance_root);
     w_->current_instance_.read_toml();
     w_->conflict_cache_path_ =

@@ -175,9 +175,16 @@ static void cb_register_categories(GmmRegistrationCtx *ctx, const int *ids,
   if (!ids || !names || count == 0)
     return;
 
-  Category::Factory::instance().merge(ids, names, parent_ids, count);
-
   auto *bridge = static_cast<RegistrationBridge *>(ctx->user_data);
+
+  // Recorded against the declaring game, never pushed straight into the
+  // active set: every game plugin is loaded into this process regardless of
+  // which game is on screen, so an unscoped merge here is how a Skyrim
+  // instance ended up showing Isaac's categories.
+  const std::string game_id =
+      bridge && bridge->current_plugin ? bridge->current_plugin->game_id : "";
+  Category::Factory::instance().merge(game_id, ids, names, parent_ids, count);
+
   if (bridge && bridge->current_plugin) {
     Logger::instance().debug("Plugin registered " + std::to_string(count) +
                              " categories (plugin=" + bridge->current_plugin->game_id +
@@ -1765,9 +1772,16 @@ static void cb_v2_register_categories(GmmRegistrationCtxV2 *ctx, const int *ids,
   if (!ids || !names || count == 0)
     return;
 
-  Category::Factory::instance().merge(ids, names, parent_ids, count);
-
   auto *bridge = static_cast<RegistrationBridge *>(ctx->user_data);
+
+  // Recorded against the declaring game, never pushed straight into the
+  // active set: every game plugin is loaded into this process regardless of
+  // which game is on screen, so an unscoped merge here is how a Skyrim
+  // instance ended up showing Isaac's categories.
+  const std::string game_id =
+      bridge && bridge->current_plugin ? bridge->current_plugin->game_id : "";
+  Category::Factory::instance().merge(game_id, ids, names, parent_ids, count);
+
   if (bridge && bridge->current_plugin) {
     Logger::instance().debug("Plugin registered " + std::to_string(count) +
                              " categories (plugin=" + bridge->current_plugin->game_id +
@@ -2064,36 +2078,14 @@ bool PluginLoader::load_directory(const std::string &dir_path) {
                             " plugin requirement(s) unmet across loaded plugins");
   }
 
-  // Decide which core category set (if any) populates the global factory now
-  // that every plugin has registered its categories and/or declared a
-  // core_category_set hook.
-  finalize_category_sets();
+  // Nothing to finalise here: every game plugin is loaded into this process
+  // regardless of which game is on screen, so picking a category set now
+  // would mean picking it for a game nobody is looking at. Plugin-declared
+  // categories are already recorded per game (cb_register_categories), and
+  // the set for the game actually in front of the user is applied when that
+  // game's instance is activated (Category::Factory::activate_game).
 
   return loaded > 0;
-}
-
-void PluginLoader::finalize_category_sets() {
-  const bool any_registered = !Category::Factory::instance().categories().empty();
-
-  std::string core_set_name;
-  for (const auto &p : plugins_) {
-    if (!p.game_support)
-      continue;
-    const auto cs = knowledge_.get(p.game_id, "core_category_set");
-    if (!cs.empty()) {
-      core_set_name = cs;
-      break;  // first game-support plugin with a core set wins
-    }
-  }
-
-  if (!core_set_name.empty() && !any_registered) {
-    // No plugin registered categories; apply the declared core set.
-    Category::Factory::instance().applyCoreSet(core_set_name);
-  } else if (!any_registered) {
-    // No categories at all -- apply Default (empty).
-    Category::Factory::instance().applyCoreSet("Default");
-  }
-  // else: plugins registered categories directly -- use those.
 }
 
 bool PluginLoader::is_loaded(const std::string &path) const {

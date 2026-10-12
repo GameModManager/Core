@@ -4,6 +4,7 @@
 #include <QSet>
 
 #include <filesystem>
+#include <string>
 
 class QPushButton;
 class QTableWidget;
@@ -27,6 +28,12 @@ public:
   explicit CategoriesDialog(const std::filesystem::path &instance_root = {},
                             QWidget *parent                            = nullptr);
 
+  // Nexus import needs the nxm:// domain of the game this dialog edits,
+  // because Nexus category ids are per game. Pass the empty string for a game
+  // with no Nexus plugin and the import button disables itself rather than
+  // fetching the wrong game's list.
+  void set_nexus_domain(std::string domain);
+
   // Validates the table and applies it to engine::Category::Factory::instance()
   // (add/update/remove diff), then saves categories.dat when an instance
   // root was given. Returns false (and selects the first bad cell) when the
@@ -37,6 +44,7 @@ public:
 private slots:
   void on_add_clicked();
   void on_remove_clicked();
+  void on_import_nexus_clicked();
 
 private:
   void fill_table();
@@ -50,7 +58,9 @@ private:
 
   QTableWidget *table_     = nullptr;
   QPushButton *remove_btn_ = nullptr;
+  QPushButton *import_btn_ = nullptr;
   std::filesystem::path instance_root_;
+  std::string nexus_domain_;
 };
 
 }  // namespace ui
