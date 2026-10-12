@@ -330,6 +330,14 @@ public:
   // changed, as a CSV. Empty = no remembered filter.
   QStringList modlist_filter_categories() const;  // key: interface/filter_categories
   void set_modlist_filter_categories(const QStringList &ids);
+  // The same setting's other two halves. MO2's FilterList::saveState
+  // (filterlist.cpp:245-251) persists the ticked special criteria AND the
+  // And/Or mode alongside the criteria tree, so "remember my filters"
+  // remembers the whole flyout and not just its categories.
+  QStringList modlist_filter_specials() const;  // key: interface/filter_specials
+  void set_modlist_filter_specials(const QStringList &names);
+  bool modlist_filter_any_mode() const;  // key: interface/filter_any_mode
+  void set_modlist_filter_any_mode(bool on);
 
   // Ask for confirmation before closing while downloads are still running
   // (the close cancels them). "Don't Ask" persists this as false.

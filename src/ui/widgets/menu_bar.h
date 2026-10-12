@@ -25,6 +25,24 @@ struct RunMenuEntry {
 
 using RunMenuProvider = std::function<QList<RunMenuEntry>()>;
 
+// One line of the Tools menu: the label to show and the tool it runs. A group
+// that holds more than one tool becomes a SUBMENU labelled `group_label`; a
+// lone tool keeps its full label and an empty `group_label` (MO2
+// updateToolMenu, mainwindow.cpp:1531-1565: split displayName on "/", group
+// by the first segment, and only open a submenu when the group has more than
+// one member).
+struct ToolMenuEntry {
+  QString group_label;  // empty = a flat entry, not a submenu
+  QString label;        // what the entry (or the submenu member) says
+  QString tool_id;
+};
+
+// The Tools menu layout, as data: sorted by display name, grouped by the text
+// before the first "/". Free function so the ordering and grouping are pinned
+// without a menu bar - the menu builder does nothing but walk this.
+[[nodiscard]] std::vector<ToolMenuEntry>
+build_tool_menu_entries(const std::vector<engine::ExternalTool> &tools);
+
 // Application menu bar - File / Edit / View / Tools / Run / Help.
 // Created once per MainWindow, lives at the top of the window.
 // Actions emit signals; MainWindow connects them to actual behavior.
@@ -134,8 +152,11 @@ private:
 
   QMenu *recent_menu_ = nullptr;
   QMenu *tools_menu_  = nullptr;
-  QMenu *run_menu_    = nullptr;
-  QMenu *icons_menu_  = nullptr;
+  // "/" -grouped tool submenus built by the last update_tools_for_game call,
+  // deleted on the next one (a menuAction deletion does not take its menu).
+  std::vector<QMenu *> tool_group_menus_;
+  QMenu *run_menu_   = nullptr;
+  QMenu *icons_menu_ = nullptr;
   RunMenuProvider run_menu_provider_;
   // Help > Tutorials. Hidden until set_tutorials() has entries to put in it.
   QMenu *tutorials_menu_    = nullptr;

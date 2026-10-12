@@ -346,6 +346,20 @@ void run_golden_report_case(const fs::path &base) {
   // (XPMSE.esp) carry no tooltip data, so only 4 reports survive parsing.
   require(result.reports.size() == 4, "4 golden plugin reports parsed");
 
+  // Game-wide messages (MO2 Loot::processReport -> reportMessages, loot.cpp:749).
+  require(result.general_messages.size() == 2, "2 golden general messages");
+  require(result.general_messages[0].level == "info", "general info level");
+  require(result.general_messages[0].text.find("Shorthand") != std::string::npos,
+          "general info text");
+  require(result.general_messages[1].level == "warning", "general warn maps to warning");
+  require(result.general_messages[1].text.find("master is missing") != std::string::npos,
+          "general warn text");
+
+  // Run statistics (MO2 Loot::reportStats, loot.cpp:853-860).
+  require(result.stats.time == 1234, "stats time in ms");
+  require(result.stats.lootcli_version == "0.5.88", "stats lootcli version");
+  require(result.stats.loot_version == "15.1", "stats libloot version");
+
   {
     const auto it = result.reports.find("Update.esm");
     require(it != result.reports.end(), "Update.esm report present");

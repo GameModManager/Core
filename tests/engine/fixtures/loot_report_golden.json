@@ -2,6 +2,10 @@
   "game": "skyrimse",
   "masterlistLoaded": true,
   "sortedPlugins": ["Skyrim.esm", "Update.esm", "Dawnguard.esm", "TrueHUD.esl", "RaceMenu.esp", "RaceMenuPlugin.esp", "XPMSE.esp"],
+  "messages": [
+    {"type": "info", "text": "Shorthand for Skyrim Special Edition detected."},
+    {"type": "warn", "text": "A master is missing from the load order."}
+  ],
   "plugins": [
     {"name": "Skyrim.esm", "isMaster": true},
     {"name": "Update.esm", "dirty": [{"crc": 3870984379, "itm": 386, "deletedReferences": 93, "deletedNavmesh": 3, "cleaningUtility": "[SSEEdit v4.1.5d](https://www.nexusmods.com/skyrimspecialedition/mods/164)", "info": "A guide to cleaning plugins using xEdit can be found [here](https://tes5edit.github.io/docs/7-mod-cleaning-and-error-checking.html)."}], "isMaster": true},
@@ -10,5 +14,10 @@
     {"name": "RaceMenu.esp", "clean": [{"crc": 2055811086, "itm": 0, "deletedReferences": 0, "deletedNavmesh": 0, "cleaningUtility": "SSEEdit v4.0.3"}], "loadsArchive": true},
     {"name": "RaceMenuPlugin.esp", "messages": [{"type": "info", "text": "This plugin is optional."}], "clean": [{"crc": 2415081214, "itm": 0, "deletedReferences": 0, "deletedNavmesh": 0, "cleaningUtility": "SSEEdit v4.0.3"}]},
     {"name": "XPMSE.esp"}
-  ]
+  ],
+  "stats": {
+    "time": 1234,
+    "lootcliVersion": "0.5.88",
+    "lootVersion": "15.1"
+  }
 }
