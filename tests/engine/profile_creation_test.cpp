@@ -305,10 +305,11 @@ TEST_CASE("rename_mod_in_all_profiles rewrites every profile's modlist", "[engin
   write_text(profiles_dir / "Beta" / "modlist.txt", beta_before);
   write_text(profiles_dir / "Gamma" / "modlist.txt", gamma_before);
 
-  const std::size_t rewritten = engine::profile::rename_mod_in_all_profiles(
+  const auto outcome = engine::profile::rename_mod_in_all_profiles(
       profiles_dir, "Old Mod Name", "New Mod Name");
   // Alpha and Beta reference the mod; Gamma does not and is skipped.
-  REQUIRE(rewritten == 2);
+  REQUIRE(outcome.rewritten == 2);
+  REQUIRE(outcome.failed.empty());
 
   // Alpha: the name moved, and the load-order line positions, the disabled
   // line and the comment are all byte-for-byte as they were.
@@ -325,9 +326,11 @@ TEST_CASE("rename_mod_in_all_profiles rewrites every profile's modlist", "[engin
 
   // A rename to the same name, or of a mod no profile lists, changes nothing.
   REQUIRE(engine::profile::rename_mod_in_all_profiles(profiles_dir, "New Mod Name",
-                                                      "New Mod Name") == 0);
+                                                      "New Mod Name")
+              .rewritten == 0);
   REQUIRE(engine::profile::rename_mod_in_all_profiles(profiles_dir, "No Such Mod",
-                                                      "Whatever") == 0);
+                                                      "Whatever")
+              .rewritten == 0);
   REQUIRE(read_text(profiles_dir / "Alpha" / "modlist.txt") == alpha_after);
 }
 
@@ -349,7 +352,8 @@ TEST_CASE("a renamed mod keeps its priority and enabled state in another profile
   engine::profile::ProfileManager profile(profiles_dir / "Other");
   profile.refresh_mod_status({"Top Mod", "Old Mod Name", "Bottom Mod"}, {});
   REQUIRE(engine::profile::rename_mod_in_all_profiles(profiles_dir, "Old Mod Name",
-                                                      "New Mod Name") == 1);
+                                                      "New Mod Name")
+              .rewritten == 1);
 
   // Reload from the rewritten file under the new name.
   engine::profile::ProfileManager reloaded(profiles_dir / "Other");

@@ -867,12 +867,35 @@ void ModActions::apply_rename(int row, const QString &name) {
   // active profile is updated by the model below, so the rest are done here.
   const auto profiles_dir = w_->profiles_dir_path();
   if (!profiles_dir.empty()) {
-    const std::size_t rewritten = engine::profile::rename_mod_in_all_profiles(
+    const auto outcome = engine::profile::rename_mod_in_all_profiles(
         profiles_dir, entry.id.toStdString(), new_id.toStdString());
-    if (rewritten > 0) {
+    if (outcome.rewritten > 0) {
       engine::Logger::instance().debug("Mod rename propagated to " +
-                                       std::to_string(rewritten) +
+                                       std::to_string(outcome.rewritten) +
                                        " profile modlist file(s)");
+    }
+    // The rewrite is not atomic and there is no rollback - the folder is
+    // already renamed by now, so unwinding the modlists would orphan the mod
+    // everywhere instead of somewhere. A profile that kept the old name is
+    // therefore damaged, and the user is the only one who can fix or accept
+    // it, so say so plainly rather than logging a count at debug level.
+    if (!outcome.failed.empty()) {
+      QStringList failed;
+      for (const auto &name : outcome.failed)
+        failed << QString::fromStdString(name);
+      engine::Logger::instance().error("mod rename did not reach profile(s): " +
+                                       failed.join(", ").toStdString());
+      QMessageBox::warning(
+          w_, QObject::tr("Rename"),
+          QObject::tr("The mod folder was renamed, but %1 of %2 profile(s) that "
+                      "list this mod could not be updated:\n\n%3\n\nIn those "
+                      "profiles the mod now shows as missing, and it lost its "
+                      "load order and its enabled state. Re-add it there to "
+                      "restore them.")
+              .arg(QString::number(static_cast<int>(outcome.failed.size())),
+                   QString::number(
+                       static_cast<int>(outcome.rewritten + outcome.failed.size())))
+              .arg(failed.join(", ")));
     }
   }
 
