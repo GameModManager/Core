@@ -961,7 +961,7 @@ port - their cited GMM symbol names were invented, the features are not.
 | U080 Overwrite row menu (Sync to Mods w/ count guard, Create/Move/Clear, Open in Explorer) | ✅ `modlistcontextmenu.cpp:402-420` | ⚠️ move-to-Mod picker only, Sync guard unproven - `move_to_mod_dialog.h:16` | ⚠️ · |
 | U175 QueryOverwriteDialog (Keep Backup / Merge / Replace / Rename / Cancel) | ✅ `queryoverwritedialog.ui` | ✅ all five controls, Rename default - `query_overwrite_dialog.cpp:57` | ✅ ✔ |
 | U176 SyncOverwriteDialog columns (Name / Sync To per-file combo) | ✅ `syncoverwritedialog.ui` | ✅ Name + Sync-To combo columns - `sync_overwrite_dialog.cpp:27` | ✅ · |
-| U177 OverwriteInfoDialog (Open in Explorer + drag&drop hint) | ✅ `overwriteinfodialog.ui` | ⚠️ port exists, Explorer button + hint unproven - `overwrite_info_dialog.h:14` | ⚠️ · |
+| U177 OverwriteInfoDialog (Open in Explorer + drag&drop hint) | ✅ `overwriteinfodialog.ui` | ⚠️ the Explorer button ships - `overwrite_info_dialog.cpp:68`; the drag&drop hint is withheld on purpose, the tree's drag has no drop target to land in, so the label would advertise a capability this build refuses - `Workspace-klhg` | ⚠️ ✔ |
 
 ## 24. Save Game System
 
