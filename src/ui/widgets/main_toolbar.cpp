@@ -106,14 +106,16 @@ QToolButton *MainToolbar::add_instance_options_button(const QIcon &icon) {
   instance_options_button_->setAutoRaise(true);
   instance_options_button_->setIconSize(QSize(current_icon_size_, current_icon_size_));
   instance_options_button_->setToolButtonStyle(Qt::ToolButtonIconOnly);
-  // Body click opens the Instance Options panel; the arrow opens the
-  // dropdown menu. MO2 setupActionMenu (mainwindow.cpp:746-753) switches a
-  // toolbar button that owns a menu to InstantPopup so the WHOLE button opens
-  // the menu instead of press-and-hold on a separate arrow: a toolbar button
-  // is not a split control the way a combo box is, there is no second, more
-  // common action on it worth preserving. Set in set_instance_options_menu
-  // rather than here - a button with no menu yet has to stay clickable, or
-  // the panel entry point dies before the menu is ever attached.
+  // A split button: the body opens the Instance Options panel, the side arrow
+  // opens the dropdown menu. MenuButtonPopup is the only mode that keeps both
+  // halves alive - "In this mode the tool button displays a special arrow to
+  // indicate that a menu is present. The menu is displayed when the arrow part
+  // of the button is pressed" (Qt 6 QToolButton::ToolButtonPopupMode). The two
+  // neighbouring modes both lose one half: InstantPopup documents that "the
+  // button's own action is NOT triggered" (so a body click stops opening the
+  // panel) and DelayedPopup needs a press-and-hold for the menu. Set once, here,
+  // and never switched afterwards: the body half has to work before the menu is
+  // ever attached too.
   instance_options_button_->setPopupMode(QToolButton::MenuButtonPopup);
   gmm_buttons_.append(instance_options_button_);
 
@@ -131,11 +133,13 @@ QToolButton *MainToolbar::add_instance_options_button(const QIcon &icon) {
 void MainToolbar::set_instance_options_menu(QMenu *menu) {
   if (!instance_options_button_)
     return;
+  // Attaching the menu does not change the popup mode: the arrow opens the
+  // menu, the body still opens the panel. MO2's setupActionMenu
+  // (mainwindow.cpp:746-753) does convert four toolbar buttons to InstantPopup,
+  // but none of them (Browse Mod Page, Tools, Help, Endorse MO) has a second
+  // body action to preserve - their menu IS the button. Ours has both, so
+  // InstantPopup would silently kill the panel entry point.
   instance_options_button_->setMenu(menu);
-  // With a menu attached the whole button opens it (MO2 setupActionMenu); with
-  // no menu it stays a plain click so the panel still opens.
-  instance_options_button_->setPopupMode(menu ? QToolButton::InstantPopup
-                                              : QToolButton::MenuButtonPopup);
 }
 
 QToolButton *MainToolbar::add_exec_button(const QString &tooltip, const QIcon &icon) {
