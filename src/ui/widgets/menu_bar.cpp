@@ -9,6 +9,8 @@
 #include <QMessageBox>
 #include <QUrl>
 
+#include <algorithm>
+#include <unordered_map>
 #include <utility>
 
 namespace ui {
@@ -262,9 +264,69 @@ void AppMenuBar::build_tools_menu() {
   connect(executables, &QAction::triggered, this, &AppMenuBar::executables_requested);
 }
 
+std::vector<ToolMenuEntry>
+build_tool_menu_entries(const std::vector<engine::ExternalTool> &tools) {
+  // Sort by display name, case-insensitively (MO2 mainwindow.cpp:1534-1539).
+  // A tool with no display name sorts and labels as its id, which is what the
+  // menu already showed for it.
+  std::vector<const engine::ExternalTool *> sorted;
+  sorted.reserve(tools.size());
+  for (const auto &tool : tools)
+    sorted.push_back(&tool);
+  auto name_of = [](const engine::ExternalTool *tool) {
+    return (tool->display_name.empty() ? tool->tool_id : tool->display_name);
+  };
+  std::stable_sort(
+      sorted.begin(), sorted.end(),
+      [&name_of](const engine::ExternalTool *lhs, const engine::ExternalTool *rhs) {
+        QString a = QString::fromStdString(name_of(lhs)).toLower();
+        QString b = QString::fromStdString(name_of(rhs)).toLower();
+        return a < b;
+      });
+
+  std::vector<ToolMenuEntry> entries;
+  for (const auto *tool : sorted) {
+    const QString full = QString::fromStdString(name_of(tool));
+    entries.push_back({QString(), full, QString::fromStdString(tool->tool_id)});
+  }
+
+  // Split "Group/Member" into a group, then keep the split only where the
+  // group actually has more than one member: MO2 registers a lone one under
+  // its own full display name instead of in a one-item submenu
+  // (mainwindow.cpp:1547-1562).
+  std::unordered_map<QString, int> counts;
+  for (auto &entry : entries) {
+    const int slash = entry.label.indexOf(QLatin1Char('/'));
+    if (slash < 0)
+      continue;
+    entry.group_label = entry.label.left(slash);
+    ++counts[entry.group_label];
+  }
+  for (auto &entry : entries) {
+    if (entry.group_label.isEmpty())
+      continue;
+    if (counts[entry.group_label] < 2)
+      entry.group_label.clear();
+    else
+      entry.label = entry.label.mid(entry.group_label.size() + 1);
+  }
+  return entries;
+}
+
 void AppMenuBar::update_tools_for_game(const std::string &game_id,
                                        const std::vector<engine::ExternalTool> &tools) {
   current_game_id_ = game_id;
+
+  // Submenus created by a previous call. They must go first and as menus, not
+  // as actions: the loop below deletes actions, and deleting a menuAction
+  // would take the menu itself with it - or, worse, leave it behind as an
+  // orphan nobody deletes. Every game switch re-runs this, so skipping it
+  // leaks a submenu per switch.
+  for (auto *submenu : tool_group_menus_) {
+    tools_menu_->removeAction(submenu->menuAction());
+    delete submenu;
+  }
+  tool_group_menus_.clear();
 
   // Remove all actions before the separator (dynamic tools section)
   auto actions = tools_menu_->actions();
@@ -278,18 +340,41 @@ void AppMenuBar::update_tools_for_game(const std::string &game_id,
   // Add registered tools for this game (insert before the separator so the
   // clearing loop above reaches them -addAction appends to the end, past the
   // separator, which caused duplicates to accumulate on every switch).
-  if (!tools.empty()) {
+  // Sorted, "/" -grouped and tool-tipped by build_tool_menu_entries, MO2's
+  // updateToolMenu (mainwindow.cpp:1531-1565).
+  auto tip_of = [&tools](const QString &tool_id) {
     for (const auto &tool : tools) {
-      QString label = QString::fromStdString(
-          tool.display_name.empty() ? tool.tool_id : tool.display_name);
-      auto *act = new QAction(label, tools_menu_);
-      tools_menu_->insertAction(tools_separator_, act);
-      QString tid = QString::fromStdString(tool.tool_id);
-      QString gid = QString::fromStdString(game_id);
-      connect(act, &QAction::triggered, this, [this, tid, gid]() {
-        emit tool_requested(tid, gid);
-      });
+      if (QString::fromStdString(tool.tool_id) == tool_id)
+        return QString::fromStdString(tool.description);
     }
+    return QString();
+  };
+  QMenu *group_menu = nullptr;
+  for (const auto &entry : build_tool_menu_entries(tools)) {
+    if (entry.group_label.isEmpty()) {
+      group_menu = nullptr;
+    } else if (!group_menu || group_menu->title() != entry.group_label) {
+      // Members of one group sort together (they share the prefix before the
+      // "/"), so the first member opens the submenu and the rest land in it.
+      auto *submenu = new QMenu(entry.group_label, tools_menu_);
+      tools_menu_->insertMenu(tools_separator_, submenu);
+      tool_group_menus_.push_back(submenu);
+      group_menu = submenu;
+    }
+    QMenu *parent     = group_menu ? group_menu : tools_menu_;
+    auto *act         = new QAction(entry.label, parent);
+    const QString tip = tip_of(entry.tool_id);
+    if (!tip.isEmpty())
+      act->setToolTip(tip);
+    if (group_menu)
+      group_menu->addAction(act);
+    else
+      tools_menu_->insertAction(tools_separator_, act);
+    QString tid = entry.tool_id;
+    QString gid = QString::fromStdString(game_id);
+    connect(act, &QAction::triggered, this, [this, tid, gid]() {
+      emit tool_requested(tid, gid);
+    });
   }
 }
 

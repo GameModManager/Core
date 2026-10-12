@@ -1,4 +1,5 @@
 #include "ui/controllers/mod_actions.h"
+#include "engine/backup/backup_service.h"
 #include "engine/instance/instance_utils.h"
 #include "engine/log/logger.h"
 #include "engine/mod/meta/categories.h"
@@ -555,6 +556,59 @@ void ModActions::restore_hidden_files(const QStringList &mod_ids) {
   set_action_status(QObject::tr("Restored %n hidden file(s)", "", restored));
   if (failed)
     set_action_status(QObject::tr("%1 file(s) could not be restored").arg(failed));
+}
+
+void ModActions::create_mod_backup(const QString &mod_id) {
+  const auto folder = w_->mods_dir_path() / mod_id.toStdString();
+  const auto result = engine::backup::create_mod_backup(folder);
+  if (!result.ok) {
+    QMessageBox::warning(w_, QObject::tr("Failed"),
+                         QObject::tr("Failed to create backup of \"%1\":\n%2")
+                             .arg(mod_id, QString::fromStdString(result.error)));
+    return;
+  }
+  // MO2 refreshes right after the copy (modlistviewactions.cpp:1048-1049): the
+  // backup is a new folder in the mods dir, so it is a new mod row, and a mod
+  // list that does not show it would be showing a mods dir that is not the one
+  // on disk.
+  reload_mod_list();
+  set_action_status(
+      QObject::tr("Backup of \"%1\" created: %2")
+          .arg(mod_id, QString::fromStdString(result.path.filename().string())));
+}
+
+void ModActions::restore_mod_backup(const QString &mod_id) {
+  const auto restored_name = engine::backup::restored_mod_name(mod_id.toStdString());
+  if (restored_name.empty())
+    return;
+  const auto mods_dir   = w_->mods_dir_path();
+  const auto backup_dir = mods_dir / mod_id.toStdString();
+  const auto target     = mods_dir / restored_name;
+  std::error_code ec;
+  // MO2 asks only when the original is still there (modlistviewactions.cpp:
+  // 1325-1329), and the answer decides between replacing and doing nothing at
+  // all, so there is nothing to ask about when there is no original.
+  if (std::filesystem::is_directory(target, ec) &&
+      QMessageBox::question(
+          w_, QObject::tr("Overwrite?"),
+          QObject::tr("This will replace the existing mod \"%1\". Continue?")
+              .arg(QString::fromStdString(restored_name)),
+          QMessageBox::Yes | QMessageBox::No) != QMessageBox::Yes)
+    return;
+
+  const auto result =
+      engine::backup::restore_mod_backup(mods_dir, backup_dir, restored_name);
+  if (!result.ok) {
+    QMessageBox::warning(w_, QObject::tr("Failed"),
+                         QObject::tr("Failed to restore \"%1\":\n%2")
+                             .arg(mod_id, QString::fromStdString(result.error)));
+    return;
+  }
+  reload_mod_list();
+  if (refresh_data_tab_cb_)
+    refresh_data_tab_cb_();
+  set_action_status(QObject::tr("Restored \"%1\" from \"%2\"")
+                        .arg(QString::fromStdString(restored_name), mod_id));
 }
 
 QString ModActions::create_separator_named(const QString &name, const QString &color) {

@@ -3,6 +3,7 @@
 #include "ui/controllers/launch_controller.h"
 #include "ui/controllers/mod_list_controller.h"
 #include "ui/controllers/tab_mode_controller.h"
+#include "ui/widgets/error_popup.h"
 
 #include <QApplication>
 #include <QCheckBox>
@@ -846,44 +847,57 @@ void SettingsController::connect_menu_actions() {
           [this](const QString &rel_path) {
             w_->launch_->launch_toolbar_shortcut(rel_path);
           });
-  connect(w_->menu_bar_, &AppMenuBar::tool_requested, this,
-          [this](const QString &tool_id, const QString &game_id) {
-            if (!w_->plugin_loader_)
-              return;
-            auto *tool = w_->plugin_loader_->tool_registry().get_tool(
-                game_id.toStdString(), tool_id.toStdString());
-            if (!tool) {
-              engine::Logger::instance().warn(
-                  "Tool not found: " + tool_id.toStdString() +
-                  " for game: " + game_id.toStdString());
-              return;
-            }
-            engine::Logger::instance().debug("Running tool: " + tool_id.toStdString() +
-                                             " for game: " + game_id.toStdString());
-            if (tool_id == QStringLiteral("loot")) {
-              // LOOT is an advisory tool the engine drives itself: build a
-              // Sorter::Loot::Request from the current plugin DB and run
-              // gmm_lootcli off the UI thread (PLAN.md §7.1).
-              w_->mod_list_->run_loot_sort();
-              return;
-            }
-            if (tool->invoke_fn) {
-              tool->invoke_fn(tool->invoke_user_data);
-            } else {
-              // Fallback: try launching the executable
-              for (const auto &path : tool->search_paths) {
-                auto exe_path = std::filesystem::path(path) / tool->executable_name;
-                std::error_code ec;
-                if (std::filesystem::exists(exe_path, ec)) {
-                  QProcess::startDetached(QString::fromStdString(exe_path.string()),
-                                          QStringList());
-                  return;
-                }
+  connect(
+      w_->menu_bar_, &AppMenuBar::tool_requested, this,
+      [this](const QString &tool_id, const QString &game_id) {
+        if (!w_->plugin_loader_)
+          return;
+        auto *tool = w_->plugin_loader_->tool_registry().get_tool(
+            game_id.toStdString(), tool_id.toStdString());
+        if (!tool) {
+          engine::Logger::instance().warn("Tool not found: " + tool_id.toStdString() +
+                                          " for game: " + game_id.toStdString());
+          return;
+        }
+        engine::Logger::instance().debug("Running tool: " + tool_id.toStdString() +
+                                         " for game: " + game_id.toStdString());
+        // MO2 routes a throwing tool to a report instead of letting it
+        // unwind through the Qt slot (registerPluginTool's queued lambda,
+        // mainwindow.cpp:1510-1522): an exception that escapes into Qt
+        // terminates the process, so one buggy plugin tool would take the
+        // whole manager down over a single click.
+        try {
+          if (tool_id == QStringLiteral("loot")) {
+            // LOOT is an advisory tool the engine drives itself: build a
+            // Sorter::Loot::Request from the current plugin DB and run
+            // gmm_lootcli off the UI thread (PLAN.md §7.1).
+            w_->mod_list_->run_loot_sort();
+            return;
+          }
+          if (tool->invoke_fn) {
+            tool->invoke_fn(tool->invoke_user_data);
+          } else {
+            // Fallback: try launching the executable
+            for (const auto &path : tool->search_paths) {
+              auto exe_path = std::filesystem::path(path) / tool->executable_name;
+              std::error_code ec;
+              if (std::filesystem::exists(exe_path, ec)) {
+                QProcess::startDetached(QString::fromStdString(exe_path.string()),
+                                        QStringList());
+                return;
               }
-              engine::Logger::instance().warn("Tool executable not found: " +
-                                              tool->executable_name);
             }
-          });
+            engine::Logger::instance().warn("Tool executable not found: " +
+                                            tool->executable_name);
+          }
+        } catch (const std::exception &e) {
+          report_error(
+              tr("Plugin \"%1\" failed: %2").arg(tool_id, QString::fromUtf8(e.what())),
+              w_);
+        } catch (...) {
+          report_error(tr("Plugin \"%1\" failed").arg(tool_id), w_);
+        }
+      });
 
   // --- Help ---
   // "Help on UI" and the link entries are pure Qt: What This mode and a

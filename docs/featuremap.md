@@ -240,14 +240,14 @@ port - their cited GMM symbol names were invented, the features are not.
 | Plugin blacklist | ✅ `Settings::blacklisted` | ✅ `disabled_plugins` reaches the loader - `app/core.cpp:248` | ✅ ✔ |
 | Network settings (proxy, offline mode) | ✅ `NetworkSettings` | ⚠️ offline+proxy live; custom browser dead - `network_options_bridge.cpp:31` | ⚠️ ✔ |
 | Splash screen | ✅ `Settings::useSplash` | ⏳ cosmetic, no component | ⏳ ✔ |
-| Prerelease updates toggle | ✅ `Settings::usePrereleases` | ⚠️ checkbox; whole updater has no callers | ⚠️ ✔ |
+| Prerelease updates toggle | ✅ `Settings::usePrereleases` | ⚠️ checkbox; whole updater has no callers - `settings_content_widget.cpp:192` | ⚠️ ✔ |
 | Low-priority extraction | ✅ | 🚀 `pipeline_worker.cpp:199` `extraction_low_priority()` | 🚀 ✔ |
 | Full UI mode (tabs vs popups) | ❌ | 🚀 `settings_content_widget.cpp:120` `full_ui_mode()` | 🚀 ✔ |
 | Multi-core processing toggle | ❌ | 🚀 `settings.h:130` + `parallel::set_enabled` | 🚀 ✔ |
 | Language selection (i18n picker) | ✅ `InterfaceSettings::language()` | ⚠️ picker + loader live, help link absent - `app/core.cpp:137` | ⚠️ ✔ |
 | Style/Theme selection (QStyle + .qss) | ✅ `InterfaceSettings::styleName()` | ✅ theme, style, icon pack - `settings_controller.cpp:1203` | ✅ ✔ |
 | Collapsible separators settings | ✅ `InterfaceSettings` (ascending, descending, highlight, icons) | ⚠️ 9 keys, zero readers; fold state itself real - `settings.h:46` | ⚠️ ✔ |
-| Save filters toggle | ✅ `InterfaceSettings::saveFilters()` | ⚠️ dead; no mod list filter exists - `settings_content_widget.cpp:481` | ⚠️ ✔ |
+| Save filters toggle | ✅ `InterfaceSettings::saveFilters()` | ✅ persists the ticked categories AND the special criteria AND the And/Or mode - `category_filter_panel.cpp:252` | ✅ ✔ |
 | Auto-collapse on hover | ✅ `InterfaceSettings::autoCollapseOnHover()` | ⚠️ zero readers - `settings_content_widget.cpp:483` | ⚠️ ✔ |
 | Display foreign mods | ✅ `InterfaceSettings::displayForeign()` | ✅ read on every model build; unmanaged mods always shown - `mod_list_controller.cpp:4618` | ✅ ✔ |
 | Meta downloads display | ✅ `InterfaceSettings::metaDownloads()` | 🚫 no meta-download concept | 🚫 ✔ |
@@ -262,11 +262,11 @@ port - their cited GMM symbol names were invented, the features are not.
 | Double-clicks open previews | ✅ `InterfaceSettings::doubleClicksOpenPreviews()` | ✅ three file trees - `filetree_tab.cpp:111` | ✅ ✔ |
 | Tutorial completion tracking | ✅ `InterfaceSettings::isTutorialCompleted()` | 🚫 no tutorial content ships, submenu hidden - `menu_bar.cpp:379` | 🚫 ✔ |
 | Filter widget options | ✅ `InterfaceSettings::filterOptions()` | 🚫 no mod list filter exists | 🚫 ✔ |
-| Archive parsing toggle | ✅ `Settings::archiveParsing()` | ⚠️ zero readers - `settings_content_widget.cpp:1309` | ⚠️ ✔ |
+| Archive parsing toggle | ✅ `Settings::archiveParsing()` | ✅ gates the Data tab's "Archives" box and the archive listing under an archive row - `data_tab.cpp:338` | ✅ ✔ |
 | Keep backup on install | ✅ `Settings::keepBackupOnInstall()` | ✅ seeds the Mod Exists dialog - `query_overwrite_dialog.cpp:108` | ✅ ✔ |
 | Profile default settings (local INIs, saves, archive invalidation) | ✅ `Settings::profileLocalInis()` etc. | ⚠️ 2 of 3; invalidation default hardcoded false - `profile_creation.cpp:143` | ⚠️ ✔ |
 | Refresh thread count | ✅ `Settings::refreshThreadCount()` | ⏳ no setting, fixed thread pool | ⏳ ✔ |
-| Force enable core files | ✅ `GameSettings::forceEnableCoreFiles()` | ⚠️ zero readers - `settings_content_widget.cpp:1307` | ⚠️ ✔ |
+| Force enable core files | ✅ `GameSettings::forceEnableCoreFiles()` | ✅ read by the deploy request and the plugin pass - `mod_list_controller.cpp:1465` | ✅ ✔ |
 | Base directory variable (%BASE_DIR%) | ✅ `PathSettings::BaseDirVariable` | ✅ `$BASE_DIRECTORY`/`%BASE_DIR%` expanded in `expand_instance_path` - `instance.cpp:26` | ✅ ✔ |
 | Recent directories | ✅ `PathSettings::recent()` | ⏳ no setting | ⏳ ✔ |
 | Offline mode | ✅ `NetworkSettings::offlineMode()` | ✅ reaches NetworkOptions - `network_options_bridge.cpp:31` | ✅ ✔ |
@@ -307,7 +307,7 @@ port - their cited GMM symbol names were invented, the features are not.
 | U047 Downgrade notice after version drop | ✅ `mainwindow.cpp:2219` | ⏳ no last-version value to compare | ⏳ ✔ |
 | U061 dataTabShowFromArchives gated on archiveParsing setting | ✅ `mainwindow.cpp:532-542` | ⏳ data tab has no archives sub-filter | ⏳ ✔ |
 | U129 General > Language group (languageBox + "Help translate" LinkLabel) | ✅ `settingsdialog.ui:68-124` | ✅ picker + restart hint + "Help translate" link to the i18n repo, opened via WebLink so Custom Browser applies - `settings_content_widget.cpp:121` | ✅ ✔ |
-| U130 General > Download List group (4 checkboxes + MODL associate button) | ✅ `settingsdialog.ui:125-197` | ⚠️ compact only; hide-installed is on the downloads tab | ⚠️ ✔ |
+| U130 General > Download List group (4 checkboxes + MODL associate button) | ✅ `settingsdialog.ui:125-197` | ⚠️ compact only; hide-installed is on the downloads tab - `downloads_tab.cpp:345` | ⚠️ ✔ |
 | U133 General > Miscellaneous checkboxes (center dialogs, instance-change confirm, Alt menubar, previews on double-click) | ✅ `settingsdialog.ui:264-325` | ⚠️ 1 of 4: previews on double-click - `settings_content_widget.cpp:233` | ⚠️ ✔ |
 | U134 General buttons (Reset Dialog Choices, Configure Mod Categories) | ✅ `settingsdialog.ui:343-372` | ✅ both: reset at `:348`, categories dialog `categories_dialog.h:21` | ✅ ✔ |
 | U138 Paths tab (7 path rows + %BASE_DIR% hint + writability footer) | ✅ `settingsdialog.ui:846-1054` | ✅ 7 rows + hint + working variable expansion + footer naming every configured path that is missing or read-only - `settings_content_widget.cpp:1035` | ✅ ✔ |
@@ -315,7 +315,7 @@ port - their cited GMM symbol names were invented, the features are not.
 | U140 Nexus settings tab full page (account, statistics, connection, options, servers groups) (NEXUS-LENS: genericize/provider-scope) | ✅ `settingsdialog.ui:1056-1504` | ⚠️ Sources tab stands in - `settings_content_widget.cpp:70` | ⚠️ ✔ |
 | U142 Nexus custom browser picker file dialog | ✅ `settingsdialognexus.cpp:500-510` | ⏳ downstream of the dead custom-browser feature | ⏳ ✔ |
 | U143 Settings > Plugins tab (plugin details, Enabled 3-state tooltip, settings table, blacklist) | ✅ `settingsdialog.ui:1506-1746` | ⚠️ details, table, blacklist real. MO2's 3-state checkbox has no counterpart here: `Enabled` is a real 2-state box over a per-instance override with global fallback (global write, then per-instance when the instance root is non-empty) - `settings_content_widget.cpp:1360`; the tooltip states neither, it only says a disabled GMM plugin is not loaded on the next start - `settings_content_widget.cpp:1370` | ⚠️ ✔ |
-| U145 Workarounds options (force-enable game files, archives parsing, lock GUI) | ✅ `settingsdialog.ui:1810-1860` | ⚠️ 2 of 3: force-enable game files drives deploy (`mod_list_controller.cpp:1452`); archives parsing has no consumer by construction and says so in its tooltip; lock GUI absent - `settings_content_widget.cpp:1598` | ⚠️ ✔ |
+| U145 Workarounds options (force-enable game files, archives parsing, lock GUI) | ✅ `settingsdialog.ui:1810-1860` | ⚠️ 2 of 3: force-enable game files drives deploy (`mod_list_controller.cpp:1465`); archives parsing gates the Data tab's archive listing (`data_tab.cpp:492`); lock GUI absent - `settings_content_widget.cpp:1598` | ⚠️ ✔ |
 | U146 Workarounds > Steam group (AppID/username/password + log blacklist) | ✅ `settingsdialog.ui:1864-1928`, `settingsdialogworkarounds.cpp:17-30` | 🚫 Windows credential store, no Linux subject | 🚫 ✔ |
 | U147 Workarounds > Network group (offline mode, system proxy, custom browser) | ✅ `settingsdialog.ui:1931-2010` | ✅ all 3; the custom browser is read by every WebLink open, including the Settings links - `web_link.cpp:46` | ✅ ✔ |
 | U148 Workarounds buttons (Reset Geometries, Back-date BSAs, Executables Blacklist, Skip Suffixes/Directories) | ✅ `settingsdialog.ui:2035-2144`, `settingsdialogworkarounds.cpp:96-200` | ⚠️ 2 of 5: Reset Geometries and all 3 line edits are wired (skip lists via `Settings::apply_workarounds`, blacklist via `launch_controller.cpp:386`); no back-date BSA | ⚠️ ✔ |
@@ -451,7 +451,7 @@ port - their cited GMM symbol names were invented, the features are not.
 | Blake2b fingerprint cache | ❌ | 🚀 blake2b + `scan(db_path)` - `conflict_index.h:92` | 🚀 · |
 | Image diff (conflict comparison) | ❌ | 🚀 `image_diff_requested` - `main_window.cpp:283` | 🚀 · |
 | ConflictListModel / ConflictItem | ✅ `ConflictListModel`, `ConflictItem` | ❌ | ❌ · |
-| Data tab conflict mode | ✅ `dataTabShowOnlyConflicts` | ❌ | ❌ · |
+| Data tab conflict mode | ✅ `dataTabShowOnlyConflicts` | ✅ "Conflicts only" box drops every row with fewer than two providers, and a folder left with nothing visible goes with it - `data_tab.cpp:352` | ✅ ✔ |
 | U094 Conflict flag tooltip texts (9 exact strings + FLAG_OVERWRITE_CONFLICT) | ✅ `modlist.cpp:156-180` | ⚠️ column plumbing, exact strings unproven - `mod_list_model.cpp:345` | ⚠️ · |
 | U119 EConflictFlag enum (10 values: loose/archive/archive-loose + overwrite) | ✅ `modinfo.h:70-81` | ⚠️ result plumbing only, enum unproven - `mod_list_controller.h:84` | ⚠️ · |
 | U120 EHighlight bit values (NONE/INVALID/CENTER/IMPORTANT/PLUGIN) | ✅ `modinfo.h:99-105` | ❌ | ❌ · |
@@ -481,7 +481,7 @@ port - their cited GMM symbol names were invented, the features are not.
 | U123 Flag icon sizeHint = count*40 x 20 clamped | ✅ `modflagicondelegate.cpp:90-110` | ❌ | ❌ · |
 | U125 ModInfoRegular flag conditions (NOTENDORSED, TRACKED, INVALID, NOTES, PLUGIN_SELECTED, ALTERNATE_GAME, HIDDEN_FILES) | ✅ `modinforegular.cpp:689-711` | ⚠️ 2 of 7 conditions - `nexus_source_panel.cpp:41` | ⚠️ · |
 | U128 Generic icon + no-edit delegates (beyond version delegate) | ✅ `modlistversiondelegate.cpp`, `genericicondelegate.cpp` | ❌ | ❌ · |
-| U161 Data tab checkboxes + tooltips (conflicts/archives/hidden filters, Refresh tip) | ✅ `mainwindow.ui:1095-1195` | ⚠️ refresh + status-tips only - `data_tab.cpp:830` | ⚠️ · |
+| U161 Data tab checkboxes + tooltips (conflicts/archives/hidden filters, Refresh tip) | ✅ `mainwindow.ui:1095-1195` | ✅ all three checkboxes with MO2's labels and tips, plus the refresh tip - `data_tab.cpp:352` | ✅ ✔ |
 | U211 markConverted (converted/working flag) | ✅ `modlistviewactions` | ❌ | ❌ · |
 | U212 validated flag (ignore missing data) | ✅ `modinfo` | ✅ writes `[General] validated=true`, read at `:599` - `mod_scanner.cpp:853` | ✅ · |
 | U213 hidden files list (restoreHiddenFiles) | ✅ `modinforegular` | ✅ confirm dialog (single-mod wording differs, multi capped at 20 names), strips the hidden suffix from every file under each selected mod and refreshes the flags - `mod_actions.cpp:493` | ✅ ✔ |
@@ -546,14 +546,14 @@ port - their cited GMM symbol names were invented, the features are not.
 | Missing masters detection | ✅ `testMasters` + `missingMasters` | ✅ `set_missing_masters()` + emblem - `plugin_view.cpp:183` | ✅ · |
 | Plugin lock (pin at position) | ✅ `isESPLocked`, `lockESPIndex` | ✅ `set_locked()` + lockedorder.txt - `profile.h:63` | ✅ · |
 | Plugin relationship fix | ✅ `fixPluginRelationships` | ❌ | ❌ · |
-| Plugin priority shift | ✅ `shiftPluginsPriority` | ❌ | ❌ · |
-| Plugin send to priority | ✅ `sendToPriority` | ⚠️ highest/lowest only, no arbitrary position - `mod_actions.cpp:234` | ⚠️ · |
+| Plugin priority shift | ✅ `shiftPluginsPriority` | ✅ `shift_priorities()` on Ctrl+Up/Ctrl+Down, whole selection moves as a block - `plugin_database.h:114` | ✅ ✔ |
+| Plugin send to priority | ✅ `sendToPriority` | ✅ Send to... Top / Bottom / Priority... (QInputDialog for an arbitrary row), absent on locked and core rows - `plugin_context_menu.cpp:59` | ✅ ✔ |
 | Enable/disable all plugins | ✅ `setEnabledAll` | ✅ `set_all_enabled()` - `mod_list_controller.cpp:2864` | ✅ · |
 | Plugin index generation (FE/FD) | ✅ `generatePluginIndexes` | ✅ `generate_mod_indexes()` - `mod_list_controller.cpp:2869` | ✅ · |
 | LOOT messages per plugin | ✅ `Plugin::messages` | ✅ rendered in tooltip - `plugin_info.h:23` | ✅ · |
 | LOOT dirty info (ITM, deleted refs) | ✅ `Dirty` struct | ✅ `DirtyEntry` (ITM/refs/navmesh) - `plugin_info.h:24` | ✅ · |
 | LOOT incompatibilities | ✅ `Plugin::incompatibilities` | ✅ rendered - `plugin_info.h:17` | ✅ · |
-| LOOT stats (time, version) | ✅ `Stats` | ❌ | ❌ · |
+| LOOT stats (time, version) | ✅ `Stats` | ✅ `Stats` parsed out of the report's "stats" and printed in the status bar - `sorter.h:47`, `mod_list_controller.cpp:3382` | ✅ ✔ |
 | Plugin author/description display | ✅ `pluginlist.h` | ✅ in tooltip HTML - `plugin_info.h:78` | ✅ · |
 | Plugin FormVersion/HeaderVersion | ✅ `formVersion`, `headerVersion` | ✅ `esp_header` rendered - `plugin_view.cpp:292` | ✅ · |
 | Plugin archive loading detection | ✅ `loadsArchive` | ⚠️ implicit detection only - `plugin_view.cpp:248` | ⚠️ · |
@@ -590,7 +590,7 @@ port - their cited GMM symbol names were invented, the features are not.
 | Feature | MO2 | GMM | Status |
 |---------|-----|-----|--------|
 | LOOT sort execution | ✅ `Loot::sort()` | ✅ `Sorter::Loot` - `mod_list_controller.cpp:2909` | ✅ · |
-| LOOT report generation | ✅ `Loot::createReport()` | ⚠️ JSON only, no HTML/markdown - `sorter.cpp:26` | ⚠️ · |
+| LOOT report generation | ✅ `Loot::createReport()` | ⚠️ JSON carries the per-plugin findings, the game-wide messages and the run statistics; still no HTML/markdown rendering - `sorter.cpp:544` | ⚠️ ✔ |
 | LOOT report viewer (markdown + web) | ✅ `LootDialog` + `MarkdownDocument` | ❌ | ❌ · |
 | LOOT progress display | ✅ `LootDialog::setProgress()` | ✅ `on_loot_progress(int, QString)` - `mod_list_controller.cpp:2973` | ✅ · |
 | LOOT dirty info details | ✅ `Dirty` (CRC, ITM, deleted refs, navmesh, utility) | ⚠️ no CRC field - `plugin_info.h:24` | ⚠️ · |
@@ -602,8 +602,8 @@ port - their cited GMM symbol names were invented, the features are not.
 | LOOT clean info display | ✅ `Plugin::clean` vector ("Verified clean by X") | ✅ `LootReport::clean` - `plugin_info.h:32` | ✅ · |
 | LOOT plugin flags (loadsArchive, isMaster, isLightMaster) | ✅ `Plugin` struct per-plugin metadata | ✅ master/light/medium + archives - `plugin_info.h:52` | ✅ · |
 | LOOT cancel/terminate | ✅ `Loot::cancel()` terminates lootcli process | ❌ | ❌ · |
-| LOOT statistics (timing, versions) | ✅ `Stats` struct (execution time, lootcli version) | ❌ | ❌ · |
-| LOOT general messages | ✅ `Report::messages` (non-plugin-specific) | ✅ rendered - `plugin_view.cpp:162` | ✅ · |
+| LOOT statistics (timing, versions) | ✅ `Stats` struct (execution time, lootcli version) | ✅ emitted by gmm_lootcli, parsed by the engine, summarised in the status bar - `sorter.cpp:519`, `sorter.h:47` | ✅ ✔ |
+| LOOT general messages | ✅ `Report::messages` (non-plugin-specific) | ✅ the report's top-level "messages" array is parsed and relayed at their own level - `mod_list_controller.cpp:3372` (per-plugin messages render in the tooltip - `plugin_view.cpp:164`) | ✅ ✔ |
 | LOOT PluginList integration (addLootReport) | ✅ `PluginList::addLootReport()` | ✅ `set_loot_reports()` side-map - `plugin_database.h:192` | ✅ · |
 | LOOT log level setting | ✅ `DiagnosticsSettings::lootLogLevel()` | ❌ | ❌ · |
 | LOOT async pipe communication | ✅ `AsyncPipe` (Windows Named Pipe IPC) | ❌ | ❌ · |
@@ -857,8 +857,8 @@ port - their cited GMM symbol names were invented, the features are not.
 | Visit on Nexus | ✅ `visitOnNexus` | ✅ `source_visit_info` (Nexus/LoversLab) - `mod_context_menu.cpp:398` | ✅ · |
 | Visit web page | ✅ `visitWebPage` | ✅ source-aware context menu - `mod_context_menu.cpp:402` | ✅ · |
 | Reinstall mod | ✅ `reinstallMod` | ✅ re-runs the install pipeline on the archive the mod's meta records, resolved in the downloads dir - `ModMeta::install_archive` + `mod_context_menu.cpp:365` | ✅ · |
-| Create backup | ✅ `createBackup` | ⚠️ deploy-level only, no user action - `deploy_utils.cpp:165` | ⚠️ · |
-| Restore backup | ✅ `restoreBackup` | ⚠️ deploy-level only, no user action - `deploy_utils.cpp:195` | ⚠️ · |
+| Create backup | ✅ `createBackup` | ✅ per-mod directory copy to `<name>_backup[N]`, then the mod list reloads so the copy is a row - `backup_service.h:create_mod_backup`, `mod_context_menu.cpp:550` | ✅ ✔ |
+| Restore backup | ✅ `restoreBackup` | ✅ offered on a `_backupN` row, confirms when the original is still there, removes it and renames the backup back - `mod_context_menu.cpp:495`, `backup_service.h:restore_mod_backup` | ✅ ✔ |
 | Restore hidden files | ✅ `restoreHiddenFiles` | ✅ "Restore Hidden Files" on a flagged row, confirming, then a walk that strips the suffix off every hidden file in the selected mods and re-derives the flag from the result - `mod_context_menu.cpp:490`, `mod_actions.cpp:496` | ✅ ✔ |
 | Mark as converted | ✅ `markConverted` | ❌ | ❌ · |
 | Ignore missing data | ✅ `ignoreMissingData` | ✅ `mark_validated()` - `mod_context_menu.cpp:339` | ✅ · |
@@ -980,7 +980,7 @@ port - their cited GMM symbol names were invented, the features are not.
 | Save game background scan | ✅ | ✅ `SavesScanWorker` - `saves_scan_worker.h:52` | ✅ · |
 | Save game delete | ✅ `SavesTab::deleteSavegame()` | ✅ `on_delete_key()` - `saves_tab.h:131` | ✅ · |
 | Save game context menu | ✅ `SavesTab::onContextMenu()` | ✅ context menu - `saves_tab.h:133` | ✅ · |
-| Save game open in explorer | ✅ | ⚠️ `open_explorer` is for mod files only - `mod_list_controller.cpp:2589` | ⚠️ · |
+| Save game open in explorer | ✅ | ✅ "Open in file manager" on the saves row opens the save's own folder - `saves_tab.cpp:600` | ✅ ✔ |
 | Save game fix missing assets | ✅ `SavesTab::fixMods()` | ✅ "Fix enabled mods..." enables what the load order can supply and names the rest - `downloads_controller.cpp:631` | ✅ ✔ |
 | Transfer saves dialog | ✅ `TransferSavesDialog` | ❌ | ❌ · |
 | Save game streaming (per-save entryReady, binary-insert sorted list) | ❌ | 🚀 `entryReady` + `on_entry_ready` - `saves_scan_worker.h:70` | 🚀 · |
@@ -1313,8 +1313,8 @@ app can never end up unreachable - see `tray_decision.h:66`.
 | Dynamic tools in menu bar | ❌ | 🚀 `AppMenuBar::update_tools_for_game()` - `menu_bar.h:24` | 🚀 · |
 | Proton prefix tools | ❌ | 🚀 `run_proton_tool()` - `proton_tools.h:37` | 🚀 · |
 | U005 Ctrl+I = Tool Plugins (iconText "&Tools") | ✅ `mainwindow.ui:1718-1735` | ✅ tool plugins menu item bound to Ctrl+I - `menu_bar.cpp:249` | ✅ ✔ |
-| U015 Tool Plugins menu (displayName "/" grouping, tooltips, error routing) | ✅ `mainwindow.cpp:1495-1566` | ❌ | ❌ · |
-| U067 Plugin tool exception routing (reportError queued) | ✅ `mainwindow.cpp:1495-1522` | ❌ | ❌ · |
+| U015 Tool Plugins menu (displayName "/" grouping, tooltips, error routing) | ✅ `mainwindow.cpp:1495-1566` | ✅ sorted by display name, grouped by the text before "/", lone group members stay flat, every entry carries the tool description as its tip - `menu_bar.cpp:267` | ✅ ✔ |
+| U067 Plugin tool exception routing (reportError queued) | ✅ `mainwindow.cpp:1495-1522` | ✅ a throwing tool is reported ("Plugin \"%1\" failed: %2") instead of unwinding into Qt - `settings_controller.cpp:889` | ✅ ✔ |
 | U237 IPluginTool plugin API | ✅ `mainwindow.cpp:1495` (uibase) | ❌ | ❌ · |
 
 ## 42. Packaging & Distribution
@@ -1422,27 +1422,27 @@ column.
 | 1. Virtual Filesystem | 5 | 2 | 4 | 1 | 0 | 5 | 5 |
 | 2. Launch Pipeline | 6 | 5 | 5 | 14 | 0 | 2 | 17 |
 | 3. Error Handling & Diagnostics | 8 | 10 | 0 | 0 | 27 | 11 | 35 |
-| 4. Settings & Configuration | 35 | 26 | 6 | 0 | 12 | 19 | 0 |
+| 4. Settings & Configuration | 38 | 23 | 6 | 0 | 12 | 19 | 0 |
 | 5. Executable Management | 12 | 4 | 4 | 7 | 0 | 0 | 0 |
 | 6. Mod Management | 24 | 5 | 9 | 8 | 0 | 0 | 1 |
 | 7. Mod Categories | 9 | 5 | 0 | 6 | 0 | 0 | 0 |
-| 8. Mod Conflict Detection | 4 | 2 | 3 | 7 | 0 | 0 | 0 |
-| 9. Mod Content Analysis | 8 | 7 | 0 | 11 | 0 | 0 | 0 |
+| 8. Mod Conflict Detection | 5 | 2 | 3 | 6 | 0 | 0 | 0 |
+| 9. Mod Content Analysis | 9 | 6 | 0 | 11 | 0 | 0 | 0 |
 | 10. Mod Info Dialog | 13 | 0 | 1 | 0 | 0 | 0 | 0 |
 | 11. Version & Update Management | 3 | 1 | 2 | 12 | 0 | 0 | 0 |
-| 12. Plugin Management | 29 | 6 | 3 | 13 | 0 | 0 | 0 |
-| 13. LOOT Integration | 10 | 2 | 1 | 7 | 0 | 0 | 0 |
+| 12. Plugin Management | 32 | 5 | 3 | 11 | 0 | 0 | 0 |
+| 13. LOOT Integration | 11 | 2 | 1 | 6 | 0 | 0 | 0 |
 | 14. Profile Management | 30 | 5 | 3 | 3 | 0 | 0 | 0 |
 | 15. Download Management | 31 | 12 | 6 | 13 | 9 | 0 | 0 |
 | 16. Nexus Integration | 8 | 10 | 2 | 20 | 0 | 0 | 0 |
 | 17. Source Providers | 4 | 0 | 7 | 1 | 0 | 0 | 0 |
 | 18. Mod List Features | 27 | 13 | 3 | 8 | 0 | 0 | 0 |
-| 19. Mod Context Menu | 17 | 5 | 0 | 10 | 0 | 0 | 0 |
+| 19. Mod Context Menu | 19 | 3 | 0 | 10 | 0 | 0 | 0 |
 | 20. Plugin Context Menu | 12 | 0 | 0 | 0 | 0 | 0 | 0 |
 | 21. Archive & Installation | 10 | 3 | 4 | 2 | 0 | 0 | 0 |
 | 22. Deploy System | 0 | 1 | 9 | 0 | 2 | 0 | 0 |
 | 23. Overwrite System | 8 | 2 | 3 | 0 | 0 | 0 | 0 |
-| 24. Save Game System | 19 | 2 | 5 | 1 | 0 | 0 | 0 |
+| 24. Save Game System | 20 | 1 | 5 | 1 | 0 | 0 | 0 |
 | 25. Game Detection & Knowledge | 2 | 2 | 11 | 0 | 0 | 0 | 0 |
 | 26. Pipeline System | 0 | 0 | 16 | 0 | 0 | 0 | 0 |
 | 27. Plugin Host System | 0 | 1 | 12 | 3 | 0 | 0 | 0 |
@@ -1459,7 +1459,7 @@ column.
 | 38. Platform Abstraction | 2 | 1 | 14 | 1 | 0 | 0 | 0 |
 | 39. Theme System | 0 | 1 | 3 | 0 | 0 | 0 | 0 |
 | 40. Event System | 0 | 0 | 4 | 0 | 0 | 0 | 0 |
-| 41. External Tool System | 1 | 0 | 3 | 3 | 0 | 0 | 0 |
+| 41. External Tool System | 3 | 0 | 3 | 1 | 0 | 0 | 0 |
 | 42. Packaging & Distribution | 0 | 2 | 0 | 7 | 0 | 1 | 1 |
 | 43. CLI Command System | 6 | 2 | 0 | 4 | 0 | 0 | 0 |
 | 44. Tutorial System | 0 | 0 | 0 | 4 | 0 | 0 | 0 |
@@ -1470,7 +1470,7 @@ column.
 | 49. CLI Help Grammar | 0 | 1 | 0 | 1 | 0 | 0 | 0 |
 | 50. My Games Resolution | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
 | 51. Conflict Scan Refresh | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
-| **TOTAL** | **407** | **159** | **178** | **209** | **52** | **38** | **62** |
+| **TOTAL** | **421** | **151** | **178** | **203** | **52** | **38** | **62** |
 
 ### The arithmetic
 
@@ -1478,16 +1478,48 @@ column.
 rows in file                          1043
 scored rows (ok + part + miss)         775
 
-MO2 parity        ok   / scored        407 /  775  = 52.5%
-partial           part / scored        159 /  775  = 20.5%
-missing           miss / scored        209 /  775  = 27.0%
+MO2 parity        ok   / scored        421 /  775  = 54.3%
+partial           part / scored        151 /  775  = 19.5%
+missing           miss / scored        203 /  775  = 26.2%
 GMM-exclusive     surp / all rows      178 / 1043  = 17.1%   (not scored)
 ```
 
-**Parity is 407 / 775 = 52.5%.** 209 rows are outright missing and 159 partial.
+**Parity is 421 / 775 = 54.3%.** 203 rows are outright missing and 151 partial.
 The largest untouched surfaces are **44. Tutorial** and **46. Notifications /
 Problems** (zero matched rows), then **16. Nexus** and **15. Downloads**, which
 carry the most missing rows in absolute terms.
+
+**This batch moved parity from 52.5% to 54.3%** (`407 / 775` to `421 / 775`).
+Fourteen rows changed, every one scored before and after, so the denominator
+did not move and nothing was reclassified to flatter the ratio.
+
+Five were shipped:
+- `U015` + `U067` - the Tools menu sorts tool plugins by display name, groups
+  them by the text before a `"/"`, leaves a lone group member flat, carries the
+  tool description as the entry's tip, and reports a throwing tool instead of
+  letting the exception unwind into Qt.
+- LOOT stats - `gmm_lootcli` writes the `stats` object MO2's `lootcli` writes
+  (elapsed ms + both versions) and the report's game-wide `messages` array,
+  which nothing here read before; the engine parses both and the status bar
+  carries the same `stats: 1.23s, lootcli x, loot y` line MO2's
+  `Loot::Stats::toMarkdown` produces.
+- Create/Restore backup - the per-mod directory backup (`<name>_backup[N]`,
+  next to the mod, where it becomes its own mod row) MO2 reaches from the mod
+  list context menu. It was absent; only the stamped load-order/mod-list copies
+  existed.
+- `U161` + data-tab conflict mode + the archive-parsing toggle - the Data tab's
+  `Conflicts only` / `Archives` / `Hidden files` bar, with an archive row
+  expanding to its own listing and the Workarounds `archiveParsing` setting
+  gating that listing the way MO2 ANDs the two.
+- Save-filters toggle - "Remember filter settings" now persists the special
+  criteria and the And/Or mode too, not just the ticked categories.
+
+Nine were repairs of stale cells, not new code: `Plugin priority shift` and
+`Plugin send to priority` both shipped years of GMM ago and their cells still
+said `❌` and `⚠️`; so did `Save game open in explorer`, `Force enable core
+files`, `Save filters toggle`, `U145`'s archive-parsing half and the
+`LOOT general messages` pointer (which cited the per-plugin bullet list). Each
+was read against the live tree before the cell was changed.
 
 **Seven MO2 gaps closed moved parity from 50.5% to 51.5%** (`391 / 775` to
 `399 / 775`). The denominator is unchanged at 775: every flipped row moved

@@ -81,6 +81,15 @@ public:
   // refresh the mod list flags. Confirms first, MO2's exact wording.
   void restore_hidden_files(const QStringList &mod_ids);
 
+  // Per-mod directory backup (MO2 ModListViewActions::createBackup /
+  // restoreBackup, modlistviewactions.cpp:1041-1051 / :1313-1343). Copy the
+  // mod's own folder to `<id>_backup[N]` next to itself; restore puts that
+  // folder back under the name it was made from, removing whatever is in the
+  // way once the user has confirmed. `mod_id` is a mod the user picked, not a
+  // name to type.
+  void create_mod_backup(const QString &mod_id);
+  void restore_mod_backup(const QString &mod_id);
+
   // Resolve the live external source folder for a mod row: content_dir
   // when it is still a directory, else the game's external mods dir.
   // Empty when neither exists (not an external mod, or its source is

@@ -2,6 +2,7 @@
 
 #include "engine/game/esp/plugin_info.h"
 
+#include <cstdint>
 #include <filesystem>
 #include <functional>
 #include <map>
@@ -39,12 +40,30 @@ namespace Sorter {
       bool update_masterlists = true;  // refresh stale masterlists before sorting
     };
 
+    // Run statistics MO2 reads back out of the report's "stats" object
+    // (Loot::reportStats, loot.cpp:853-860): how long the sort took and which
+    // lootcli / libloot produced it. `time` is milliseconds.
+    struct Stats {
+      int64_t time = 0;
+      std::string lootcli_version;
+      std::string loot_version;
+    };
+
     struct Result {
       bool ok = false;
       std::string error;                      // user-facing failure reason
       std::vector<std::string> sorted_names;  // new order, top = most dominant
       std::filesystem::path report_path;      // CLI JSON report (debugging)
       std::vector<std::string> messages;      // [level] lines relayed from the CLI
+      // Game-wide LOOT messages from the report's top-level "messages" array
+      // (the ones MO2 shows in LootDialog::showReport above the plugin list).
+      // `level` is the JSON "type": "info" | "warn" | "error".
+      struct Message {
+        std::string level;
+        std::string text;
+      };
+      std::vector<Message> general_messages;
+      Stats stats;  // report's "stats" object
       // Per-plugin LOOT findings parsed from the report's "plugins" array
       // (MO2 lootcli createPlugins shape), keyed by plugin filename. Empty
       // when the CLI wrote no findings. Mirrors LootDialog::showReport

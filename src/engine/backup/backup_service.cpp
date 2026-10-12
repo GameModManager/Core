@@ -514,4 +514,86 @@ RestoreResult restore_backup(const std::vector<std::filesystem::path> &files,
   return result;
 }
 
+std::filesystem::path generate_backup_name(const std::filesystem::path &mod_dir) {
+  std::error_code ec;
+  std::filesystem::path candidate = mod_dir;
+  candidate += "_backup";
+  if (!std::filesystem::is_directory(candidate, ec))
+    return candidate;
+  for (int index = 2;; ++index) {
+    std::filesystem::path numbered = candidate;
+    numbered += std::to_string(index);
+    if (!std::filesystem::is_directory(numbered, ec))
+      return numbered;
+  }
+}
+
+ModBackupResult create_mod_backup(const std::filesystem::path &mod_dir) {
+  ModBackupResult result;
+  std::error_code ec;
+  if (!std::filesystem::is_directory(mod_dir, ec)) {
+    result.error = "the mod folder no longer exists";
+    return result;
+  }
+  const auto target = generate_backup_name(mod_dir);
+  std::filesystem::copy(mod_dir, target, std::filesystem::copy_options::recursive, ec);
+  if (ec) {
+    result.error = ec.message();
+    return result;
+  }
+  result.ok   = true;
+  result.path = target;
+  return result;
+}
+
+std::string restored_mod_name(const std::string &backup_name) {
+  static constexpr std::string_view kSuffix = "_backup";
+  // MO2's regex is `(.*)_backup[0-9]*$`: the digits come AFTER the suffix, so
+  // the scan peels them off first and then requires the suffix to end there.
+  // Digits anywhere else are part of the name, which is what keeps "Foo_backup2x"
+  // what it is.
+  std::size_t end = backup_name.size();
+  while (end > 0 && backup_name[end - 1] >= '0' && backup_name[end - 1] <= '9')
+    --end;
+  if (end <= kSuffix.size())
+    return {};
+  if (backup_name.compare(end - kSuffix.size(), kSuffix.size(), kSuffix) != 0)
+    return {};
+  // MO2's `(.*)` also matches the empty string; a mod with no name is not a
+  // mod, and restoring into one would be a rename onto the mods dir itself.
+  return backup_name.substr(0, end - kSuffix.size());
+}
+
+ModBackupResult restore_mod_backup(const std::filesystem::path &mods_dir,
+                                   const std::filesystem::path &backup_dir,
+                                   const std::string &restored_name) {
+  ModBackupResult result;
+  std::error_code ec;
+  if (restored_name.empty()) {
+    result.error = "this is not a backup directory";
+    return result;
+  }
+  if (!std::filesystem::is_directory(backup_dir, ec)) {
+    result.error = "the backup folder no longer exists";
+    return result;
+  }
+  const auto target = mods_dir / restored_name;
+  if (std::filesystem::is_directory(target, ec)) {
+    std::filesystem::remove_all(target, ec);
+    if (ec) {
+      result.error = "failed to remove mod \"" + restored_name + "\": " + ec.message();
+      return result;
+    }
+  }
+  std::filesystem::rename(backup_dir, target, ec);
+  if (ec) {
+    result.error = "failed to rename \"" + backup_dir.string() + "\" to \"" +
+                   target.string() + "\": " + ec.message();
+    return result;
+  }
+  result.ok   = true;
+  result.path = target;
+  return result;
+}
+
 }  // namespace engine::backup

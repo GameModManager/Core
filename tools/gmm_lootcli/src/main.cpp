@@ -16,6 +16,7 @@
 #include <loot/api.h>
 
 #include <algorithm>
+#include <chrono>
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
@@ -489,12 +490,56 @@ void write_plugin_reports(std::ostream &out, loot::GameInterface *game,
   out << (first_plugin ? "]" : "\n  ]");
 }
 
-// JSON report: the sorted order (drives the engine) plus per-plugin LOOT
-// findings (drives the tooltip bullets). Kept for display/debugging and
-// parsed by Sorter::Loot::run_sort into Result::reports.
+// Game-wide LOOT messages, in MO2 lootcli's JSON shape (createMessages over
+// GetGeneralMessages(true, true), lootthread.cpp:875-879). The engine parses
+// these into Result::general_messages and relays them at their own level;
+// without them a LOOT warning about the game as a whole is written by LOOT
+// and read by nobody.
+void write_general_messages(std::ostream &out, loot::GameInterface *game) {
+  const auto messages = game->GetDatabase().GetGeneralMessages(true, true);
+  if (messages.empty())
+    return;
+  out << ",\n  \"messages\": [";
+  bool first = true;
+  for (const auto &m : messages) {
+    std::string text;
+    if (!message_text(m, text))
+      continue;
+    out << (first ? "\n    " : ",\n    ");
+    first = false;
+    out << "{\"type\": \"" << message_type_name(m.GetType()) << "\", \"text\": ";
+    write_json_string(out, text);
+    out << "}";
+  }
+  if (!first)
+    out << "\n  ";
+  out << "]";
+}
+
+// Sort statistics (MO2 lootcli createJsonReport's "stats", lootthread.cpp:
+// :883-890): elapsed milliseconds plus the two versions, so the caller can
+// report "stats: 1.23s, lootcli x.y.z, loot a.b.c" the way MO2's
+// Loot::Stats::toMarkdown does.
+void write_stats(std::ostream &out,
+                 const std::chrono::steady_clock::time_point &start) {
+  const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+                           std::chrono::steady_clock::now() - start)
+                           .count();
+  out << ",\n  \"stats\": {\n    \"time\": " << elapsed << ",\n"
+      << "    \"lootcliVersion\": ";
+  write_json_string(out, GMM_LOOTCLI_VERSION);
+  out << ",\n    \"lootVersion\": ";
+  write_json_string(out, loot::GetLiblootVersion());
+  out << "\n  }";
+}
+
+// JSON report: the sorted order (drives the engine), the game-wide messages,
+// the run statistics, plus per-plugin LOOT findings (drives the tooltip
+// bullets). Kept for display/debugging and parsed by Sorter::Loot::run_sort
+// into Result::reports / general_messages / stats.
 void write_report(const fs::path &output, loot::GameInterface *game,
-                  const std::string &game_name,
-                  const std::vector<std::string> &sorted) {
+                  const std::string &game_name, const std::vector<std::string> &sorted,
+                  const std::chrono::steady_clock::time_point &start) {
   std::ofstream out(output);
   if (!out.is_open()) {
     throw std::runtime_error("failed to open report output " + output.string());
@@ -509,7 +554,9 @@ void write_report(const fs::path &output, loot::GameInterface *game,
     write_json_string(out, sorted[i]);
   }
   out << "]";
+  write_general_messages(out, game);
   write_plugin_reports(out, game, sorted);
+  write_stats(out, start);
   out << "\n}\n";
   if (!out) {
     throw std::runtime_error("failed to write report " + output.string());
@@ -517,6 +564,7 @@ void write_report(const fs::path &output, loot::GameInterface *game,
 }
 
 int run(const Args &args) {
+  const auto started   = std::chrono::steady_clock::now();
   const auto game_type = game_type_for(args.game);
   if (!game_type) {
     std::cerr << "Error: no LOOT support for game \"" << args.game << "\"\n";
@@ -590,7 +638,7 @@ int run(const Args &args) {
   write_sorted_list(args.plugin_list_output, sorted);
 
   emit_progress(Progress::ParsingLootMessages);
-  write_report(args.report_output, game.get(), args.game, sorted);
+  write_report(args.report_output, game.get(), args.game, sorted, started);
 
   emit_progress(Progress::Done);
   return 0;

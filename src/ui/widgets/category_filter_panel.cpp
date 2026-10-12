@@ -18,6 +18,25 @@
 
 namespace ui {
 
+namespace {
+
+  // Stable name for one special criterion, used by the settings store. The enum
+  // value is deliberately NOT the key: an enum reorder would silently re-point a
+  // remembered filter at a different criterion.
+  QString special_key(CategoryFilterPanel::Special which) {
+    switch (which) {
+    case CategoryFilterPanel::Special::Active:
+      return QStringLiteral("active");
+    case CategoryFilterPanel::Special::Conflict:
+      return QStringLiteral("conflict");
+    case CategoryFilterPanel::Special::HiddenFiles:
+      return QStringLiteral("hidden_files");
+    }
+    return QString();
+  }
+
+}  // namespace
+
 CategoryFilterPanel::CategoryFilterPanel(QWidget *parent) : QWidget(parent) {
   auto *layout = new QVBoxLayout(this);
   layout->setContentsMargins(4, 2, 4, 2);
@@ -50,6 +69,10 @@ CategoryFilterPanel::CategoryFilterPanel(QWidget *parent) : QWidget(parent) {
     auto *box = new QCheckBox(tr(entry.label), this);
     box->setToolTip(tr(entry.tip));
     connect(box, &QCheckBox::toggled, this, [this](bool) {
+      // A special tick is part of what "Remember filter settings" persists,
+      // so it writes the same way a category tick does.
+      if (!rebuilding_)
+        save_state();
       emit filters_changed();
     });
     special_boxes_.emplace_back(entry.which, box);
@@ -74,6 +97,8 @@ CategoryFilterPanel::CategoryFilterPanel(QWidget *parent) : QWidget(parent) {
   mode_group_->addButton(or_radio);
   connect(mode_group_, &QButtonGroup::buttonToggled, this,
           [this](QAbstractButton *, bool) {
+            if (!rebuilding_)
+              save_state();
             emit filters_changed();
           });
   layout->addWidget(and_radio);
@@ -214,6 +239,19 @@ void CategoryFilterPanel::save_state() {
     ids.append(QString::number(id));
   ids.sort();
   Settings::instance().set_modlist_filter_categories(ids);
+  // The rest of the flyout, not just the categories (MO2 FilterList::saveState
+  // saves the special criteria and the And/Or choice alongside the tree,
+  // filterlist.cpp:245-251). Names, not enum values: an enum reorder must not
+  // silently re-point a remembered filter at a different criterion.
+  QStringList specials;
+  for (const auto &[which, box] : special_boxes_) {
+    if (box->isChecked())
+      specials.append(special_key(which));
+  }
+  specials.sort();
+  Settings::instance().set_modlist_filter_specials(specials);
+  Settings::instance().set_modlist_filter_any_mode(filter_mode() ==
+                                                   engine::filter::Mode::Or);
 }
 
 void CategoryFilterPanel::restore_state() {
@@ -230,6 +268,17 @@ void CategoryFilterPanel::restore_state() {
   // registered it yet) is simply not ticked - a stale remembered filter can
   // never narrow the mod list to nothing.
   set_checked_category_ids(ids);
+
+  rebuilding_           = true;
+  const auto remembered = Settings::instance().modlist_filter_specials();
+  for (const auto &[which, box] : special_boxes_)
+    box->setChecked(remembered.contains(special_key(which)));
+  set_filter_mode(Settings::instance().modlist_filter_any_mode()
+                      ? engine::filter::Mode::Or
+                      : engine::filter::Mode::And);
+  // Cleared only here: set_filter_mode flips a radio, which is itself a
+  // buttonToggled, and a restore must not write the state it is reading back.
+  rebuilding_ = false;
 }
 
 void CategoryFilterPanel::set_all_unchecked(QTreeWidgetItem *node) {
