@@ -85,8 +85,15 @@ void FetchRunner::run(const std::string &id, engine::Mod mod,
   ctx.on_download_meta = nullptr;
 
   if (ctx.download_paused) {
-    engine::Logger::instance().debug("[Fetch] Download paused: " + id);
-    emit paused(id);
+    // Cancel and Pause abort the same transfer, so which one the user asked
+    // for is only knowable here, after the abort has come back.
+    if (discard_partial_.load()) {
+      engine::Logger::instance().debug("[Fetch] Download cancelled: " + id);
+      emit cancelled(id);
+    } else {
+      engine::Logger::instance().debug("[Fetch] Download paused: " + id);
+      emit paused(id);
+    }
     emit fetch_finished(id);
     return;
   }
@@ -129,6 +136,7 @@ PipelineWorker::PipelineWorker(QObject *parent) : QObject(parent) {
     connect(runner.get(), &FetchRunner::download_complete, this,
             &PipelineWorker::download_complete);
     connect(runner.get(), &FetchRunner::paused, this, &PipelineWorker::paused);
+    connect(runner.get(), &FetchRunner::cancelled, this, &PipelineWorker::cancelled);
     connect(runner.get(), &FetchRunner::fetch_finished, this,
             &PipelineWorker::on_fetch_finished);
     runners_.push_back(std::move(runner));
@@ -358,6 +366,10 @@ void PipelineWorker::start_fetch_on(FetchRunner *runner, PendingDownload &&pd) {
   // after this point still wins: it finds the id in running_ and the flag is
   // polled by the transfer before/while it starts.
   runner->cancel_flag().store(false);
+  // Same reasoning for the cancel-vs-pause marker: it must not survive from
+  // the previous run on this slot, or a plain pause would be reported as a
+  // cancel and the row would lose its resumable partial.
+  runner->discard_partial().store(false);
   if (pd.mod.download_source_type == "nexus")
     nexus_in_flight_.insert(pd.id);
   running_[pd.id] = runner;
@@ -424,6 +436,24 @@ void PipelineWorker::pause_download(const std::string &id) {
     if (pit->id == id) {
       pending_.erase(pit);
       emit paused(id);
+      return;
+    }
+  }
+}
+
+void PipelineWorker::cancel_download(const std::string &id) {
+  // Same lookup shape as pause_download: the abort is identical, only the
+  // report differs.
+  auto it = running_.find(id);
+  if (it != running_.end()) {
+    it->second->discard_partial().store(true);
+    it->second->cancel_flag().store(true);
+    return;
+  }
+  for (auto pit = pending_.begin(); pit != pending_.end(); ++pit) {
+    if (pit->id == id) {
+      pending_.erase(pit);
+      emit cancelled(id);
       return;
     }
   }

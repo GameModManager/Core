@@ -252,6 +252,15 @@ void DownloadsController::setup_pipeline() {
             save_download_manifest();
           });
 
+  // A download was cancelled mid-fetch (partial file dropped, no resume).
+  connect(w_->pipeline_thread_->worker(), &PipelineWorker::cancelled, this,
+          [this](const std::string &id) {
+            auto *dt = w_->right_panel_->downloads_tab();
+            if (dt)
+              dt->mark_cancelled(id);
+            save_download_manifest();
+          });
+
   // Forward download progress to the DownloadsTab
   connect(w_->pipeline_thread_->worker(), &PipelineWorker::download_progress, this,
           [this](const std::string &mod_id, int64_t dl, int64_t total, double speed) {
@@ -441,6 +450,16 @@ void DownloadsController::wire_downloads_tab() {
         w_->pipeline_thread_->worker(),
         [this, id]() {
           w_->pipeline_thread_->worker()->pause_download(id);
+        },
+        Qt::QueuedConnection);
+  });
+  connect(dt, &DownloadsTab::cancel_requested, this, [this](const std::string &id) {
+    if (!w_->pipeline_thread_)
+      return;
+    QMetaObject::invokeMethod(
+        w_->pipeline_thread_->worker(),
+        [this, id]() {
+          w_->pipeline_thread_->worker()->cancel_download(id);
         },
         Qt::QueuedConnection);
   });

@@ -39,17 +39,28 @@ enum class DownloadState {
   Installed,
   Failed,
   // Not implemented yet: reserved so manifests and rendering stay stable.
-  Removed
+  Removed,
+  // The user aborted the transfer instead of pausing it (MO2
+  // DownloadManager::cancelDownload, downloadmanager.cpp:1002-1013). Paused
+  // keeps its ".unfinished" partial so a resume picks up where it stopped;
+  // Cancelled throws the partial away, so the row can only be deleted or
+  // downloaded again from scratch. APPEND ONLY: the state is persisted into
+  // the manifest as an int (serialize, downloads_tab.cpp), so a value
+  // inserted above would silently re-label every row written by an older
+  // build.
+  Cancelled
 };
 
 // What Enter / Delete / Space do on the selected download row, as a function
 // of the row's state (MO2 DownloadListView::keyPressEvent,
 // downloadlistview.cpp:330-360). A finished row takes Enter as install and
-// Delete as remove; a running row takes Space as pause and Delete as remove;
-// a paused or failed row takes Space as resume and Delete as remove. Anything
-// else does nothing. Free function so the state mapping is testable without
-// synthesising key events on the table.
-enum class DownloadShortcut { None, Install, Remove, Pause, Resume };
+// Delete as remove; a running row takes Space as pause and Delete as CANCEL
+// (MO2 routes Delete on a live row to issueCancel, downloadlistview.cpp:345-349,
+// because there is no finished archive to trash); a paused, failed or
+// cancelled row takes Space as resume (except cancelled, whose partial is
+// gone) and Delete as remove. Anything else does nothing. Free function so the
+// state mapping is testable without synthesising key events on the table.
+enum class DownloadShortcut { None, Install, Remove, Pause, Resume, Cancel };
 
 [[nodiscard]] DownloadShortcut download_shortcut_for(DownloadState state, int qt_key);
 
@@ -67,6 +78,25 @@ enum class DownloadShortcut { None, Install, Remove, Pause, Resume };
 // the mapping is testable without a live download.
 [[nodiscard]] QString format_remaining_time(int64_t remaining_bytes,
                                             double bytes_per_second);
+
+// Average speed over the time the current transfer has actually been running,
+// MO2 parity: DownloadManager emits `downloadSpeed` as
+// (total - preResumeSize) / elapsedSeconds (downloadmanager.cpp:2448-2451) and
+// suppresses it entirely for the first five seconds, because "if the download
+// is shorter than a few seconds, the result is way to inprecise".
+//
+// `downloaded` is the row's current byte count, `base` the count the transfer
+// started from (the resume offset, so a resumed download is not averaged over
+// bytes it did not fetch this run), `elapsed_seconds` the monotonic seconds
+// since that start.
+//
+// Returns bytes per second, or 0 while no honest figure exists: under the
+// five-second floor, with no elapsed time, or with no bytes moved yet. Callers
+// drop the speed segment rather than print a rate that is mostly noise.
+//
+// Free function so the rule is testable without a live transfer.
+[[nodiscard]] double average_download_speed(int64_t downloaded, int64_t base,
+                                            double elapsed_seconds);
 
 // How a dropped archive that collides with an existing file in the downloads
 // dir should be handled. The default resolver shows an MO2-style question
@@ -199,6 +229,12 @@ public:
   void mark_uninstalled(const std::string &archive_filename);
   void mark_paused(const std::string &id);
   void mark_downloading(const std::string &id);
+  // The user abandoned the transfer: the row reads Cancelled, its
+  // ".unfinished" partial is deleted so the bytes are not left behind as a
+  // file nothing owns, and the entry stays in the table (MO2 keeps a cancelled
+  // row - STATE_CANCELED sits below STATE_READY in the enum, so
+  // downloadmanager.cpp:327 keeps it in the list too) with no Resume action.
+  void mark_cancelled(const std::string &id);
 
   // True when `id` already names a download that must not be fetched again.
   // Two cases, both of which lose data if a repeat link is queued again:
@@ -272,6 +308,11 @@ signals:
                          const std::string &page_url = {});
   void pause_requested(const std::string &id);
   void resume_requested(const std::string &id);
+  // The user chose Cancel on a running row (MO2 issueCancel,
+  // downloadlistview.cpp:262-264). Distinct from pause_requested: the worker
+  // aborts the same transfer but must report it as a cancel so the row is not
+  // left resumable and its partial is discarded.
+  void cancel_requested(const std::string &id);
   // Emitted with the raw pasted URL when the user triggers "Add from URL"
   // (LoversLab and other no-API sites). MainWindow validates and routes it.
   void loverslab_url_entered(const std::string &url);
@@ -302,6 +343,14 @@ private:
     std::filesystem::path partial_path;
     DownloadState state = DownloadState::Downloading;
     int64_t total_size  = 0;
+    // Running average inputs (MO2 downloadSpeed, downloadmanager.cpp:2448):
+    // the byte count the current transfer started from and the monotonic
+    // moment it started. Both are reset by mark_downloading, so a resume
+    // averages only the bytes that run actually fetched instead of reporting
+    // the whole file's average as if it had just arrived. started ==
+    // zero means "no transfer has been timed yet".
+    int64_t speed_base       = 0;
+    int64_t speed_started_ms = 0;
     // Origin metadata (Nexus): parent mod page id, file id, domain.
     std::string parent_mod_id;
     int file_id = 0;
@@ -425,6 +474,11 @@ protected:
 
   QTableWidget *table_       = nullptr;
   QCheckBox *hide_installed_ = nullptr;
+  // MO2's showHiddenBox (mainwindow.ui:1426, "Hidden files"). A VIEW filter
+  // over the persisted per-row hidden flags, not a state change: the flags
+  // stay untouched, so unticking the box hides the same rows again. Not
+  // persisted either, matching MO2 where m_ShowHidden starts false every run.
+  bool show_hidden_ = false;
   std::unordered_map<std::string, DownloadEntry> downloads_;
   // Last filter text passed by RightPanel::apply_filter (trimmed, lowered),
   // re-applied by apply_installed_filter so it never unhides rows the text

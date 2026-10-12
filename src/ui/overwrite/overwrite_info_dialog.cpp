@@ -12,6 +12,7 @@
 #include <QMessageBox>
 #include <QModelIndex>
 #include <QObject>
+#include <QPushButton>
 #include <QShortcut>
 #include <QTreeView>
 #include <QUrl>
@@ -50,6 +51,31 @@ OverwriteInfoDialog::OverwriteInfoDialog(const std::filesystem::path &overwrite_
   auto *layout = new QVBoxLayout(this);
   layout->setContentsMargins(0, 0, 0, 0);
   layout->addWidget(view_);
+
+  // MO2's OverwriteInfoDialog (.ui) carries an "Open in Explorer" button above
+  // the tree (on_explorerButton_clicked -> shell::Explore(absolutePath()),
+  // overwriteinfodialog.cpp:279-282), which this port was missing. Shipped;
+  // the Qt6 styling of the tree itself is untouched.
+  //
+  // MO2's SECOND control, the hint label reading "You can use drag&drop to
+  // move files and directories to regular mods", is deliberately NOT ported.
+  // The tree below does set dragEnabled, but nothing in this build accepts a
+  // file drop on a mod row: ModList::dropMimeData takes only the in-list mod
+  // mime type (mod_list_model.cpp:792) and MainWindow::dropEvent only routes a
+  // modpack (main_window.cpp:577). A label promising a drop that is refused is
+  // exactly the control that advertises what we do not have. Tracked as
+  // Workspace-klhg.
+  auto *explorer = new QPushButton(tr("Open in File Manager"), this);
+  explorer->setToolTip(
+      tr("Open the folder this dialog is showing in the system file manager."));
+  const auto open_dir = [this]() {
+    if (overwrite_dir_.empty())
+      return;
+    QDesktopServices::openUrl(
+        QUrl::fromLocalFile(QString::fromStdString(overwrite_dir_.string())));
+  };
+  connect(explorer, &QPushButton::clicked, this, open_dir);
+  layout->addWidget(explorer, 0, Qt::AlignLeft);
 
   new QShortcut(QKeySequence::Delete, this, [this]() {
     delete_selected();
