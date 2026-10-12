@@ -85,6 +85,18 @@ list_profiles(const std::filesystem::path &profiles_dir);
 [[nodiscard]] bool is_valid_profile_name(const std::string &name,
                                          std::string *error = nullptr);
 
+// Outcome of rename_mod_in_all_profiles. `rewritten` counts the profile
+// files that took the new name; `failed` names the profiles that list the mod
+// but could NOT be updated (the modlist could not be read, or the write was
+// refused). A name in `failed` means that profile still refers to the mod by
+// its old folder name, so the mod resolves there as missing and loses its load
+// order and enabled state - which is the damage this function exists to
+// prevent. It is never safe to leave a failure unreported.
+struct ProfileModRenameResult {
+  std::size_t rewritten = 0;
+  std::vector<std::string> failed;
+};
+
 // Rewrite `old_name` to `new_name` in every profile's modlist.txt under
 // profiles_dir (MO2's Profile::renameModInAllProfiles, profile.cpp:317).
 //
@@ -95,11 +107,15 @@ list_profiles(const std::filesystem::path &profiles_dir);
 // its load order and its enabled state. Every profile is updated here, so the
 // rename stays true everywhere.
 //
-// Returns the number of profile files that were actually rewritten. A profile
-// whose modlist.txt is missing or does not mention the mod is skipped, not an
-// error: the mod simply is not in that profile's list.
-std::size_t rename_mod_in_all_profiles(const std::filesystem::path &profiles_dir,
-                                       const std::string &old_name,
-                                       const std::string &new_name);
+// There is NO rollback and NO all-or-nothing guarantee, and deliberately so:
+// the caller has already renamed the folder by the time this runs, so
+// unwinding the modlists alone would orphan the mod in every profile instead
+// of some - strictly worse. A profile whose modlist.txt is missing or does not
+// mention the mod is skipped, not a failure: that profile does not use the
+// mod. A profile that lists the mod but cannot be read or written IS a failure
+// and comes back in `failed` for the caller to tell the user about.
+ProfileModRenameResult
+rename_mod_in_all_profiles(const std::filesystem::path &profiles_dir,
+                           const std::string &old_name, const std::string &new_name);
 
 }  // namespace engine::profile

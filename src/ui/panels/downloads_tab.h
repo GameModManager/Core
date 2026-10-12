@@ -219,6 +219,20 @@ public:
   // (e.g. Nexus downloads, whose path is only known after the fetch).
   void set_file_path(const std::string &id, const std::filesystem::path &path);
 
+  // Record where an in-progress download is writing, from the archive name the
+  // provider resolves before the bytes flow. The partial is
+  // "<archive_name>.unfinished" in the downloads dir, so this is what makes a
+  // Delete on a paused row take its partial with it.
+  void note_partial_archive(const std::string &id, const std::string &archive_name);
+
+  // Trash the entry's archive AND its ".unfinished" partial, then drop the
+  // row. The workhorse behind every removal path (context menu, Delete key,
+  // batch Delete); the MO2 "Move to the Recycle Bin" question lives in
+  // confirm_and_remove(), so a caller that has already asked can come here
+  // directly. Trashing nothing is not an option - that is what stranded the
+  // bytes of every paused download.
+  void remove_entry(const std::string &id);
+
   // Directory the instance downloads archives land in (for "Show in Folder"
   // when an entry has no file yet).
   void set_downloads_dir(const std::filesystem::path &dir);
@@ -279,6 +293,13 @@ private:
   struct DownloadEntry {
     int row = -1;
     std::filesystem::path file_path;
+    // Where an in-progress download is writing: "<archive>.unfinished" in the
+    // downloads dir (fetch_stage.cpp:118-125). Nexus/modl/URL rows are created
+    // with an EMPTY file_path and never get one until the bytes are all in, so
+    // without this the row owns a partial nothing can find or remove - Delete
+    // trashed nothing and left the bytes on disk forever. Recorded when the
+    // provider resolves the archive name, cleared when the archive lands.
+    std::filesystem::path partial_path;
     DownloadState state = DownloadState::Downloading;
     int64_t total_size  = 0;
     // Origin metadata (Nexus): parent mod page id, file id, domain.
@@ -323,7 +344,6 @@ private:
   void replace_bar_with_label(const std::string &id, const QString &text,
                               const QColor &bg, const QColor &fg);
   void on_cell_double_clicked(int row, int column);
-  void remove_entry(const std::string &id);
   // Trash the entry's archive after the MO2 "Move to the Recycle Bin"
   // question. Shared by the context-menu Remove action and the Delete key
   // (MO2 issueDelete, downloadlistview.cpp:377-389).
