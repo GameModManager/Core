@@ -8,7 +8,7 @@
 
 class QLabel;
 class QPushButton;
-class QTextEdit;
+class QTextBrowser;
 
 namespace ui {
 
@@ -65,8 +65,13 @@ public:
 
 private:
   QLabel *stage_label_ = nullptr;
-  QTextEdit *report_   = nullptr;
-  QPushButton *close_  = nullptr;
+  // A QTextBrowser, which is a QTextEdit plus external-link handling: Qt
+  // autolinks bare URLs in LOOT messages into real anchors, and only the
+  // browser subclass knows what to do with a click on one. As a plain
+  // QTextEdit they rendered as links and swallowed the click - the same
+  // "looks live, does nothing" defect the heading wore.
+  QTextBrowser *report_ = nullptr;
+  QPushButton *close_   = nullptr;
 };
 
 // The report body exactly as the pane renders it: MO2's

@@ -84,22 +84,72 @@ void Category::Factory::save(const std::filesystem::path &path) const {
   }
 }
 
-void Category::Factory::merge(const int *ids, const char *const *names,
-                              const int *parent_ids, size_t count) {
+void Category::Factory::merge(const std::string &game_id, const int *ids,
+                              const char *const *names, const int *parent_ids,
+                              size_t count) {
+  if (!ids || !names || count == 0)
+    return;
+
+  auto &declared = plugin_categories_by_game_[game_id];
   for (size_t i = 0; i < count; ++i) {
-    if (!ids || !names)
-      continue;
-    int id = ids[i];
     Entry cat;
-    cat.id        = id;
+    cat.id        = ids[i];
     cat.name      = names[i] ? names[i] : "";
     cat.parent_id = (parent_ids && parent_ids[i]) ? parent_ids[i] : 0;
-    plugin_categories_.insert({id, cat});
-    if (categories_.count(id))
-      continue;  // skip duplicate in the active set
-    categories_.emplace(id, std::move(cat));
+    // insert, not assign: a repeated id keeps the name it was first declared
+    // with, which is the contract merge() has always had.
+    declared.insert({cat.id, cat});
   }
-  rebuildTree();
+}
+
+void Category::Factory::activate_game(const std::string &game_id,
+                                      const std::string &core_set_name) {
+  categories_.clear();
+  plugin_categories_.clear();
+
+  // find(), never begin(): the map holds every game's registrations, and
+  // begin() would hand back whichever game happens to sort first - which is
+  // exactly the cross-game leak activate_game() exists to stop.
+  const auto it = plugin_categories_by_game_.find(game_id);
+  if (it != plugin_categories_by_game_.end())
+    plugin_categories_ = it->second;
+
+  // Plugin-declared categories first, so a core set cannot overwrite a game
+  // plugin's own naming for an id the two happen to share.
+  for (const auto &[id, cat] : plugin_categories_) {
+    if (!categories_.count(id))
+      categories_.emplace(id, cat);
+  }
+
+  applyCoreSet(core_set_name.empty() ? "Default" : core_set_name);
+}
+
+int Category::Factory::import_external(const std::vector<Entry> &cats,
+                                       Factory::ImportMode mode) {
+  // Replace clears the active set only. The per-game plugin registrations are
+  // input to activate_game(), not part of the active set, so an import cannot
+  // touch them and a later activate_game() still finds the game's own
+  // categories intact.
+  if (mode == Factory::ImportMode::Replace)
+    categories_.clear();
+
+  int added = 0;
+  for (const auto &cat : cats) {
+    if (cat.id == 0 || categories_.count(cat.id))
+      continue;
+    Entry entry;
+    entry.id   = cat.id;
+    entry.name = cat.name;
+    // A parent that is not itself in the set would render as a dangling row in
+    // every tree that walks the map, so it degrades to a root rather than
+    // importing a link to nothing.
+    entry.parent_id = categories_.count(cat.parent_id) ? cat.parent_id : 0;
+    categories_.emplace(cat.id, std::move(entry));
+    ++added;
+  }
+  if (added)
+    rebuildTree();
+  return added;
 }
 
 bool Category::Factory::applyCoreSet(const std::string &set_name) {

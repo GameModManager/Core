@@ -40,7 +40,11 @@ TEST_CASE("category_factory", "[engine]") {
   int ids[]           = {1, 2, 1, 3};
   const char *names[] = {"Animations", "Armour", "Duplicate", "Poses"};
   int parents[]       = {0, 0, 0, 1};
-  f.merge(ids, names, parents, 4);
+  f.merge("mergedgame", ids, names, parents, 4);
+  // merge() only records what a game declared; activate_game() is what puts
+  // it on screen, so a merge alone leaves the active set untouched.
+  require(f.categories().empty(), "merge alone does not touch the active set");
+  f.activate_game("mergedgame");
   require(f.categoryExists(1), "id 1 merged");
   require(f.categoryExists(2), "id 2 merged");
   require(f.categoryExists(3), "id 3 merged");
@@ -236,7 +240,8 @@ TEST_CASE("category_factory_no_cross_game_leak", "[engine]") {
   int isaac_ids[]           = {1000, 1001, 1002, 1003, 1006};
   const char *isaac_names[] = {"Items", "Active Items", "Trinkets", "Pills", "Lua"};
   int isaac_parents[]       = {0, 1000, 0, 0, 0};
-  f.merge(isaac_ids, isaac_names, isaac_parents, 5);
+  f.merge("isaacselfheal", isaac_ids, isaac_names, isaac_parents, 5);
+  f.activate_game("isaacselfheal");
   require(f.categories().size() == 5, "5 Isaac categories merged");
   require(f.pluginCategories().count(1000), "Isaac Items recorded in plugin set");
   require(f.pluginCategories().count(1001),
@@ -253,7 +258,8 @@ TEST_CASE("category_factory_no_cross_game_leak", "[engine]") {
   // Re-merge first so there is prior-game state to leak, then verify the
   // stale dat does NOT pull it back in.
   f.clear();
-  f.merge(isaac_ids, isaac_names, isaac_parents, 5);
+  f.merge("isaacselfheal", isaac_ids, isaac_names, isaac_parents, 5);
+  f.activate_game("isaacselfheal");
   write_file(root / "stale.dat", "1|Animations|0\n2|Armour|0\n");
   f.load(root / "stale.dat");
   require(f.categoryExists(1), "stale dat: Animations present");
