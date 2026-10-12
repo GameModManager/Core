@@ -142,6 +142,11 @@ void DownloadsController::setup_pipeline() {
             auto *dt = w_->right_panel_->downloads_tab();
             if (!dt)
               return;
+            // The bytes go to "<archive_name>.unfinished" until they are all in
+            // and the row carries no file_path until then - record where they
+            // are, so removing the row while it is still running takes the
+            // partial with it instead of stranding it.
+            dt->note_partial_archive(id, archive_name);
             std::string name = display_name;
             if (name.empty() && !archive_name.empty())
               name = std::filesystem::path(archive_name).stem().string();

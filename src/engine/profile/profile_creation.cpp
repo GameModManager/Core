@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <fstream>
+#include <optional>
 #include <sstream>
 #include <system_error>
 
@@ -291,15 +292,17 @@ std::vector<std::string> list_profiles(const std::filesystem::path &profiles_dir
 
 namespace {
 
-  // Read a whole file, or return empty when it cannot be opened. Failure to
-  // read a modlist.txt is not fatal here: it means that profile cannot be
-  // updated, which is reported by not counting it.
-  std::string read_whole_file(const std::filesystem::path &path) {
+  // Read a whole file. std::nullopt means the file could NOT be read, which is
+  // different from a file that is empty: an unreadable modlist is a profile we
+  // failed to update, an empty one simply cannot mention the mod.
+  std::optional<std::string> read_whole_file(const std::filesystem::path &path) {
     std::ifstream in(path, std::ios::binary);
     if (!in)
-      return {};
+      return std::nullopt;
     std::ostringstream buf;
     buf << in.rdbuf();
+    if (in.bad())
+      return std::nullopt;
     return buf.str();
   }
 
@@ -320,14 +323,14 @@ namespace {
 
 }  // namespace
 
-std::size_t rename_mod_in_all_profiles(const std::filesystem::path &profiles_dir,
-                                       const std::string &old_name,
-                                       const std::string &new_name) {
+ProfileModRenameResult
+rename_mod_in_all_profiles(const std::filesystem::path &profiles_dir,
+                           const std::string &old_name, const std::string &new_name) {
+  ProfileModRenameResult result;
   if (old_name.empty() || new_name.empty() || old_name == new_name) {
-    return 0;
+    return result;
   }
 
-  std::size_t rewritten = 0;
   std::error_code ec;
   for (const auto &profile_dir : list_profiles(profiles_dir)) {
     const auto modlist = profiles_dir / profile_dir / "modlist.txt";
@@ -338,10 +341,19 @@ std::size_t rename_mod_in_all_profiles(const std::filesystem::path &profiles_dir
       continue;
     }
 
-    const std::string content = read_whole_file(modlist);
-    if (content.empty()) {
+    const auto read = read_whole_file(modlist);
+    if (!read) {
+      // Unreadable, not empty: we cannot tell whether this profile uses the
+      // mod, so we cannot claim it was left alone either. It goes in `failed`.
+      Logger::instance().error("cannot read " + modlist.string() +
+                               "; mod rename not applied there");
+      result.failed.push_back(profile_dir);
       continue;
     }
+    if (read->empty()) {
+      continue;
+    }
+    const std::string &content = *read;
 
     // Rewrite only the mod name, preserving each line's '+'/'-'/'*' spec and
     // its order. Order is the load order, so it must survive byte for byte;
@@ -382,13 +394,14 @@ std::size_t rename_mod_in_all_profiles(const std::filesystem::path &profiles_dir
 
     if (!safe_write_file(modlist, out)) {
       Logger::instance().error("failed to rewrite mod rename in " + modlist.string());
+      result.failed.push_back(profile_dir);
       continue;
     }
-    ++rewritten;
+    ++result.rewritten;
     Logger::instance().debug("mod rename applied in profile " + profile_dir + ": " +
                              old_name + " -> " + new_name);
   }
-  return rewritten;
+  return result;
 }
 
 }  // namespace engine::profile

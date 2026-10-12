@@ -1977,3 +1977,94 @@ TEST_CASE("a Nexus download with unresolved ids is marked incomplete", "[ui]") {
   check(!ok_tip.contains(QStringLiteral("Information missing")),
         "a complete row's tooltip carries no warning line");
 }
+
+// Delete has to take the row's own ".unfinished" partial with it.
+//
+// Nexus/modl/URL rows are created with an EMPTY file_path (the archive name is
+// not known until the provider resolves it) and the bytes land under
+// "<archive>.unfinished" (fetch_stage.cpp) until they are all in. So Delete
+// used to trash NOTHING, drop the row, and leave the bytes on disk for good -
+// and the untracked scan hides ".unfinished", so nothing ever surfaced them
+// again. Worse, a row that was paused at shutdown comes back Failed on the
+// next start with resume refused ("link not known after a restart"), so the
+// partial had to survive the restart in the manifest to stay removable.
+//
+// The middle case is the control: one partial that belongs to NO row must be
+// left alone, so this cannot pass by wiping every ".unfinished" in the dir.
+TEST_CASE("removing a download row takes its .unfinished partial", "[ui]") {
+  qputenv("QT_QPA_PLATFORM", "offscreen");
+  const std::filesystem::path base = "/tmp/gmm_downloads_tab/partials";
+  std::filesystem::remove_all(base);
+  std::filesystem::create_directories(base / "config");
+  const std::filesystem::path cfg = base / "config";
+  qputenv("XDG_CONFIG_HOME", cfg.c_str());
+  int test_argc     = 1;
+  char test_argv0[] = "test";
+  char *test_argv[] = {test_argv0, nullptr};
+  QApplication app(test_argc, test_argv);
+  QCoreApplication::setOrganizationName("GameModManager");
+  QCoreApplication::setApplicationName("GameModManager");
+
+  const std::filesystem::path dl_dir = base / "dl";
+  std::filesystem::create_directories(dl_dir);
+
+  // A partial that belongs to nobody - created by a crash that lost its row.
+  const auto orphan = dl_dir / "Orphan.7z.unfinished";
+  write_file(orphan, 700);
+
+  // --- a paused Nexus row: no file_path, a partial on disk -----------------
+  {
+    TestDownloadsTab tab;
+    tab.set_downloads_dir(dl_dir);
+    tab.add_download("nxm-1", "Mod #1 - file 2", "Nexus Mods", {}, "skyrim", 2, "1");
+    const auto partial = dl_dir / "SkyUI.7z.unfinished";
+    write_file(partial, 300);
+    // What FetchStage's on_download_meta makes the controller record.
+    tab.note_partial_archive("nxm-1", "SkyUI.7z");
+
+    tab.remove_entry("nxm-1");
+    check(!std::filesystem::exists(partial),
+          "Delete on a paused row trashes the partial, not nothing");
+    check(row_with_name(tab.table(), "Mod #1 - file 2") < 0, "the row is gone");
+    check(std::filesystem::exists(orphan),
+          "a partial belonging to no row is left where it is");
+  }
+
+  // --- a completed row: the archive goes, and completion left no orphan ----
+  {
+    TestDownloadsTab tab;
+    tab.set_downloads_dir(dl_dir);
+    const auto archive = dl_dir / "Complete.7z";
+    write_file(archive, 512);
+    tab.add_download("nxm-2", "Mod #2", "Nexus Mods", archive, "skyrim", 3, "2");
+    tab.note_partial_archive("nxm-2", "Complete.7z");
+    // The bytes arrived and FetchStage renamed the partial onto the archive,
+    // so the row must no longer hold on to a partial name.
+    tab.set_file_path("nxm-2", archive);
+
+    tab.remove_entry("nxm-2");
+    check(!std::filesystem::exists(archive),
+          "Delete on a finished row trashes the archive");
+  }
+
+  // --- the same row after a restart ----------------------------------------
+  {
+    const auto partial = dl_dir / "Restarted.7z.unfinished";
+    write_file(partial, 42);
+    TestDownloadsTab before;
+    before.set_downloads_dir(dl_dir);
+    before.add_download("nxm-3", "Mod #3", "Nexus Mods", {}, "skyrim", 4, "3");
+    before.note_partial_archive("nxm-3", "Restarted.7z");
+
+    TestDownloadsTab after;
+    after.set_downloads_dir(dl_dir);
+    after.deserialize(before.serialize(), dl_dir);
+
+    after.remove_entry("nxm-3");
+    check(!std::filesystem::exists(partial),
+          "a restart does not strand the partial - the row still knows its name");
+  }
+
+  check(std::filesystem::exists(orphan),
+        "three removals later the unrelated orphan is still there");
+}
