@@ -28,7 +28,8 @@
 // action). NOT mod files, NOT archives.txt, NOT settings.ini. MO2's per-mod
 // directory backup (ModListViewActions::createBackup, modlistviewactions.cpp:
 // 1041-1051) is a DIFFERENT feature - not timestamped, different trigger,
-// different location - and is not modelled here.
+// different location - and is modelled separately at the bottom of this file,
+// never through the stamped-file functions above.
 //
 // NOT this, either: the deploy Original_Files store (deploy_utils.h:153-159).
 // Same word, different directory, different lifecycle. If you are merging that
@@ -226,5 +227,60 @@ restore_backup(const std::vector<std::filesystem::path> &files,
 // `<live file name>.<stamp>` - the destination name of one backup copy.
 [[nodiscard]] std::filesystem::path backup_path_for(const std::filesystem::path &live,
                                                     const std::string &stamp);
+
+// ---------------------------------------------------------------------------
+// Per-mod directory backup - a DIFFERENT feature from everything above.
+//
+// MO2 has two unrelated "backup" features and this is the other one:
+// ModListViewActions::createBackup / restoreBackup
+// (modlistviewactions.cpp:1041-1051 / :1313-1343), reached from the mod list
+// context menu. It is not timestamped, it has no stamp to pick from a list, it
+// does not live in the profile, and it does not copy a file: it copies or
+// renames the mod's own DIRECTORY next to itself.
+//
+// The two live side by side in MO2 and must stay apart here - the boundary
+// note at the top of this file says the same thing from the other direction.
+// ---------------------------------------------------------------------------
+
+// Outcome of one mod-directory backup or restore. `ok` is the only thing the
+// UI branches on; `error` is a human-readable reason for the message box.
+struct ModBackupResult {
+  bool ok = false;
+  // The directory the copy landed in, or the directory the mod ended up in.
+  std::filesystem::path path;
+  std::string error;
+};
+
+// `<name>_backup`, or `<name>_backupN` for the first free N >= 2.
+// MO2 InstallationManager::generateBackupName (installationmanager.cpp:361-374):
+// the bare suffix first, then 2, 3, ... while the directory exists.
+[[nodiscard]] std::filesystem::path
+generate_backup_name(const std::filesystem::path &mod_dir);
+
+// Copy `mod_dir` to the name generate_backup_name picks, next to it. The copy
+// is a plain recursive copy - MO2's copyDir(path, backupDirectory, false), the
+// false being "do not overwrite", which is redundant here because the
+// destination was just proved absent.
+[[nodiscard]] ModBackupResult create_mod_backup(const std::filesystem::path &mod_dir);
+
+// The mod name a backup directory restores INTO: "SkyUI_backup2" -> "SkyUI",
+// "SkyUI_backup" -> "SkyUI". Empty when `name` is not a backup directory at
+// all, or when the capture would be empty ("_backup" alone is not a mod).
+// MO2's regex `(.*)_backup[0-9]*$` (modlistviewactions.cpp:1315), which is why
+// a mod genuinely called "Foo_backup" is indistinguishable from a backup of
+// "Foo" - the same ambiguity MO2 has, deliberately matched.
+[[nodiscard]] std::string restored_mod_name(const std::string &backup_name);
+
+// Rename the backup directory `backup_dir` back over the mod name it restores
+// into, inside `mods_dir`.
+//
+// When a mod of that name already exists it is REMOVED first (MO2 asks, the UI
+// asks here - this function does not), because a rename cannot overwrite a
+// non-empty directory. MO2 does exactly this order (shellDelete, then rename,
+// modlistviewactions.cpp:1330-1338) and each step reports its own failure.
+[[nodiscard]] ModBackupResult
+restore_mod_backup(const std::filesystem::path &mods_dir,
+                   const std::filesystem::path &backup_dir,
+                   const std::string &restored_name);
 
 }  // namespace engine::backup

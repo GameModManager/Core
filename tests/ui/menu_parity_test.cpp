@@ -50,6 +50,8 @@
 
 namespace {
 
+using ui::build_tool_menu_entries;
+
 // What the user actually sees at one level: entries in order, separators and
 // hidden entries dropped. A submenu shows up as its own title, so the grouping
 // is not flattened away - the More children are asserted against More.
@@ -147,6 +149,59 @@ QKeySequence ctrl(int key) {
 // were missing. Both are asserted against the real AppMenuBar, and the
 // button-style entries are driven to prove the value they carry reaches the
 // signal the window applies.
+// Tools menu shape - MO2 MainWindow::updateToolMenu
+// (mainwindow.cpp:1531-1565): tools sorted by display name, grouped by the
+// text before the first "/", and a group that ends up with a single member
+// registered flat under its own full name rather than in a one-item submenu.
+// The layout is built by build_tool_menu_entries, which is what the menu walks,
+// so pinning that function pins the menu.
+TEST_CASE("Tools menu sorts and groups tool plugins the way MO2 does",
+          "[ui][menu][parity][tools]") {
+  auto tool = [](const char *id, const char *name) {
+    engine::ExternalTool t;
+    t.tool_id      = id;
+    t.display_name = name;
+    t.game_id      = "SkyrimSpecialEdition";
+    return t;
+  };
+
+  SECTION("a group of two becomes a submenu, a lone group member stays flat") {
+    const auto entries = build_tool_menu_entries({
+        tool("bodyslide", "BodySlide"),
+        tool("loot", "Bethesda/LOOT"),
+        tool("sseedit", "Bethesda/SSEEdit"),
+    });
+    REQUIRE(entries.size() == 3);
+    // Sorted by display name: "Bethesda/..." before "BodySlide" ("bethesda/" <
+    // "bodyslide"), and the two Bethesda tools in their own order.
+    CHECK(entries[0].group_label == "Bethesda");
+    CHECK(entries[0].label == "LOOT");
+    CHECK(entries[0].tool_id == "loot");
+    CHECK(entries[1].group_label == "Bethesda");
+    CHECK(entries[1].label == "SSEEdit");
+    CHECK(entries[2].group_label.isEmpty());
+    CHECK(entries[2].label == "BodySlide");
+  }
+
+  SECTION("one member is not a submenu - it keeps its full display name") {
+    const auto entries = build_tool_menu_entries(
+        {tool("xedit", "Bethesda/xEdit"), tool("loot", "LOOT")});
+    REQUIRE(entries.size() == 2);
+    CHECK(entries[0].group_label.isEmpty());
+    CHECK(entries[0].label == "Bethesda/xEdit");
+    CHECK(entries[1].label == "LOOT");
+  }
+
+  SECTION("sorting is case-insensitive and a nameless tool sorts as its id") {
+    const auto entries = build_tool_menu_entries(
+        {tool("zzz", "aaa tool"), tool("aaa", "ZZZ tool"), tool("mmm", "")});
+    REQUIRE(entries.size() == 3);
+    CHECK(entries[0].label == "aaa tool");
+    CHECK(entries[1].label == "mmm");
+    CHECK(entries[2].label == "ZZZ tool");
+  }
+}
+
 TEST_CASE("View menu carries MO2's remaining toolbars entries", "[ui][menu][parity]") {
   qputenv("QT_QPA_PLATFORM", "offscreen");
   const std::filesystem::path root = "/tmp/opencode/gmm_view_toolbars/config";

@@ -723,3 +723,50 @@ TEST_CASE("backup_files covers the four metadata files and nothing else",
 
   fs::remove_all(dir);
 }
+
+// Per-mod directory backup (MO2 ModListViewActions::createBackup /
+// restoreBackup). A different feature from the stamped file copies above and
+// the one thing worth pinning is the NAME RULE: a second backup of the same mod
+// must not land on the first one, and the restore must only accept a name that
+// is a backup of something, or a stray directory could be renamed over a mod.
+TEST_CASE("a mod backup takes the next free name and restores into its original",
+          "[engine][backup]") {
+  const fs::path mods_dir = make_temp_dir("mod_backup");
+  const fs::path mod      = mods_dir / "SkyUI";
+  fs::create_directories(mod / "textures");
+  write_text(mod / "textures" / "a.dds", "pixels");
+
+  // First backup: the bare suffix (MO2 generateBackupName,
+  // installationmanager.cpp:361-374).
+  const auto first = engine::backup::create_mod_backup(mod);
+  REQUIRE(first.ok);
+  CHECK(first.path == mods_dir / "SkyUI_backup");
+  CHECK(read_text(mods_dir / "SkyUI_backup" / "textures" / "a.dds") == "pixels");
+  // The source is untouched by the copy.
+  CHECK(fs::is_directory(mod));
+
+  // Second backup of the same mod: _backup2, and _backup is left alone.
+  const auto second = engine::backup::create_mod_backup(mod);
+  REQUIRE(second.ok);
+  CHECK(second.path == mods_dir / "SkyUI_backup2");
+  CHECK(fs::is_directory(mods_dir / "SkyUI_backup"));
+
+  // The name rule restore gates on.
+  CHECK(engine::backup::restored_mod_name("SkyUI_backup") == "SkyUI");
+  CHECK(engine::backup::restored_mod_name("SkyUI_backup2") == "SkyUI");
+  CHECK(engine::backup::restored_mod_name("SkyUI_backup17") == "SkyUI");
+  CHECK(engine::backup::restored_mod_name("SkyUI").empty());
+  CHECK(engine::backup::restored_mod_name("SkyUI_backup2x").empty());
+  CHECK(engine::backup::restored_mod_name("_backup").empty());
+
+  // Restore puts the backup back where the mod was, replacing what was there.
+  write_text(mod / "textures" / "a.dds", "edited");
+  const auto restored =
+      engine::backup::restore_mod_backup(mods_dir, mods_dir / "SkyUI_backup2", "SkyUI");
+  REQUIRE(restored.ok);
+  CHECK(restored.path == mod);
+  CHECK(read_text(mod / "textures" / "a.dds") == "pixels");
+  CHECK_FALSE(fs::exists(mods_dir / "SkyUI_backup2"));
+
+  fs::remove_all(mods_dir);
+}

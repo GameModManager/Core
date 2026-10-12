@@ -12,7 +12,7 @@ endif()
 # the plugins (GMM_VERSION, visible in the add_subdirectory'd external/plugins
 # scope below).
 project(GameModManager
-    VERSION 0.5.87
+    VERSION 0.5.88
     DESCRIPTION "Cross-platform game mod manager"
     LANGUAGES CXX C
 )
@@ -347,6 +347,11 @@ if(GMM_WITH_LOOT)
         tools/gmm_lootcli/src/main.cpp
     )
     target_include_directories(gmm_lootcli PRIVATE tools/gmm_lootcli/src)
+    # The CLI ships with the manager, so its version IS the app version. It is
+    # reported in the run statistics next to the libloot version (MO2 lootcli
+    # reports LOOTCLI_VERSION_STRING the same way).
+    target_compile_definitions(gmm_lootcli
+        PRIVATE GMM_LOOTCLI_VERSION="${PROJECT_VERSION}")
     target_link_libraries(gmm_lootcli PRIVATE libloot)
 endif()
 

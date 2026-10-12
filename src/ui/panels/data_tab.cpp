@@ -13,6 +13,7 @@
 
 #include <QAction>
 #include <QApplication>
+#include <QCheckBox>
 #include <QColor>
 #include <QDesktopServices>
 #include <QFile>
@@ -111,6 +112,8 @@ namespace {
     DataProviderIdsRole,              // QStringList - provider mod ids
     DataNavRole,                      // int - nav target (kNavTargetData/Root);
                                       //      unset on ordinary rows
+    DataArchiveRole,                  // bool - row came out of an archive
+                                      //       listing, not the data tree
   };
 
   // Nav-row targets carried by DataNavRole (see DataTab::View).
@@ -323,6 +326,39 @@ DataTab::DataTab(QWidget *parent) : QWidget(parent) {
   tree_->setContextMenuPolicy(Qt::CustomContextMenu);
   connect(tree_, &QTreeWidget::customContextMenuRequested, this,
           &DataTab::on_custom_context_menu);
+  connect(tree_, &QTreeWidget::itemExpanded, this, [this](QTreeWidgetItem *item) {
+    expand_archive(item);
+  });
+
+  // MO2's filter bar (mainwindow.ui:1155-1195). Below the tree, in one row,
+  // with MO2's own labels and tooltips. "Archives" also carries the Workarounds
+  // "Enable archive parsing" setting (MO2 filetreemodel.cpp:270 ANDs the two),
+  // so a build that turned archive parsing off cannot list archive contents
+  // even with this box ticked.
+  show_archives_ = Settings::instance().experimental_archive_parsing();
+  auto *bar      = new QHBoxLayout();
+  bar->setContentsMargins(4, 2, 4, 2);
+  bar->setSpacing(8);
+  auto add_filter = [this, bar](const QString &label, const QString &tip, bool checked,
+                                void (DataTab::*setter)(bool)) {
+    auto *box = new QCheckBox(label, this);
+    box->setToolTip(tip);
+    box->setStatusTip(tip);
+    box->setWhatsThis(tip);
+    box->setChecked(checked);
+    connect(box, &QCheckBox::toggled, this, setter);
+    bar->addWidget(box);
+  };
+  add_filter(tr("Conflicts only"),
+             tr("Filter the list so that only conflicts are displayed."),
+             conflicts_only_, &DataTab::set_conflicts_only);
+  add_filter(tr("Archives"),
+             tr("Filter the list so that files from archives are shown."),
+             show_archives_, &DataTab::set_archives);
+  add_filter(tr("Hidden files"), tr("Filter the list so that hidden files are shown."),
+             show_hidden_files_, &DataTab::set_hidden_files);
+  bar->addStretch(1);
+  layout->addLayout(bar);
 
   // Enter-key activation (Workspace-636): the Enter/Return keys run the
   // same open/preview resolution as a plain double-click on the current
@@ -363,6 +399,166 @@ void DataTab::clear_content() {
   dirty_ = true;  // next show/refresh repopulates
 }
 
+// --- filter bar + archive contents (MO2 filetreemodel / mainwindow.ui) ---
+
+void DataTab::set_conflicts_only(bool on) {
+  if (conflicts_only_ == on)
+    return;
+  conflicts_only_ = on;
+  apply_filters();
+}
+
+void DataTab::set_archives(bool on) {
+  if (show_archives_ == on)
+    return;
+  show_archives_ = on;
+  // Archive children are built lazily on expand, so turning the box off has to
+  // drop what it built: a subtree that outlives the control that produced it
+  // keeps showing files the user just filtered away.
+  if (!on && tree_) {
+    const auto root = tree_->invisibleRootItem();
+    for (int i = 0; i < root->childCount(); ++i)
+      clear_archive_children(root->child(i));
+  }
+  apply_filters();
+}
+
+void DataTab::set_hidden_files(bool on) {
+  if (show_hidden_files_ == on)
+    return;
+  show_hidden_files_ = on;
+  apply_filters();
+}
+
+bool DataTab::is_listable_archive(const QString &path) {
+  // What the engine can actually open, plus the game archive extensions MO2
+  // lists. A .bsa is here because the user will click it and MO2 lists it; the
+  // read fails on this platform's libarchive build and the row says so rather
+  // than expanding to nothing. Everything else stays a leaf, so no arrow is
+  // offered for a file the tree cannot open.
+  static const QStringList kExtensions = {"zip", "7z", "tar", "rar", "gz",
+                                          "bz2", "xz", "bsa", "ba2"};
+  return kExtensions.contains(QFileInfo(path).suffix().toLower());
+}
+
+void DataTab::fill_archive_children(QTreeWidgetItem *item, const QString &real_path) {
+  std::string error;
+  auto archive = engine::FileTree::make_tree_from_archive(
+      std::filesystem::path(real_path.toStdString()), &error);
+  if (!archive) {
+    // MO2 shows an archive node with nothing under it and logs the failure;
+    // here the reason goes on the row, because a subtree that stays empty with
+    // no explanation reads as "this archive is empty".
+    auto *note = new QTreeWidgetItem(item);
+    note->setText(0, tr("(could not be read)"));
+    note->setToolTip(0, QString::fromStdString(error));
+    note->setForeground(
+        0, QApplication::palette().color(QPalette::Disabled, QPalette::Text));
+    return;
+  }
+  fill_archive_level(item, archive);
+}
+
+void DataTab::fill_archive_level(QTreeWidgetItem *parent,
+                                 const std::shared_ptr<const engine::FileTree> &tree) {
+  for (const auto &entry : *tree) {
+    const QString name = QString::fromStdString(entry->name());
+    if (name.isEmpty())
+      continue;
+    auto *child = new QTreeWidgetItem(parent);
+    child->setText(0, name);
+    child->setIcon(0, entry->is_dir() ? ui::folder_icon() : ui::icon_for_file(name));
+    // Marked so the filters and the archive-clearing walk can tell an archive
+    // listing from a real data row: it has no provider count, no origin mod
+    // and no on-disk path of its own.
+    child->setData(0, DataArchiveRole, true);
+    if (entry->is_dir()) {
+      if (auto sub = entry->as_tree())
+        fill_archive_level(child, sub);
+    }
+  }
+}
+
+void DataTab::expand_archive(QTreeWidgetItem *item) {
+  if (!item || item->childCount() > 0)
+    return;
+  if (item->data(0, DataNavRole).isValid())
+    return;
+  const QString real_path = item->data(0, DataRealPathRole).toString();
+  if (real_path.isEmpty() || !is_listable_archive(real_path))
+    return;
+  // Both gates, exactly MO2: the Workarounds setting AND the filter bar
+  // (filetreemodel.cpp:270).
+  if (!show_archives_ || !Settings::instance().experimental_archive_parsing())
+    return;
+  fill_archive_children(item, real_path);
+}
+
+void DataTab::apply_filters() {
+  if (!tree_)
+    return;
+  tree_->setUpdatesEnabled(false);
+  apply_filters_to(tree_->invisibleRootItem());
+  tree_->setUpdatesEnabled(true);
+}
+
+void DataTab::apply_filters_to(QTreeWidgetItem *parent) {
+  bool any_child_visible = false;
+  for (int i = 0; i < parent->childCount(); ++i) {
+    auto *child = parent->child(i);
+    // Folder: visible when anything under it survives. Decided by the
+    // children, so recurse first and read the outcome back.
+    if (child->childCount() > 0) {
+      apply_filters_to(child);
+      if (child->data(0, DataArchiveRole).isValid()) {
+        // An expanded archive's listing is not mod data and carries no
+        // provider count; the filter never touches it.
+        child->setHidden(false);
+      } else {
+        child->setHidden(!child->isExpanded() && !has_visible_child(child));
+      }
+      if (child->isExpanded())
+        any_child_visible = true;
+      else if (!child->isHidden())
+        any_child_visible = true;
+      continue;
+    }
+    // File row: keep it when it passes every active filter.
+    const QString real = child->data(0, DataRealPathRole).toString();
+    const bool is_nav  = child->data(0, DataNavRole).isValid();
+    bool visible       = true;
+    if (!is_nav && conflicts_only_ &&
+        child->data(0, DataProviderPathsRole).toStringList().size() < 2)
+      visible = false;
+    if (!is_nav && !show_hidden_files_ && child->data(0, DataHiddenRole).toBool())
+      visible = false;
+    child->setHidden(!visible);
+    if (visible)
+      any_child_visible = true;
+  }
+  // The scope-switch rows are pinned to the front and never filtered, so the
+  // root itself always keeps a row.
+  (void)any_child_visible;
+}
+
+void DataTab::clear_archive_children(QTreeWidgetItem *parent) {
+  for (int i = 0; i < parent->childCount(); ++i) {
+    auto *child = parent->child(i);
+    if (child->data(0, DataArchiveRole).isValid()) {
+      delete parent->takeChild(i);
+      --i;
+      continue;
+    }
+    clear_archive_children(child);
+  }
+}
+
+bool DataTab::has_visible_child(QTreeWidgetItem *parent) {
+  for (int i = 0; i < parent->childCount(); ++i)
+    if (!parent->child(i)->isHidden())
+      return true;
+  return false;
+}
 void DataTab::show_data(
     const std::unordered_map<std::string, std::vector<std::pair<std::string, int>>>
         &registry,
