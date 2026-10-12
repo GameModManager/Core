@@ -3365,10 +3365,33 @@ void ModListController::on_loot_finished(engine::Sorter::Loot::Result result) {
   // tooltips and emblems reflect this sort.
   w_->plugins_db_.clear_loot_reports();
   w_->plugins_db_.set_loot_reports(result.reports);
+  // Game-wide LOOT messages (MO2 Loot::Report::messages, loot.cpp:261-269):
+  // MO2 shows them above the plugin list in the Loot dialog. There is no
+  // dialog here, so they go to the log the console panel renders - at the
+  // level LOOT gave them, never flattened into one string.
+  for (const auto &message : result.general_messages) {
+    const std::string text = "LOOT: " + message.text;
+    if (message.level == "error")
+      engine::Logger::instance().error(text);
+    else if (message.level == "warning")
+      engine::Logger::instance().warn(text);
+    else
+      engine::Logger::instance().info(text);
+  }
   refresh_plugins_tab();
-  if (w_->status_bar_)
-    w_->status_bar_->set_status(
-        tr("Load order sorted by LOOT (%1 plugins)").arg(result.sorted_names.size()));
+  if (w_->status_bar_) {
+    QString summary =
+        tr("Load order sorted by LOOT (%1 plugins)").arg(result.sorted_names.size());
+    // Run statistics, MO2's Loot::Stats::toMarkdown (loot.cpp:303-308):
+    // elapsed seconds plus the two versions that produced the order.
+    if (result.stats.time > 0 || !result.stats.loot_version.empty()) {
+      summary += tr(" - stats: %1s, lootcli %2, loot %3")
+                     .arg(result.stats.time / 1000.0, 0, 'f', 2)
+                     .arg(QString::fromStdString(result.stats.lootcli_version))
+                     .arg(QString::fromStdString(result.stats.loot_version));
+    }
+    w_->status_bar_->set_status(summary);
+  }
 }
 
 void ModListController::on_plugin_toggle(const std::string &name, bool enabled) {

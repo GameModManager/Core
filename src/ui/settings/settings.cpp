@@ -282,6 +282,22 @@ void Settings::set_modlist_filter_categories(const QStringList &ids) {
   settings_.setValue("interface/filter_categories", ids);
 }
 
+QStringList Settings::modlist_filter_specials() const {
+  return settings_.value("interface/filter_specials").toStringList();
+}
+
+void Settings::set_modlist_filter_specials(const QStringList &names) {
+  settings_.setValue("interface/filter_specials", names);
+}
+
+bool Settings::modlist_filter_any_mode() const {
+  return settings_.value("interface/filter_any_mode", false).toBool();
+}
+
+void Settings::set_modlist_filter_any_mode(bool on) {
+  settings_.setValue("interface/filter_any_mode", on);
+}
+
 // general -----------------------------------------------------------------
 
 bool Settings::check_for_updates() const {

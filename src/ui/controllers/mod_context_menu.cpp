@@ -1,4 +1,5 @@
 #include "ui/controllers/mod_context_menu.h"
+#include "engine/backup/backup_service.h"
 #include "engine/instance/instance_utils.h"
 #include "engine/mod/meta/categories.h"
 #include "engine/mod/meta/mod_meta.h"
@@ -479,11 +480,26 @@ void ModContextMenu::setup_mod_list_context_menu() {
                          });
         }
 
-        // MO2 addBackupActions "Restore hidden files"
-        // (modlistcontextmenu.cpp:520-526): offered only on a mod carrying
-        // FLAG_HIDDEN_FILES. MO2 puts it on the backup row because that is
-        // where hidden files come from; GMM has no backup row type, so it
-        // sits with the other "this mod's files need attention" action.
+        // MO2 addBackupActions "Restore Backup" (modlistcontextmenu.cpp:413-415) and
+        // "Restore hidden files" (:520-526). The backup action is offered only
+        // on a mod whose name is a backup of another one, which is exactly how
+        // MO2 decides (its regex over the mod name,
+        // modlistviewactions.cpp:1315). Both sit in MO2's backup-row menu, and
+        // GMM has no backup row type, so they sit with the other "this mod's
+        // files need attention" actions.
+        const std::string backup_of =
+            engine::backup::restored_mod_name(mod_id.toStdString());
+        if (!backup_of.empty()) {
+          auto *restore_backup =
+              menu.addAction(engine::IconManager::instance().resolve_icon("edit-undo"),
+                             QObject::tr("Restore Backup"), w_, [this, mod_id]() {
+                               actions_->restore_mod_backup(mod_id);
+                             });
+          restore_backup->setStatusTip(
+              QObject::tr("Put this backup back in place of \"%1\", removing that "
+                          "mod if it is still there")
+                  .arg(QString::fromStdString(backup_of)));
+        }
         if (entry.has_hidden_files) {
           auto *restore =
               menu.addAction(engine::IconManager::instance().resolve_icon("edit-clear"),
@@ -522,6 +538,21 @@ void ModContextMenu::setup_mod_list_context_menu() {
                        QObject::tr("Reinstall Mod"), w_, [this, mod_id]() {
                          actions_->reinstall_mod(mod_id);
                        });
+
+        // MO2 modlistcontextmenu.cpp:518: "Create Backup" copies the mod's own
+        // directory to <name>_backup[N] next to itself, where it becomes a new
+        // mod row (generateBackupName, installationmanager.cpp:361-374).
+        // Pseudo-rows have no directory of their own to copy.
+        if (!entry.is_separator && !entry.is_overwrite && !entry.is_merged &&
+            !entry.is_game_native) {
+          auto *backup = menu.addAction(
+              engine::IconManager::instance().resolve_icon("document-save"),
+              QObject::tr("Create Backup"), w_, [this, mod_id]() {
+                actions_->create_mod_backup(mod_id);
+              });
+          backup->setStatusTip(
+              QObject::tr("Copy this mod's folder to a new backup mod next to it"));
+        }
 
         // Tweaks submenu - per-mod deploy options (MO2's per-mod tweaks).
         // Mirror/backup (Workspace-0pi5): "Mirror to instance" checkbox for

@@ -2,12 +2,15 @@
 
 #include "ui/main_window/data_tab_build_worker.h"
 
+#include "engine/mod/filetree/file_tree.h"
+
 #include <QHash>
 #include <QPoint>
 #include <QVector>
 #include <QWidget>
 
 #include <filesystem>
+#include <memory>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -71,6 +74,15 @@ public:
 
   void clear_content();
 
+  // MO2's data-tab filter bar (mainwindow.ui:1155-1195: "Conflicts only",
+  // "Archives", "Hidden files"). Each setter is the checkbox handler and also
+  // the programmatic entry point; each re-filters the rows already in the tree
+  // rather than rebuilding it, so a toggle never costs a rescan.
+  void set_conflicts_only(bool on);
+  void set_archives(bool on);
+  void set_hidden_files(bool on);
+  [[nodiscard]] bool archives_shown() const { return show_archives_; }
+
   [[nodiscard]] QTreeWidget *tree_widget() const { return tree_; }
 
   // Double-click resolution (Workspace-co2 + Workspace-636, MO2
@@ -102,8 +114,7 @@ public:
   //                                               whatever the setting or Alt)
   enum class DoubleClickAction { Open, Preview, Execute, Reveal };
   static DoubleClickAction resolve_double_click(bool previews_setting_on,
-                                                bool ctrl_pressed,
-                                                bool alt_pressed,
+                                                bool ctrl_pressed, bool alt_pressed,
                                                 bool preview_supported,
                                                 bool is_executable);
   // The directory the Reveal action opens: the file's containing folder,
@@ -163,6 +174,37 @@ protected:
   void dump_tree_to_file();
 
 private:
+  // MO2 filter-bar state. show_archives_ starts from the Workarounds
+  // "Enable archive parsing" setting (Settings::archiveParsing gates archive
+  // display there too: filetreemodel.cpp:270), show_hidden_files_ is on, which
+  // is MO2's own default (mainwindow.ui:1195).
+  bool conflicts_only_    = false;
+  bool show_archives_     = true;
+  bool show_hidden_files_ = true;
+  // Hide/show the rows the current filters exclude, then collapse any folder
+  // left with nothing visible under it. One pass over the tree, no rebuild.
+  void apply_filters();
+  void apply_filters_to(QTreeWidgetItem *parent);
+  // Build an archive row's children from the archive on disk (MO2's archive
+  // contents under the archive node, filetreemodel.cpp:1006).
+  void expand_archive(QTreeWidgetItem *item);
+  // One level of an archive listing into `parent`, recursing into directories.
+  void fill_archive_level(QTreeWidgetItem *parent,
+                          const std::shared_ptr<const engine::FileTree> &tree);
+  // Drop every row an expand added, so turning "Archives" off removes what it
+  // showed. Walks the whole tree: an archive can sit at any depth.
+  static void clear_archive_children(QTreeWidgetItem *parent);
+  // True when at least one child row is visible (the folder rule: a folder
+  // survives the filter only if something under it does).
+  [[nodiscard]] static bool has_visible_child(QTreeWidgetItem *parent);
+  // True for a file the tree can list the contents of. Conservative on
+  // purpose: a row whose extension is not here never grows an expander, so an
+  // arrow is never offered for something that cannot open.
+  [[nodiscard]] static bool is_listable_archive(const QString &path);
+  // One archive's listing, or a "could not be read" row carrying the reason -
+  // an empty subtree with no explanation reads as "this archive is empty".
+  void fill_archive_children(QTreeWidgetItem *item, const QString &real_path);
+
   // The merged tree has two scopes: the game's data dir (default, shows the
   // mod-overlaid data content) and the game root (root-override mods' root
   // files + game-native root files like skse64_loader.exe). A top-level

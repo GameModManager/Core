@@ -174,17 +174,44 @@ namespace Sorter {
         return report;
       }
 
-      std::map<std::string, LootReport>
-      parse_loot_reports(const fs::path &report_file) {
-        std::map<std::string, LootReport> reports;
+      // One pass over the report file fills all three of the things MO2 reads
+      // out of it: the per-plugin findings, the game-wide messages and the
+      // run statistics (Loot::processReport, loot.cpp:725-749). Returns
+      // false when the file is missing or is not JSON; the sort still counts
+      // as successful, it just carries no LOOT commentary.
+      bool parse_report(const fs::path &report_file,
+                        std::map<std::string, LootReport> &reports,
+                        std::vector<Result::Message> &messages, Stats &stats) {
         std::ifstream in(report_file);
         if (!in.is_open())
-          return reports;
+          return false;
         try {
-          const nlohmann::json root     = nlohmann::json::parse(in);
+          const nlohmann::json root = nlohmann::json::parse(in);
+          if (const nlohmann::json *v = find_key(root, "messages")) {
+            if (v->is_array()) {
+              for (const auto &item : *v) {
+                Result::Message message;
+                message.level = loot_message_level(
+                    json_string(item.value("type", nlohmann::json{})));
+                message.text = json_string(item.value("text", nlohmann::json{}));
+                if (message.text.empty())
+                  continue;
+                messages.push_back(std::move(message));
+              }
+            }
+          }
+          if (const nlohmann::json *v = find_key(root, "stats")) {
+            if (v->is_object()) {
+              stats.time = static_cast<int64_t>(json_count((*v)["time"]));
+              stats.lootcli_version =
+                  json_string((*v).value("lootcliVersion", nlohmann::json{}));
+              stats.loot_version =
+                  json_string((*v).value("lootVersion", nlohmann::json{}));
+            }
+          }
           const nlohmann::json *plugins = find_key(root, "plugins");
           if (plugins == nullptr || !plugins->is_array())
-            return reports;
+            return true;
           for (const auto &entry : *plugins) {
             const std::string name = json_string(entry.value("name", nlohmann::json{}));
             if (name.empty())
@@ -196,8 +223,9 @@ namespace Sorter {
         } catch (const std::exception &e) {
           Logger::instance().warn(std::string{"LOOT report parse failed ("} +
                                   report_file.string() + "): " + e.what());
+          return false;
         }
-        return reports;
+        return true;
       }
 
     }  // namespace
@@ -341,9 +369,10 @@ namespace Sorter {
 
       result.ok          = true;
       result.report_path = report_file;
-      // Per-plugin findings for the tooltip bullets (MO2 LootDialog parity).
-      // Never fails the sort: a missing/unparsable report just yields no data.
-      result.reports = parse_loot_reports(report_file);
+      // LOOT commentary for the run: per-plugin findings for the tooltip
+      // bullets, the game-wide messages, and the run statistics. Never fails
+      // the sort - a missing/unparsable report just yields no data.
+      parse_report(report_file, result.reports, result.general_messages, result.stats);
       if (progress)
         progress(8, "");  // Done
       return result;
