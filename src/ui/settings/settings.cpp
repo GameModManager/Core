@@ -563,14 +563,6 @@ void Settings::set_tracked_integration(bool on) {
   settings_.setValue("nexus/tracked_integration", on);
 }
 
-bool Settings::category_mappings() const {
-  return settings_.value("nexus/category_mappings", false).toBool();
-}
-
-void Settings::set_category_mappings(bool on) {
-  settings_.setValue("nexus/category_mappings", on);
-}
-
 bool Settings::nexus_queue_downloads() const {
   return settings_.value("nexus/queue_downloads", true).toBool();
 }

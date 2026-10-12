@@ -209,7 +209,7 @@ public:
   // these keys names a vendor. Keys still live in nexus/, workshop/ and nxm/;
   // all three move to sources/ when this group is namespaced.
   //
-  // endorsement_integration, tracked_integration and category_mappings are
+  // endorsement_integration and tracked_integration are
   // already capability-named. They are Nexus features today, so they keep
   // their names as other sources grow them - unlike the sibling accessors,
   // which are named after the vendor that happened to ship first.
@@ -217,8 +217,6 @@ public:
   void set_endorsement_integration(bool on);
   bool tracked_integration() const;
   void set_tracked_integration(bool on);
-  bool category_mappings() const;
-  void set_category_mappings(bool on);
   // Queue Nexus downloads one-at-a-time. Free Regular/Supporter accounts are
   // throttled to ~1.5MB/s, so parallel transfers don't help them; only
   // Premium lifts the cap. Defaults to ON (multithreading OFF by default).

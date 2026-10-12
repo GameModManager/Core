@@ -268,10 +268,6 @@ NexusPanel::NexusPanel(QWidget *parent) : QWidget(parent) {
   endorse_box->setChecked(s.endorsement_integration());
   auto *track_box = new QCheckBox(tr("Tracked Integration"), options_group);
   track_box->setChecked(s.tracked_integration());
-  auto *cat_box = new QCheckBox(tr("Apply Nexus category mappings"), options_group);
-  cat_box->setChecked(s.category_mappings());
-  cat_box->setEnabled(false);  // work in progress - kept, but inert
-  cat_box->setToolTip(tr("Work in progress"));
   auto *counter_box = new QCheckBox(tr("Hide API Request Counter"), options_group);
   counter_box->setChecked(s.hide_api_counter());
   // Queue Nexus downloads one-at-a-time. The initial state is the effective
@@ -293,7 +289,6 @@ NexusPanel::NexusPanel(QWidget *parent) : QWidget(parent) {
   queue_box->setChecked(queue_effective);
   opts_left->addWidget(endorse_box);
   opts_left->addWidget(track_box);
-  opts_left->addWidget(cat_box);
   opts_left->addWidget(counter_box);
   opts_left->addWidget(queue_box);
   options_layout->addLayout(opts_left, 1);
@@ -359,8 +354,14 @@ NexusPanel::NexusPanel(QWidget *parent) : QWidget(parent) {
   connect(queue_box, &QCheckBox::toggled, [&s](bool on) {
     s.set_nexus_queue_downloads(on);
   });
-  // category_mappings is intentionally not wired: the checkbox is disabled
-  // (work in progress) and must never change the stored value.
+  // The "Apply Nexus category mappings" checkbox used to live here, greyed
+  // out with a "work in progress" tooltip and no consumer at all. Removed
+  // rather than left inert: Nexus categories are per game (the import is
+  // engine::Source::Nexus::fetch_categories, which is always asked for one
+  // game domain), and this page is app-level settings with no game in view,
+  // so it had no game to apply anything to. MO2 has the same feature, but
+  // from its Categories dialog, which does belong to one instance. It comes
+  // back per instance, wired to something real.
 
   auto persist = [this] {
     persist_server_preferences();
