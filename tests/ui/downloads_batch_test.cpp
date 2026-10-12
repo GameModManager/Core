@@ -115,12 +115,19 @@ TEST_CASE("downloads batch actions cover MO2's six whole-list actions",
       ui::download_in_batch(DownloadState::Downloading, DownloadBatch::Uninstalled));
   CHECK_FALSE(ui::download_in_batch(DownloadState::Paused, DownloadBatch::Installed));
   CHECK_FALSE(ui::download_in_batch(DownloadState::Paused, DownloadBatch::Uninstalled));
+  // STATE_CANCELED sits below STATE_READY in MO2's enum
+  // (downloadmanager.h:144 vs :150), so issueDeleteCompleted /
+  // issueDeleteUninstalled skip it the same way rather than sweeping it up.
+  CHECK_FALSE(
+      ui::download_in_batch(DownloadState::Cancelled, DownloadBatch::Installed));
+  CHECK_FALSE(
+      ui::download_in_batch(DownloadState::Cancelled, DownloadBatch::Uninstalled));
 
   // "All" takes every row that still exists, in flight included (MO2's
   // issueDeleteAll / issueRemoveFromViewAll), but never a Removed entry.
   for (auto s :
        {DownloadState::Downloading, DownloadState::Paused, DownloadState::Complete,
-        DownloadState::Installed, DownloadState::Failed})
+        DownloadState::Installed, DownloadState::Failed, DownloadState::Cancelled})
     CHECK(ui::download_in_batch(s, DownloadBatch::All));
   CHECK_FALSE(ui::download_in_batch(DownloadState::Removed, DownloadBatch::All));
 

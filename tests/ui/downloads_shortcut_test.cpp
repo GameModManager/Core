@@ -93,9 +93,12 @@ TEST_CASE("download shortcut maps each state to MO2's keys", "[ui][mo2-parity]")
     }
   }
 
-  SECTION("a running row pauses on Space and removes on Delete, never installs") {
+  // MO2 issueDelete on a live row cancels the transfer rather than trashing
+  // it (downloadlistview.cpp:345-349): there is no finished archive to trash
+  // and the download manager owns the transfer.
+  SECTION("a running row pauses on Space and CANCELS on Delete, never installs") {
     REQUIRE(fn(S::Downloading, Qt::Key_Space) == A::Pause);
-    REQUIRE(fn(S::Downloading, Qt::Key_Delete) == A::Remove);
+    REQUIRE(fn(S::Downloading, Qt::Key_Delete) == A::Cancel);
     REQUIRE(fn(S::Downloading, Qt::Key_Enter) == A::None);
   }
 
@@ -109,7 +112,7 @@ TEST_CASE("download shortcut maps each state to MO2's keys", "[ui][mo2-parity]")
 
   SECTION("unrelated keys do nothing on any row") {
     for (auto state : {S::Downloading, S::Paused, S::Complete, S::Installed, S::Failed,
-                       S::Removed}) {
+                       S::Removed, S::Cancelled}) {
       REQUIRE(fn(state, Qt::Key_A) == A::None);
       REQUIRE(fn(state, Qt::Key_Escape) == A::None);
     }
@@ -119,6 +122,16 @@ TEST_CASE("download shortcut maps each state to MO2's keys", "[ui][mo2-parity]")
     REQUIRE(fn(S::Removed, Qt::Key_Enter) == A::None);
     REQUIRE(fn(S::Removed, Qt::Key_Space) == A::None);
     REQUIRE(fn(S::Removed, Qt::Key_Delete) == A::None);
+  }
+
+  // MO2 issueDelete on a live row cancels the transfer rather than trashing
+  // it (downloadlistview.cpp:345-349): there is no finished archive to trash
+  // and the download manager owns the transfer. A cancelled row keeps only
+  // Delete - Space must not offer a Resume over a partial we threw away.
+  SECTION("a cancelled row removes on Delete and never resumes") {
+    REQUIRE(fn(S::Cancelled, Qt::Key_Delete) == A::Remove);
+    REQUIRE(fn(S::Cancelled, Qt::Key_Space) == A::None);
+    REQUIRE(fn(S::Cancelled, Qt::Key_Enter) == A::None);
   }
 }
 
@@ -137,7 +150,7 @@ TEST_CASE("download keys reach the pause / resume / install signals",
 
   // Signals captured by value: the tab is destroyed at the end of the block
   // and a by-reference sink would dangle.
-  int pauses = 0, resumes = 0, installs = 0;
+  int pauses = 0, resumes = 0, installs = 0, cancels = 0;
   QObject::connect(&tab, &ui::DownloadsTab::pause_requested,
                    [&pauses](const std::string &) {
                      pauses++;
@@ -145,6 +158,10 @@ TEST_CASE("download keys reach the pause / resume / install signals",
   QObject::connect(&tab, &ui::DownloadsTab::resume_requested,
                    [&resumes](const std::string &) {
                      resumes++;
+                   });
+  QObject::connect(&tab, &ui::DownloadsTab::cancel_requested,
+                   [&cancels](const std::string &) {
+                     cancels++;
                    });
   QObject::connect(&tab, &ui::DownloadsTab::install_requested,
                    [&installs](const std::string &, const std::filesystem::path &,
@@ -171,6 +188,16 @@ TEST_CASE("download keys reach the pause / resume / install signals",
   check(installs == 0, "Enter on a downloading row installs nothing");
   check(pauses == 1, "and still does not pause");
 
+  // Delete on a live row CANCELS (MO2 downloadlistview.cpp:345-349): there is
+  // no finished archive to trash, so the transfer is what gets stopped. This
+  // is the whole point of the change - a mapping that is right but never wired
+  // would pass the pure test above and still trashed the row.
+  QKeyEvent del(QEvent::KeyPress, Qt::Key_Delete, Qt::NoModifier);
+  QApplication::sendEvent(table, &del);
+  check(cancels == 1, "Delete on a downloading row cancels it");
+  check(pauses == 1, "and does not pause it");
+  check(installs == 0, "and installs nothing");
+
   // A Paused row: Space resumes.
   tab.mark_paused("id-dl");
   table->setCurrentCell(row, ui::DownloadsTab::Name);
@@ -185,6 +212,7 @@ TEST_CASE("download keys reach the pause / resume / install signals",
   check(installs == 1, "Enter on a finished row installs it");
   check(pauses == 1, "and does not pause");
   check(resumes == 1, "and does not resume");
+  check(cancels == 1, "and does not cancel - it already finished");
 
   std::filesystem::remove_all(dir, ec);
 }
@@ -450,4 +478,57 @@ TEST_CASE("download progress text carries a remaining-time estimate",
   tab.update_progress("id-eta", 500, 1000, 0.0);
   check(!bar->format().contains("~"),
         ("no speed, no estimate, got: " + bar->format()).toStdString().c_str());
+}
+
+TEST_CASE("average download speed follows MO2's five-second floor",
+          "[ui][mo2-parity]") {
+  // MO2 emits downloadSpeed as (total - preResumeSize) / elapsedSeconds and
+  // suppresses it for the first five seconds, "the result is way to inprecise"
+  // on a short transfer (downloadmanager.cpp:2448-2451).
+  check(ui::average_download_speed(1000, 0, 0.0) == 0.0, "no elapsed time, no rate");
+  check(ui::average_download_speed(1000, 0, 4.99) == 0.0, "under the floor");
+  check(ui::average_download_speed(1000, 0, 5.0) == 200.0, "exactly the floor");
+  check(ui::average_download_speed(1000, 0, 10.0) == 100.0, "ten seconds");
+  // A resume averages only the bytes THIS run fetched: 3000 bytes arrived
+  // since the resume offset of 2000, not the 5000 the file has in total.
+  check(ui::average_download_speed(5000, 2000, 10.0) == 300.0, "resume base");
+  check(ui::average_download_speed(2000, 2000, 10.0) == 0.0, "nothing moved yet");
+}
+
+TEST_CASE("a cancelled download drops its partial and never resumes",
+          "[ui][mo2-parity]") {
+  AppGuard guard;
+  const std::filesystem::path dir =
+      std::filesystem::temp_directory_path() / "gmm_dl_cancel";
+  std::error_code ec;
+  std::filesystem::remove_all(dir, ec);
+  std::filesystem::create_directories(dir);
+
+  ui::DownloadsTab tab;
+  tab.set_downloads_dir(dir);
+  REQUIRE(tab.add_download("id-cancel", "Pack.zip", "Manual"));
+  // The pipeline names the partial "<archive>.unfinished" and hands the name
+  // over; the tab owns it from that point on.
+  const auto partial = dir / "Pack.zip.unfinished";
+  write_file(partial, 64);
+  tab.note_partial_archive("id-cancel", "Pack.zip");
+  REQUIRE(std::filesystem::exists(partial));
+
+  tab.mark_cancelled("id-cancel");
+
+  auto *table   = table_of(&tab);
+  const int row = row_named(table, "Pack.zip");
+  REQUIRE(row >= 0);
+  check(!std::filesystem::exists(partial),
+        "the abandoned partial is deleted, not left on disk");
+  check(table->item(row, ui::DownloadsTab::Status)->text() ==
+            QLatin1String("Cancelled"),
+        "the row reads Cancelled");
+
+  // Consumer reaches control: the row must refuse a resume, which is what
+  // keeps a cancelled row out of a second fetch over a file we no longer hold.
+  check(!tab.blocks_refetch("id-cancel"),
+        "a cancelled row may be downloaded again from scratch");
+
+  std::filesystem::remove_all(dir, ec);
 }
