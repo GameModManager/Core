@@ -344,6 +344,12 @@ DownloadsTab::DownloadsTab(QWidget *parent) : QWidget(parent) {
   top->setContentsMargins(4, 2, 4, 2);
   hide_installed_ = new QCheckBox(tr("Hide installed"), this);
   top->addWidget(hide_installed_);
+  // MO2's showHiddenBox ("Hidden files", mainwindow.ui:1426): show the rows
+  // the batch Hide actions flagged without clearing the flag.
+  auto *show_hidden = new QCheckBox(tr("Hidden files"), this);
+  show_hidden->setToolTip(tr("Show downloads marked as hidden."));
+  show_hidden->setObjectName("showHiddenBox");
+  top->addWidget(show_hidden);
   top->addStretch(1);
   auto *add_url_btn = new QPushButton(tr("Add from URL…"), this);
   add_url_btn->setObjectName("addUrlBtn");
@@ -382,6 +388,10 @@ DownloadsTab::DownloadsTab(QWidget *parent) : QWidget(parent) {
   table_->installEventFilter(this);
   connect(hide_installed_, &QCheckBox::toggled, this, [this](bool checked) {
     Settings::instance().set_hide_installed_downloads(checked);
+    apply_installed_filter();
+  });
+  connect(show_hidden, &QCheckBox::toggled, this, [this](bool checked) {
+    show_hidden_ = checked;
     apply_installed_filter();
   });
 
@@ -1183,10 +1193,15 @@ void DownloadsTab::apply_installed_filter() {
   const QString text = current_filter_text_;
   for (const auto &[id, entry] : downloads_) {
     // A row the user hid through the batch actions stays hidden until
-    // "Un-Hide All..." clears the flag. This runs first and `continue`s,
-    // because every branch below ends in setRowHidden(.., false) and would
-    // otherwise resurrect the row on the next filter pass.
-    if (entry.hidden) {
+    // "Un-Hide All..." clears the flag OR the "Hidden files" box shows them
+    // again (MO2's showHiddenBox, mainwindow.cpp:3818-3821 -> setShowHidden ->
+    // refreshList). The box is a VIEW filter: MO2 tests it when the list is
+    // built (downloadmanager.cpp:102) and never clears the flag, so unticking
+    // it restores the same hidden set rather than a default one. This runs
+    // first and `continue`s, because every branch below ends in
+    // setRowHidden(.., false) and would otherwise resurrect the row on the
+    // next filter pass.
+    if (entry.hidden && !show_hidden_) {
       table_->setRowHidden(entry.row, true);
       continue;
     }

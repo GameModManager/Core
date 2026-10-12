@@ -716,7 +716,7 @@ port - their cited GMM symbol names were invented, the features are not.
 | U038 dragEnterEvent accepts Copy/Move + supported archives | ✅ `mainwindow.cpp:3947-3991` | ✅ `accepts_url_drop` gates local file + 8 extensions - `downloads_tab.cpp:89` | ✅ ✔ |
 | U039 dropEvent (TargetMoveAction coercion, shellCopy/Move, URL) | ✅ `mainwindow.cpp:4034-4050` | ✅ coerces MoveAction, copies, routes URL via `import_dropped_file` - `downloads_tab.cpp:856` | ✅ ✔ |
 | U045 "Can't change download directory while downloads are in progress" toast | ✅ `mainwindow.cpp:2803` | ❌ dir is derived from the instance, no mid-session setting | ❌ ✔ |
-| U062 showHiddenBox toggles downloadManager setShowHidden | ✅ `mainwindow.cpp:3818-3821` | ❌ no hidden-download state to toggle | ❌ ✔ |
+| U062 showHiddenBox toggles downloadManager setShowHidden | ✅ `mainwindow.cpp:3818-3821`; the flag is tested at list build time, `m_Hidden` untouched (`downloadmanager.cpp:102`) | ✅ a "Hidden files" box that reveals the flagged rows as a VIEW filter and leaves the persisted flag alone, so unticking it hides the same rows again, and it is not persisted, matching MO2's `m_ShowHidden(false)` - `downloads_tab.cpp:347` | ✅ ✔ |
 | U096 Download row tooltip (filename, info-missing hint, modName version desc, Pending) | ✅ `downloadlist.cpp:213-232` | ⚠️ Name cell carries the pending notice, the source page and the on-disk path; no Nexus version/description, which this build does not carry - `downloads_tab.cpp:443` | ⚠️ ✔ |
 | U097 Download status colors (READY/UNINSTALLED/PAUSED foregrounds) | ✅ `downloadlist.cpp:205-211` | ⚠️ mapping not one-to-one: 6 GMM states vs 9 - `downloads_tab.cpp:1105` | ⚠️ ✔ |
 | U108 Download list 8 columns (4 hidden by default, ini override) | ✅ `downloadlist.h:38-51` = NAME, STATUS, SIZE, FILETIME, MODNAME, VERSION, ID ("Nexus ID"), SOURCEGAME | ⚠️ 6 shipped; Mod name, Version, Source Game absent, Source is ours - `downloads_tab.cpp:127` | ⚠️ ✔ |
@@ -1433,7 +1433,7 @@ column.
 | 12. Plugin Management | 29 | 6 | 3 | 13 | 0 | 0 | 0 |
 | 13. LOOT Integration | 10 | 2 | 1 | 7 | 0 | 0 | 0 |
 | 14. Profile Management | 30 | 5 | 3 | 3 | 0 | 0 | 0 |
-| 15. Download Management | 29 | 12 | 6 | 15 | 9 | 0 | 0 |
+| 15. Download Management | 30 | 12 | 6 | 14 | 9 | 0 | 0 |
 | 16. Nexus Integration | 8 | 10 | 2 | 20 | 0 | 0 | 0 |
 | 17. Source Providers | 4 | 0 | 7 | 1 | 0 | 0 | 0 |
 | 18. Mod List Features | 27 | 13 | 3 | 8 | 0 | 0 | 0 |
@@ -1470,7 +1470,7 @@ column.
 | 49. CLI Help Grammar | 0 | 1 | 0 | 1 | 0 | 0 | 0 |
 | 50. My Games Resolution | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
 | 51. Conflict Scan Refresh | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
-| **TOTAL** | **400** | **162** | **178** | **213** | **52** | **38** | **62** |
+| **TOTAL** | **401** | **162** | **178** | **212** | **52** | **38** | **62** |
 
 ### The arithmetic
 
@@ -1478,13 +1478,13 @@ column.
 rows in file                          1043
 scored rows (ok + part + miss)         775
 
-MO2 parity        ok   / scored        400 /  775  = 51.6%
+MO2 parity        ok   / scored        401 /  775  = 51.7%
 partial           part / scored        162 /  775  = 20.9%
-missing           miss / scored        213 /  775  = 27.5%
+missing           miss / scored        212 /  775  = 27.4%
 GMM-exclusive     surp / all rows      178 / 1043  = 17.1%   (not scored)
 ```
 
-**Parity is 400 / 775 = 51.6%.** 213 rows are outright missing and 162 partial.
+**Parity is 401 / 775 = 51.7%.** 212 rows are outright missing and 162 partial.
 The largest untouched surfaces are **44. Tutorial** and **46. Notifications /
 Problems** (zero matched rows), then **16. Nexus** and **15. Downloads**, which
 carry the most missing rows in absolute terms.
@@ -1524,14 +1524,17 @@ preview gating) and three into `⚠️` (U078, U110, U218 - each still missing a
 named half of MO2's subject). The denominator did not move, so no row was
 reclassified to flatter the ratio.
 
-**Downloads parity work moved parity from 51.2% to 51.6%** (`397 / 775` to
-`400 / 775`). Three `⚠️` rows became `✅`, all inside category 15 and all
-scored before and after, so the denominator did not move: cancel downloads (the
-`Cancelled` state, a Cancel action and a Cancel-on-Delete key that abandon the
-`.unfinished` partial), download speed tracking (the rolling average with MO2's
-five-second floor and a per-run resume base), and U217 keyboard gating. The
-state-machine row stays `⚠️` and the context-menu row stays `⚠️` because each
-still names a half MO2 has and this build does not.
+**Downloads parity work moved parity from 51.2% to 51.7%** (`397 / 775` to
+`401 / 775`). Four rows changed, all scored before and after, so the
+denominator did not move: three `⚠️` rows became `✅` inside category 15 (cancel
+downloads - the `Cancelled` state, a Cancel action and a Cancel-on-Delete key
+that abandon the `.unfinished` partial; download speed tracking - the rolling
+average with MO2's five-second floor and a per-run resume base; U217 keyboard
+gating) and U062's `❌` became `✅` (the "Hidden files" box, a view filter that
+leaves the persisted flags alone). The state-machine row stays `⚠️` and the
+context-menu row stays `⚠️` because each still names a half MO2 has and this
+build does not. U177's Explorer button shipped but its row stays `⚠️`: the
+drag&drop hint is withheld because the dialog's drag has no drop target.
 
 **Correction.** An earlier commit here claimed two inherited summary errors:
 that category 51 held a partial row, and that the TOTAL understated partial by

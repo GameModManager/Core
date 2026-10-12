@@ -474,6 +474,11 @@ protected:
 
   QTableWidget *table_       = nullptr;
   QCheckBox *hide_installed_ = nullptr;
+  // MO2's showHiddenBox (mainwindow.ui:1426, "Hidden files"). A VIEW filter
+  // over the persisted per-row hidden flags, not a state change: the flags
+  // stay untouched, so unticking the box hides the same rows again. Not
+  // persisted either, matching MO2 where m_ShowHidden starts false every run.
+  bool show_hidden_ = false;
   std::unordered_map<std::string, DownloadEntry> downloads_;
   // Last filter text passed by RightPanel::apply_filter (trimmed, lowered),
   // re-applied by apply_installed_filter so it never unhides rows the text
