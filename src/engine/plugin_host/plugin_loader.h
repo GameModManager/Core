@@ -217,14 +217,6 @@ public:
   bool load_plugin(const std::string &path);
   bool load_directory(const std::string &dir_path);
 
-  // After all plugins are loaded: decide which core category set (if any)
-  // populates the global Category::Factory. Called from load_directory().
-  // Logic: if a game-support plugin declared a core_category_set hook and no
-  // plugin registered categories directly, apply that set; otherwise if no
-  // categories were registered at all, apply "Default"; otherwise leave the
-  // directly-registered categories untouched.
-  void finalize_category_sets();
-
   // Plugin basenames (e.g. "SkyrimSpecialEdition.so") skipped on load.
   void set_disabled_plugins(const std::vector<std::string> &names) {
     disabled_plugins_ = names;
@@ -262,6 +254,17 @@ public:
   }
 
   bool is_loaded(const std::string &path) const;
+
+  // The nxm:// domain a game plugin registered (e.g. "skyrimspecialedition"),
+  // or empty when no plugin for this game_id declared one. Nexus is
+  // per-game, so every Nexus lookup is keyed by this rather than by a
+  // hardcoded domain in Core.
+  [[nodiscard]] std::string nexus_domain_for(const std::string &game_id) const {
+    for (const auto &p : plugins_)
+      if (p.game_support && p.game_id == game_id && !p.nexus_domain.empty())
+        return p.nexus_domain;
+    return {};
+  }
 
   // Look up a game's display name by its game_id
   [[nodiscard]] std::string display_name_for(const std::string &game_id) const;

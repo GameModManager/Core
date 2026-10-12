@@ -238,9 +238,10 @@ TEST_CASE("settings sources tab", "[ui]") {
 
     QCheckBox *endorse = nullptr;
     QCheckBox *track   = nullptr;
-    QCheckBox *cat     = nullptr;
     QCheckBox *counter = nullptr;
     QCheckBox *queue   = nullptr;
+
+    bool saw_category_mappings = false;
     if (nexus)
       for (auto *cb : nexus->findChildren<QCheckBox *>()) {
         if (cb->text() == "Endorsement Integration")
@@ -248,19 +249,22 @@ TEST_CASE("settings sources tab", "[ui]") {
         if (cb->text() == "Tracked Integration")
           track = cb;
         if (cb->text() == "Apply Nexus category mappings")
-          cat = cb;
+          saw_category_mappings = true;
         if (cb->text() == "Hide API Request Counter")
           counter = cb;
         if (cb->text() == "Queue downloads (one at a time)")
           queue = cb;
       }
-    check(endorse && track && cat && counter && queue,
-          "all five option checkboxes present");
+    check(endorse && track && counter && queue, "all four option checkboxes present");
     check(endorse && endorse->isChecked() && track && track->isChecked() && counter &&
               !counter->isChecked() && queue && queue->isChecked(),
           "options initial states (endorse + track + queue on, counter off)");
-    check(cat && !cat->isEnabled() && cat->toolTip().contains("Work in progress"),
-          "category-mappings box is inert (disabled + WIP tooltip)");
+    // The category-mappings box was greyed out with a "work in progress"
+    // tooltip and no consumer. Nexus categories are per game and this page is
+    // app-level settings, so it has no game to apply them to; the box is gone
+    // rather than left inert, and must not come back until it does something.
+    check(!saw_category_mappings,
+          "no inert 'Apply Nexus category mappings' control on this page");
 
     auto &s = Settings::instance();
     check(s.endorsement_integration() && s.tracked_integration() &&
@@ -289,10 +293,6 @@ TEST_CASE("settings sources tab", "[ui]") {
     queue->toggle();
     app.processEvents();
     check(s.nexus_queue_downloads(), "queue re-toggle persisted back on");
-    cat->setChecked(true);
-    app.processEvents();
-    check(!s.category_mappings(),
-          "disabled category-mappings box never writes a value");
 
     auto *known = nexus ? nexus->findChild<QListWidget *>("knownServersList") : nullptr;
     auto *preferred =

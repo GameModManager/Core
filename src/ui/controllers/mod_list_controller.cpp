@@ -1,4 +1,5 @@
 #include "ui/controllers/mod_list_controller.h"
+#include "engine/plugin_host/plugin_loader.h"
 #include "engine/profile/profile_creation.h"
 #include "ui/controllers/downloads_controller.h"
 #include "ui/controllers/launch_controller.h"
@@ -758,6 +759,12 @@ void ModListController::setup_mod_list(QVBoxLayout *left_layout) {
             // (the checked set is reset - removed categories can no longer be
             // checked) and the mod filter is re-applied.
             ui::CategoriesDialog dlg(w_->current_instance_root_, w_);
+            // Nexus categories are per game, so the dialog is told which
+            // domain to ask for rather than working it out itself.
+            dlg.set_nexus_domain(
+                w_->plugin_loader_
+                    ? w_->plugin_loader_->nexus_domain_for(w_->current_game_id())
+                    : std::string());
             if (dlg.exec() == QDialog::Accepted) {
               w_->category_filter_panel_->rebuild();
               apply_mod_filter();

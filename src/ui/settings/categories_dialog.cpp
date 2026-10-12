@@ -1,6 +1,7 @@
 #include "ui/settings/categories_dialog.h"
 
 #include "engine/plugin_host/category_factory.h"
+#include "engine/source/nexus/categories.h"
 
 #include <QAbstractItemView>
 #include <QDialogButtonBox>
@@ -168,6 +169,15 @@ CategoriesDialog::CategoriesDialog(const std::filesystem::path &instance_root,
   remove_btn_->setEnabled(false);
   buttons->addWidget(add_btn);
   buttons->addWidget(remove_btn_);
+  // MO2 parity: CategoriesDialog has a nexus refresh + import pair, and both
+  // are only usable once Nexus category mappings are turned on
+  // (references/modorganizer/src/categoriesdialog.cpp:120-127). Here the
+  // import is the whole feature, so the button is always present and gates
+  // itself on the game's Nexus domain instead.
+  import_btn_ = new QPushButton(tr("Import from Nexus"), this);
+  import_btn_->setToolTip(tr("Add this game's Nexus categories to the list below"));
+  import_btn_->setEnabled(false);  // no domain yet
+  buttons->addWidget(import_btn_);
   buttons->addStretch(1);
   layout->addLayout(buttons);
 
@@ -188,6 +198,8 @@ CategoriesDialog::CategoriesDialog(const std::filesystem::path &instance_root,
   connect(add_btn, &QPushButton::clicked, this, &CategoriesDialog::on_add_clicked);
   connect(remove_btn_, &QPushButton::clicked, this,
           &CategoriesDialog::on_remove_clicked);
+  connect(import_btn_, &QPushButton::clicked, this,
+          &CategoriesDialog::on_import_nexus_clicked);
   connect(table_, &QTableWidget::itemSelectionChanged, this, [this]() {
     remove_btn_->setEnabled(table_->currentRow() >= 0);
   });
@@ -309,6 +321,59 @@ void CategoriesDialog::on_remove_clicked() {
     return;
   table_->removeRow(row);
   remove_btn_->setEnabled(table_->currentRow() >= 0);
+}
+
+void CategoriesDialog::set_nexus_domain(std::string domain) {
+  nexus_domain_ = std::move(domain);
+  if (import_btn_)
+    import_btn_->setEnabled(!nexus_domain_.empty());
+}
+
+void CategoriesDialog::on_import_nexus_clicked() {
+  if (nexus_domain_.empty())
+    return;
+
+  const auto list = engine::Source::Nexus::fetch_categories(nexus_domain_);
+  if (!list.ok) {
+    // One message covers every reason: no API key configured, an HTTP error,
+    // or a body we could not read. The engine logs the reason.
+    QMessageBox::warning(
+        this, tr("Import from Nexus"),
+        tr("Nexus returned no categories for this game. Check that a Nexus API "
+           "key is set in Settings -> Sources."));
+    return;
+  }
+
+  // Commit whatever the user has already typed before touching the factory:
+  // fill_table() below rebuilds the table from the factory, so any uncommitted
+  // edit would otherwise be silently discarded by the press of this button.
+  const QString pending = validate_table();
+  if (!pending.isEmpty()) {
+    QMessageBox::warning(this, tr("Categories"), pending);
+    return;
+  }
+  commit_changes();
+
+  // Merge, not Replace: the user's own categories are already in the table and
+  // MO2's default strategy is Merge too
+  // (references/modorganizer/src/categoryimportdialog.cpp:37-45).
+  std::vector<engine::Category::Factory::Entry> entries;
+  entries.reserve(list.categories.size());
+  for (const auto &cat : list.categories) {
+    engine::Category::Factory::Entry entry;
+    entry.id        = cat.id;
+    entry.name      = cat.name;
+    entry.parent_id = cat.parent_id;
+    entries.push_back(std::move(entry));
+  }
+  const int added = engine::Category::Factory::instance().import_external(
+      entries, engine::Category::Factory::ImportMode::Merge);
+
+  fill_table();
+  QMessageBox::information(
+      this, tr("Import from Nexus"),
+      added ? tr("Added %n category/categories from Nexus.", nullptr, added)
+            : tr("Every Nexus category for this game is already in the list."));
 }
 
 QString CategoriesDialog::validate_table() const {

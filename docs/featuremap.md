@@ -275,7 +275,7 @@ port - their cited GMM symbol names were invented, the features are not.
 | Server preference list | ✅ `NetworkSettings::servers()` | 🚀 rank orders mirror selection - `source/nexus/provider.cpp:245` | 🚀 ✔ |
 | Nexus endorsement integration setting | ✅ `NexusSettings::endorsementIntegration()` | ✅ `settings.h:161` + applied `nexus_source_panel.cpp:41` | ✅ ✔ |
 | Nexus tracked integration setting | ✅ `NexusSettings::trackedIntegration()` | ✅ `settings.h:163` + applied `nexus_source_panel.cpp:46` | ✅ ✔ |
-| Nexus category mappings setting | ✅ `NexusSettings::categoryMappings()` | ⚠️ disabled "work in progress", never wired - `source_pages.cpp:275` | ⚠️ ✔ |
+| Nexus category mappings setting | ✅ `NexusSettings::categoryMappings()` | ⚠️ the inert "work in progress" checkbox is gone rather than left disabled: the app-level Sources page has no game in view and Nexus categories are per game, so it had no target there. The feature it gated now lives where MO2 puts it, on the per-instance Categories dialog; the setting itself is not ported - `categories_dialog.cpp:177` | ⚠️ ✔ |
 | NXM handler registration (settings) | ✅ `NexusSettings::registerAsNXMHandler()` | 🚫 Linux registers via xdg-mime - `source_pages.cpp:429` | 🚫 ✔ |
 | MODL handler registration (settings) | ✅ `Settings::registerAsMODLHandler()` | 🚫 Windows-only file association | 🚫 ✔ |
 | Download handler registration | ✅ `Settings::registerDownloadHandlers()` | 🚫 Windows-only shell integration | 🚫 ✔ |
@@ -369,7 +369,7 @@ port - their cited GMM symbol names were invented, the features are not.
 | Custom overwrite target | ✅ `customOverwrite` param | ✅ `relay_output_to_mod` - `fs_utils.h:230` | ✅ · |
 | Mod data-to-game mapping | ✅ `getModMappings` | ✅ `knowledge_->get` - `debug_window.cpp:881` | ✅ · |
 | Mod metadata | ✅ `ModInfo` | ✅ `ModMeta` - `mod_meta.h` | ✅ · |
-| Core category sets | ❌ | 🚀 `CategorySetRegistry` + plugin hook - `category_set_registry.h:16` | 🚀 · |
+| Core category sets | ❌ | 🚀 `CategorySetRegistry` + plugin hook, kept per game: plugin registrations are recorded against the declaring game_id and `activate_game()` is the only thing that puts a set on screen - `category_set_registry.h:16`, `category_factory.h:52` | 🚀 · |
 | Plugin-contributed categories | ❌ | 🚀 `cb_register_categories` -> `Category::Factory::merge` - `plugin_loader.cpp:191` | 🚀 · |
 | Mod file tree / conflict display | ✅ `DirectoryEntry` | ✅ `file_tree.h:3` + `conflict_engine.cpp:341` | ✅ · |
 | BSA/archive extraction | ✅ `BSAExtractor` | ✅ `archive_extractor.cpp:79` | ✅ · |
@@ -423,7 +423,7 @@ port - their cited GMM symbol names were invented, the features are not.
 | Category CRUD editor | ✅ | ✅ `CategoriesDialog` (full CRUD) - `categories_dialog.h:24` | ✅ · |
 | Category filter panel | ✅ | ✅ `CategoryFilterPanel` (checkable tree) - `category_filter_panel.h:21` | ✅ · |
 | Categories table view | ✅ `CategoriesTable` | ❌ | ❌ · |
-| U029 Category setup: GMM ruling = opt-in per-instance Nexus mapping import, no MO2 first-run chooser (NEXUS-LENS: genericize/provider-scope) | ✅ `mainwindow.cpp:1281-1300` | ⚠️ opt-in import exists, not wired - `source_pages.cpp:345` | ⚠️ · |
+| U029 Category setup: GMM ruling = opt-in per-instance Nexus mapping import, no MO2 first-run chooser (NEXUS-LENS: genericize/provider-scope) | ✅ `mainwindow.cpp:1281-1300` | ⚠️ the import exists and is wired: "Import from Nexus" on the Categories dialog fetches this game's list and merges it, per-game because the fetch takes an nxm:// domain. Not the first-run chooser MO2 has, and not the mapping half (U172/U196) - `categories_dialog.cpp:177`, `categories.h:43` | ⚠️ · |
 | U030 Category migration dialog (Import / Open / Disable Mappings / Don't show again) (NEXUS-LENS: genericize/provider-scope) | ✅ `mainwindow.cpp:1312-1345` | ❌ | ❌ · |
 | U076 Category menus as QPushButton-with-menu (addMenuAsPushButton) | ✅ `modlistcontextmenu.cpp:264-271` | ❌ | ❌ · |
 | U078 "Change Categories" menu (recursive checkable items, parent check icon, aboutToHide apply) | ✅ `modlistcontextmenu.cpp:110-156` | ⚠️ commits on aboutToHide now, but the list stays flat: MO2 nests a submenu per parent category, wraps each entry in a QWidgetAction+QCheckBox and paints a check icon on the parent; ours is a plain checkable QAction list - `mod_context_menu.cpp:689` | ⚠️ ✔ |
@@ -431,7 +431,7 @@ port - their cited GMM symbol names were invented, the features are not.
 | U112 Category column "Non-MO" for foreign + auto-unset on removal | ✅ `modlist.cpp:222-244` | ⚠️ not a category column: the game-native band carries it, `is_game_native` plus its pseudo-row - `mod_list_model.h:71` | ⚠️ · |
 | U126 Separator display strips "_separator" suffix | ✅ `modlist.cpp:110-122` | ✅ display name is the folder minus the suffix, MO2 getDisplayName - `mod_scanner.cpp:439` | ✅ ✔ |
 | U171 Categories dialog (Refresh from Nexus, import column, drag-assign pane) (NEXUS-LENS: genericize/provider-scope) | ✅ `categoriesdialog.ui` | ⚠️ CRUD exists, Nexus pane unproven - `categories_dialog.h:21` | ⚠️ · |
-| U172 Category import dialog (Merge/Replace strategy + mapping options) | ✅ `categoryimportdialog.ui` | ❌ | ❌ · |
+| U172 Category import dialog (Merge/Replace strategy + mapping options) | ✅ `categoryimportdialog.ui` | ⚠️ both strategies exist in the engine (`import_external`, Merge and Replace, named after MO2's) and the dialog uses Merge; the dialog itself, its strategy chooser and its assign/remap mapping options are not built - `category_factory.h:77` | ⚠️ · |
 | U196 "No category found" install dialog (Proceed / Disable / Stop && Configure) (NEXUS-LENS: genericize/provider-scope) | ✅ `installationmanager.cpp:672-682` | ❌ | ❌ · |
 | U229 Category menu commits on aboutToHide | ✅ `modlistcontextmenu.cpp:145-151`; MO2 holds categories in an unordered `std::set<int>` (`:136`) with the primary separate via `setPrimaryCategory` | ✅ both submenus commit on aboutToHide, so N ticks write one CSV and an un-tick before leaving cancels; opening and leaving writes nothing because the id list is seeded from the current primary-first CSV and only the checkbox deltas are applied - `mod_context_menu.cpp:706`, covered by `change_categories_test.cpp:107`. MO2 has no CSV order to normalise, so the primary-first order is ours alone | ✅ ✔ |
 
@@ -591,7 +591,7 @@ port - their cited GMM symbol names were invented, the features are not.
 |---------|-----|-----|--------|
 | LOOT sort execution | ✅ `Loot::sort()` | ✅ `Sorter::Loot` - `mod_list_controller.cpp:2909` | ✅ · |
 | LOOT report generation | ✅ `Loot::createReport()` | ⚠️ JSON carries the per-plugin findings, the game-wide messages and the run statistics, all three parsed; the messages and the stats line are rendered as markdown in the LOOT popup, the per-plugin sections are not (they stay in the plugin tooltips) and there is no web viewer - `sorter.cpp:182`, `loot_report_dialog.cpp:10` | ⚠️ ✔ |
-| LOOT report viewer (markdown + web) | ✅ `LootDialog` + `MarkdownDocument` | ⚠️ a report pane that opens when the sort starts and carries the markdown (Qt's own parser, no QWebEngineView): game-wide messages + stats, plus "No messages." and the failure text. Absent: MO2's web view, the per-plugin sections and the sorted-plugin-list markdown - `loot_report_dialog.cpp:71` | ⚠️ ✔ |
+| LOOT report viewer (markdown + web) | ✅ `LootDialog` + `MarkdownDocument` | ⚠️ a report pane that opens when the sort starts and carries the markdown (Qt's own parser, no QWebEngineView): game-wide messages + stats, plus "No messages." and the failure text. Headings render un-bolded and links open externally, matching MO2's markdown.html:24-26 and 45-52; absent: MO2's web view, the per-plugin sections and the sorted-plugin-list markdown - `loot_report_dialog.cpp:32`, `loot_report_dialog.cpp:71` | ⚠️ ✔ |
 | LOOT progress display | ✅ `LootDialog::setProgress()` | ✅ the stage name goes to the status bar and to the popup's progress line, one per stage - `mod_list_controller.cpp:3353` | ✅ ✔ |
 | LOOT dirty info details | ✅ `Dirty` (CRC, ITM, deleted refs, navmesh, utility) | ⚠️ no CRC field - `plugin_info.h:24` | ⚠️ · |
 | LOOT incompatibilities details | ✅ `File` (name + displayName) | ✅ name + displayName - `plugin_info.h:17` | ✅ · |
@@ -1425,7 +1425,7 @@ column.
 | 4. Settings & Configuration | 38 | 23 | 6 | 0 | 12 | 19 | 0 |
 | 5. Executable Management | 12 | 4 | 4 | 7 | 0 | 0 | 0 |
 | 6. Mod Management | 24 | 5 | 9 | 8 | 0 | 0 | 1 |
-| 7. Mod Categories | 9 | 5 | 0 | 6 | 0 | 0 | 0 |
+| 7. Mod Categories | 9 | 6 | 0 | 5 | 0 | 0 | 0 |
 | 8. Mod Conflict Detection | 5 | 2 | 3 | 6 | 0 | 0 | 0 |
 | 9. Mod Content Analysis | 9 | 6 | 0 | 11 | 0 | 0 | 0 |
 | 10. Mod Info Dialog | 13 | 0 | 1 | 0 | 0 | 0 | 0 |
@@ -1470,7 +1470,7 @@ column.
 | 49. CLI Help Grammar | 0 | 1 | 0 | 1 | 0 | 0 | 0 |
 | 50. My Games Resolution | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
 | 51. Conflict Scan Refresh | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
-| **TOTAL** | **420** | **153** | **178** | **202** | **52** | **38** | **62** |
+| **TOTAL** | **420** | **154** | **178** | **201** | **52** | **38** | **62** |
 
 ### The arithmetic
 
@@ -1479,15 +1479,22 @@ rows in file                          1043
 scored rows (ok + part + miss)         775
 
 MO2 parity        ok   / scored        420 /  775  = 54.2%
-partial           part / scored        153 /  775  = 19.7%
-missing           miss / scored        202 /  775  = 26.1%
+partial           part / scored        154 /  775  = 19.9%
+missing           miss / scored        201 /  775  = 25.9%
 GMM-exclusive     surp / all rows      178 / 1043  = 17.1%   (not scored)
 ```
 
-**Parity is 420 / 775 = 54.2%.** 202 rows are outright missing and 153 partial.
+**Parity is 420 / 775 = 54.2%.** 201 rows are outright missing and 154 partial.
 The largest untouched surfaces are **44. Tutorial** and **46. Notifications /
 Problems** (zero matched rows), then **16. Nexus** and **15. Downloads**, which
 carry the most missing rows in absolute terms.
+
+**This batch left parity at 54.2%** (`420 / 775`, unchanged). Two rows moved,
+both `❌` to `⚠️` and both inside the scored set: `U172`, because the engine
+now carries both of MO2's import strategies, and `U029`, because the import is
+wired rather than inert. The numerator did not move and neither did the
+denominator, because nothing here earned a `✅` yet - the import ships without
+MO2's strategy dialog or its install-time category resolution.
 
 **This batch moved parity from 54.3% to 54.2%** (`421 / 775` to `420 / 775`).
 Four rows changed, every one scored before and after, so the denominator did

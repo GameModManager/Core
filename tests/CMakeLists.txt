@@ -165,6 +165,13 @@ gmm_catch2_test(vfs_path_resolver_test engine/vfs_path_resolver_test.cpp)
 gmm_catch2_test(categories_test engine/categories_test.cpp)
 gmm_catch2_test(category_factory_test engine/category_factory_test.cpp)
 gmm_catch2_test(category_set_registry_test engine/category_set_registry_test.cpp)
+# Per-game category sets: the Skyrim-shows-Isaac regression, and the Nexus
+# per-game category import. TIMEOUT set so a regression that wedges goes red
+# instead of hanging CI (Workspace-tfp7).
+gmm_catch2_test(category_per_game_test engine/category_per_game_test.cpp
+    PROPERTIES TIMEOUT 120)
+gmm_catch2_test(nexus_categories_test engine/nexus_categories_test.cpp
+    PROPERTIES TIMEOUT 120)
 gmm_catch2_test(mod_meta_test engine/mod_meta_test.cpp)
 gmm_catch2_test(profile_test engine/profile_test.cpp)
 gmm_catch2_test(profile_creation_test engine/profile_creation_test.cpp)
@@ -588,7 +595,10 @@ gmm_catch2_test(main_toolbar_split_test ui/main_toolbar_split_test.cpp
 # line, with each message at the level LOOT gave it.
 gmm_catch2_test(loot_report_dialog_test ui/loot_report_dialog_test.cpp
     UI
-    LIBS gmm_ui)
+    LIBS gmm_ui
+    # Builds a real dialog and a QApplication: TIMEOUT so a wedge goes red
+    # rather than hanging CI (Workspace-tfp7).
+    PROPERTIES TIMEOUT 120)
 
 gmm_catch2_test(mod_list_model_test ui/mod_list_model_test.cpp
     UI
