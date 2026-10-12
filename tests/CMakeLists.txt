@@ -615,6 +615,12 @@ gmm_catch2_test(change_categories_test ui/change_categories_test.cpp
     UI
     LIBS gmm_ui)
 
+# A cross-profile mod rename that only reaches some profiles must tell the
+# user which ones missed out, by name, through the real dialog.
+gmm_catch2_test(rename_profiles_warning_test ui/rename_profiles_warning_test.cpp
+    UI
+    LIBS gmm_ui)
+
 gmm_catch2_test(categories_tab_test ui/categories_tab_test.cpp
     UI
     LIBS gmm_ui)
