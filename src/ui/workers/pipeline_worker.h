@@ -35,6 +35,11 @@ public:
   // Cooperative pause flag, polled by the transfer callback. Written from the
   // worker thread (dispatch/pause), read from this runner's thread.
   std::atomic_bool &cancel_flag() { return cancel_flag_; }
+  // Set alongside cancel_flag when the user chose Cancel rather than Pause.
+  // The abort itself is identical - both poll cancel_flag - so this is what
+  // tells run() which of the two the user asked for, and it is read only
+  // after the transfer has already returned.
+  std::atomic_bool &discard_partial() { return discard_partial_; }
   // True while this slot has a download assigned. Read/written only on the
   // worker thread (dispatch selects free slots, fetch_finished frees them).
   std::atomic_bool &busy() { return busy_; }
@@ -57,6 +62,10 @@ signals:
   void download_complete(const std::string &mod_id, bool success,
                          const std::string &archive_path, const std::string &name);
   void paused(const std::string &mod_id);
+  // The user abandoned the transfer instead of pausing it: the same abort, but
+  // the worker must report it as a cancel so the row is left non-resumable and
+  // its partial is discarded.
+  void cancelled(const std::string &mod_id);
   // Emitted on the runner thread when run() returns (for any terminal
   // outcome). The worker listens for it to free the slot and dequeue the next
   // queued download.
@@ -66,6 +75,7 @@ private:
   std::unique_ptr<engine::Pipeline> fetch_pipeline_;
   QThread *thread_ = nullptr;
   std::atomic_bool cancel_flag_{false};
+  std::atomic_bool discard_partial_{false};
   std::atomic_bool busy_{false};
 };
 
@@ -133,6 +143,14 @@ public slots:
   // dropped from the queue and reported paused (nothing was fetched).
   void pause_download(const std::string &id);
 
+  // Abandon an in-flight (or still queued) download instead of pausing it.
+  // Same cooperative abort as pause_download - the transfer polls the same
+  // slot flag - but the runner is told to report `cancelled`, so the row is
+  // left with no resumable partial. A queued download is dropped from the
+  // queue and reported cancelled (nothing was fetched, so there is no
+  // partial either way).
+  void cancel_download(const std::string &id);
+
 signals:
   void progress(const std::string &mod_id, int stage_index,
                 const std::string &stage_name);
@@ -169,6 +187,11 @@ signals:
   // Emitted only for a Replace, and only on a successful install.
   void mod_replaced(const std::string &archive_filename);
   void paused(const std::string &mod_id);
+  // The user cancelled an in-flight (or still queued) transfer: the partial
+  // is to be dropped and the row must read Cancelled, not Paused and not
+  // Failed. Separate from `paused` because the two leave the row in
+  // different states with different remaining actions.
+  void cancelled(const std::string &mod_id);
   void all_done();
 
 private:
