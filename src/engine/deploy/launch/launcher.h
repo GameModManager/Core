@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "engine/deploy/launch/elevation.h"
@@ -119,6 +120,19 @@ LaunchResult launch_game(const LaunchParams &params);
 // NAME= prefix entirely rather than echoing it. Extracted from the launch path
 // so the handling is reachable without forking a game.
 void apply_launch_env(const std::vector<std::string> &vars);
+
+// Applies Proton's computed STEAM_COMPAT_* defaults (NAME=value) to this
+// process, skipping every key named in `user_entries` - the launch
+// Environment entries, already applied by apply_launch_env, which are the
+// user's decision and do not get replaced by Proton's value for the same key.
+// Each skipped key is logged: the two values point at different prefixes, and a
+// launch that quietly ran the other one is not something the user can see.
+// `user_entries` are the raw "NAME=value" strings from LaunchParams::environment
+// (empty = apply all of them), so this reads the same entry list the launcher
+// applied rather than a second, possibly different one.
+void apply_proton_env_defaults(
+    const std::vector<std::pair<std::string, std::string>> &defaults,
+    const std::vector<std::string> &user_entries = {});
 
 void capture_overwrite(const std::filesystem::path &game_dir,
                        const std::filesystem::path &overwrite_dir,

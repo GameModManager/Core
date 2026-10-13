@@ -70,7 +70,13 @@ bool ProtonRuntime::launch(const std::filesystem::path &executable,
   if (proton.empty())
     return false;
 
-  if (!prepare_proton_environment(platform_, game_dir, steam_appid))
+  // Gate, not a second apply: the launch choke point has already put
+  // proton_environment_defaults() into this process (it is the side that can
+  // honour the launch Environment field), and doing it here as well is what
+  // overwrote the user's value for the same key. What is left of the check is
+  // the question it was really asking - can Proton be given a prefix at all -
+  // and that is answered by whether the defaults come back empty.
+  if (proton_environment_defaults(platform_, game_dir, steam_appid).empty())
     return false;
 
   // proton waitforexitandrun <exe> <args...>
@@ -121,24 +127,20 @@ ProtonRuntime::find_proton_binary(const Platform *platform, uint32_t steam_appid
   return platform->find_proton();
 }
 
-bool ProtonRuntime::prepare_proton_environment(const Platform *platform,
-                                               const std::filesystem::path &game_dir,
-                                               uint32_t steam_appid) {
+std::vector<std::pair<std::string, std::string>>
+ProtonRuntime::proton_environment_defaults(const Platform *platform,
+                                           const std::filesystem::path &game_dir,
+                                           uint32_t steam_appid) {
   if (!platform)
-    return false;
+    return {};
 
   auto steam_root = platform->find_steam_root();
   if (steam_root.empty())
-    return false;
+    return {};
 
   auto compat_data = platform->resolve_proton_prefix(steam_appid);
   if (compat_data.empty())
-    return false;
-
-  setenv("STEAM_COMPAT_DATA_PATH", compat_data.string().c_str(), 1);
-  setenv("STEAM_COMPAT_CLIENT_INSTALL_PATH", steam_root.string().c_str(), 1);
-  setenv("STEAM_COMPAT_INSTALL_PATH", game_dir.string().c_str(), 1);
-  setenv("STEAM_COMPAT_APP_ID", std::to_string(steam_appid).c_str(), 1);
+    return {};
 
   // Build library paths - all Steam library folders
   auto libs = platform->steam_library_paths();
@@ -151,9 +153,14 @@ bool ProtonRuntime::prepare_proton_environment(const Platform *platform,
   if (library_paths.empty()) {
     library_paths = steam_root.string();
   }
-  setenv("STEAM_COMPAT_LIBRARY_PATHS", library_paths.c_str(), 1);
 
-  return true;
+  return {
+      {"STEAM_COMPAT_DATA_PATH", compat_data.string()},
+      {"STEAM_COMPAT_CLIENT_INSTALL_PATH", steam_root.string()},
+      {"STEAM_COMPAT_INSTALL_PATH", game_dir.string()},
+      {"STEAM_COMPAT_APP_ID", std::to_string(steam_appid)},
+      {"STEAM_COMPAT_LIBRARY_PATHS", library_paths},
+  };
 }
 
 bool ProtonRuntime::is_available() const {

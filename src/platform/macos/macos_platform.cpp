@@ -635,6 +635,12 @@ std::int64_t spawn_detached_process(const std::filesystem::path &executable,
   return static_cast<std::int64_t>(pid);
 }
 
+bool set_process_env_var(const std::string &key, const std::string &value) {
+  // Same call as the Linux adaptor: setenv is POSIX, and macOS is POSIX. The
+  // child inherits it through the fork above.
+  return ::setenv(key.c_str(), value.c_str(), 1) == 0;
+}
+
 int open_truncated_write_fd(const std::string &path) {
   return ::open(path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
 }

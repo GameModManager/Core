@@ -1,5 +1,6 @@
 #include "engine/deploy/launch/proton_tools.h"
 
+#include "engine/deploy/launch/launcher.h"
 #include "platform/platform.h"
 #include "runtime/runtime.h"
 
@@ -118,8 +119,10 @@ int64_t run_proton_tool(const ProtonToolRequest &request,
   if (is_wine_builtin(args)) {
     auto proton = resolve_proton_runner(request);
     if (!proton.empty() && request.platform && request.steam_appid != 0) {
-      ProtonRuntime::prepare_proton_environment(request.platform, request.game_dir,
-                                                request.steam_appid);
+      // No user keys: a Proton tool run from the UI has no per-executable
+      // Environment field behind it, so nothing here can be a user override.
+      apply_proton_env_defaults(ProtonRuntime::proton_environment_defaults(
+          request.platform, request.game_dir, request.steam_appid));
       std::vector<std::string> cmd = {
           proton.string(),
           "runinprefix",
@@ -203,8 +206,8 @@ int64_t run_proton_exe(const ProtonToolRequest &request,
   auto proton = resolve_proton_runner(request);
   if (!proton.empty()) {
     if (request.platform && request.steam_appid != 0) {
-      ProtonRuntime::prepare_proton_environment(request.platform, request.game_dir,
-                                                request.steam_appid);
+      apply_proton_env_defaults(ProtonRuntime::proton_environment_defaults(
+          request.platform, request.game_dir, request.steam_appid));
     }
     std::vector<std::string> cmd = {
         proton.string(),
