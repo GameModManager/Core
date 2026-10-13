@@ -68,6 +68,34 @@ void Category::Factory::load(const std::filesystem::path &path) {
   }
 
   categories_ = std::move(loaded);
+  nexus_map_.clear();
+
+  // nexuscatmap.dat: `categoryId|name|nexusId` per line. A missing file simply
+  // means no mappings, which is what a first run looks like; a malformed row is
+  // skipped, as everywhere else in this file.
+  {
+    std::ifstream nexus_in(path.parent_path() / "nexuscatmap.dat");
+    std::string nexus_line;
+    while (std::getline(nexus_in, nexus_line)) {
+      if (!nexus_line.empty() && nexus_line.back() == '\r')
+        nexus_line.pop_back();
+      if (nexus_line.empty() || nexus_line[0] == '#')
+        continue;
+      std::vector<std::string> cells;
+      if (!split_row(nexus_line, 3, cells))
+        continue;
+      try {
+        NexusMapping map;
+        map.category_id = std::stoi(cells[0]);
+        map.name        = cells[1];
+        map.id          = std::stoi(cells[2]);
+        if (map.id != 0)
+          nexus_map_[map.id] = std::move(map);
+      } catch (...) {
+        continue;
+      }
+    }
+  }
 
   rebuildTree();
 }
@@ -82,6 +110,14 @@ void Category::Factory::save(const std::filesystem::path &path) const {
       continue;  // "None" is implicit
     out << id << '|' << cat.name << '|' << cat.parent_id << '\n';
   }
+
+  // The Nexus mapping lives in its own file beside categories.dat, not in a
+  // fourth column of it: MO2's nexuscatmap.dat
+  // (references/modorganizer/src/categories.cpp:48-50) written in the same
+  // `categoryId|name|nexusId` order (:221-224).
+  std::ofstream nexus_out(path.parent_path() / "nexuscatmap.dat");
+  for (const auto &[nexus_id, map] : nexus_map_)
+    nexus_out << map.category_id << '|' << map.name << '|' << nexus_id << '\n';
 }
 
 void Category::Factory::merge(const std::string &game_id, const int *ids,
@@ -106,6 +142,10 @@ void Category::Factory::activate_game(const std::string &game_id,
                                       const std::string &core_set_name) {
   categories_.clear();
   plugin_categories_.clear();
+  // The Nexus mappings go with the set they point into: a Nexus category id is
+  // per game (engine/source/nexus/categories.h:14-18), so carrying one game's
+  // mappings across a switch would resolve it into another game's categories.
+  nexus_map_.clear();
 
   // find(), never begin(): the map holds every game's registrations, and
   // begin() would hand back whichever game happens to sort first - which is
@@ -125,31 +165,80 @@ void Category::Factory::activate_game(const std::string &game_id,
 }
 
 int Category::Factory::import_external(const std::vector<Entry> &cats,
-                                       Factory::ImportMode mode) {
+                                       Factory::ImportMode mode, bool assign,
+                                       bool remap) {
   // Replace clears the active set only. The per-game plugin registrations are
   // input to activate_game(), not part of the active set, so an import cannot
   // touch them and a later activate_game() still finds the game's own
   // categories intact.
-  if (mode == Factory::ImportMode::Replace)
+  if (mode == Factory::ImportMode::Replace) {
     categories_.clear();
+    nexus_map_.clear();
+  }
 
   int added = 0;
   for (const auto &cat : cats) {
-    if (cat.id == 0 || categories_.count(cat.id))
+    if (cat.id == 0)
       continue;
-    Entry entry;
-    entry.id   = cat.id;
-    entry.name = cat.name;
-    // A parent that is not itself in the set would render as a dangling row in
-    // every tree that walks the map, so it degrades to a root rather than
-    // importing a link to nothing.
-    entry.parent_id = categories_.count(cat.parent_id) ? cat.parent_id : 0;
-    categories_.emplace(cat.id, std::move(entry));
-    ++added;
+    // MO2 matches on NAME, not on id: `table->findItems(name, ...)` over the
+    // category table (references/modorganizer/src/categoriesdialog.cpp:330).
+    // So a category the user already has under a different local id is NOT
+    // duplicated - the Nexus id is attached to their row instead, which is
+    // what makes "Remap existing mappings" worth anything.
+    const Entry *existing = nullptr;
+    for (const auto &entry : categories_) {
+      if (entry.second.name == cat.name) {
+        existing = &entry.second;
+        break;
+      }
+    }
+
+    if (!existing) {
+      Entry entry;
+      entry.id   = cat.id;
+      entry.name = cat.name;
+      // A parent that is not itself in the set would render as a dangling row
+      // in every tree that walks the map, so it degrades to a root rather than
+      // importing a link to nothing.
+      entry.parent_id = categories_.count(cat.parent_id) ? cat.parent_id : 0;
+      categories_.emplace(cat.id, std::move(entry));
+      ++added;
+      if (assign)
+        assign_nexus_mapping(cat.id, cat.name, cat.id);
+      continue;
+    }
+    // MO2's else branch (:341-354). Without remap the row is left exactly as it
+    // is: an existing category is never rewritten by an import.
+    if (remap)
+      assign_nexus_mapping(cat.id, cat.name, existing->id);
   }
   if (added)
     rebuildTree();
   return added;
+}
+
+void Category::Factory::assign_nexus_mapping(int nexus_id, const std::string &name,
+                                             int category_id) {
+  NexusMapping map;
+  map.id               = nexus_id;
+  map.name             = name;
+  map.category_id      = category_id;
+  nexus_map_[nexus_id] = std::move(map);
+}
+
+int Category::Factory::resolve_nexus_id(int nexus_id) const {
+  const auto it = nexus_map_.find(nexus_id);
+  if (it == nexus_map_.end())
+    return 0;  // unmapped: MO2 logs and returns 0 (categories.cpp:523-524)
+  // The category the mapping named can be gone - removed in the dialog, or
+  // dropped by an activate_game() that laid down a different game's set. MO2
+  // checks m_IDMap for exactly this and returns 0 rather than a dangling
+  // index (categories.cpp:517-521).
+  return categories_.count(it->second.category_id) ? it->second.category_id : 0;
+}
+
+void Category::Factory::clear_nexus_mappings() {
+  nexus_map_.clear();
 }
 
 bool Category::Factory::applyCoreSet(const std::string &set_name) {
@@ -218,6 +307,7 @@ void Category::Factory::rebuildTree() {
 void Category::Factory::clear() {
   categories_.clear();
   plugin_categories_.clear();
+  nexus_map_.clear();
 }
 
 void Category::Factory::updateHasChildren() {

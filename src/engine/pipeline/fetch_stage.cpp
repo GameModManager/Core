@@ -174,10 +174,26 @@ bool FetchStage::execute(Mod &mod, PipelineContext &ctx) {
   if (verified.verdict == Source::PinVerdict::Mismatch) {
     Logger::instance().error("[FetchStage] Digest mismatch for " + mod.id + ": " +
                              verified.message);
+    // The partial is the known-bad payload, and keeping it buys nothing: the
+    // next run reads its size as the HTTP Range offset, so a complete-but-wrong
+    // file resumes from EOF, downloads zero bytes and fails the same way again
+    // (the .unfinished orphan). MO2 never keeps a download it has judged bad
+    // either - resumeDownloadInt sends no Range header for an errored download,
+    // so it restarts from byte 0
+    // (references/modorganizer/src/downloadmanager.cpp:1082-1089), and once
+    // the retries are spent the partial is removed outright (:2429,
+    // `info->m_Output.remove()`). Same rule here: discard and refetch. The
+    // staged bytes have already proved they are not this file, so there is
+    // nothing in them worth a metered re-download.
+    std::filesystem::remove(partial_path, ec);
+    if (ec)
+      Logger::instance().error(
+          "[FetchStage] Could not discard the mismatched partial " +
+          partial_path.string() + ": " + ec.message());
     ctx.error_message = "the downloaded archive is not the file this pack asked for (" +
                         verified.message +
-                        "). Nothing was installed; the file is still at " +
-                        partial_path.string() + " if you want to look at it";
+                        "). Nothing was installed; the bad download was discarded, so "
+                        "starting it again fetches it from scratch";
     return false;
   }
   Logger::instance().debug("[FetchStage] Download verification: " + verified.message);

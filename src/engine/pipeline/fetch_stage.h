@@ -20,6 +20,11 @@ namespace engine {
 // Incomplete when it declared a digest the file cannot be hashed against, and
 // Match or Mismatch otherwise. Mismatch is the answer the caller must treat as
 // fatal: those bytes are not the ones the pack named.
+//
+// A Mismatch means the staged archive is deleted rather than kept, so the next
+// attempt starts from byte 0 instead of resuming a complete-but-wrong file
+// (MO2's rule for an errored download, downloadmanager.cpp:1082-1089 and
+// :2429).
 Source::VerifyResult verify_downloaded_archive(const Mod &mod,
                                                const std::filesystem::path &archive);
 

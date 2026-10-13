@@ -431,7 +431,7 @@ port - their cited GMM symbol names were invented, the features are not.
 | U112 Category column "Non-MO" for foreign + auto-unset on removal | ✅ `modlist.cpp:222-244` | ⚠️ not a category column: the game-native band carries it, `is_game_native` plus its pseudo-row - `mod_list_model.h:71` | ⚠️ · |
 | U126 Separator display strips "_separator" suffix | ✅ `modlist.cpp:110-122` | ✅ display name is the folder minus the suffix, MO2 getDisplayName - `mod_scanner.cpp:439` | ✅ ✔ |
 | U171 Categories dialog (Refresh from Nexus, import column, drag-assign pane) (NEXUS-LENS: genericize/provider-scope) | ✅ `categoriesdialog.ui` | ⚠️ CRUD exists, Nexus pane unproven - `categories_dialog.h:21` | ⚠️ · |
-| U172 Category import dialog (Merge/Replace strategy + mapping options) | ✅ `categoryimportdialog.ui` | ⚠️ both strategies exist in the engine (`import_external`, Merge and Replace, named after MO2's) and the dialog uses Merge; the dialog itself, its strategy chooser and its assign/remap mapping options are not built - `category_factory.h:77` | ⚠️ · |
+| U172 Category import dialog (Merge/Replace strategy + mapping options) | ✅ `categoryimportdialog.ui` | ✅ MO2's dialog, asked before the import: strategy, "Assign nexus mappings", "Remap existing mappings", plus MO2's two enable rules - `category_import_dialog.cpp:15`, `categories_dialog.cpp:363` | ✅ ✔ |
 | U196 "No category found" install dialog (Proceed / Disable / Stop && Configure) (NEXUS-LENS: genericize/provider-scope) | ✅ `installationmanager.cpp:672-682` | ❌ | ❌ · |
 | U229 Category menu commits on aboutToHide | ✅ `modlistcontextmenu.cpp:145-151`; MO2 holds categories in an unordered `std::set<int>` (`:136`) with the primary separate via `setPrimaryCategory` | ✅ both submenus commit on aboutToHide, so N ticks write one CSV and an un-tick before leaving cancels; opening and leaving writes nothing because the id list is seeded from the current primary-first CSV and only the checkbox deltas are applied - `mod_context_menu.cpp:706`, covered by `change_categories_test.cpp:107`. MO2 has no CSV order to normalise, so the primary-first order is ours alone | ✅ ✔ |
 
@@ -919,7 +919,7 @@ port - their cited GMM symbol names were invented, the features are not.
 | Backup on install | ✅ `keepBackupOnInstall` `settings.cpp:412` | ✅ taken, and the checkbox remembers the answer - `query_overwrite_dialog.cpp:99` | ✅ ✔ |
 | Installation result tracking | ✅ `InstallationResult` `installationmanager.h:40` | ⚠️ only `replaced_archive` shipped; the rest are behaviour, not flags - `pipeline.h:128` | ⚠️ ✔ |
 | Staging layout normalization | ❌ | 🚀 `analyze_staging_layout()` + `normalize_staging_root()` - `staging_layout.h:51` | 🚀 ✔ |
-| BSA/BA2 archive listing | ❌ | 🚀 `DataArchive` (libarchive-backed) - `data_archive.h:25` | 🚀 ✔ |
+| BSA/BA2 archive listing | ❌ | ⚠️ `DataArchive` opens zip/7z/tar/rar/gz/bz2/xz through libarchive; bsa/ba2 get an expander and read "(could not be read)" with the reason - `data_archive.h:5`, `data_tab.cpp:433` | ⚠️ ✔ |
 | Install name dialog (smart candidates) | ❌ | 🚀 `InstallNameDialog` (editable combobox) - `install_name_dialog.h:18` | 🚀 ✔ |
 | Install progress dialog (modeless) | ❌ | 🚀 `InstallProgressDialog` (300 ms show delay) - `install_progress_dialog.h:19` | 🚀 ✔ |
 | IPluginInstaller::EInstallResult | ✅ `iplugininstaller.h:41-50` (7 values) | ❌ a competing-installer chain has no meaning over stage claims - Workspace-l5xa | ❌ ✔ |
@@ -1425,7 +1425,7 @@ column.
 | 4. Settings & Configuration | 38 | 23 | 6 | 0 | 12 | 19 | 0 |
 | 5. Executable Management | 12 | 4 | 4 | 7 | 0 | 0 | 0 |
 | 6. Mod Management | 24 | 5 | 9 | 8 | 0 | 0 | 1 |
-| 7. Mod Categories | 9 | 6 | 0 | 5 | 0 | 0 | 0 |
+| 7. Mod Categories | 10 | 5 | 0 | 5 | 0 | 0 | 0 |
 | 8. Mod Conflict Detection | 5 | 2 | 3 | 6 | 0 | 0 | 0 |
 | 9. Mod Content Analysis | 9 | 6 | 0 | 11 | 0 | 0 | 0 |
 | 10. Mod Info Dialog | 13 | 0 | 1 | 0 | 0 | 0 | 0 |
@@ -1439,7 +1439,7 @@ column.
 | 18. Mod List Features | 27 | 13 | 3 | 8 | 0 | 0 | 0 |
 | 19. Mod Context Menu | 19 | 3 | 0 | 10 | 0 | 0 | 0 |
 | 20. Plugin Context Menu | 12 | 0 | 0 | 0 | 0 | 0 | 0 |
-| 21. Archive & Installation | 10 | 3 | 4 | 2 | 0 | 0 | 0 |
+| 21. Archive & Installation | 10 | 4 | 3 | 2 | 0 | 0 | 0 |
 | 22. Deploy System | 0 | 1 | 9 | 0 | 2 | 0 | 0 |
 | 23. Overwrite System | 8 | 2 | 3 | 0 | 0 | 0 | 0 |
 | 24. Save Game System | 20 | 1 | 5 | 1 | 0 | 0 | 0 |
@@ -1470,24 +1470,53 @@ column.
 | 49. CLI Help Grammar | 0 | 1 | 0 | 1 | 0 | 0 | 0 |
 | 50. My Games Resolution | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
 | 51. Conflict Scan Refresh | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
-| **TOTAL** | **420** | **154** | **178** | **201** | **52** | **38** | **62** |
+| **TOTAL** | **421** | **154** | **177** | **201** | **52** | **38** | **62** |
 
 ### The arithmetic
 
 ```
 rows in file                          1043
-scored rows (ok + part + miss)         775
+scored rows (ok + part + miss)         776
 
-MO2 parity        ok   / scored        420 /  775  = 54.2%
-partial           part / scored        154 /  775  = 19.9%
-missing           miss / scored        201 /  775  = 25.9%
-GMM-exclusive     surp / all rows      178 / 1043  = 17.1%   (not scored)
+MO2 parity        ok   / scored        421 /  776  = 54.3%
+partial           part / scored        154 /  776  = 19.8%
+missing           miss / scored        201 /  776  = 25.9%
+GMM-exclusive     surp / all rows      177 / 1043  = 17.0%   (not scored)
 ```
 
-**Parity is 420 / 775 = 54.2%.** 201 rows are outright missing and 154 partial.
+**Parity is 421 / 776 = 54.3%.** 201 rows are outright missing and 154 partial.
 The largest untouched surfaces are **44. Tutorial** and **46. Notifications /
 Problems** (zero matched rows), then **16. Nexus** and **15. Downloads**, which
 carry the most missing rows in absolute terms.
+
+**This batch moved parity from 54.2% to 54.3%** (`420 / 775` to `421 / 776`).
+Two rows moved, and they moved in opposite directions for opposite reasons.
+- `U172` went `⚠️` to `✅`, the only row that earned a `✅` here: MO2's
+  import dialog now exists, asking the three questions it asks (strategy,
+  assign, remap) with MO2's own two enable rules, and the engine applies them.
+  The mapping half MO2 keeps in `nexuscatmap.dat` now has a writer, so
+  `resolve_nexus_id` is reachable instead of structurally always zero.
+- "BSA/BA2 archive listing" went `🚀` to `⚠️`. It claimed GMM-exclusive
+  capability through `DataArchive`, but the file it cited says in its own
+  header that libarchive covers `zip/7z/tar/rar/gz/bz2/xz` and that BSA/BA2
+  backends "plug in here later". There is no BSA reader in the tree; bsa/ba2
+  get an expander and read "(could not be read)". The row now says that.
+
+The denominator moved by one, and it moved because of the second row, not the
+first: `🚀` is unscored and `⚠️` is scored, so correcting an overclaim into the
+scored set adds a row to the denominator. The numerator moved by one because of
+the first row. Neither number was adjusted to make the other look better - the
+correction is the reason parity is not higher, and it was not withheld for the
+same reason.
+
+**`U196` stays `❌`.** MO2's "No category found" prompt (Proceed / Disable /
+Stop && Configure, `installationmanager.cpp:665-687`) fires inside its
+installer, which reads the Nexus category id out of the `.meta` sidecar MO2
+writes at download completion (`downloadmanager.cpp:1810`). We have no such
+sidecar: `FetchStage` drops the provider's metadata at its own boundary, and
+the only place our code knows a mod's Nexus category is the post-install meta
+pass, which scans every mod and is the wrong place for a modal prompt. It is
+real work, not a row to bump.
 
 **This batch left parity at 54.2%** (`420 / 775`, unchanged). Two rows moved,
 both `❌` to `⚠️` and both inside the scored set: `U172`, because the engine

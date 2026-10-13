@@ -172,6 +172,10 @@ gmm_catch2_test(category_per_game_test engine/category_per_game_test.cpp
     PROPERTIES TIMEOUT 120)
 gmm_catch2_test(nexus_categories_test engine/nexus_categories_test.cpp
     PROPERTIES TIMEOUT 120)
+# A digest mismatch must discard the bad bytes, not leave a resumable orphan
+# (Workspace-wrx7). TIMEOUT for the same reason as the three above.
+gmm_catch2_test(fetch_stage_digest_test engine/fetch_stage_digest_test.cpp
+    PROPERTIES TIMEOUT 120)
 gmm_catch2_test(mod_meta_test engine/mod_meta_test.cpp)
 gmm_catch2_test(profile_test engine/profile_test.cpp)
 gmm_catch2_test(profile_creation_test engine/profile_creation_test.cpp)
@@ -423,7 +427,11 @@ gmm_catch2_test(flags_delegate_test ui/flags_delegate_test.cpp
 
 gmm_catch2_test(settings_sources_tab_test ui/settings_sources_tab_test.cpp
     UI
-    LIBS gmm_ui ${CMAKE_DL_LIBS})
+    LIBS gmm_ui ${CMAKE_DL_LIBS}
+    # Same omission as main_toolbar_split_test: every test target touched by
+    # the Nexus-category and LOOT batches got a TIMEOUT except this one
+    # (Workspace-tfp7).
+    PROPERTIES TIMEOUT 120)
 
 gmm_catch2_test(settings_content_widget_test ui/settings_content_widget_test.cpp
     UI
@@ -589,7 +597,12 @@ gmm_catch2_test(save_info_dialog_test ui/save_info_dialog_test.cpp
 gmm_catch2_test(main_toolbar_split_test ui/main_toolbar_split_test.cpp
     UI
     DEFINES GMM_TEST_RESOURCES_DIR="${PROJECT_SOURCE_DIR}/resources"
-    LIBS gmm_ui)
+    LIBS gmm_ui
+    # This is the one that wedges: QToolButton::showMenu() enters QMenu's
+    # nested event loop, which nothing can exit under the offscreen platform.
+    # TIMEOUT so that degrades to a red instead of a wedged runner
+    # (Workspace-tfp7).
+    PROPERTIES TIMEOUT 120)
 
 # The LOOT report popup body: MO2's General messages section plus the stats
 # line, with each message at the level LOOT gave it.
