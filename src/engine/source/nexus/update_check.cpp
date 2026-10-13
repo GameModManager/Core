@@ -95,56 +95,33 @@ namespace {
     return reply;
   }
 
-  // The file list of one mod: the ids Nexus still serves plus the version string
-  // of the newest of them. The version rides along because that is what
-  // `newestversion` displays and what `ignoredversion` has to match - asking
-  // Nexus for it separately would be a second request for one string.
-  struct FileInfo {
-    bool ok = false;
-    std::vector<long long> available;
-    std::string newest_version;
-  };
+  // Why one request could not be used, in words a user can act on. Every
+  // failure path in the sweep funnels through here, so no mod can fail without
+  // a name and a reason attached to it.
+  std::string describe(const HttpReply &r) {
+    if (r.refused)
+      return "Nexus refused the request (API budget exhausted)";
+    if (r.http_code == 0)
+      return "the request never reached Nexus";
+    return "Nexus answered HTTP " + std::to_string(r.http_code);
+  }
 
-  FileInfo parse_files(const std::string &body) {
-    FileInfo info;
-    try {
-      auto j = nlohmann::json::parse(body);
-      if (!j.contains("data") || !j["data"].is_object())
-        return info;
-      const auto &data = j["data"];
+  // Read an optional string member, tolerating the JSON `null` that Nexus uses
+  // for "no value" - most notably `category_name` on a mod's main file, which
+  // is most of them. json::value() THROWS on a null it is asked to convert, and
+  // that throw aborts the parse for the whole mod, which is exactly the
+  // "every mod comes back unreadable" outcome this parser already had once.
+  std::string string_field(const nlohmann::json &object, const char *key) {
+    const auto it = object.find(key);
+    if (it == object.end() || !it->is_string())
+      return {};
+    return it->get<std::string>();
+  }
 
-      // "available_mod_files" is exactly the downloadable set - archived and
-      // deleted files are left out. The `files` fallback keeps a mod readable
-      // if Nexus ever drops the field; it may then include archived entries,
-      // which errs toward calling an update rather than hiding one.
-      if (data.contains("available_mod_files") &&
-          data["available_mod_files"].is_array()) {
-        for (const auto &id : data["available_mod_files"])
-          if (id.is_number_integer() && id.get<long long>() > 0)
-            info.available.push_back(id.get<long long>());
-      } else if (data.contains("files") && data["files"].is_array()) {
-        for (const auto &f : data["files"])
-          if (f.is_object() && f.value("id", 0LL) > 0)
-            info.available.push_back(f["id"].get<long long>());
-      }
-
-      if (!info.available.empty() && data.contains("files") &&
-          data["files"].is_array()) {
-        const long long newest =
-            *std::max_element(info.available.begin(), info.available.end());
-        for (const auto &f : data["files"]) {
-          if (f.is_object() && f.value("id", 0LL) == newest) {
-            info.newest_version = f.value("version", std::string{});
-            break;
-          }
-        }
-      }
-      info.ok = !info.available.empty();
-    } catch (const std::exception &e) {
-      Logger::instance().error(
-          std::string("[NexusUpdateCheck] file list parse failed: ") + e.what());
-    }
-    return info;
+  // True for a file Nexus has retracted. An archived file is not downloadable,
+  // so counting it would let a withdrawn file masquerade as the newest one.
+  bool is_archived(const nlohmann::json &file) {
+    return string_field(file, "category_name") == "ARCHIVED";
   }
 
   // MO2 writes newestVersion in camel case; GMM's Mod Info panel has always
@@ -213,6 +190,50 @@ namespace {
   }
 
 }  // namespace
+
+bool parse_files(const std::string &body, std::vector<long long> &available_ids,
+                 std::string &newest_version) {
+  std::vector<long long> available;
+  std::string newest;
+  long long newest_id = 0;
+  try {
+    const auto j = nlohmann::json::parse(body);
+    if (!j.contains("data") || !j["data"].is_object())
+      return false;
+    const auto &data = j["data"];
+    if (!data.contains("files") || !data["files"].is_array())
+      return false;
+
+    // `file_id` is the name Nexus uses, in every one of its clients' code and
+    // in MO2's (mainwindow.cpp:3329, nexusinterface.cpp:132). Reading `id`
+    // here instead - or waiting for an `available_mod_files` field that does
+    // not exist - silently yields an empty list, and an empty list means
+    // "could not tell", so every mod in the instance would come back
+    // undecided and no badge would ever light up.
+    for (const auto &f : data["files"]) {
+      if (!f.is_object())
+        continue;
+      const long long id = f.value("file_id", 0LL);
+      if (id <= 0 || is_archived(f))
+        continue;
+      available.push_back(id);
+      if (id > newest_id) {
+        newest_id = id;
+        newest    = string_field(f, "version");
+      }
+    }
+  } catch (const std::exception &e) {
+    Logger::instance().error(
+        std::string("[NexusUpdateCheck] file list parse failed: ") + e.what());
+    return false;
+  }
+
+  if (available.empty())
+    return false;
+  available_ids  = std::move(available);
+  newest_version = std::move(newest);
+  return true;
+}
 
 const char *period_query_value(Period p) {
   switch (p) {
@@ -386,7 +407,19 @@ Report run(const std::string &nexus_domain, const std::string &api_key,
   const bool full = full_recheck_required(gap);
   const auto due  = due_for_query(installed, updated, full);
   std::set<std::string> stamped;
-  bool incomplete = false;
+  std::set<std::string> unresolved;
+
+  // Every way a mod can fail to get an answer, in one place: the mod is named,
+  // the reason is stated, and the reason reaches both the log and the Report.
+  // A sweep that silently drops a mod is indistinguishable from one that found
+  // it current, and that is the single failure this feature cannot have.
+  const auto unanswerable = [&](const InstalledMod &mod, const std::string &reason) {
+    report.unreachable.push_back({mod.folder, std::to_string(mod.mod_id), reason});
+    unresolved.insert(mod.folder);
+    Logger::instance().warn("[NexusUpdateCheck] could not check mod " + mod.folder +
+                            " (nexus mod id " + std::to_string(mod.mod_id) +
+                            "): " + reason);
+  };
 
   for (const auto &mod : due) {
     const auto files =
@@ -397,33 +430,32 @@ Report run(const std::string &nexus_domain, const std::string &api_key,
     if (!files.ok) {
       // Leave that mod's meta alone, lastnexusquery unbumped: the next sweep
       // retries it. Counting it as current would be the one lie that matters.
-      incomplete = true;
-      Logger::instance().warn("[NexusUpdateCheck] no file list for mod " +
-                              std::to_string(mod.mod_id));
+      if (files.refused)
+        report.rate_limited = true;
+      unanswerable(mod, describe(files));
       continue;
     }
 
-    const auto info = parse_files(files.body);
+    std::vector<long long> available;
+    std::string newest_version;
     ++report.checked;
-    if (!info.ok) {
-      incomplete = true;
+    if (!parse_files(files.body, available, newest_version)) {
+      unanswerable(mod, "Nexus sent a file list this build cannot read");
       continue;
     }
 
-    const auto state   = evaluate(mod.installed_file_id, info.available);
-    const bool visible = update_visible(state.state == Verdict::Update,
-                                        info.newest_version, mod.ignored_version);
+    const auto state   = evaluate(mod.installed_file_id, available);
+    const bool visible = update_visible(state.state == Verdict::Update, newest_version,
+                                        mod.ignored_version);
 
     auto meta = ModMeta::load(mods_dir, mod.folder);
     meta.set(kSecNexus, kKeyLastQuery, utc_iso8601(now));
     meta.set(kSecGeneral, kKeyUpdate,
              state.state == Verdict::Update ? "true" : "false");
-    if (!info.newest_version.empty())
-      meta.set(kSecGeneral, kKeyNewest, info.newest_version);
+    if (!newest_version.empty())
+      meta.set(kSecGeneral, kKeyNewest, newest_version);
     if (!meta.save(mods_dir, mod.folder)) {
-      Logger::instance().warn("[NexusUpdateCheck] could not write meta.ini for " +
-                              mod.folder);
-      incomplete = true;
+      unanswerable(mod, "the verdict could not be written to its meta.ini");
       continue;
     }
     stamped.insert(mod.folder);
@@ -433,17 +465,28 @@ Report run(const std::string &nexus_domain, const std::string &api_key,
 
   // Everything the bulk window already answered for still gets re-stamped, so
   // the next sweep's window is computed from a truthful age and cannot outgrow
-  // what a single request can cover.
+  // what a single request can cover. A mod we could NOT answer for is excluded:
+  // stamping it would record a check that never happened, and the next sweep
+  // would then skip it as recently looked-at - turning a transient outage into
+  // a permanent silent miss.
   for (const auto &mod : installed) {
-    if (stamped.count(mod.folder) == 0)
+    if (stamped.count(mod.folder) == 0 && unresolved.count(mod.folder) == 0)
       stamp(mods_dir, mod.folder, now);
   }
 
   report.ok = true;
-  if (incomplete) {
+  if (!report.unreachable.empty()) {
     report.message =
-        "Update check finished, but some mods could not be reached and will be "
-        "retried next time.";
+        std::to_string(report.unreachable.size()) +
+        (report.unreachable.size() == 1
+             ? " mod could not be reached on Nexus and will be retried: "
+             : " mods could not be reached on Nexus and will be retried: ") +
+        report.unreachable.front().folder + " (" + report.unreachable.front().reason +
+        ")";
+    if (report.unreachable.size() > 1)
+      report.message +=
+          ", and " + std::to_string(report.unreachable.size() - 1) + " more";
+    Logger::instance().warn("[NexusUpdateCheck] " + report.message);
   }
   return report;
 }

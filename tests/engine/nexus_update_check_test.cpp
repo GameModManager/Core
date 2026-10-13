@@ -17,6 +17,7 @@
 #include "engine/source/nexus/update_check.h"
 
 #include "engine/mod/meta/mod_meta.h"
+#include "engine/network/network_manager.h"
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -24,7 +25,9 @@
 
 #include <filesystem>
 #include <fstream>
+#include <memory>
 #include <string>
+#include <vector>
 
 using engine::Source::Nexus::UpdateCheck::InstalledMod;
 using engine::Source::Nexus::UpdateCheck::Period;
@@ -51,14 +54,23 @@ struct TempDir {
 };
 
 // A Nexus-sourced mod folder on disk, as the sweep reads it.
+//
+// The shape matters and used to be wrong: read_installed() identifies a mod by
+// [GameModManager] source_type, which is where the real meta.ini puts it. An
+// earlier version of this helper wrote `sourceType=nexus` under [General]
+// instead, so read_installed() rejected every seeded mod and `installed` came
+// back empty - which is the other half of why no test ever reached the part of
+// run() that queries Nexus. A fixture that does not look like the thing it
+// stands for is worse than no fixture: it proves the early return, not the path.
 void seed_mod(const std::filesystem::path &mods_dir, const std::string &folder,
               long long mod_id, long long file_id) {
   std::error_code ec;
   std::filesystem::create_directories(mods_dir / folder, ec);
   std::ofstream out(mods_dir / folder / "meta.ini");
   out << "[General]\n"
-      << "sourceType=nexus\n"
-      << "version=1.0\n";
+      << "version=1.0\n"
+      << "\n[GameModManager]\n"
+      << "source_type = nexus\n";
   if (mod_id > 0)
     out << "\n[Nexusmods]\n"
         << "modid=" << mod_id << "\n"
@@ -74,6 +86,154 @@ InstalledMod mod(long long mod_id, int64_t last_checked) {
 }
 
 }  // namespace
+
+// A real Nexus v1 `files.json` body, field for field. This is the shape Nexus
+// documents and the shape MO2 parses (mainwindow.cpp:3329, nexusinterface.cpp:
+// 132, downloadmanager.cpp:1880 all read `file_id`). Two names in it are load
+// bearing: the download set is `data.files[]`, and each entry's id is
+// `file_id` - there is no `available_mod_files` and no `id`.
+//
+// It is reproduced here verbatim rather than abstracted because the bug this
+// pins down was a parser reading fields Nexus has never sent: every HTTP 200
+// was billed, logged as a request, and then discarded as unparseable, so the
+// sweep reported nothing for any mod and the user saw no badge anywhere.
+static const char *kRealFilesBody = R"({
+  "data": {
+    "mod_id": 6832,
+    "files": [
+      {"file_id": 207864, "name": "A Mod", "version": "1.0", "category_name": null},
+      {"file_id": 522942, "name": "A Mod", "version": "2.0", "category_name": "MAIN"},
+      {"file_id": 999999, "name": "A Mod", "version": "9.9.9", "category_name": "ARCHIVED"}
+    ],
+    "file_updates": [
+      {"old_file_id": 207864, "new_file_id": 522942,
+       "old_file_name": "a-1.0.7z", "new_file_name": "a-2.0.7z",
+       "uploaded_timestamp": 1721451025}
+    ]
+  }
+})";
+
+// The regression that shipped the broken sweep: an unparseable file list must
+// be LOUD, never an empty answer dressed up as "nothing changed".
+TEST_CASE("nexus update sweep: a real Nexus file list is read and not discarded") {
+  using engine::Source::Nexus::UpdateCheck::parse_files;
+
+  std::vector<long long> available;
+  std::string newest;
+  REQUIRE(parse_files(kRealFilesBody, available, newest));
+
+  // The archived file is excluded: it is not downloadable, and counting it
+  // would let a retracted file pass as the newest one.
+  REQUIRE(available.size() == 2);
+  REQUIRE(available.front() == 207864);
+  REQUIRE(available.back() == 522942);
+  REQUIRE(newest == "2.0");
+
+  // The exact regression shape: the same list under the key name Nexus does
+  // not use yields nothing, and "nothing" must read as a refusal, not as a
+  // mod that is up to date.
+  const char *wrong_key = R"({"data":{"files":[{"id":522942,"version":"2.0"}]}})";
+  std::vector<long long> none;
+  std::string no_version;
+  REQUIRE(parse_files(wrong_key, none, no_version) == false);
+  REQUIRE(none.empty());
+}
+
+// The sweep end to end over a faked network, which is the only way to reach the
+// half of run() that actually talks to Nexus. It asserts what a real run must
+// do: write a verdict and badge an update.
+//
+// One mod per case on purpose. run() walks the mods in directory_iterator
+// order and the fake serves responses FIFO, so a multi-mod case would silently
+// depend on the filesystem to decide which mod gets which answer.
+TEST_CASE("nexus update sweep: a readable answer becomes a badge", "[engine][nexus]") {
+  using engine::network::FakeNetworkManager;
+  using engine::Source::Nexus::UpdateCheck::run;
+
+  const TempDir tmp("sweep_ok");
+  const int64_t now = 1700000000;
+  seed_mod(tmp.root, "MyMod", 100, 207864);  // installed file id 207864
+
+  auto fake     = std::make_unique<FakeNetworkManager>();
+  auto *fakeptr = fake.get();
+  engine::network::set_instance(std::move(fake));
+
+  engine::network::Response bulk;
+  bulk.http_code = 200;
+  bulk.body      = R"([{"mod_id":100,"latest_file_update":1699999999}])";
+  fakeptr->enqueue_response(bulk);
+
+  engine::network::Response files;
+  files.http_code = 200;
+  files.body      = kRealFilesBody;  // newest non-archived file id is 522942
+  fakeptr->enqueue_response(files);
+
+  const auto report = run("skyrimspecialedition", "test-key", tmp.root, now);
+  engine::network::set_instance(nullptr);
+
+  REQUIRE(report.total == 1);
+  REQUIRE(report.requests == 2);  // one bulk, one per-mod
+  REQUIRE(report.checked == 1);
+  REQUIRE(report.ok == true);
+  REQUIRE(report.unreachable.empty());
+  REQUIRE(report.message.empty());  // a complete answer needs no warning
+
+  // THE thing the user could not see before: a verdict, in the meta.ini the
+  // mod list reads to decide whether to paint a row red.
+  const auto meta = engine::ModMeta::load(tmp.root, "MyMod");
+  REQUIRE(meta.get("General", "nexus_update") == "true");  // 522942 > 207864
+  REQUIRE(meta.get("General", "newestversion") == "2.0");
+  REQUIRE(meta.get("Nexusmods", "lastnexusquery") == "2023-11-14T22:13:20Z");
+  REQUIRE(report.updates == 1);
+}
+
+// A mod the sweep could not answer for must be NAMED, with a reason, and must
+// not be recorded as checked. The shipped bug's worst half was exactly here: a
+// 200 carrying something unreadable was logged as "no file list for mod N" with
+// no reason, then stamped as freshly checked, so the next sweep skipped it.
+TEST_CASE("nexus update sweep: an unreadable answer is named and not stamped",
+          "[engine][nexus]") {
+  using engine::network::FakeNetworkManager;
+  using engine::Source::Nexus::UpdateCheck::run;
+
+  const TempDir tmp("sweep_bad");
+  const int64_t now = 1700000000;
+  seed_mod(tmp.root, "BrokenMod", 300, 207864);
+
+  auto fake     = std::make_unique<FakeNetworkManager>();
+  auto *fakeptr = fake.get();
+  engine::network::set_instance(std::move(fake));
+
+  engine::network::Response bulk;
+  bulk.http_code = 200;
+  bulk.body      = R"([{"mod_id":300,"latest_file_update":1699999999}])";
+  fakeptr->enqueue_response(bulk);
+
+  // A SUCCESSFUL request whose body is not a file list: the exact shape of the
+  // bug, which the old code turned into a silent skip rather than a report.
+  engine::network::Response unreadable;
+  unreadable.http_code = 200;
+  unreadable.body      = "<html>maintenance</html>";
+  fakeptr->enqueue_response(unreadable);
+
+  const auto report = run("skyrimspecialedition", "test-key", tmp.root, now);
+  engine::network::set_instance(nullptr);
+
+  REQUIRE(report.ok == true);  // the sweep ran; it is not a whole-sweep failure
+  REQUIRE(report.unreachable.size() == 1);
+  REQUIRE(report.unreachable.front().folder == "BrokenMod");
+  REQUIRE(report.unreachable.front().mod_id == "300");
+  REQUIRE_FALSE(report.unreachable.front().reason.empty());
+  // A partial answer must never be renderable as "up to date".
+  REQUIRE_FALSE(report.message.empty());
+  REQUIRE(report.updates == 0);
+
+  const auto meta = engine::ModMeta::load(tmp.root, "BrokenMod");
+  REQUIRE(meta.get("General", "nexus_update").empty());
+  // Not stamped: a mod we could not reach must not look recently checked, or
+  // the next sweep's window would skip it and the miss would become permanent.
+  REQUIRE(meta.get("Nexusmods", "lastnexusquery").empty());
+}
 
 // The cost claim: one bulk request answers every mod, and a mod absent from
 // the window (or untouched since we looked) owes nothing further.
