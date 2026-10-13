@@ -660,13 +660,13 @@ port - their cited GMM symbol names were invented, the features are not.
 
 | Feature | MO2 | GMM | Status |
 |---------|-----|-----|--------|
-| Download state machine | ✅ `DownloadState` (14 states) | ⚠️ 7 states, 6 of them assigned; `Removed` is still reserved and never assigned - `downloads_tab.h:51` | ⚠️ ✔ |
+| Download state machine | ✅ `DownloadState` (14 states) | ⚠️ 7 states, 6 of them assigned; `Removed` is still reserved and never assigned - `downloads_tab.h:37`; an in-flight state cannot survive a restart, so the meta writes it as MO2's `paused` flag and it restores as Failed - `write_download_meta` `downloads_tab.cpp:1725` | ⚠️ ✔ |
 | Pause/resume downloads | ✅ `pauseDownload`, `resumeDownload` | ✅ pause = menu only; resume also row double-click - `downloads_controller.cpp:402` | ✅ ✔ |
 | Cancel downloads | ✅ `cancelDownload` | ✅ Cancel on a running row's context menu and on the Delete key, the `Cancelled` state (below READY, so neither Delete batch sweeps it up) and a dropped `.unfinished` partial - `downloads_tab.h:51`, `pipeline_worker.cpp:444`, `downloads_tab.cpp:814` | ✅ ✔ |
 | Download speed tracking | ✅ `downloadSpeed` rolling average | ✅ average over the transfer's own elapsed time with MO2's five-second floor and a per-run resume base, off a steady clock - `average_download_speed()` `downloads_tab.cpp:223`; the row bar renders `%p% - speed - ~remaining` like MO2 (downloadmanager.cpp:1747-1750) and drops the estimate when it cannot be made - `downloads_tab.cpp:667`. No per-server history, which rows below carry | ✅ ✔ |
 | MD5 lookup | ✅ `queryInfoMd5` | ❌ nothing computes an MD5 - `collection/nexus/parser.cpp:136` | ❌ ✔ |
 | Download meta files (sidecar) | ✅ `createMetaFile` | ⚠️ written for installed mods, never next to a download - `downloads_tab.cpp:775` | ⚠️ ✔ |
-| Hidden downloads | ✅ `isHidden`, `restoreDownload` | ✅ `DownloadEntry::hidden`, persisted in the manifest so a row stays hidden across restarts, with Un-Hide All - `downloads_tab.cpp:297` | ✅ ✔ |
+| Hidden downloads | ✅ `isHidden`, `restoreDownload` | ✅ `DownloadEntry::hidden`, persisted as MO2's `removed` flag in the row's own meta so a row stays hidden across restarts, with Un-Hide All - `downloads_tab.cpp:1757` | ✅ ✔ |
 | Automatic retry (3x) | ✅ `AUTOMATIC_RETRIES` | ✅ retries, backoff, Retry-After - `network_options_bridge.cpp:25` | ✅ ✔ |
 | Pending download queue | ✅ `PendingDownload` | ✅ `pending_` drained FIFO; `nexus_queue_downloads` is GMM-only - `pipeline_worker.cpp:317` | ✅ ✔ |
 | Multi-URL fallback | ✅ `m_Urls`, `m_CurrentUrl` | 🚫 one signed URL per download; re-request is the retry - `Mod::download_url` | 🚫 ✔ |
@@ -675,7 +675,7 @@ port - their cited GMM symbol names were invented, the features are not.
 | Compact downloads view | ✅ `compactDownloads` | ✅ `apply_compact_style` / `row_height` - `downloads_tab.cpp:302` | ✅ ✔ |
 | Drag-and-drop import | ❌ | 🚀 drop moves/copies + "Manual" row; single link -> Add-from-URL - `downloads_tab.cpp:844` | 🚀 ✔ |
 | Directory watcher (auto-detect) | ❌ | 🚀 `QFileSystemWatcher`, 200 ms debounce, re-armed on switch - `downloads_tab.cpp:470`; a 0-byte file in the dir is not surfaced as a download - `downloads_tab.cpp:1057` | 🚀 ✔ |
-| Manifest serialization (JSON) | ❌ | 🚀 `serialize`/`deserialize` + legacy-label repairs - `downloads_tab.cpp:1691`; a restored Complete/Installed row whose archive is missing, empty or short of its recorded size comes back Failed - `archive_is_complete` `downloads_tab.cpp:118` | 🚀 ✔ |
+| Manifest serialization (JSON) | 🚫 MO2 has no JSON manifest - state is per-file `"<archive>.meta"`, QSettings IniFormat, beside each archive (`downloadmanager.cpp:88-164`, `:1771-1799`), rebuilt by an `*.meta` dir scan (`:412`) | 🚀 per-file `"<archive>.meta"` in MO2's format and location - `write_download_meta` `downloads_tab.cpp:1725`, `read_download_metas` `downloads_tab.cpp:1817`; no JSON on disk, `metas_to_manifest_json` is only an in-memory bridge into the one restore path - `downloads_tab.cpp:1879`; one-way off the legacy single-file manifest, removed only after every meta lands - `migrate_download_state` `downloads_tab.cpp:1856`; a restored Complete/Installed row whose archive is missing, empty or short of its recorded size comes back Failed - `archive_is_complete` `downloads_tab.cpp:120` | 🚀 ✔ |
 | Content-Disposition filename parsing | ❌ | 🚀 RFC 6266/5987 incl. `filename*`, `..` reject - `curl_download.cpp:136` | 🚀 ✔ |
 | HTTP Range resume | ❌ | ⚠️ `CURLOPT_RESUME_FROM_LARGE`; repeat link refused first - `downloads_controller.cpp:994` | ⚠️ ✔ |
 | NXM protocol download handler | ✅ `addNXMDownload()` (nxm:// link processing) | ✅ `NxmIpcServer` -> `Uri::Router::parse` -> `handle_nxm_download`; `modl://` shares it - `uri/router.cpp:57` | ✅ ✔ |
@@ -1125,7 +1125,7 @@ port - their cited GMM symbol names were invented, the features are not.
 | What's This / context help on the main-window surfaces | ✅ 26 `whatsThis` properties in `mainwindow.ui`; MO2 never calls the Qt setter from C++ | ⚠️ 19 call sites, 17 files, all on containers so children inherit - `main_window.cpp` | ⚠️ ✔ |
 | Data tab (virtual data browser) | ✅ `DataTab` | ✅ `data_tab` (dual view, build worker, menu) - `data_tab.h:25` | ✅ · |
 | File-tree modifier swap (Alt swaps preview/open, Ctrl reveals) | ✅ `filetree.cpp:249`, `modinfodialogconflicts.cpp:203` | ✅ pure `resolve_double_click(setting, alt, ctrl)` on all 3 trees - `data_tab.h:77` | ✅ ✔ |
-| Downloads tab | ✅ `DownloadsTab` | ✅ `downloads_tab` (drag-drop, watcher, compact) - `downloads_tab.h:46` | ✅ · |
+| Downloads tab | ✅ `DownloadsTab` | ✅ `downloads_tab` (drag-drop, watcher, compact, per-file meta state) - `downloads_tab.h:234` | ✅ · |
 | Saves tab | ✅ `SavesTab` | ✅ `saves_tab` (background scan, hover info) - `saves_tab.h:27` | ✅ · |
 | Conflicts tab | ✅ | ✅ `conflicts_tab` (image diff) - `conflicts_tab.h:22` | ✅ · |
 | Archives tab | ✅ | ✅ `archives_tab` (lists the archives the enabled plugin files load, marks the ones not on disk) - `archives_tab.h:9` | ✅ ✔ |

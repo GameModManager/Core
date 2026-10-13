@@ -500,6 +500,14 @@ gmm_catch2_test(downloads_tab_state_test ui/downloads_tab_state_test.cpp
     LIBS gmm_ui
     PROPERTIES TIMEOUT 120)
 
+# The per-file "<archive>.meta" download state (MO2's format) and the one-way
+# migration off the single .download_manifest.json. TIMEOUT is mandatory: this
+# creates a QApplication and touches the filesystem in six cases.
+gmm_catch2_test(download_meta_test ui/download_meta_test.cpp
+    UI
+    LIBS gmm_ui
+    PROPERTIES TIMEOUT 120)
+
 gmm_catch2_test(downloads_batch_test ui/downloads_batch_test.cpp
     UI
     LIBS gmm_ui)
