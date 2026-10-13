@@ -244,6 +244,12 @@ public:
   // request removes the archive). A Failed row is deliberately NOT covered -
   // there is no Retry action on a row, so re-queueing its link is how a failed
   // download is retried. Neither is Paused: a fresh link means "carry on".
+  //
+  // Note that add_download() also starts its row in Downloading - that is the
+  // pre-fetch state, before any worker runs. A caller that has just created the
+  // row must therefore NOT ask this question about it: a brand new row is not a
+  // transfer in flight, and the answer would be yes. Gate the call on
+  // add_download() having returned false (the row already existed).
   [[nodiscard]] bool blocks_refetch(const std::string &id) const;
 
   // Update the displayed name of a download entry (e.g. the real mod name,
