@@ -14,6 +14,10 @@
 //      masterlist cache is pre-seeded fresh under the FakePlatform data dir
 //      so the controller's default update_masterlists=true is a 24h-TTL
 //      cache hit and never touches the network.
+//   1b. LOOT sort UI lock follows Settings::lock_gui - both gate states in
+//      one case, since an on-case-only check stays green with the gate gone.
+//      Same fake CLI, held for 2s so the window state is read while the
+//      subprocess is still running.
 //   2. Open the Saves tab (first-show lazy scan of a fixture dir) -> assert
 //      rows; switch tabs -> assert last_tab persisted into instance.toml.
 //   3. Mod delete via the real context menu + Remove Mods TaskDialog ->
@@ -148,16 +152,23 @@ private:
 // reaching the network.
 constexpr const char *kFakeLootcliMarker = "gmm_qs50 fake lootcli";
 
-std::string fake_lootcli_script() {
+std::string fake_lootcli_script(int hold_seconds = 0) {
   // Same stdout protocol as tests/engine/loot_sorter_test.cpp: progress
   // markers, --pluginListOutputPath / --out parsing, sorted list + MO2
   // lootcli createPlugins-shape JSON report. Sorted output = every seeded
   // plugin (natives first, user band ZetaMod.esp before MyMod.esp) so
   // PluginDb::apply_load_order accepts it and the row swap is observable.
+  //
+  // hold_seconds sleeps before the first output. The UI-lock case needs the
+  // subprocess to still be running at the instant it inspects the window, and
+  // an instant stand-in would race the event loop rather than prove the lock
+  // is held for the duration of the run.
   std::string s;
   s += "#!/bin/sh\n";
   s += "# gmm_qs50 fake lootcli - hermetic harness stand-in, do not run\n";
   s += std::string("echo '") + kFakeLootcliMarker + "'\n";
+  if (hold_seconds > 0)
+    s += "sleep " + std::to_string(hold_seconds) + "\n";
   s += "echo '[progress] 1'\n";
   s += "echo '[progress] 2'\n";
   s += "echo '[progress] 3'\n";
@@ -211,7 +222,7 @@ struct FakeLootcliGuard {
 
 // Installs the fake next to the test binary. Returns false when a foreign
 // (real) gmm_lootcli is present - the caller then skips the sort case.
-bool install_fake_lootcli(FakeLootcliGuard &guard) {
+bool install_fake_lootcli(FakeLootcliGuard &guard, int hold_seconds = 0) {
   const fs::path cli =
       fs::path(QCoreApplication::applicationDirPath().toStdString()) / "gmm_lootcli";
   guard.path = cli;
@@ -228,7 +239,7 @@ bool install_fake_lootcli(FakeLootcliGuard &guard) {
       return false;  // a real gmm_lootcli - do not clobber, do not network
     fs::remove(cli, ec);
   }
-  write_file(cli, fake_lootcli_script());
+  write_file(cli, fake_lootcli_script(hold_seconds));
   fs::permissions(cli, fs::perms::owner_all | fs::perms::group_read |
                            fs::perms::others_read);
   guard.owned = fs::is_regular_file(cli, ec);
@@ -441,6 +452,135 @@ TEST_CASE("MainWindow: LOOT sort run renders bullets in plugin hover tooltip",
   CHECK(tip.contains("ITM record"));
   CHECK(tip.contains("Harness LOOT warning message"));
   QToolTip::hideText();
+
+  fs::remove_all(root);
+}
+
+// ---------------------------------------------------------------------------
+// lock_gui gating of the LOOT sort, driven through the real window.
+//
+// The Workarounds checkbox gates LockReason::LockUI (Locker::lock,
+// ui_locker.cpp:20); both install sites pass OutputRequired, which overrides
+// the setting, so before the LOOT sort took a gated lock the checkbox had no
+// caller at all. It is the only consumer test of that gate there is, which is
+// why BOTH cases live here: an on-case-only test stays green with the gate
+// deleted, which is the exact defect this covers.
+//
+// The fake CLI holds for 2s, so the lock state read immediately after the
+// click is read while gmm_lootcli is genuinely still running.
+// ---------------------------------------------------------------------------
+TEST_CASE("MainWindow: LOOT sort UI lock follows lock_gui", "[ui][harness]") {
+  const fs::path root = make_case_root("gmm_lockgui_loot");
+
+  const fs::path game_dir = root / "game";
+  fs::create_directories(game_dir / "Data");
+  write_file(game_dir / "Data" / "Skyrim.esm", "fake esm");
+  write_file(game_dir / "Data" / "Update.esm", "fake esm");
+  write_file(game_dir / "Data" / "MyMod.esp", "fake esp");
+  write_file(game_dir / "Data" / "ZetaMod.esp", "fake esp");
+
+  const fs::path ml_dir = root / "data" / "loot" / "testgame";
+  fs::create_directories(ml_dir);
+  write_file(ml_dir / "masterlist.yaml", "seq: 1\n");
+  write_file(ml_dir / "prelude.yaml", "groups: []\n");
+
+  qputenv("QT_QPA_PLATFORM", "offscreen");
+  int app_argc     = 1;
+  char app_argv0[] = "main_window_harness_test";
+  char *app_argv[] = {app_argv0, nullptr};
+  QApplication app(app_argc, app_argv);
+  QCoreApplication::setOrganizationName("GameModManager");
+  QCoreApplication::setApplicationName("GameModManager");
+
+  FakeLootcliGuard lootcli;
+  if (!install_fake_lootcli(lootcli, /*hold_seconds=*/2)) {
+    WARN("a real gmm_lootcli sits next to the test binary - hermetic fake "
+         "not installed; skipping the LOOT lock case");
+    fs::remove_all(root);
+    return;
+  }
+
+  auto inst           = engine::Instance::installed("TestGame", root / "instances");
+  inst.info().game_id = "testgame";
+  REQUIRE(inst.create_directories());
+  REQUIRE(inst.write_toml());
+
+  engine::GameKnowledge knowledge;
+  knowledge.set("testgame", "mods_subpath", "Mods");
+  knowledge.set("testgame", "game_native_plugins", "Skyrim.esm,Update.esm");
+  knowledge.set("testgame", "loot_game_id", "skyrimse");
+
+  FakePlatform platform(root / "data");
+
+  engine::GameCapabilities caps;
+  engine::CapabilityInfo plugins_cap;
+  plugins_cap.game_id      = "testgame";
+  plugins_cap.capability   = "plugins";
+  plugins_cap.display_name = "Plugins";
+  caps.register_capability(plugins_cap);
+
+  ui::MainWindow w;
+  w.set_game_knowledge(&knowledge);
+  w.set_platform(&platform);
+  auto *rp = w.findChild<ui::RightPanel *>();
+  REQUIRE(rp != nullptr);
+  rp->set_capabilities(&caps);
+  w.show();
+  w.set_game_info("testgame", "Test Game", "Default", game_dir, inst.info().root);
+
+  REQUIRE(pump_until([&w] {
+    return !w.is_loading();
+  }));
+
+  click_tab(rp->tab_widget(), QStringLiteral("Plugins"));
+  auto *ptab = rp->plugins_tab();
+  REQUIRE(ptab != nullptr);
+  auto *table = ptab->table();
+  REQUIRE(table != nullptr);
+  REQUIRE(pump_until([&] {
+    return table->rowCount() == 4;
+  }));
+
+  auto *sort_btn = rp->filter_bar()->findChild<QPushButton *>();
+  REQUIRE(sort_btn != nullptr);
+  REQUIRE(pump_until(
+      [&] {
+        return sort_btn->isVisible();
+      },
+      5000));
+
+  // Not SECTIONs: a Catch2 section re-runs the whole TEST_CASE body, and the
+  // body owns the QApplication, which may exist only once per process. Two
+  // linear blocks in one case is what puts both gate states in one run.
+  //
+  // run_loot_sort takes the lock synchronously on this thread before it queues
+  // the worker, so the window state read on the line after the click is the
+  // in-flight state, and the fake CLI's 2s hold keeps the run in flight.
+  const auto sorted = [&] {
+    return find_row(table, QStringLiteral("ZetaMod.esp")) == 2 &&
+           find_row(table, QStringLiteral("MyMod.esp")) == 3;
+  };
+
+  // lock_gui OFF. The gate must decline, so the window stays live while
+  // gmm_lootcli runs. Run first, while the plugin table is still in its
+  // pre-sort order, so the row swap is an unambiguous "this run finished".
+  Settings::instance().set_lock_gui(false);
+  QTest::mouseClick(sort_btn, Qt::LeftButton);
+  CHECK(w.centralWidget()->isEnabled());
+  REQUIRE(pump_until(sorted, 30000));
+  CHECK(w.centralWidget()->isEnabled());
+
+  // lock_gui ON. Same button, same real sort, and the gate must engage. Waited
+  // on the window coming back rather than on the rows: the release IS the
+  // property under test, and a stranded lock would need a restart to clear.
+  Settings::instance().set_lock_gui(true);
+  QTest::mouseClick(sort_btn, Qt::LeftButton);
+  CHECK_FALSE(w.centralWidget()->isEnabled());
+  REQUIRE(pump_until(
+      [&] {
+        return w.centralWidget()->isEnabled();
+      },
+      30000));
 
   fs::remove_all(root);
 }
