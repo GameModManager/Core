@@ -596,6 +596,19 @@ bool path_is_executable(const std::filesystem::path &path) {
   return ::_waccess(path.wstring().c_str(), 0) == 0;
 }
 
+bool set_process_env_var(const std::string &key, const std::string &value) {
+  // SetEnvironmentVariableW, not _wputenv_s: this changes the process
+  // environment BLOCK, and that block is what both CreateProcessW sites here
+  // pass on (they call it with lpEnvironment == nullptr, which MSDN defines as
+  // "the new process uses the environment of the calling process"). Building
+  // an explicit block for CreateProcessW is not needed and would be the wrong
+  // shape anyway - it would have to carry every inherited variable or the game
+  // loses PATH.
+  const std::wstring wkey(key.begin(), key.end());
+  const std::wstring wval(value.begin(), value.end());
+  return ::SetEnvironmentVariableW(wkey.c_str(), wval.c_str()) != FALSE;
+}
+
 bool filesystem_is_case_insensitive() {
   return true;  // NTFS (and every other volume Windows mounts) folds case
 }

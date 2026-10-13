@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace engine {
@@ -66,12 +67,20 @@ public:
   find_proton_binary(const Platform *platform, uint32_t steam_appid = 0,
                      const std::string &runner_override = {});
 
-  // Set all STEAM_COMPAT_* environment variables needed by the Proton script.
-  // Must be called before launching Proton in the same process or a child.
-  // Steam root, prefix and library paths come from `platform`.
-  static bool prepare_proton_environment(const Platform *platform,
-                                         const std::filesystem::path &game_dir,
-                                         uint32_t steam_appid);
+  // The STEAM_COMPAT_* name/value pairs Proton needs for `steam_appid`, worked
+  // out from `platform` and `game_dir`. Empty when the platform resolves no
+  // Steam root or no prefix: there is then nothing to hand Proton, and the
+  // caller launches without them rather than with half a set.
+  //
+  // Returned, not applied. Setting them is the launch choke point's job
+  // (apply_proton_env_defaults in engine/deploy/launch/launcher.h), because
+  // that is the only side that knows which of them the user set on purpose -
+  // and a value the user chose must survive. Applying them here, as this
+  // function used to, overwrote exactly those.
+  static std::vector<std::pair<std::string, std::string>>
+  proton_environment_defaults(const Platform *platform,
+                              const std::filesystem::path &game_dir,
+                              uint32_t steam_appid);
 
 private:
   const Platform *platform_;
