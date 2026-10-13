@@ -199,14 +199,18 @@ bool write_download_meta(const DownloadMeta &meta,
 [[nodiscard]] std::optional<DownloadMeta>
 read_download_meta(const std::filesystem::path &meta_path);
 
-// Every meta in the dir, MO2's "*.meta" scan (downloadmanager.cpp:412).
+// Every meta in the dir, MO2's "*.meta" scan (downloadmanager.cpp:412), after
+// MO2's orphan sweep (downloadmanager.cpp:409-422).
 //
-// Unlike MO2 we do NOT delete orphan metas (downloadmanager.cpp:409-422). MO2
-// can afford to: its rows are the folder. We keep the row instead and restore
-// it Failed, because a meta whose archive is gone is still a remembered
-// download and deleting its state on sight is how a user's list silently loses
-// entries. remove_entry() deletes the meta it owns, so an explicit Remove
-// still removes.
+// An orphan - a meta with no archive and no partial on disk - is DELETED, to
+// the trash bin, exactly as MO2 does. But only when its own state says the
+// work is not in progress: a "paused" meta (Failed / Downloading / Paused) is
+// kept, because MO2 sweeps it by accident (its bytes are in the ".unfinished"
+// file, so the base file is always missing) and we do not. See meta_is_orphan()
+// in downloads_tab.cpp for the exact swept/kept list. The other two paths agree:
+// remove_entry() deletes the meta of an explicit Remove, and scan_downloads_dir()
+// drops vanished rows, but now only FINISHED ones - it used to drop a paused row
+// whose archive had never landed, which deleted the meta this sweep keeps.
 [[nodiscard]] std::vector<DownloadMeta>
 read_download_metas(const std::filesystem::path &downloads_dir);
 

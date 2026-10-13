@@ -1042,9 +1042,23 @@ void DownloadsTab::scan_downloads_dir() {
   // Collect ids first: remove_entry() mutates downloads_, and this loop is
   // iterating it. remove_entry() skips the trash step for the missing file
   // and emits entry_removed so the manifest persists the removal.
+  //
+  // "Gone" means a FINISHED download's bytes were deleted from outside the
+  // app. A row that never finished has a file_path (deserialize() fills it in
+  // from the meta's name) but no bytes behind it, so existence alone is not
+  // evidence of a deletion - it is the normal state of a paused or failed
+  // transfer, and remove_entry() takes its meta with it. Dropping those here
+  // is how a paused download got silently forgotten on the next launch, and
+  // it is the same thing meta_is_orphan() refuses to do on the read path.
+  // A vanished finished download is still deleted - just by the orphan sweep,
+  // which asks those two questions before it removes anything.
   std::vector<std::string> vanished;
   for (const auto &[id, entry] : downloads_) {
     if (entry.file_path.empty())
+      continue;
+    if (entry.state == DownloadState::Downloading ||
+        entry.state == DownloadState::Paused || entry.state == DownloadState::Failed ||
+        entry.state == DownloadState::Cancelled)
       continue;
     std::error_code fec;
     if (!std::filesystem::exists(entry.file_path, fec))
@@ -1813,6 +1827,43 @@ std::optional<DownloadMeta> read_download_meta(const std::filesystem::path &meta
   return meta;
 }
 
+// MO2's orphan sweep, downloadmanager.cpp:409-422, reads the directory and
+// deletes every "*.meta" whose base file is gone ("sounds cruel but it's better
+// for everyone"). We match it - with one thing MO2 has no way to know, and that
+// is what its "paused" flag exists for (downloadmanager.cpp:1796-1797, where
+// STATE_ERROR is written as paused too).
+//
+// MO2 sweeps on the FILESYSTEM alone, so a paused download is collateral: its
+// bytes live in "<name>.unfinished" (downloadmanager.cpp:111-114), never at
+// "<name>", so the meta that remembers an unfinished transfer is exactly the
+// meta whose base file is missing. We ask the meta before deleting anything:
+//
+//   swept - no archive on disk AND no partial on disk AND not "paused".
+//           A finished download whose archive the user deleted from outside
+//           the app. The meta is the only thing left of it and it describes
+//           nothing, which is the pile-up the user asked us to stop keeping.
+//   kept  - no archive, but a partial IS on disk (the row was written beside
+//           its partial, download_meta_path below), or state is Failed.
+//           Failed is how "paused" comes back (read_download_meta: "paused" ->
+//           Failed) and it also covers Downloading and Paused, all of which we
+//           write as paused. Those rows have no completed archive yet, and their
+//           meta is the only record of what was being fetched - deleting it
+//           permanently forgets an in-progress download. A SHORT archive is
+//           kept for the same reason and by a different route: it exists, so
+//           it is not an orphan at all, and deserialize()'s
+//           archive_is_complete() check (downloads_tab.cpp:2115) restores
+//           it Failed so a fresh link can act on it.
+static bool meta_is_orphan(const DownloadMeta &meta,
+                           const std::filesystem::path &downloads_dir) {
+  std::error_code ec;
+  if (!meta.archive.empty() && std::filesystem::is_regular_file(meta.archive, ec))
+    return false;
+  if (!meta.partial_file.empty() &&
+      std::filesystem::is_regular_file(downloads_dir / meta.partial_file, ec))
+    return false;
+  return meta.state != DownloadState::Failed;
+}
+
 std::vector<DownloadMeta>
 read_download_metas(const std::filesystem::path &downloads_dir) {
   std::vector<DownloadMeta> out;
@@ -1820,9 +1871,19 @@ read_download_metas(const std::filesystem::path &downloads_dir) {
     return out;
   const QStringList files = QDir(QString::fromStdString(downloads_dir.string()))
                                 .entryList({QStringLiteral("*.meta")}, QDir::Files);
+  int orphans             = 0;
   for (const auto &f : files) {
     auto meta_path = downloads_dir / f.toStdString();
     if (auto meta = read_download_meta(meta_path)) {
+      if (meta_is_orphan(*meta, downloads_dir)) {
+        // MO2 uses shellDelete(orphans, true) here, i.e. the trash bin, so the
+        // deletion is recoverable. Same call, same default (permanent=false).
+        if (!engine::remove_path(meta_path))
+          out.push_back(*meta);  // undeletable: keep the row rather than lose it
+        else
+          ++orphans;
+        continue;
+      }
       out.push_back(*meta);
       continue;
     }
@@ -1837,6 +1898,9 @@ read_download_metas(const std::filesystem::path &downloads_dir) {
     broken.state   = DownloadState::Failed;
     out.push_back(std::move(broken));
   }
+  if (orphans > 0)
+    engine::Logger::instance().debug("downloads: " + std::to_string(orphans) +
+                                     " orphaned meta files were deleted");
   return out;
 }
 
