@@ -12,13 +12,13 @@ namespace ui {
 
 Locker::Locker(MainWindow *window) : w_(window) {}
 
-void Locker::lock(LockReason reason) {
+bool Locker::lock(LockReason reason) {
   // MO2's lock_gui gate, processrunner.cpp:860-868. OutputRequired overrides
   // the setting: the operation's output has to be read back and two concurrent
   // ones are impossible, so the user is told what is happening whether they
   // asked for locking or not.
   if (reason != LockReason::OutputRequired && !Settings::instance().lock_gui())
-    return;
+    return false;
 
   // Lock or lock-nothing: the whole manager surface (mod list, panels,
   // console, menus, toolbars). Only these five members are touched, so
@@ -33,6 +33,7 @@ void Locker::lock(LockReason reason) {
   disable(w_->toolbar_area_);
   disable(w_->profile_bar_);
   disable(w_->status_bar_);
+  return true;
 }
 
 void Locker::unlock() {

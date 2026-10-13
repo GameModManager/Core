@@ -210,7 +210,11 @@ public:
   // The reason decides whether Settings::lock_gui() is honoured; see
   // ui::LockReason. Always unlock when the operation finishes or cancels -
   // every path that locks must unlock on completion/failure.
-  void lock_ui(LockReason reason);
+  //
+  // lock_ui returns whether the lock actually engaged. Only unlock_ui() then:
+  // there is one shared Locker, and its unlock() is unconditional, so a caller
+  // unlocking a lock its own call declined would lift somebody else's.
+  bool lock_ui(LockReason reason);
   void unlock_ui();
 
   // Apply saved window geometry after show() - needed for Wayland where

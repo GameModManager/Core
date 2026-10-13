@@ -237,6 +237,13 @@ private:
   // deleted by the user closing it - QPointer so a closed popup goes null
   // instead of dangling.
   QPointer<LootReportDialog> loot_dialog_;
+
+  // True only while the gated LockUI lock taken by run_loot_sort() is actually
+  // engaged, i.e. while Settings::lock_gui() is on. Guards the matching
+  // unlock_ui() in on_loot_finished: the Locker is shared with the install
+  // paths and its unlock() is unconditional, so unlocking a lock our own call
+  // declined would lift theirs.
+  bool loot_locked_ = false;
 };
 
 }  // namespace ui

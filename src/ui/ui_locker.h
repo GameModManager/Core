@@ -49,11 +49,16 @@ public:
   /**
    * @brief Lock the UI, if the lock_gui setting allows it
    * @param reason why the lock is being taken
+   * @return true when the interface was actually locked
    *
    * LockReason::OutputRequired ignores the setting; LockReason::LockUI is
-   * gated on it. Nothing is disabled when the gate declines.
+   * gated on it. Nothing is disabled when the gate declines, and the return
+   * value says so: only a caller whose lock actually engaged may call
+   * unlock(), because there is one shared Locker per MainWindow and unlock()
+   * is unconditional, so a caller unlocking a lock it never took would drop
+   * somebody else's (an install started while a gated lock is declined).
    */
-  void lock(LockReason reason);
+  bool lock(LockReason reason);
 
   /**
    * @brief Re-enable everything this locker disabled
