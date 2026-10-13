@@ -104,6 +104,32 @@ static bool is_archive_path(const std::filesystem::path &path) {
   return std::find(exts.begin(), exts.end(), lower) != exts.end();
 }
 
+// Is this archive a finished download? Existence is not enough: a transfer that
+// died at byte 0, or was killed half way, leaves a file that exists and is
+// shorter than the transfer that produced it. Such a file must read as NOT
+// downloaded, or a repeat link is refused against bytes that were never
+// fetched - which is how a download that never started reports itself as
+// already on disk.
+//
+// `expected_size` is the size the transfer reported for itself (the row's own
+// total_size). 0 means "unknown" - an old manifest that predates the field, or
+// a file that arrived outside a transfer. Unknown is not trusted in either
+// direction: the bar is bytes on disk, and a zero-byte file fails it too.
+static bool archive_is_complete(const std::filesystem::path &path,
+                                int64_t expected_size) {
+  if (path.empty())
+    return false;
+  std::error_code ec;
+  if (!std::filesystem::is_regular_file(path, ec) || ec)
+    return false;
+  const auto size = static_cast<int64_t>(std::filesystem::file_size(path, ec));
+  if (ec || size <= 0)
+    return false;
+  // A known total_size is the only hard evidence of completeness available -
+  // there is no hash and no completion marker. Short of it means truncated.
+  return expected_size <= 0 || size >= expected_size;
+}
+
 // MO2's downloads-tab drag gate: accept only when every URL is a local file
 // with a supported archive extension (a single foreign URL rejects the whole
 // drag). Non-local (http etc.) URLs are not handled by the tab.
@@ -1065,6 +1091,16 @@ bool DownloadsTab::add_downloads_dir_file(const std::filesystem::path &path) {
       return false;
   }
 
+  // A file that arrived in the dir is a finished archive only if it has bytes.
+  // A 0-byte file is what a transfer that died before its first write leaves
+  // behind; surfacing it as a Complete row would both show the user a
+  // downloadable mod and make a repeat link refuse against nothing.
+  if (!archive_is_complete(path, 0)) {
+    engine::Logger::instance().debug("downloads: skip empty or unreadable " +
+                                     path.filename().string());
+    return false;
+  }
+
   add_download(id, path.stem().string(), tr("Manual").toStdString(), path);
   auto &added      = downloads_.at(id);
   added.total_size = static_cast<int64_t>(std::filesystem::file_size(path, ec));
@@ -1764,13 +1800,24 @@ void DownloadsTab::deserialize(const std::string &json,
       state = DownloadState::Failed;
     }
 
-    // Verify the archive file still exists
-    if (!file_path.empty() && !std::filesystem::exists(file_path)) {
-      // Try relative to downloads_dir
-      auto abs_path = downloads_dir / file_path.filename();
-      if (!std::filesystem::exists(abs_path))
-        continue;
-      file_path = abs_path;
+    // Verify the archive still describes a finished download. "Exists" is not
+    // that: a 0-byte or half-written file exists, and restoring it as
+    // Complete/Installed would make blocks_refetch refuse the link forever
+    // against bytes that were never fetched. Anything short of a finished
+    // archive comes back Failed, which is a state a fresh link can act on.
+    if (state == DownloadState::Complete || state == DownloadState::Installed) {
+      if (!file_path.empty() && !archive_is_complete(file_path, total_size)) {
+        // Try relative to downloads_dir
+        auto abs_path = downloads_dir / file_path.filename();
+        if (archive_is_complete(abs_path, total_size))
+          file_path = abs_path;
+      }
+      if (!archive_is_complete(file_path, total_size)) {
+        engine::Logger::instance().warn(
+            "downloads: '" + id + "' claims " + state_label(state).toStdString() +
+            " but its archive is missing, empty or short - marked failed");
+        state = DownloadState::Failed;
+      }
     }
 
     auto [it, inserted] = downloads_.emplace(id, DownloadEntry{});
