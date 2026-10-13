@@ -68,6 +68,24 @@ struct InstalledMod {
 // downstream unless they are kept apart here.
 bool parse_updated(const std::string &body, std::vector<UpdatedMod> &out);
 
+// One mod's `files.json` answer: the ids Nexus still serves, and the version
+// string of the newest of them (which is what `newestversion` displays and
+// what `ignoredversion` has to match - asking for it separately would be a
+// second request for one string).
+//
+// The body is the real Nexus v1 shape, and the two names in it are the whole
+// reason this function is exported: the download set is `data.files[]`, and
+// each entry's id is **`file_id`**. There is no `available_mod_files` field
+// and no `id` field - reading either one yields an empty list and therefore
+// "could not tell" for every mod, which is indistinguishable from up to date
+// downstream. MO2 reads the same `file_id`
+// (mainwindow.cpp:3329, nexusinterface.cpp:132, downloadmanager.cpp:1880).
+//
+// ARCHIVED entries are skipped: they are not downloadable, and counting them
+// would let a retracted file masquerade as the newest one.
+bool parse_files(const std::string &body, std::vector<long long> &available_ids,
+                 std::string &newest_version);
+
 // What one installed mod's own file id says about the files Nexus still serves.
 //
 // Nexus file ids increase with upload order - the same assumption
@@ -129,6 +147,16 @@ Period period_for(int64_t seconds_since_oldest_check);
 // Live sweep
 // ---------------------------------------------------------------------------
 
+// One mod the sweep could NOT answer for, and why. This exists because "no
+// updates" and "could not check" must never look alike: the first is a result,
+// the second is an absence of one, and a UI that renders both as a quiet
+// "up to date" teaches the user the check works when it did not.
+struct Unreachable {
+  std::string folder;  // the mod folder under mods_dir
+  std::string mod_id;  // its [Nexusmods] modid, for matching against a report
+  std::string reason;  // why it could not be answered, in plain words
+};
+
 // The outcome of one sweep, in the terms the UI has to report it in. `ok` and
 // `message` travel together on purpose: an API refusal must never be
 // renderable as "no updates available".
@@ -140,6 +168,11 @@ struct Report {
   int updates         = 0;      // mods an update is being shown for
   int checked         = 0;      // mods whose file list we actually queried
   int total           = 0;      // Nexus-sourced mods in the instance
+
+  // Every mod the sweep could not answer for, each with its reason. Empty on a
+  // sweep that answered for everything it looked at. A mod listed here was NOT
+  // stamped as checked, so the next sweep asks about it again.
+  std::vector<Unreachable> unreachable;
 };
 
 // Sweep one game's installed mods and write the verdicts back to each mod's
@@ -150,6 +183,9 @@ struct Report {
 // `mods_dir` is the instance's mods directory. Returns a Report whose ok flag
 // distinguishes a completed sweep (even one that found nothing) from a sweep
 // the API refused. Never throws.
+//
+// Anything it could not answer for is named in `unreachable` with the reason,
+// in the log AND in the returned Report - never folded into a quiet zero.
 Report run(const std::string &nexus_domain, const std::string &api_key,
            const std::filesystem::path &mods_dir, int64_t now);
 
