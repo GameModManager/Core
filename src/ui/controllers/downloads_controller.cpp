@@ -22,6 +22,7 @@
 
 #include "engine/events/event_bus.h"
 #include "engine/log/logger.h"
+#include "engine/network/network_manager.h"
 #include "engine/trace/trace_recorder.h"
 #include "engine/util/fs_utils.h"
 #include "engine/source/update/mod_update_db_client.h"
@@ -301,13 +302,18 @@ void DownloadsController::setup_nxm_ipc() {
     connect(w_->nxm_ipc_, &engine::NxmIpcServer::nxmUrlReceived, this,
             [this](const QString &url) {
               std::string raw = url.toStdString();
-              engine::Logger::instance().debug("[NXM-Parse] Raw URL received: " + raw);
+              // The nxm:// key= is a bearer token for the user's Nexus account.
+              // Every log of this URL goes through the redactor - the sibling
+              // NXM-IPC log does, and this one did not, which wrote the key to
+              // the log file in the clear.
+              const auto log_raw = engine::network::redaction::redact_url(raw);
+              engine::Logger::instance().debug("[NXM-Parse] Raw URL received: " + log_raw);
               // Accept gmm:// URLs too - convert to nxm:// for the parser
               static const std::string gmm_pre = "gmm://nexus/";
               if (raw.compare(0, gmm_pre.size(), gmm_pre) == 0) {
                 raw = "nxm://" + raw.substr(gmm_pre.size());
                 engine::Logger::instance().debug(
-                    "[NXM-Parse] Converted gmm:// to nxm://: " + raw);
+                    "[NXM-Parse] Converted gmm:// to nxm://: " + log_raw);
               }
               // Try nxm first; fall back to modl (the protocol is a
               // generic URL forwarder, not nxm-specific - keep the signal
@@ -333,7 +339,7 @@ void DownloadsController::setup_nxm_ipc() {
                 handle_modl_download(modl);
               } else {
                 engine::Logger::instance().warn(
-                    "[NXM-Parse] Failed to parse URL as nxm:// or modl://: " + raw);
+                    "[NXM-Parse] Failed to parse URL as nxm:// or modl://: " + log_raw);
               }
             });
   }
@@ -943,15 +949,27 @@ void DownloadsController::handle_nxm_download(const engine::Uri::NxmLink &link) 
   const auto key     = mod_id + "-" + file_id;
 
   auto *dt = w_->right_panel_->ensure_downloads_tab();
+  // Did this call make the row, or did one already exist?
+  //
+  // add_download() starts a fresh row in Downloading - it is the pre-fetch
+  // state, set before any worker runs. blocks_refetch() refuses Downloading,
+  // so asking it about a row this call just created asks whether the row
+  // blocks itself: it always answers yes, and the transfer is never
+  // dispatched. The transfer is only ever in flight for a row that was ALREADY
+  // here when this link arrived, which is exactly the case add_download()
+  // reports false for.
+  bool added_row = false;
   if (dt) {
-    dt->add_download(key,
-                     tr("Mod #%1 - file %2")
-                         .arg(QString::fromStdString(mod_id))
-                         .arg(link.file_id)
-                         .toStdString(),
-                     "Nexus Mods", {}, link.nexus_domain, link.file_id, mod_id);
-    engine::Logger::instance().debug(
-        "[NXM-Download] Added download entry to DownloadsTab: " + key);
+    added_row =
+        dt->add_download(key,
+                         tr("Mod #%1 - file %2")
+                             .arg(QString::fromStdString(mod_id))
+                             .arg(link.file_id)
+                             .toStdString(),
+                         "Nexus Mods", {}, link.nexus_domain, link.file_id, mod_id);
+    engine::Logger::instance().debug(std::string("[NXM-Download] ") +
+                                     (added_row ? "Added" : "Reused") +
+                                     " download entry in DownloadsTab: " + key);
   } else {
     engine::Logger::instance().warn(
         "[NXM-Download] DownloadsTab not available, cannot add entry");
@@ -970,11 +988,10 @@ void DownloadsController::handle_nxm_download(const engine::Uri::NxmLink &link) 
   w_->nxm_links_[key] = link;
 
   // The same link can arrive again - a re-clicked browser button, a second
-  // browser window, a duplicated handler registration. add_download() has
-  // already found the row, so the only question left is whether the transfer
-  // should run at all. See DownloadsTab::blocks_refetch for what a second
-  // transfer costs.
-  if (dt && dt->blocks_refetch(key)) {
+  // browser window, a duplicated handler registration. Only then does the row
+  // already exist, and only then is blocks_refetch the right question. See
+  // DownloadsTab::blocks_refetch for what a second transfer costs.
+  if (dt && !added_row && dt->blocks_refetch(key)) {
     engine::Logger::instance().debug(
         "[NXM-Download] '" + key + "' is already queued or on disk; not re-fetching");
     return;
@@ -1094,9 +1111,12 @@ void DownloadsController::handle_modl_download(const engine::Uri::ModlLink &link
   }
 
   auto *dt = w_->right_panel_->ensure_downloads_tab();
-  if (dt) {
-    dt->add_download(key, row_name, source_label, {}, {}, 0, {}, page_url);
-  }
+  // Same contract as the NXM path: only a row that already existed can be a
+  // transfer in flight. add_download() puts a new row in Downloading, which
+  // blocks_refetch refuses, so asking about a row this call just created
+  // refuses the download that the row was created for.
+  const bool added_row =
+      dt && dt->add_download(key, row_name, source_label, {}, {}, 0, {}, page_url);
 
   // Surface the download: bring the window to front and switch to the
   // Downloads tab so the user sees the new entry start.
@@ -1111,8 +1131,9 @@ void DownloadsController::handle_modl_download(const engine::Uri::ModlLink &link
   w_->modl_links_[key] = link;
 
   // Same repeat-link guard as the NXM path: an entry that is already fetching
-  // or already on disk must not be fetched a second time.
-  if (dt && dt->blocks_refetch(key)) {
+  // or already on disk must not be fetched a second time. A row this call just
+  // added is neither - it has no worker and no bytes yet.
+  if (dt && !added_row && dt->blocks_refetch(key)) {
     engine::Logger::instance().debug(
         "[modl] '" + key + "' is already queued or on disk; not re-fetching");
     return;
@@ -1174,12 +1195,16 @@ void DownloadsController::start_loverslab_download(const std::string &url) {
       file_id.empty() ? "ll-" + std::to_string(stable_hash64(url)) : file_id;
 
   auto *dt = w_->right_panel_->ensure_downloads_tab();
-  if (dt) {
-    dt->add_download(
-        key, tr("LoversLab file %1").arg(QString::fromStdString(key)).toStdString(),
-        "LoversLab", {}, {}, 0, {},
-        engine::Source::LoversLab::Provider::mod_page_url(url));
-  }
+  // Same contract as the NXM path: only a row that already existed can be a
+  // transfer in flight. add_download() puts a new row in Downloading, which
+  // blocks_refetch refuses, so asking about a row this call just created
+  // refuses the download that the row was created for.
+  const bool added_row =
+      dt &&
+      dt->add_download(
+          key, tr("LoversLab file %1").arg(QString::fromStdString(key)).toStdString(),
+          "LoversLab", {}, {}, 0, {},
+          engine::Source::LoversLab::Provider::mod_page_url(url));
 
   // Surface the download: bring the window to front and switch to the
   // Downloads tab so the user sees the new entry start.
@@ -1194,8 +1219,9 @@ void DownloadsController::start_loverslab_download(const std::string &url) {
   w_->url_downloads_[key] = url;
 
   // Same repeat-link guard as the NXM path: an entry that is already fetching
-  // or already on disk must not be fetched a second time.
-  if (dt && dt->blocks_refetch(key)) {
+  // or already on disk must not be fetched a second time. A row this call just
+  // added is neither - it has no worker and no bytes yet.
+  if (dt && !added_row && dt->blocks_refetch(key)) {
     engine::Logger::instance().debug(
         "[LoversLab] '" + key + "' is already queued or on disk; not re-fetching");
     return;

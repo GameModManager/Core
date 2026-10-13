@@ -123,7 +123,9 @@ TEST_CASE("a manifest row restored as in-flight comes back failed and does not w
 
 // A repeat of a link for a download that already finished must not be
 // re-fetched: the resume would ask for bytes past the end of a complete file
-// and the failed request takes the archive with it.
+// and the failed request takes the archive with it. But a row this link just
+// created is not a finished download - it is the pre-fetch state, and it must
+// not refuse the transfer it was created for.
 TEST_CASE("a repeat link does not re-fetch a download that is already on disk", "[ui]") {
   qputenv("QT_QPA_PLATFORM", "offscreen");
   TempRoot root("gmm_dl_refetch_guard");
@@ -142,9 +144,12 @@ TEST_CASE("a repeat link does not re-fetch a download that is already on disk", 
 
   ui::DownloadsTab tab;
   // add_download reports whether it made the row, so a caller can tell a new
-  // download from a repeat of one it already queued.
-  CHECK(tab.add_download("10-20", "Done Mod", "Nexus Mods", zip, "skyrimspecialedition",
-                         20, "10"));
+  // download from a repeat of one it already queued. A row it made is NOT
+  // subject to the guard - that is the whole point of the return value.
+  REQUIRE(tab.add_download("10-20", "Done Mod", "Nexus Mods", zip,
+                           "skyrimspecialedition", 20, "10"));
+  // blocks_refetch alone would say yes here (the row is Downloading), which is
+  // why callers gate on the add_download result.
   CHECK_FALSE(tab.add_download("10-20", "Done Mod", "Nexus Mods", zip,
                                "skyrimspecialedition", 20, "10"));
   CHECK(tab.table()->rowCount() == 1);
@@ -168,4 +173,139 @@ TEST_CASE("a repeat link does not re-fetch a download that is already on disk", 
 
   // An id the tab never saw is not blocked.
   CHECK_FALSE(tab.blocks_refetch("never-seen"));
+}
+
+// A link that arrives for a mod the tab has no row for must be allowed to
+// fetch. This is the reported P0: add_download() created the row in
+// Downloading, blocks_refetch() refused it, and every download stopped at
+// "already queued or on disk" having moved zero bytes.
+TEST_CASE("a fresh link is not refused by the tab's own new row", "[ui]") {
+  qputenv("QT_QPA_PLATFORM", "offscreen");
+  TempRoot root("gmm_dl_fresh_link");
+  qputenv("XDG_CONFIG_HOME", (root.path / "config").c_str());
+  int argc     = 1;
+  char argv0[] = "test";
+  char *argv[] = {argv0, nullptr};
+  QApplication app(argc, argv);
+  QCoreApplication::setOrganizationName("GameModManager");
+  QCoreApplication::setApplicationName("GameModManager");
+
+  ui::DownloadsTab tab;
+  const bool added =
+      tab.add_download("30379-795992", "Mod #30379 - file 795992", "Nexus Mods", {},
+                       "skyrimspecialedition", 795992, "30379");
+  REQUIRE(added);
+  CHECK(tab.table()->rowCount() == 1);
+
+  // The guard a caller applies when the row already existed. A row this call
+  // created is exempt, so the transfer runs.
+  const bool already_present = !added;
+  CHECK_FALSE(already_present);
+  const bool should_refetch = !already_present || !tab.blocks_refetch("30379-795992");
+  CHECK(should_refetch);
+
+  // A second click on the same browser button lands on the existing row and IS
+  // blocked: that is the case the guard is for.
+  const bool added_again =
+      tab.add_download("30379-795992", "Mod #30379 - file 795992", "Nexus Mods", {},
+                       "skyrimspecialedition", 795992, "30379");
+  CHECK_FALSE(added_again);
+  CHECK(tab.blocks_refetch("30379-795992"));
+}
+
+// "On disk" has to mean bytes. A file that exists but is empty, or is shorter
+// than the transfer that wrote it, is not a finished download - restoring it as
+// Complete makes blocks_refetch refuse every future link against bytes that
+// were never fetched.
+TEST_CASE("an empty or short archive does not restore as a finished download", "[ui]") {
+  qputenv("QT_QPA_PLATFORM", "offscreen");
+  TempRoot root("gmm_dl_partial_archive");
+  qputenv("XDG_CONFIG_HOME", (root.path / "config").c_str());
+  int argc     = 1;
+  char argv0[] = "test";
+  char *argv[] = {argv0, nullptr};
+  QApplication app(argc, argv);
+  QCoreApplication::setOrganizationName("GameModManager");
+  QCoreApplication::setApplicationName("GameModManager");
+
+  const auto dir = root.path / "downloads";
+  // Zero bytes: exists, is a regular file, is not a download.
+  const auto empty = dir / "Empty Mod.zip";
+  std::ofstream(empty, std::ios::binary).close();
+  // Half of the 100 bytes the manifest says the transfer reported.
+  const auto shortf = dir / "Short Mod.zip";
+  {
+    std::ofstream o(shortf, std::ios::binary);
+    o << std::string(50, 'x');
+  }
+  // All of it.
+  const auto whole = dir / "Whole Mod.zip";
+  {
+    std::ofstream o(whole, std::ios::binary);
+    o << std::string(100, 'x');
+  }
+
+  ui::DownloadsTab tab;
+  // State 2 = Complete, per the DownloadState enum order.
+  const std::string manifest =
+      std::string("[{\"id\":\"empty-1\",\"name\":\"Empty\",\"source\":\"Nexus Mods\","
+                  "\"size\":\"\",\"file_path\":\"") +
+      empty.string() +
+      "\",\"state\":2,\"total_size\":100,\"parent_mod_id\":\"1\",\"file_id\":2,"
+      "\"domain\":\"skyrimspecialedition\",\"category\":\"\",\"page_url\":\"\"},"
+      "{\"id\":\"short-1\",\"name\":\"Short\",\"source\":\"Nexus Mods\",\"size\":\"\","
+      "\"file_path\":\"" +
+      shortf.string() +
+      "\",\"state\":2,\"total_size\":100,\"parent_mod_id\":\"1\",\"file_id\":3,"
+      "\"domain\":\"skyrimspecialedition\",\"category\":\"\",\"page_url\":\"\"},"
+      "{\"id\":\"whole-1\",\"name\":\"Whole\",\"source\":\"Nexus Mods\",\"size\":\"\","
+      "\"file_path\":\"" +
+      whole.string() +
+      "\",\"state\":2,\"total_size\":100,\"parent_mod_id\":\"1\",\"file_id\":4,"
+      "\"domain\":\"skyrimspecialedition\",\"category\":\"\",\"page_url\":\"\"}]";
+  tab.deserialize(manifest, dir);
+
+  REQUIRE(tab.table()->rowCount() == 3);
+  CHECK(status_text(tab, 0) == "Failed");
+  CHECK(status_text(tab, 1) == "Failed");
+  // A finished row reads "Install" (the action it offers), not "Complete".
+  CHECK(status_text(tab, 2) == "Install");
+
+  // And the practical consequence: a link for the empty one is not refused.
+  CHECK_FALSE(tab.blocks_refetch("empty-1"));
+  CHECK_FALSE(tab.blocks_refetch("short-1"));
+  CHECK(tab.blocks_refetch("whole-1"));
+}
+
+// A 0-byte file dropped in the downloads dir is not a mod. Surfacing it as a
+// finished row both shows the user a downloadable archive that is not there and
+// makes a repeat link refuse against nothing.
+TEST_CASE("an empty archive dropped in the downloads dir is not surfaced", "[ui]") {
+  qputenv("QT_QPA_PLATFORM", "offscreen");
+  TempRoot root("gmm_dl_empty_drop");
+  qputenv("XDG_CONFIG_HOME", (root.path / "config").c_str());
+  int argc     = 1;
+  char argv0[] = "test";
+  char *argv[] = {argv0, nullptr};
+  QApplication app(argc, argv);
+  QCoreApplication::setOrganizationName("GameModManager");
+  QCoreApplication::setApplicationName("GameModManager");
+
+  const auto dir   = root.path / "downloads";
+  const auto empty = dir / "Empty.zip";
+  std::ofstream(empty, std::ios::binary).close();
+  const auto real = dir / "Real.zip";
+  {
+    std::ofstream o(real, std::ios::binary);
+    o << "bytes";
+  }
+
+  ui::DownloadsTab tab;
+  tab.set_downloads_dir(dir);
+  // The empty one is left out, the real one is surfaced as Complete.
+  CHECK(tab.table()->rowCount() == 1);
+  auto *name = tab.table()->item(0, ui::DownloadsTab::Name);
+  REQUIRE(name != nullptr);
+  CHECK(name->text() == "Real");
+  CHECK(status_text(tab, 0) == "Install");
 }

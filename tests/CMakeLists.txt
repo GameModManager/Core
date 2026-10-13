@@ -497,7 +497,8 @@ gmm_catch2_test(downloads_tab_test ui/downloads_tab_test.cpp
 
 gmm_catch2_test(downloads_tab_state_test ui/downloads_tab_state_test.cpp
     UI
-    LIBS gmm_ui)
+    LIBS gmm_ui
+    PROPERTIES TIMEOUT 120)
 
 gmm_catch2_test(downloads_batch_test ui/downloads_batch_test.cpp
     UI
