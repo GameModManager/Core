@@ -546,6 +546,11 @@ TEST_CASE("nexus update sweep: a refused check never reports as success") {
 
 // The ignore is persisted per mod folder in that folder's own meta.ini, so it
 // survives a restart and travels with the mod rather than the profile.
+//
+// The key is asserted under MO2's spelling, not ours. Writing the key we read
+// only proves the round trip; what matters is that the value lands where MO2
+// will find it (modinforegular.cpp:96) and where an MO2-written file will be
+// read back.
 TEST_CASE("nexus update sweep: ignore is written to the mod's own meta.ini") {
   using engine::Source::Nexus::UpdateCheck::set_ignored_version;
   const TempDir tmp("ignore");
@@ -564,12 +569,90 @@ TEST_CASE("nexus update sweep: ignore is written to the mod's own meta.ini") {
 
   {
     const auto meta = engine::ModMeta::load(tmp.root, "NexusMod");
-    REQUIRE(meta.get("General", "ignoredversion") == "2.1");
+    REQUIRE(meta.get("General", "ignoredVersion") == "2.1");
   }
 
   REQUIRE(set_ignored_version(tmp.root, "NexusMod", false));
   {
     const auto meta = engine::ModMeta::load(tmp.root, "NexusMod");
-    REQUIRE(meta.get("General", "ignoredversion").empty());
+    REQUIRE(meta.get("General", "ignoredVersion").empty());
   }
+}
+
+// The casing bug itself, at the consumer rather than at the key.
+//
+// An ignore is worthless if only this app can read it: the user sets "ignore
+// 2.0" in MO2, the instance is imported, and the sweep re-badges the very file
+// the user said to leave alone. Reading only the lowercase spelling did exactly
+// that, silently - no error, just an update badge the user could not dismiss.
+//
+// So this drives the whole path: an MO2-spelled key on disk, through
+// read_installed(), into update_visible(), out as the count the UI renders. One
+// mod per case for the reason given on the sweep case above.
+TEST_CASE("nexus update sweep: an ignore written by MO2 is honoured",
+          "[engine][nexus]") {
+  using engine::network::FakeNetworkManager;
+  using engine::Source::Nexus::UpdateCheck::run;
+
+  const TempDir tmp("sweep_mo2_ignore");
+  const int64_t now = 1700000000;
+  seed_mod(tmp.root, "Mo2Mod", 100, 207864);
+
+  // Exactly what MO2 writes: newestVersion + ignoredVersion, both camel.
+  {
+    engine::ModMeta meta = engine::ModMeta::load(tmp.root, "Mo2Mod");
+    meta.set("General", "newestVersion", "2.0");
+    meta.set("General", "ignoredVersion", "2.0");
+    REQUIRE(meta.save(tmp.root, "Mo2Mod"));
+  }
+
+  auto fake     = std::make_unique<FakeNetworkManager>();
+  auto *fakeptr = fake.get();
+  engine::network::set_instance(std::move(fake));
+
+  engine::network::Response bulk;
+  bulk.http_code = 200;
+  bulk.body      = R"([{"mod_id":100,"latest_file_update":1699999999}])";
+  fakeptr->enqueue_response(bulk);
+
+  engine::network::Response files;
+  files.http_code = 200;
+  files.body      = kRealFilesBody;  // newest non-archived version is "2.0"
+  fakeptr->enqueue_response(files);
+
+  const auto report = run("skyrimspecialedition", "test-key", tmp.root, now);
+  engine::network::set_instance(nullptr);
+
+  // Same body, same mod, same two requests as the badge case above - and no
+  // update, because that is the version the user turned away from. The check
+  // itself still ran and still recorded its answer: suppressing a badge is not
+  // the same as skipping the mod.
+  REQUIRE(report.ok == true);
+  REQUIRE(report.checked == 1);
+  REQUIRE(report.requests == 2);
+  REQUIRE(report.unreachable.empty());
+  REQUIRE(report.updates == 0);
+  REQUIRE(engine::ModMeta::load(tmp.root, "Mo2Mod").get("General", "nexus_update") ==
+          "true");  // an update exists; the user is just ignoring it
+}
+
+// A meta.ini that still carries only the old lowercase spelling must keep
+// working. This is the one place back-compat is load bearing: those files are on
+// users' disks right now, and the fix must not read them as "nothing ignored".
+TEST_CASE("nexus update sweep: the legacy lowercase ignore still suppresses") {
+  using engine::Source::Nexus::UpdateCheck::read_ignored_version;
+  using engine::Source::Nexus::UpdateCheck::update_visible;
+
+  engine::ModMeta legacy;
+  legacy.set("General", "newestversion", "2.0");
+  legacy.set("General", "ignoredversion", "2.0");
+  REQUIRE(read_ignored_version(legacy) == "2.0");
+  REQUIRE(update_visible(true, "2.0", read_ignored_version(legacy)) == false);
+
+  // MO2's spelling wins when a file somehow carries both, so the value this app
+  // maintains is the one that decides.
+  engine::ModMeta both;
+  both.set("General", "ignoredVersion", "2.0");
+  both.set("General", "ignoredversion", "9.9");
+  REQUIRE(read_ignored_version(both) == "2.0");
 }

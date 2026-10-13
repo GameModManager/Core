@@ -2285,10 +2285,14 @@ void ModListController::load_meta_for_mods() {
       auto newest = meta.get("General", "newestversion");
       if (newest.empty())
         newest = meta.get("General", "newestVersion");
+      // The engine resolves the ignored version, not this file: it owns both the
+      // spelling and the fallback, so the badge cannot end up disagreeing with
+      // the sweep that produced it.
       w_->mod_model_->set_update_state(
           mod.id, meta.get("General", "nexus_update") == "true",
           QString::fromStdString(newest),
-          QString::fromStdString(meta.get("General", "ignoredversion")));
+          QString::fromStdString(
+              engine::Source::Nexus::UpdateCheck::read_ignored_version(meta)));
     }
 
     // Git provenance, independent of source_type: a Nexus mod whose folder is

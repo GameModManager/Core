@@ -26,7 +26,13 @@ namespace {
   constexpr const char *kKeyFileId    = "fileid";
   constexpr const char *kKeyLastQuery = "lastnexusquery";
   constexpr const char *kKeyNewest    = "newestversion";
-  constexpr const char *kKeyIgnored   = "ignoredversion";
+  // MO2's exact spelling (modinforegular.cpp:96 reads it, :260 writes it), so an
+  // instance imported from MO2 keeps its ignore instead of silently losing it,
+  // and an ignore set here is one MO2 still honours. The lowercase spelling is
+  // what this app used to call the same key; kept only so meta.ini files that
+  // still carry it are read rather than treated as "nothing ignored".
+  constexpr const char *kKeyIgnored       = "ignoredVersion";
+  constexpr const char *kKeyIgnoredLegacy = "ignoredversion";
   // The engine-owned verdict. A separate key from newestversion on purpose:
   // newestversion is display text a user can edit, while this answers the one
   // question the UI must not second-guess - does an update exist right now.
@@ -135,6 +141,11 @@ namespace {
     return v;
   }
 
+  // Same shape, same reason, for the ignored version - but that one is NOT
+  // private: the mod list has to resolve the identical key to paint the same
+  // badge, and an inline copy of this fallback there is a third place to fix
+  // the next time the spelling is wrong. Defined below, in the namespace.
+
   // Every Nexus-sourced mod in the instance, read off its own meta.ini, plus
   // the oldest `lastnexusquery` among them (0 when none was ever checked).
   std::vector<InstalledMod> read_installed(const std::filesystem::path &mods_dir,
@@ -161,7 +172,7 @@ namespace {
       mod.installed_file_id = to_i64(meta.get(kSecNexus, kKeyFileId));
       mod.last_checked      = parse_iso8601(meta.get(kSecNexus, kKeyLastQuery));
       mod.newest_version    = read_newest_version(meta);
-      mod.ignored_version   = meta.get(kSecGeneral, kKeyIgnored);
+      mod.ignored_version   = read_ignored_version(meta);
       if (mod.mod_id <= 0)
         continue;
       out.push_back(std::move(mod));
@@ -190,6 +201,16 @@ namespace {
   }
 
 }  // namespace
+
+std::string read_ignored_version(const ModMeta &meta) {
+  // MO2's spelling first. It is the one it reads (modinforegular.cpp:96) and the
+  // one this app now writes, so a file carrying both resolves to the value
+  // being maintained rather than to a stale one left by an older build.
+  std::string v = meta.get(kSecGeneral, kKeyIgnored);
+  if (v.empty())
+    v = meta.get(kSecGeneral, kKeyIgnoredLegacy);
+  return v;
+}
 
 bool parse_files(const std::string &body, long long installed_file_id,
                  std::vector<long long> &available_ids, std::string &newest_version,
@@ -548,6 +569,12 @@ bool set_ignored_version(const std::filesystem::path &mods_dir,
   } else {
     meta.unset(kSecGeneral, kKeyIgnored);
   }
+  // The legacy spelling is cleared on BOTH paths, not just the un-ignore one.
+  // A file carrying both would otherwise keep answering "ignored" from the
+  // stale twin after the user turned it off, which is worse than never having
+  // honoured it. unset() is a no-op when the key is absent, so this costs
+  // nothing on a file that has only ever used one spelling.
+  meta.unset(kSecGeneral, kKeyIgnoredLegacy);
   return meta.save(mods_dir, folder);
 }
 
