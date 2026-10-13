@@ -116,6 +116,17 @@ struct ModEntry {
   // tracks the current failure rather than every failure the mod ever had.
   QString toggle_error;
   QVector<int> category_ids;
+  // Nexus update state, owned by engine::Source::Nexus::UpdateCheck and read
+  // straight out of the mod's meta.ini. `nexus_update_available` is the
+  // ENGINE's verdict (a newer file id exists on Nexus); `newest_version` is
+  // that file's version string; `ignored_version` is the version the user
+  // asked not to be told about again. The row shows a badge only when
+  // update_visible(nexus_update_available, newest_version, ignored_version)
+  // says so - one call into the engine, so the badge and the engine can
+  // never disagree about what is being suppressed.
+  bool nexus_update_available = false;
+  QString newest_version;
+  QString ignored_version;
   // Installation (folder birth time) and Changed (folder last-write time).
   // 0 = unavailable (separators, Overwrite/MERGED pseudo-rows).
   qint64 installation_ts = 0;
@@ -230,12 +241,12 @@ public:
   //              mirror source gone).
   //   Category   "Categories: " followed by every category name, " , " apart.
   //
-  // MO2 text this build cannot back is deliberately NOT emitted: the Version
-  // tooltip stays empty (MO2's version tooltip only carries content beyond the
-  // installed version we track - a newest version, a downgrade warning, a
-  // Nexus file status and a next-check cooldown, none of which this model
-  // has), and no endorsement, website-tracking, notes or alternate-game text
-  // is emitted because there is no such state.
+  // MO2 text this build cannot back is deliberately NOT emitted: MO2's version
+  // tooltip also carries a Nexus file status and a next-check cooldown, which
+  // this model has no state for - but it DOES name the newest Nexus version
+  // when one is waiting, which is emitted below. No endorsement,
+  // website-tracking, notes or alternate-game text is emitted either, because
+  // there is no such state.
   //
   // Cell text and column text are separate mechanisms and both are live:
   // data() describes the CELL, the two functions below the COLUMN.
@@ -355,6 +366,14 @@ public:
   // working copy keeps its Nexus badge AND gains the git one. Only the Source
   // column is affected, so only Source is notified.
   void set_git_info(const QString &id, bool is_git, const QString &remote_url = {});
+  // Nexus update state (ModEntry::nexus_update_available / ::newest_version /
+  // ::ignored_version), read from the mod's meta.ini by the window layer. The
+  // model stores the three verbatim and asks
+  // engine::Source::Nexus::UpdateCheck::update_visible() whether the row
+  // should wear the badge, so the ignore rule lives in exactly one place.
+  // Only the Version column is affected, so only Version is notified.
+  void set_update_state(const QString &id, bool available, const QString &newest,
+                        const QString &ignored);
   // Category name for the Category column (resolved by the window layer from
   // the instance's category DB; the model just stores the display string).
   void set_category(const QString &id, const QString &category);
@@ -522,6 +541,10 @@ private:
   // Vendor badge for a mod's source_type (via engine::vendor_icon_key), or
   // null for unknown/empty sources.
   [[nodiscard]] QIcon source_icon(const QString &source_type) const;
+  // Whether the Version cell shows the update badge: the engine's verdict
+  // AND the user not having silenced that exact version. Delegates to the
+  // engine's update_visible() rather than re-implementing the rule.
+  [[nodiscard]] bool shows_update(const ModEntry &mod) const;
   // Every badge the Source column wears for a mod: the download source's
   // vendor icon (when one resolves) plus the git badge when the mod is a git
   // working copy. Order is download source first, then git. A null icon is
@@ -554,6 +577,11 @@ private:
   // plugin-warning, shown when this row's enable state could not be written
   // to disk. The tooltip carries the reason verbatim.
   QIcon toggle_error_icon_;
+  // Version-column badge for a Nexus mod with an update waiting. MO2 draws
+  // the same thing in the same column (ModListVersionDelegate::paint,
+  // modlistversiondelegate.cpp:44, drawing :/MO/gui/update_available); the
+  // asset already ships in both bundled icon packs under this key.
+  QIcon update_icon_;
   // source icon-key ("nexusmods", "loverslab", "steam", "moddb") -> badge.
   QHash<QString, QIcon> vendor_icons_;
   QAbstractItemView *mod_view_  = nullptr;
