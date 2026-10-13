@@ -1909,6 +1909,11 @@ TEST_CASE("MainWindow: Check for Nexus Mod Updates runs the sweep and reports",
 // asserts the button is WIRED to the proven path and not merely present: it
 // clicks the real toolbar button and requires the PERSISTENT update notice.
 //
+// The button is the FORCED entry point (the context menu entry keeps the cheap
+// cached sweep). Forcing only changes how many mods the sweep asks Nexus
+// about, and this instance has no Nexus-sourced mod at all, so both entries
+// reach the same proven path here - which is what this test is about.
+//
 // update_notice() is the assertion that carries the weight. It is set only by
 // set_update_notice(), which on this path is called from
 // ModListController::on_nexus_update_finished() with a Report that came back off
@@ -1973,9 +1978,12 @@ TEST_CASE("MainWindow: the toolbar update button runs the same proven sweep",
   CHECK(bar->update_notice().isEmpty());
 
   // The real button, found the way a user finds it: by what the toolbar built.
+  // The tooltip is the lookup key AND the only label the button has (it is
+  // ToolButtonIconOnly), so it states what the click actually does: this is
+  // the FORCED sweep, which ignores the per-mod lastnexusquery cache.
   QToolButton *check_updates_btn = nullptr;
   for (auto *b : toolbar->findChildren<QToolButton *>())
-    if (b->toolTip() == QStringLiteral("Check for Nexus Mod Updates")) {
+    if (b->toolTip() == QStringLiteral("Check every mod on Nexus for updates")) {
       check_updates_btn = b;
       break;
     }

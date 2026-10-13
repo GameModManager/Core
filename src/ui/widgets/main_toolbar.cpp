@@ -36,7 +36,7 @@ MainToolbar::MainToolbar(QWidget *parent) : QWidget(parent) {
   // It stays a button and not a timer, for the reason the sweep has: Nexus
   // meters the API hard and bans keys that keep exceeding it.
   auto *check_updates_btn =
-      add_gmm_button("Check for Nexus Mod Updates", "update-available");
+      add_gmm_button("Check every mod on Nexus for updates", "update-available");
 
   connect(settings_btn, &QToolButton::clicked, this, &MainToolbar::settings_clicked);
   connect(instances_btn, &QToolButton::clicked, this, &MainToolbar::instances_clicked);

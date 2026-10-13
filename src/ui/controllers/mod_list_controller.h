@@ -102,7 +102,13 @@ public slots:
   // domain + the stored API key on the main thread, runs the sweep on
   // NexusUpdateThread, and reports the outcome into the status bar's
   // persistent update notice. Manual by design - see the MainWindow comment.
-  void check_mod_updates();
+  //
+  // `force` asks Nexus about every mod instead of trusting the per-mod
+  // lastnexusquery cache, at one request per mod. The toolbar button passes
+  // true because a stamp left behind by a sweep that never got an answer is
+  // indistinguishable from a real one on disk, and would otherwise suppress
+  // that mod's update forever with no way for the user to clear it.
+  void check_mod_updates(bool force = false);
   void on_nexus_update_finished(engine::Source::Nexus::UpdateCheck::Report report,
                                 quint64 generation);
   // Silence (or un-silence) the newest Nexus version for ONE mod. The write is

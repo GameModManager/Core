@@ -1523,11 +1523,13 @@ bool ModListController::adopt_preloaded_plugin_db() {
 // Nexus mod-update sweep (Workspace-sc4z)
 // ---------------------------------------------------------------------------
 
-void ModListController::check_mod_updates() {
+void ModListController::check_mod_updates(bool force) {
   if (w_->nexus_update_running_) {
-    // One sweep in flight. Queued would be pointless: the sweep answers from
-    // a cache persisted in every meta.ini, so a second pass cannot find
-    // anything the first did not, and every request spends Nexus's budget.
+    // One sweep in flight. A second one would not be queued: every request
+    // spends Nexus's budget, and a cached sweep answers from the meta.ini the
+    // running sweep is already rewriting. A FORCED sweep would be a different
+    // answer, but it still has to wait - the first one is mid-write on exactly
+    // the files it would read.
     if (w_->status_bar_)
       w_->status_bar_->set_status(tr("A Nexus update check is already running"));
     return;
@@ -1563,11 +1565,14 @@ void ModListController::check_mod_updates() {
   request.api_key      = engine::Source::Nexus::Auth::instance().get_api_key();
   request.mods_dir     = mods_dir;
   request.now          = QDateTime::currentSecsSinceEpoch();
+  request.force        = force;
 
   w_->nexus_update_generation_ = w_->nexus_update_generation_ + 1;
   w_->nexus_update_running_    = true;
-  if (w_->status_bar_)
-    w_->status_bar_->set_status(tr("Checking for updates on Nexus…"));
+  if (w_->status_bar_) {
+    w_->status_bar_->set_status(force ? tr("Checking every mod on Nexus…")
+                                      : tr("Checking for updates on Nexus…"));
+  }
 
   if (!w_->nexus_update_thread_) {
     w_->nexus_update_thread_ = new ui::NexusUpdateThread(w_);
