@@ -11,7 +11,8 @@ NexusUpdateWorker::NexusUpdateWorker(QObject *parent) : QObject(parent) {}
 
 void NexusUpdateWorker::run(NexusUpdateRequest request, quint64 generation) {
   const auto report = engine::Source::Nexus::UpdateCheck::run(
-      request.nexus_domain, request.api_key, request.mods_dir, request.now);
+      request.nexus_domain, request.api_key, request.mods_dir, request.now,
+      request.force);
 
   // Counts only. The API key is never logged here or anywhere else on this
   // path - it is a bearer token for the user's Nexus account, and the request

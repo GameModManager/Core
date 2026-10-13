@@ -8,12 +8,15 @@
 // The other invariant under test is the one whose failure is worst for the
 // user: a sweep the API REFUSED must never be reportable as "no updates".
 // UpdateCheck::Report carries ok=false plus a human-readable message for
-// exactly that, and the UI renders ok=false as a warning. run()'s two
-// zero-network refusals (no domain, no key) are the reachable way to assert
-// that contract without touching api.nexusmods.com - which is also why this
-// file never issues a request: the only reachable paths here return before
-// the first curl call, and a test that reaches the network would be both
-// environment-dependent and up to 30s of DNS timeout.
+// exactly that, and the UI renders ok=false as a warning.
+//
+// The half of run() that talks to Nexus is covered through the injected
+// FakeNetworkManager, against bodies shaped like the ones Nexus actually sends
+// - NOT by reaching api.nexusmods.com, which would be both
+// environment-dependent and up to 30s of DNS timeout, and would spend a
+// metered key to do it. What the fake cannot tell us is whether those bodies
+// match reality; that is why they are transcribed from the documented v1 shape
+// rather than invented, and why MO2's own reader is cited beside each field.
 #include "engine/source/nexus/update_check.h"
 
 #include "engine/mod/meta/mod_meta.h"
@@ -101,7 +104,7 @@ static const char *kRealFilesBody = R"({
   "data": {
     "mod_id": 6832,
     "files": [
-      {"file_id": 207864, "name": "A Mod", "version": "1.0", "category_name": null},
+      {"file_id": 207864, "name": "A Mod", "version": "0.9", "category_name": null},
       {"file_id": 522942, "name": "A Mod", "version": "2.0", "category_name": "MAIN"},
       {"file_id": 999999, "name": "A Mod", "version": "9.9.9", "category_name": "ARCHIVED"}
     ],
@@ -120,7 +123,8 @@ TEST_CASE("nexus update sweep: a real Nexus file list is read and not discarded"
 
   std::vector<long long> available;
   std::string newest;
-  REQUIRE(parse_files(kRealFilesBody, available, newest));
+  std::string installed;
+  REQUIRE(parse_files(kRealFilesBody, 207864, available, newest, installed));
 
   // The archived file is excluded: it is not downloadable, and counting it
   // would let a retracted file pass as the newest one.
@@ -129,13 +133,28 @@ TEST_CASE("nexus update sweep: a real Nexus file list is read and not discarded"
   REQUIRE(available.back() == 522942);
   REQUIRE(newest == "2.0");
 
+  // The version of OUR file, read out of the same body by its id - not the
+  // newest one. These are two different strings and confusing them is the bug
+  // this whole path exists to end: the Version column must show what is
+  // installed, which is never "the newest thing Nexus offers".
+  REQUIRE(installed == "0.9");
+
+  // A file id Nexus no longer lists (retracted upstream, or a meta.ini naming
+  // a file that was removed) leaves it empty - "not stated", so the caller
+  // keeps what it already recorded rather than blanking it.
+  std::vector<long long> avail2;
+  std::string n2, i2;
+  REQUIRE(parse_files(kRealFilesBody, 123456, avail2, n2, i2));
+  REQUIRE(i2.empty());
+  REQUIRE(n2 == "2.0");
+
   // The exact regression shape: the same list under the key name Nexus does
   // not use yields nothing, and "nothing" must read as a refusal, not as a
   // mod that is up to date.
   const char *wrong_key = R"({"data":{"files":[{"id":522942,"version":"2.0"}]}})";
   std::vector<long long> none;
-  std::string no_version;
-  REQUIRE(parse_files(wrong_key, none, no_version) == false);
+  std::string no_version, no_installed;
+  REQUIRE(parse_files(wrong_key, 522942, none, no_version, no_installed) == false);
   REQUIRE(none.empty());
 }
 
@@ -185,6 +204,13 @@ TEST_CASE("nexus update sweep: a readable answer becomes a badge", "[engine][nex
   REQUIRE(meta.get("General", "newestversion") == "2.0");
   REQUIRE(meta.get("Nexusmods", "lastnexusquery") == "2023-11-14T22:13:20Z");
   REQUIRE(report.updates == 1);
+
+  // And the installed version, which the fixture seeded as the fabricated
+  // "1.0" every MO2-style install used to write when it had no version to
+  // record. Nexus names the version of file 207864 - the file we actually
+  // have - so that is what lands, and it is what the Version column then
+  // displays (mod_scanner.cpp:560). Same response, no extra request.
+  REQUIRE(meta.get("General", "version") == "0.9");
 }
 
 // A mod the sweep could not answer for must be NAMED, with a reason, and must
@@ -282,6 +308,99 @@ TEST_CASE("nexus update sweep: an undecidable mod is named, never called current
   // result, and the mod list would read it as a mod that was checked.
   REQUIRE(meta.get("General", "nexus_update").empty());
   REQUIRE(meta.get("Nexusmods", "lastnexusquery").empty());
+}
+
+// The failure the user actually hit, end to end. A real run reported
+// "0 updates from 0 queried / 64 mods, 1 requests": one bulk request, no
+// per-mod calls, and every mod answered from the cache.
+//
+// The cache said "checked" only because an earlier sweep STAMPED every mod it
+// failed to answer for. That write was already removed, but the stamps it left
+// on disk are indistinguishable from honest ones, so the ordinary sweep keeps
+// skipping them forever. This is why a forced path has to exist at all, and
+// this is the test that says it forces.
+//
+// The seeded stamp is deliberately FRESHER than the window entry, so the
+// cached path has every reason to skip: this is not "the window missed it",
+// it is "the cache says it was just asked".
+TEST_CASE("nexus update sweep: force re-asks despite a fresh lastnexusquery stamp",
+          "[engine][nexus]") {
+  using engine::network::FakeNetworkManager;
+  using engine::Source::Nexus::UpdateCheck::run;
+
+  const TempDir tmp("force");
+  const int64_t now = 1700000000;
+  seed_mod(tmp.root, "StaleStamp", 500, 207864);
+
+  // Stamp it as checked a second ago - exactly the lie the shipped bug wrote.
+  {
+    engine::ModMeta meta = engine::ModMeta::load(tmp.root, "StaleStamp");
+    meta.set("Nexusmods", "lastnexusquery", "2023-11-14T22:13:19Z");
+    REQUIRE(meta.save(tmp.root, "StaleStamp"));
+  }
+
+  engine::network::Response bulk;
+  bulk.http_code = 200;
+  // The window DOES mention the mod, but says it last moved BEFORE our stamp.
+  bulk.body = R"([{"mod_id":500,"latest_file_update":1699000000}])";
+
+  engine::network::Response files;
+  files.http_code = 200;
+  files.body      = kRealFilesBody;  // newest live file 522942 > our 207864
+
+  // --- cached: the cache speaks, so nothing is asked ---
+  {
+    auto fake     = std::make_unique<FakeNetworkManager>();
+    auto *fakeptr = fake.get();
+    engine::network::set_instance(std::move(fake));
+    fakeptr->enqueue_response(bulk);
+    fakeptr->enqueue_response(files);  // must NOT be consumed
+
+    const auto report = run("skyrimspecialedition", "test-key", tmp.root, now);
+    engine::network::set_instance(nullptr);
+
+    REQUIRE(report.ok == true);
+    REQUIRE(report.total == 1);
+    REQUIRE(report.requests == 1);  // bulk only
+    REQUIRE(report.checked == 0);   // the stamp suppressed the per-mod call
+    REQUIRE(report.updates == 0);
+  }
+
+  // --- forced: the stamp is ignored and the mod is asked about ---
+  // Re-stamp first. The cached run above RE-STAMPED the mod it answered from
+  // the cache (that is the loop at the end of run()), so without this the
+  // forced block would start from a zero gap - where full_recheck_required is
+  // already true and force is indistinguishable from the ordinary path. The
+  // test would then pass with force wired up to nothing, which is exactly the
+  // regression it exists to catch.
+  {
+    engine::ModMeta meta = engine::ModMeta::load(tmp.root, "StaleStamp");
+    meta.set("Nexusmods", "lastnexusquery", "2023-11-14T22:13:19Z");
+    REQUIRE(meta.save(tmp.root, "StaleStamp"));
+  }
+  {
+    auto fake     = std::make_unique<FakeNetworkManager>();
+    auto *fakeptr = fake.get();
+    engine::network::set_instance(std::move(fake));
+    fakeptr->enqueue_response(bulk);
+    fakeptr->enqueue_response(files);
+
+    const auto report =
+        run("skyrimspecialedition", "test-key", tmp.root, now, /*force=*/true);
+    engine::network::set_instance(nullptr);
+
+    REQUIRE(report.ok == true);
+    REQUIRE(report.requests == 2);  // bulk + the per-mod call force bought
+    REQUIRE(report.checked == 1);
+    REQUIRE(report.updates == 1);  // and it found the update that was there
+    REQUIRE(report.unreachable.empty());
+
+    const auto meta = engine::ModMeta::load(tmp.root, "StaleStamp");
+    REQUIRE(meta.get("General", "nexus_update") == "true");
+    REQUIRE(meta.get("General", "newestversion") == "2.0");
+    // The fabricated install-time version is repaired on the same pass.
+    REQUIRE(meta.get("General", "version") == "0.9");
+  }
 }
 
 // The cost claim: one bulk request answers every mod, and a mod absent from

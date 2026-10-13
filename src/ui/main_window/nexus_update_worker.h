@@ -22,6 +22,9 @@ struct NexusUpdateRequest {
   std::string api_key;             // from Nexus::Auth::instance().get_api_key()
   std::filesystem::path mods_dir;  // instance mods_dir_path()
   int64_t now = 0;                 // Unix seconds, stamped on every meta.ini
+  // Ask Nexus about every mod, ignoring the lastnexusquery cache. One request
+  // per mod, so this is the explicit-action path only.
+  bool force = false;
 };
 
 // Runs UpdateCheck::run() - the bulk updated.json request, the per-mod

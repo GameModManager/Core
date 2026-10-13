@@ -378,6 +378,70 @@ TEST_CASE("mod_meta_write_game_metadata_namespace_isolation", "[engine]") {
   }
 }
 
+// A version is never invented. write_game_metadata used to fall back to "1.0"
+// whenever the caller had none to give, and that fallback shipped to every
+// MO2-style game without exception: only XML-metadata games ship a version
+// inside the archive (extract_stage.cpp reads it out of metadata.xml), so for
+// Skyrim and friends `version` was ALWAYS empty at this call and "1.0" was
+// ALWAYS the value written. The Version column reads [General] version
+// (mod_scanner.cpp:560), so every such mod displayed 1.0 for the rest of its
+// life - a confident, wrong, fabricated answer.
+//
+// The authoritative version arrives later, from Nexus, in
+// UpdateCheck::run(); until then the honest state is "not stated", which the
+// mod list already renders as MO2's "?" for a mod it can still update.
+TEST_CASE("mod_meta_write_game_metadata_never_fabricates_a_version", "[engine]") {
+  using engine::ModMeta;
+
+  const fs::path root = "/tmp/gmm_mod_meta_no_fabricated_version";
+  fs::remove_all(root);
+
+  auto written = [&](const std::string &folder, const std::string &version) {
+    const auto mod_dir = root / folder;
+    fs::create_directories(mod_dir);
+    require(ModMeta::write_game_metadata(mod_dir, "meta.ini", "A Mod", version, ""),
+            "write_game_metadata succeeds");
+    std::ifstream f(mod_dir / "meta.ini");
+    std::stringstream ss;
+    ss << f.rdbuf();
+    return ss.str();
+  };
+
+  // No version offered -> no version key, in either output format.
+  const std::string ini = written("NoVersion", "");
+  require(ini.find("version=") == std::string::npos,
+          "ini: no version line is written when none is known");
+  require(ini.find("newestVersion=") == std::string::npos,
+          "ini: no newestVersion line is written when none is known");
+  // The sentinel the other half of the file depends on is untouched.
+  require(ini.find("modid=0\n") != std::string::npos,
+          "ini: the modid sentinel is still written");
+
+  // A version offered -> written through unchanged. This is the XML-metadata
+  // games' path (Isaac reads the version out of the archive's metadata.xml)
+  // and must keep working.
+  const std::string named = written("HasVersion", "4.2.0");
+  require(named.find("version=4.2.0\n") != std::string::npos,
+          "ini: a known version is written verbatim");
+  require(named.find("newestVersion=4.2.0\n") != std::string::npos,
+          "ini: newestVersion tracks the known version");
+
+  const fs::path xml_dir = root / "XmlMod";
+  fs::create_directories(xml_dir);
+  require(ModMeta::write_game_metadata(xml_dir, "metadata.xml", "Xml Mod", "", ""),
+          "xml: write_game_metadata succeeds");
+  std::ifstream xf(xml_dir / "metadata.xml");
+  std::stringstream xs;
+  xs << xf.rdbuf();
+  const std::string xml = xs.str();
+  require(xml.find("<version>") == std::string::npos,
+          "xml: no <version> element is written when none is known");
+  require(xml.find("<name>Xml Mod</name>") != std::string::npos,
+          "xml: the rest of the document is unaffected");
+
+  fs::remove_all(root);
+}
+
 // Workspace-fqf5: from_mo2_import's is_nexus detector used to trust the
 // MO2 repository string alone. A legacy meta.ini that says
 // repository=Nexus but carries modid=0 (the MO2 "no Nexus id" sentinel

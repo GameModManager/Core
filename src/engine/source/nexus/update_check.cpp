@@ -191,10 +191,12 @@ namespace {
 
 }  // namespace
 
-bool parse_files(const std::string &body, std::vector<long long> &available_ids,
-                 std::string &newest_version) {
+bool parse_files(const std::string &body, long long installed_file_id,
+                 std::vector<long long> &available_ids, std::string &newest_version,
+                 std::string &installed_version) {
   std::vector<long long> available;
   std::string newest;
+  std::string installed;
   long long newest_id = 0;
   try {
     const auto j = nlohmann::json::parse(body);
@@ -217,10 +219,18 @@ bool parse_files(const std::string &body, std::vector<long long> &available_ids,
       if (id <= 0 || is_archived(f))
         continue;
       available.push_back(id);
+      const std::string version = string_field(f, "version");
       if (id > newest_id) {
         newest_id = id;
-        newest    = string_field(f, "version");
+        newest    = version;
       }
+      // Our own file's version, from the same body. The Version column reads
+      // [General] version, and an install that had no version to record wrote
+      // a fabricated one there - so this is where the real string comes back
+      // in. Empty when Nexus no longer lists the file we installed, which is
+      // "not stated" and leaves the recorded value alone.
+      if (id == installed_file_id)
+        installed = version;
     }
   } catch (const std::exception &e) {
     Logger::instance().error(
@@ -230,8 +240,9 @@ bool parse_files(const std::string &body, std::vector<long long> &available_ids,
 
   if (available.empty())
     return false;
-  available_ids  = std::move(available);
-  newest_version = std::move(newest);
+  available_ids     = std::move(available);
+  newest_version    = std::move(newest);
+  installed_version = std::move(installed);
   return true;
 }
 
@@ -345,7 +356,7 @@ Period period_for(int64_t seconds_since_oldest_check) {
 // ---------------------------------------------------------------------------
 
 Report run(const std::string &nexus_domain, const std::string &api_key,
-           const std::filesystem::path &mods_dir, int64_t now) {
+           const std::filesystem::path &mods_dir, int64_t now, bool force) {
   Report report;
   if (nexus_domain.empty()) {
     report.message = "No Nexus source is registered for this game.";
@@ -404,7 +415,11 @@ Report run(const std::string &nexus_domain, const std::string &api_key,
   }
 
   // --- Per-mod follow-ups, only for what the bulk call caught moving ---
-  const bool full = full_recheck_required(gap);
+  // `force` is the user's explicit "ask Nexus now": it overrides the cache the
+  // window is computed from, because a stamp left by a sweep that never got an
+  // answer is indistinguishable from a real one on disk and would otherwise
+  // suppress this mod forever.
+  const bool full = force || full_recheck_required(gap);
   const auto due  = due_for_query(installed, updated, full);
   std::set<std::string> stamped;
   std::set<std::string> unresolved;
@@ -438,8 +453,10 @@ Report run(const std::string &nexus_domain, const std::string &api_key,
 
     std::vector<long long> available;
     std::string newest_version;
+    std::string installed_version;
     ++report.checked;
-    if (!parse_files(files.body, available, newest_version)) {
+    if (!parse_files(files.body, mod.installed_file_id, available, newest_version,
+                     installed_version)) {
       unanswerable(mod, "Nexus sent a file list this build cannot read");
       continue;
     }
@@ -464,6 +481,19 @@ Report run(const std::string &nexus_domain, const std::string &api_key,
              state.state == Verdict::Update ? "true" : "false");
     if (!newest_version.empty())
       meta.set(kSecGeneral, kKeyNewest, newest_version);
+    // The INSTALLED version, from the same response. The Version column reads
+    // [General] version (mod_scanner.cpp:560), and an install that had no
+    // version to record put a fabricated "1.0" there
+    // (ModMeta::write_game_metadata, mod_meta.cpp) - so every MO2-style game,
+    // whose archives carry no XML version manifest, displayed 1.0 for every
+    // mod. Nexus names the version of the exact file we installed, which is
+    // what MO2 stores (downloadmanager.cpp:2274-2276) and reads back
+    // (modinforegular.cpp:94), so this is the authoritative value arriving at
+    // no extra cost. Only written when Nexus stated one: an absent version
+    // means "unknown", and overwriting a good recorded value with nothing
+    // would trade one wrong display for another.
+    if (!installed_version.empty())
+      meta.set(kSecGeneral, "version", installed_version);
     if (!meta.save(mods_dir, mod.folder)) {
       unanswerable(mod, "the verdict could not be written to its meta.ini");
       continue;

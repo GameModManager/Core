@@ -68,10 +68,19 @@ struct InstalledMod {
 // downstream unless they are kept apart here.
 bool parse_updated(const std::string &body, std::vector<UpdatedMod> &out);
 
-// One mod's `files.json` answer: the ids Nexus still serves, and the version
+// One mod's `files.json` answer: the ids Nexus still serves, the version
 // string of the newest of them (which is what `newestversion` displays and
-// what `ignoredversion` has to match - asking for it separately would be a
-// second request for one string).
+// what `ignoredversion` has to match), and the version string of OUR OWN
+// installed file.
+//
+// That last one is not decoration. `data.files[]` names every file the mod has
+// ever had, each with the version string its author typed, so the version of
+// the file we installed is already in this body - no second request, no
+// guessing from a filename. It is also the authoritative installed version:
+// MO2 stores exactly this string (downloadmanager.cpp:2274-2276 reads
+// `file_details["version"]`, falling back to `mod_version`) and reads it back
+// out of meta.ini [General] version (modinforegular.cpp:94) to paint the
+// Version column (modlist.cpp:198).
 //
 // The body is the real Nexus v1 shape, and the two names in it are the whole
 // reason this function is exported: the download set is `data.files[]`, and
@@ -82,9 +91,13 @@ bool parse_updated(const std::string &body, std::vector<UpdatedMod> &out);
 // (mainwindow.cpp:3329, nexusinterface.cpp:132, downloadmanager.cpp:1880).
 //
 // ARCHIVED entries are skipped: they are not downloadable, and counting them
-// would let a retracted file masquerade as the newest one.
-bool parse_files(const std::string &body, std::vector<long long> &available_ids,
-                 std::string &newest_version);
+// would let a retracted file masquerade as the newest one. `installed_version`
+// stays empty when the installed id is absent from the list (retracted, or a
+// meta.ini that names a file Nexus no longer serves) - an empty string there
+// means "not stated", and callers must leave the recorded version alone.
+bool parse_files(const std::string &body, long long installed_file_id,
+                 std::vector<long long> &available_ids, std::string &newest_version,
+                 std::string &installed_version);
 
 // What one installed mod's own file id says about the files Nexus still serves.
 //
@@ -184,10 +197,19 @@ struct Report {
 // distinguishes a completed sweep (even one that found nothing) from a sweep
 // the API refused. Never throws.
 //
+// `force` ignores the `lastnexusquery` cache entirely and asks Nexus about
+// every mod, as MO2's manual re-check does (ModInfo::manualUpdateCheck,
+// modinfo.cpp:459-461 zeroes each mod's last-update time and then runs the
+// ordinary sweep). Without it a stale stamp is permanent: a mod that was once
+// stamped by a sweep which never got an answer keeps telling the next sweep it
+// was just checked, so the update exists but nothing ever asks about it again.
+// This costs one request per mod, which is why it is the explicit-action
+// path and not the default.
+//
 // Anything it could not answer for is named in `unreachable` with the reason,
 // in the log AND in the returned Report - never folded into a quiet zero.
 Report run(const std::string &nexus_domain, const std::string &api_key,
-           const std::filesystem::path &mods_dir, int64_t now);
+           const std::filesystem::path &mods_dir, int64_t now, bool force = false);
 
 // Set or clear the version the user asked not to be told about, in one mod's
 // own meta.ini. `newest_version` is recorded as the ignore when `ignore` is
