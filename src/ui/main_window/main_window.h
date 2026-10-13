@@ -542,7 +542,12 @@ private:
       return {};
     return current_instance_root_ / "config" / "app_state.dat";
   }
-  std::filesystem::path download_manifest_path() const {
+  // LEGACY download state. Superseded by the per-file "<archive>.meta" that
+  // MO2 uses (DownloadManager::createMetaFile, downloadmanager.cpp:1771-1799)
+  // and written by DownloadsController::save_download_manifest. This path is
+  // read exactly once more, by load_download_manifest, to migrate its entries
+  // into metas; it is deleted only after every meta has landed.
+  std::filesystem::path legacy_download_manifest_path() const {
     if (current_instance_root_.empty())
       return {};
     return downloads_dir_path() / ".download_manifest.json";
