@@ -2143,3 +2143,162 @@ TEST_CASE("MainWindow: Ignore This Update clears the Version badge", "[ui][harne
 
   fs::remove_all(root);
 }
+
+// ---------------------------------------------------------------------------
+// The branch ORDER in on_nexus_update_finished().
+//
+// Three branches, and the order between them IS the feature:
+//
+//   !report.ok         the API refused or the body was unreadable
+//   !report.message    ok, but some mods were unreachable - a partial answer
+//   report.updates > 0 a count, which is the only non-warning we may print
+//   otherwise         "all up to date"
+//
+// A sweep that could not answer must never be rendered in the shape of a sweep
+// that found nothing, and a sweep that found nothing must never borrow the
+// count's voice. Hoisting `updates > 0` above the two guards is the mutation
+// that breaks exactly that: a refusal that also counted 3 updates prints "3
+// mod(s) have an update available on Nexus" as a quiet, non-warning line.
+//
+// It had no test, and hoisting it left every case in this file green - the
+// cases that existed only ever produced one branch at a time. The two Reports
+// below are the ones run() cannot currently emit (a refusal cannot arrive with
+// updates>0, because the early returns happen before the counting loop), so
+// they are handed to the slot directly with the generation it expects.
+//
+// Each case is asserted as a WARNING whose text is neither the count form nor
+// the up-to-date form, because "is it a warning" alone does not catch a
+// reordering that still reached a warning by a different route.
+// ---------------------------------------------------------------------------
+TEST_CASE("MainWindow: a refusing or partial Nexus sweep never wears the count's voice",
+          "[ui][harness]") {
+  using engine::Source::Nexus::UpdateCheck::Report;
+
+  const fs::path root     = make_case_root("gmm_nexus_order");
+  const fs::path inst_dir = root / "instances";
+
+  qputenv("QT_QPA_PLATFORM", "offscreen");
+  int app_argc     = 1;
+  char app_argv0[] = "main_window_harness_test";
+  char *app_argv[] = {app_argv0, nullptr};
+  QApplication app(app_argc, app_argv);
+  QCoreApplication::setOrganizationName("GameModManager");
+  QCoreApplication::setApplicationName("GameModManager");
+
+  engine::Source::Nexus::Auth::instance().set_api_key("harness-not-a-real-key");
+
+  auto inst           = engine::Instance::installed("TestGame", inst_dir);
+  inst.info().game_id = "testgame";
+  REQUIRE(inst.create_directories());
+  REQUIRE(inst.write_toml());
+  const fs::path inst_root = inst.info().root;
+  const fs::path mods_dir =
+      engine::Instance::from_root(inst_root).path_for(engine::InstanceKind::Mods);
+  fs::create_directories(mods_dir / "PlainMod");
+  write_file(mods_dir / "PlainMod" / "meta.ini", "[General]\npriority=0\n");
+
+  engine::GameKnowledge knowledge;
+  knowledge.set("testgame", "mods_subpath", "Mods");
+
+  engine::PluginLoader loader;
+  engine::PluginInfo info;
+  info.game_id      = "testgame";
+  info.game_support = true;
+  info.nexus_domain = "skyrimspecialedition";
+  loader.plugins_mutable().push_back(info);
+
+  ui::MainWindow w;
+  w.set_game_knowledge(&knowledge);
+  w.set_plugin_loader(&loader);
+  w.show();
+  w.set_game_info("testgame", "Test Game", "Default", {}, inst_root);
+  REQUIRE(pump_until([&w] {
+    return !w.is_loading();
+  }));
+
+  auto *bar = w.findChild<ui::StatusBar *>();
+  REQUIRE(bar != nullptr);
+  auto *controller = w.findChild<ui::ModListController *>();
+  REQUIRE(controller != nullptr);
+
+  const auto finish = [&w, controller](Report report) {
+    controller->on_nexus_update_finished(std::move(report),
+                                         w.nexus_update_generation());
+  };
+
+  // Neither of these two may read as a count or as "up to date".
+  const auto refuse_but_counted = [] {
+    Report r;
+    r.ok           = false;
+    r.rate_limited = true;
+    r.updates      = 3;
+    r.checked      = 4;
+    r.total        = 64;
+    r.message = "Nexus refused the update check: API request limit reached. Whether "
+                "updates exist is unknown.";
+    return r;
+  };
+  const auto partial_but_counted = [] {
+    Report r;
+    r.ok      = true;
+    r.updates = 2;
+    r.checked = 5;
+    r.total   = 64;
+    r.unreachable.push_back({"BodySlide", "201", "the request never reached Nexus"});
+    r.message = "1 mod could not be reached on Nexus and will be retried: "
+                "BodySlide (the request never reached Nexus)";
+    return r;
+  };
+
+  // The refusal first: ok=false, a message, AND three updates counted. Hoisting
+  // the count branch above the guards turns this into a quiet "3 mod(s) have an
+  // update available on Nexus" - asserting the text is the message is what
+  // fails then.
+  finish(refuse_but_counted());
+  CHECK(bar->update_notice_is_warning());
+  CHECK(bar->update_notice() ==
+        QStringLiteral("Nexus refused the update check: API request limit "
+                       "reached. Whether updates exist is unknown."));
+  CHECK_FALSE(bar->update_notice().contains(QStringLiteral("3 mod")));
+  CHECK_FALSE(bar->update_notice().contains(QStringLiteral("up to date")));
+
+  // Then the partial answer: ok, a message, and two real updates. The mods that
+  // could not be reached are named - a count would tell the user the sweep was
+  // complete, which is the one thing it was not.
+  finish(partial_but_counted());
+  CHECK(bar->update_notice_is_warning());
+  CHECK(bar->update_notice() ==
+        QStringLiteral("1 mod could not be reached on Nexus and will be retried: "
+                       "BodySlide (the request never reached Nexus)"));
+  CHECK_FALSE(bar->update_notice().contains(QStringLiteral("2 mod")));
+  CHECK_FALSE(bar->update_notice().contains(QStringLiteral("up to date")));
+
+  // And the branches that may speak: with no message and updates counted, the
+  // count is the only correct notice, so the guards must not be swallowing the
+  // happy path either.
+  {
+    Report r;
+    r.ok      = true;
+    r.updates = 2;
+    r.checked = 5;
+    r.total   = 64;
+    finish(std::move(r));
+  }
+  CHECK_FALSE(bar->update_notice_is_warning());
+  CHECK(bar->update_notice().contains(QStringLiteral("2 mod")));
+  CHECK_FALSE(bar->update_notice().contains(QStringLiteral("up to date")));
+
+  // And a complete answer with nothing found, which is the only thing allowed
+  // to say "up to date".
+  {
+    Report r;
+    r.ok      = true;
+    r.checked = 64;
+    r.total   = 64;
+    finish(std::move(r));
+  }
+  CHECK_FALSE(bar->update_notice_is_warning());
+  CHECK(bar->update_notice().contains(QStringLiteral("up to date")));
+
+  fs::remove_all(root);
+}

@@ -77,28 +77,33 @@ bool parse_updated(const std::string &body, std::vector<UpdatedMod> &out);
 // what `ignoredVersion` has to match), and the version string of OUR OWN
 // installed file.
 //
-// That last one is not decoration. `data.files[]` names every file the mod has
-// ever had, each with the version string its author typed, so the version of
-// the file we installed is already in this body - no second request, no
-// guessing from a filename. It is also the authoritative installed version:
-// MO2 stores exactly this string (downloadmanager.cpp:2274-2276 reads
-// `file_details["version"]`, falling back to `mod_version`) and reads it back
-// out of meta.ini [General] version (modinforegular.cpp:94) to paint the
-// Version column (modlist.cpp:198).
+// That last one is not decoration. `files[]` names every file the mod has ever
+// had, each with the version string its author typed, so the version of the
+// file we installed is already in this body - no second request, no guessing
+// from a filename. It is also the authoritative installed version: MO2 stores
+// exactly this string (downloadmanager.cpp:2274-2276 reads
+// `file_details["version"]`, falling back to `mod_version` when it is absent)
+// and reads it back out of meta.ini [General] version (modinforegular.cpp:94)
+// to paint the Version column (modlist.cpp:198).
 //
-// The body is the real Nexus v1 shape, and the two names in it are the whole
-// reason this function is exported: the download set is `data.files[]`, and
-// each entry's id is **`file_id`**. There is no `available_mod_files` field
-// and no `id` field - reading either one yields an empty list and therefore
-// "could not tell" for every mod, which is indistinguishable from up to date
-// downstream. MO2 reads the same `file_id`
-// (mainwindow.cpp:3329, nexusinterface.cpp:132, downloadmanager.cpp:1880).
+// The body is the captured Nexus v1 reply (tests/engine/fixtures/nexus/
+// files_6832.json), and three names in it are the whole reason this function is
+// exported:
+//   - `files` is TOP LEVEL. There is no `data` envelope; `file_updates` is its
+//     sibling. MO2 reads it off the bare document (mainwindow.cpp:3313-3315).
+//   - `file_id` is the scalar id. `id` is also present but is the PAIR
+//     `[file_id, mod_id]`, so it is not a number.
+//   - there is no `available_mod_files` field.
+// Getting any of them wrong yields an empty list, which downstream is
+// indistinguishable from up to date. MO2 reads `file_id` from the same endpoint
+// at mainwindow.cpp:3329, nexusinterface.cpp:132 and downloadmanager.cpp:1880.
 //
-// ARCHIVED entries are skipped: they are not downloadable, and counting them
-// would let a retracted file masquerade as the newest one. `installed_version`
-// stays empty when the installed id is absent from the list (retracted, or a
-// meta.ini that names a file Nexus no longer serves) - an empty string there
-// means "not stated", and callers must leave the recorded version alone.
+// ARCHIVED entries are skipped, decided on `category_id` as MO2 decides it
+// (nexusinterface.h:181-193). A retracted file is not downloadable, and counting
+// it would let it masquerade as the newest one. `installed_version` stays empty
+// when the installed id is absent from the list (retracted, or a meta.ini that
+// names a file Nexus no longer serves) - an empty string there means "not
+// stated", and callers must leave the recorded version alone.
 bool parse_files(const std::string &body, long long installed_file_id,
                  std::vector<long long> &available_ids, std::string &newest_version,
                  std::string &installed_version);

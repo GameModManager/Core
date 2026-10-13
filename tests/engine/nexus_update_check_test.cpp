@@ -90,72 +90,221 @@ InstalledMod mod(long long mod_id, int64_t last_checked) {
 
 }  // namespace
 
-// A real Nexus v1 `files.json` body, field for field. This is the shape Nexus
-// documents and the shape MO2 parses (mainwindow.cpp:3329, nexusinterface.cpp:
-// 132, downloadmanager.cpp:1880 all read `file_id`). Two names in it are load
-// bearing: the download set is `data.files[]`, and each entry's id is
-// `file_id` - there is no `available_mod_files` and no `id`.
+// A CAPTURED Nexus `files.json` reply, read from disk rather than typed here.
 //
-// It is reproduced here verbatim rather than abstracted because the bug this
-// pins down was a parser reading fields Nexus has never sent: every HTTP 200
-// was billed, logged as a request, and then discarded as unparseable, so the
-// sweep reported nothing for any mod and the user saw no badge anywhere.
-static const char *kRealFilesBody = R"({
-  "data": {
-    "mod_id": 6832,
-    "files": [
-      {"file_id": 207864, "name": "A Mod", "version": "0.9", "category_name": null},
-      {"file_id": 522942, "name": "A Mod", "version": "2.0", "category_name": "MAIN"},
-      {"file_id": 999999, "name": "A Mod", "version": "9.9.9", "category_name": "ARCHIVED"}
-    ],
-    "file_updates": [
-      {"old_file_id": 207864, "new_file_id": 522942,
-       "old_file_name": "a-1.0.7z", "new_file_name": "a-2.0.7z",
-       "uploaded_timestamp": 1721451025}
-    ]
-  }
+// The body was recorded verbatim from api.nexusmods.com for mod 6832 (SSE) and
+// is committed unaltered. Nothing in it is invented, and that is the whole point:
+// the fixture this replaced was hand-written to match the parser, so it proved
+// the parser agreed with itself. Its shape - a `data` envelope wrapping
+// `files` - is not what Nexus sends, and the parser was written to read it, so
+// the pair passed 30 green tests while every one of the user's 64 mods came back
+// "a file list this build cannot read".
+//
+// Three names in the capture are load bearing, and all three are what the old
+// parser got wrong:
+//
+//   files        TOP LEVEL, sibling of file_updates. NO `data` envelope.
+//                MO2 reads it exactly so: `resultData.toMap()` of the whole
+//                reply, then indexes "files" in it (mainwindow.cpp:3313-3315).
+//   file_id      the scalar id, 16268.
+//   id           ALSO present, and it is `[16268, 1704]` - the PAIR of file id
+//                and mod id. Reading it as a number is as wrong as reading
+//                `files` under `data`; both yield an empty list, and an empty
+//                list reads downstream as "up to date".
+//
+// There is no `available_mod_files` key either - provider.cpp spent a branch on
+// it for the same endpoint.
+std::string captured_files_body(const char *which) {
+  const std::filesystem::path p =
+      std::filesystem::path(__FILE__).parent_path() / "fixtures" / "nexus" / which;
+  std::ifstream in(p, std::ios::binary);
+  REQUIRE(in.good());
+  std::string body((std::istreambuf_iterator<char>(in)),
+                   std::istreambuf_iterator<char>());
+  REQUIRE(!body.empty());
+  return body;
+}
+
+// A MULTI-file list, so the per-file decisions (archived excluded, newest
+// picked, OUR file's version read separately) have more than one row to act on
+// - the capture above is a single-file mod and cannot show any of them.
+//
+// It is built from the captured entry's OWN field set: same outer shape, same
+// keys, same value kinds. Only the ids and versions differ. It is therefore not
+// a second source of truth and cannot confirm a wrong shape - every structural
+// name it uses is one the capture proves. That distinction is the reason the
+// old fixture was worthless and this one is not: the old one's names were
+// invented to fit the code under test.
+static const char *kMultiFileBody = R"({
+  "file_updates": [
+    {"old_file_id": 16268, "new_file_id": 207864,
+     "old_file_name": "qasmoke2-1-0.rar", "new_file_name": "qasmoke2-0-9.rar",
+     "uploaded_timestamp": 1483146448}
+  ],
+  "files": [
+    {"id": [16268, 6832], "file_id": 16268, "version": "0.9", "mod_version": "0.9",
+     "category_id": 4, "category_name": "OLD_VERSION", "is_primary": false,
+     "uploaded_timestamp": 1483146448, "uploaded_time": "2016-12-31T01:07:28.000+00:00",
+     "size": 8632, "size_kb": 8632, "size_in_bytes": 8838800, "file_name": "qasmoke2-1-0.rar",
+     "description": "", "changelog_html": null},
+    {"id": [207864, 6832], "file_id": 207864, "version": "2.0", "mod_version": "2.0",
+     "category_id": 1, "category_name": "MAIN", "is_primary": true,
+     "uploaded_timestamp": 1721451025, "uploaded_time": "2024-07-18T15:30:25.000+00:00",
+     "size": 12000, "size_kb": 12000, "size_in_bytes": 12288000, "file_name": "qasmoke2-0-9.rar",
+     "description": "", "changelog_html": null},
+    {"id": [999999, 6832], "file_id": 999999, "version": "9.9.9", "mod_version": "9.9.9",
+     "category_id": 7, "category_name": "ARCHIVED", "is_primary": false,
+     "uploaded_timestamp": 1600000000, "uploaded_time": "2020-09-13T12:26:40.000+00:00",
+     "size": 9999, "size_kb": 9999, "size_in_bytes": 9999999, "file_name": "qasmoke2-9-9.rar",
+     "description": "", "changelog_html": null},
+    {"id": [522942, 6832], "file_id": 522942, "version": "", "mod_version": "3.0",
+     "category_id": 2, "category_name": "UPDATE", "is_primary": false,
+     "uploaded_timestamp": 1750000000, "uploaded_time": "2025-06-15T20:26:40.000+00:00",
+     "size": 4242, "size_kb": 4242, "size_in_bytes": 4343808, "file_name": "qasmoke2-3-0.rar",
+     "description": "", "changelog_html": null}
+  ]
 })";
 
-// The regression that shipped the broken sweep: an unparseable file list must
-// be LOUD, never an empty answer dressed up as "nothing changed".
-TEST_CASE("nexus update sweep: a real Nexus file list is read and not discarded") {
+// THE regression, on the captured body. Before the fix this returned false for
+// it, and for every other real reply, which is not "no updates" but "could not
+// tell" - a distinction the user was told about 64 times and never once got an
+// answer.
+TEST_CASE("nexus update sweep: a captured Nexus file list is read and not discarded",
+          "[engine][nexus]") {
   using engine::Source::Nexus::UpdateCheck::parse_files;
+
+  const std::string body = captured_files_body("files_6832.json");
 
   std::vector<long long> available;
   std::string newest;
   std::string installed;
-  REQUIRE(parse_files(kRealFilesBody, 207864, available, newest, installed));
+  REQUIRE(parse_files(body, 16268, available, newest, installed));
 
-  // The archived file is excluded: it is not downloadable, and counting it
-  // would let a retracted file pass as the newest one.
+  // One file, one id - read from `file_id`. The sibling `id` is the PAIR
+  // [16268, 1704]; had it been read as a number the list would be empty and
+  // parse_files would have returned false here.
+  REQUIRE(available.size() == 1);
+  REQUIRE(available.front() == 16268);
+
+  // category_id 1 is MAIN, so the file is offered.
+  REQUIRE(newest == "v1.0");
+
+  // And the version of the file we actually have, which is what the Version
+  // column reads. For this mod that is genuinely v1.0 upstream - the capture
+  // cannot show a correction on its own, which is what the backfill case below
+  // is for.
+  REQUIRE(installed == "v1.0");
+
+  // An id Nexus no longer lists is "not stated", not "blank it out".
+  std::vector<long long> avail2;
+  std::string n2, i2;
+  REQUIRE(parse_files(body, 123456, avail2, n2, i2));
+  REQUIRE(i2.empty());
+  REQUIRE(n2 == "v1.0");
+}
+
+// Both envelopes. The bare one is what Nexus sends; the `data` one is what
+// /categories.json really does wrap in (categories.cpp:17), so a reply that
+// arrives wrapped is still read rather than discarded.
+TEST_CASE("nexus update sweep: a wrapped file list is read too, not only the bare one",
+          "[engine][nexus]") {
+  using engine::Source::Nexus::UpdateCheck::parse_files;
+
+  const std::string bare    = captured_files_body("files_6832.json");
+  const std::string wrapped = R"({"data":{"files":[
+      {"id":[16268,6832],"file_id":16268,"version":"v1.0","category_id":1}]}})";
+
+  for (const std::string *body : {&bare, &wrapped}) {
+    std::vector<long long> available;
+    std::string newest, installed;
+    REQUIRE(parse_files(*body, 16268, available, newest, installed));
+    REQUIRE(available.size() == 1);
+    REQUIRE(available.front() == 16268);
+    REQUIRE(installed == "v1.0");
+  }
+
+  // Neither shape, and no `files` anywhere: still a refusal. Tolerance must not
+  // grow into "anything goes".
+  std::vector<long long> none;
+  std::string n, i;
+  REQUIRE(parse_files(R"({"files":"not an array"})", 16268, none, n, i) == false);
+  REQUIRE(parse_files(R"({"mods":{"files":[]}})", 16268, none, n, i) == false);
+}
+
+// The per-file decisions, which need more than the one file the capture holds.
+// `id` is an array on every row here exactly as the capture proves it is, so a
+// parser reading `id` instead of `file_id` still comes back empty.
+TEST_CASE("nexus update sweep: archived files are excluded and the newest one is named",
+          "[engine][nexus]") {
+  using engine::Source::Nexus::UpdateCheck::parse_files;
+
+  std::vector<long long> available;
+  std::string newest, installed;
+  REQUIRE(parse_files(kMultiFileBody, 16268, available, newest, installed));
+
+  // 999999 is ARCHIVED (category_id 7) and 16268 is OLD_VERSION (category_id 4)
+  // - neither is downloadable, and counting them would let a retracted file
+  // pass as the newest one. Both are judged on `category_id`, as MO2 judges
+  // them (nexusinterface.h:181-193), not on the name.
   REQUIRE(available.size() == 2);
   REQUIRE(available.front() == 207864);
   REQUIRE(available.back() == 522942);
-  REQUIRE(newest == "2.0");
+  REQUIRE(newest == "3.0");
 
-  // The version of OUR file, read out of the same body by its id - not the
-  // newest one. These are two different strings and confusing them is the bug
-  // this whole path exists to end: the Version column must show what is
-  // installed, which is never "the newest thing Nexus offers".
+  // OURS is 16268 - a file the list has, but one Nexus has since marked OLD -
+  // and its version is "0.9". Two things are being asserted here. That an
+  // unavailable file is still the version we HAVE: it is the file on our disk,
+  // and it is the oldest install there is, so it is the one most likely to be
+  // carrying the fabricated "1.0". And that our version is not the newest one.
   REQUIRE(installed == "0.9");
 
-  // A file id Nexus no longer lists (retracted upstream, or a meta.ini naming
-  // a file that was removed) leaves it empty - "not stated", so the caller
-  // keeps what it already recorded rather than blanking it.
+  // The version of OUR file, read by its id - not the newest one.
   std::vector<long long> avail2;
   std::string n2, i2;
-  REQUIRE(parse_files(kRealFilesBody, 123456, avail2, n2, i2));
-  REQUIRE(i2.empty());
-  REQUIRE(n2 == "2.0");
+  REQUIRE(parse_files(kMultiFileBody, 522942, avail2, n2, i2));
+  REQUIRE(i2 == "3.0");
 
-  // The exact regression shape: the same list under the key name Nexus does
-  // not use yields nothing, and "nothing" must read as a refusal, not as a
-  // mod that is up to date.
-  const char *wrong_key = R"({"data":{"files":[{"id":522942,"version":"2.0"}]}})";
-  std::vector<long long> none;
-  std::string no_version, no_installed;
-  REQUIRE(parse_files(wrong_key, 522942, none, no_version, no_installed) == false);
-  REQUIRE(none.empty());
+  // An id Nexus does not list: "not stated", so the caller keeps what it has.
+  std::vector<long long> avail3;
+  std::string n3, i3;
+  REQUIRE(parse_files(kMultiFileBody, 123456, avail3, n3, i3));
+  REQUIRE(i3.empty());
+  REQUIRE(n3 == "3.0");
+}
+
+// `version` is the file's own; `mod_version` is the mod-wide value, used only
+// when the file states none. File 522942 has an empty `version` and picks up
+// "3.0" from `mod_version`, which is why the newest version above is "3.0" and
+// not "". MO2's order, downloadmanager.cpp:2274-2276.
+TEST_CASE("nexus update sweep: mod_version answers only where version states nothing",
+          "[engine][nexus]") {
+  using engine::Source::Nexus::UpdateCheck::parse_files;
+
+  // Empty `version`, so mod_version supplies it.
+  std::vector<long long> a;
+  std::string n, i;
+  REQUIRE(parse_files(R"({"files":[
+      {"file_id":10,"version":"","mod_version":"7.4","category_id":1}]})",
+                      10, a, n, i));
+  REQUIRE(i == "7.4");
+  REQUIRE(n == "7.4");
+
+  // `version` present: it wins, and mod_version is not consulted. "9.1" here is
+  // deliberately different from the mod_version beside it so a swap cannot pass.
+  a.clear();
+  REQUIRE(parse_files(R"({"files":[
+      {"file_id":10,"version":"9.1","mod_version":"7.4","category_id":1}]})",
+                      10, a, n, i));
+  REQUIRE(i == "9.1");
+  REQUIRE(n == "9.1");
+
+  // Neither stated: genuinely not stated, and the caller must leave the
+  // recorded version alone rather than overwrite a good one with nothing.
+  a.clear();
+  REQUIRE(parse_files(R"({"files":[{"file_id":10,"category_id":1}]})", 10, a, n, i));
+  REQUIRE(i.empty());
+  REQUIRE(n.empty());
+  REQUIRE(a.size() == 1);
 }
 
 // The sweep end to end over a faked network, which is the only way to reach the
@@ -184,7 +333,7 @@ TEST_CASE("nexus update sweep: a readable answer becomes a badge", "[engine][nex
 
   engine::network::Response files;
   files.http_code = 200;
-  files.body      = kRealFilesBody;  // newest non-archived file id is 522942
+  files.body      = kMultiFileBody;  // newest non-archived file id is 522942
   fakeptr->enqueue_response(files);
 
   const auto report = run("skyrimspecialedition", "test-key", tmp.root, now);
@@ -201,7 +350,7 @@ TEST_CASE("nexus update sweep: a readable answer becomes a badge", "[engine][nex
   // mod list reads to decide whether to paint a row red.
   const auto meta = engine::ModMeta::load(tmp.root, "MyMod");
   REQUIRE(meta.get("General", "nexus_update") == "true");  // 522942 > 207864
-  REQUIRE(meta.get("General", "newestversion") == "2.0");
+  REQUIRE(meta.get("General", "newestversion") == "3.0");
   REQUIRE(meta.get("Nexusmods", "lastnexusquery") == "2023-11-14T22:13:20Z");
   REQUIRE(report.updates == 1);
 
@@ -210,7 +359,165 @@ TEST_CASE("nexus update sweep: a readable answer becomes a badge", "[engine][nex
   // record. Nexus names the version of file 207864 - the file we actually
   // have - so that is what lands, and it is what the Version column then
   // displays (mod_scanner.cpp:560). Same response, no extra request.
-  REQUIRE(meta.get("General", "version") == "0.9");
+  REQUIRE(meta.get("General", "version") == "2.0");
+}
+
+// THE VERSION COLUMN, correcting itself.
+//
+// A census of one real instance found 60 meta.ini files still carrying
+// `version = 1.0` - a value this app fabricated at install time when it had
+// nothing better to record, and printed in the Version column ever since. The
+// code that wrote it is gone; the files are not, and they cannot be fixed by
+// hand. SkyUI is the proof it is still wrong: `installationfile =
+// SkyUI-12604-6-11-1778020881.zip` says 6.11 while the same meta says 1.0.
+//
+// The repair is the response the sweep has already paid for. It is the same
+// source the Version column was always supposed to show, and using it costs no
+// request that is not already being made - which is the only reason this is
+// worth doing at all.
+//
+// HONEST LIMIT: the capture this repo has is mod 6832, whose real version
+// genuinely IS "v1.0", so it cannot by itself show a wrong value being
+// corrected. SkyUI (12604) and BodySlide (201) were not captured: no Nexus API
+// key is reachable from here and the stored one is not readable, so inventing
+// either reply would be the exact mistake this file exists to end. What is
+// asserted below is therefore (a) the fabricated "1.0" being replaced by the
+// string Nexus actually returns, on the captured reply, and (b) the same
+// correction where installed and upstream genuinely differ in digit count.
+TEST_CASE(
+    "nexus update sweep: the fabricated installed version is replaced by Nexus's own",
+    "[engine][nexus]") {
+  using engine::network::FakeNetworkManager;
+  using engine::Source::Nexus::UpdateCheck::run;
+
+  const TempDir tmp("sweep_backfill");
+  const int64_t now = 1700000000;
+  seed_mod(tmp.root, "QASmoke2", 6832, 16268);  // seed_mod writes version=1.0
+
+  // Start from the state the user's disk is actually in: the fabricated value,
+  // and nothing else. If the sweep does not overwrite it, this is what stays.
+  {
+    engine::ModMeta meta = engine::ModMeta::load(tmp.root, "QASmoke2");
+    REQUIRE(meta.get("General", "version") == "1.0");
+  }
+
+  auto fake     = std::make_unique<FakeNetworkManager>();
+  auto *fakeptr = fake.get();
+  engine::network::set_instance(std::move(fake));
+
+  engine::network::Response bulk;
+  bulk.http_code = 200;
+  bulk.body      = R"([{"mod_id":6832,"latest_file_update":1699999999}])";
+  fakeptr->enqueue_response(bulk);
+
+  engine::network::Response files;
+  files.http_code = 200;
+  files.body      = captured_files_body("files_6832.json");
+  fakeptr->enqueue_response(files);
+
+  const auto report = run("skyrimspecialedition", "test-key", tmp.root, now);
+  engine::network::set_instance(nullptr);
+
+  REQUIRE(report.ok == true);
+  REQUIRE(report.checked == 1);
+  REQUIRE(report.unreachable.empty());
+
+  // The fabricated "1.0" is gone and what Nexus says about file 16268 is what
+  // the Version column will now read (mod_scanner.cpp:560 reads [General]
+  // version). This is the whole point: a value the sweep got for free, from a
+  // request it was making anyway.
+  const auto meta = engine::ModMeta::load(tmp.root, "QASmoke2");
+  REQUIRE(meta.get("General", "version") == "v1.0");
+}
+
+// The shape the poisoned files actually take, where the installed version and
+// the newest one are not merely spelled differently but genuinely differ, as
+// SkyUI's "6.11" and "1.0" do. Installed file is 207864 here, which the list
+// calls "2.0" while the newest offered is "3.0": a sweep that confuses the two
+// writes "3.0" into the Version column and is wrong in a way no one can see.
+TEST_CASE("nexus update sweep: the installed version is written, not the newest one",
+          "[engine][nexus]") {
+  using engine::network::FakeNetworkManager;
+  using engine::Source::Nexus::UpdateCheck::run;
+
+  const TempDir tmp("sweep_backfill_diverged");
+  const int64_t now = 1700000000;
+  seed_mod(tmp.root, "DivergedMod", 6832, 207864);  // version=1.0, file 207864
+
+  auto fake     = std::make_unique<FakeNetworkManager>();
+  auto *fakeptr = fake.get();
+  engine::network::set_instance(std::move(fake));
+
+  engine::network::Response bulk;
+  bulk.http_code = 200;
+  bulk.body      = R"([{"mod_id":6832,"latest_file_update":1699999999}])";
+  fakeptr->enqueue_response(bulk);
+
+  engine::network::Response files;
+  files.http_code = 200;
+  files.body      = kMultiFileBody;
+  fakeptr->enqueue_response(files);
+
+  const auto report = run("skyrimspecialedition", "test-key", tmp.root, now);
+  engine::network::set_instance(nullptr);
+
+  REQUIRE(report.ok == true);
+  REQUIRE(report.unreachable.empty());
+
+  const auto meta = engine::ModMeta::load(tmp.root, "DivergedMod");
+  // "2.0" - what WE have - and not "3.0", what Nexus offers. These are two
+  // different strings and swapping them is the failure this whole path exists
+  // to prevent.
+  REQUIRE(meta.get("General", "version") == "2.0");
+  REQUIRE(meta.get("General", "newestversion") == "3.0");
+}
+
+// Nexus stating no version at all must not blank a good recorded one. Writing
+// nothing over something correct trades one wrong display for another, and the
+// 1.0s this replaces are not the only wrong value a user can have on disk.
+TEST_CASE("nexus update sweep: an unstated version never blanks a recorded one",
+          "[engine][nexus]") {
+  using engine::network::FakeNetworkManager;
+  using engine::Source::Nexus::UpdateCheck::run;
+
+  const TempDir tmp("sweep_backfill_blank");
+  const int64_t now = 1700000000;
+  seed_mod(tmp.root, "NoVerMod", 900, 10);  // version=1.0, installed file 10
+
+  {
+    engine::ModMeta meta = engine::ModMeta::load(tmp.root, "NoVerMod");
+    meta.set("General", "version", "4.2");  // a version a real user recorded
+    REQUIRE(meta.save(tmp.root, "NoVerMod"));
+  }
+
+  auto fake     = std::make_unique<FakeNetworkManager>();
+  auto *fakeptr = fake.get();
+  engine::network::set_instance(std::move(fake));
+
+  engine::network::Response bulk;
+  bulk.http_code = 200;
+  bulk.body      = R"([{"mod_id":900,"latest_file_update":1699999999}])";
+  fakeptr->enqueue_response(bulk);
+
+  engine::network::Response files;
+  files.http_code = 200;
+  // File 10 is listed and states neither `version` nor `mod_version`.
+  files.body = R"({"file_updates":[],"files":[{"id":[10,900],"file_id":10,
+                     "category_id":1,"category_name":"MAIN"}]})";
+  fakeptr->enqueue_response(files);
+
+  const auto report = run("skyrimspecialedition", "test-key", tmp.root, now);
+  engine::network::set_instance(nullptr);
+
+  REQUIRE(report.ok == true);
+  REQUIRE(report.unreachable.empty());  // the mod WAS answered for
+  REQUIRE(report.checked == 1);
+
+  // The verdict still lands - the mod was checked - but the version is left
+  // exactly as the user had it.
+  const auto meta = engine::ModMeta::load(tmp.root, "NoVerMod");
+  REQUIRE(meta.get("General", "version") == "4.2");
+  REQUIRE(meta.get("General", "nexus_update") == "false");
 }
 
 // A mod the sweep could not answer for must be NAMED, with a reason, and must
@@ -289,7 +596,7 @@ TEST_CASE("nexus update sweep: an undecidable mod is named, never called current
   // unreadable-body path; there is simply no installed id to judge it by.
   engine::network::Response files;
   files.http_code = 200;
-  files.body      = kRealFilesBody;
+  files.body      = kMultiFileBody;
   fakeptr->enqueue_response(files);
 
   const auto report = run("skyrimspecialedition", "test-key", tmp.root, now);
@@ -346,7 +653,7 @@ TEST_CASE("nexus update sweep: force re-asks despite a fresh lastnexusquery stam
 
   engine::network::Response files;
   files.http_code = 200;
-  files.body      = kRealFilesBody;  // newest live file 522942 > our 207864
+  files.body      = kMultiFileBody;  // newest live file 522942 > our 207864
 
   // --- cached: the cache speaks, so nothing is asked ---
   {
@@ -397,9 +704,9 @@ TEST_CASE("nexus update sweep: force re-asks despite a fresh lastnexusquery stam
 
     const auto meta = engine::ModMeta::load(tmp.root, "StaleStamp");
     REQUIRE(meta.get("General", "nexus_update") == "true");
-    REQUIRE(meta.get("General", "newestversion") == "2.0");
+    REQUIRE(meta.get("General", "newestversion") == "3.0");
     // The fabricated install-time version is repaired on the same pass.
-    REQUIRE(meta.get("General", "version") == "0.9");
+    REQUIRE(meta.get("General", "version") == "2.0");
   }
 }
 
@@ -598,11 +905,12 @@ TEST_CASE("nexus update sweep: an ignore written by MO2 is honoured",
   const int64_t now = 1700000000;
   seed_mod(tmp.root, "Mo2Mod", 100, 207864);
 
-  // Exactly what MO2 writes: newestVersion + ignoredVersion, both camel.
+  // Exactly what MO2 writes: newestVersion + ignoredVersion, both camel, and
+  // the version the body below is going to report as newest.
   {
     engine::ModMeta meta = engine::ModMeta::load(tmp.root, "Mo2Mod");
-    meta.set("General", "newestVersion", "2.0");
-    meta.set("General", "ignoredVersion", "2.0");
+    meta.set("General", "newestVersion", "3.0");
+    meta.set("General", "ignoredVersion", "3.0");
     REQUIRE(meta.save(tmp.root, "Mo2Mod"));
   }
 
@@ -617,7 +925,7 @@ TEST_CASE("nexus update sweep: an ignore written by MO2 is honoured",
 
   engine::network::Response files;
   files.http_code = 200;
-  files.body      = kRealFilesBody;  // newest non-archived version is "2.0"
+  files.body      = kMultiFileBody;  // newest non-archived version is "3.0"
   fakeptr->enqueue_response(files);
 
   const auto report = run("skyrimspecialedition", "test-key", tmp.root, now);

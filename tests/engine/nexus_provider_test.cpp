@@ -62,17 +62,28 @@ TEST_CASE("nexus provider update policy file selection", "[engine]") {
   using engine::Source::Nexus::ModInfoResult;
   using engine::Source::Nexus::Provider;
 
-  // --- mods/{game}/mods/{id}/files.json. File 20 is archived upstream: it is
-  // still listed in "files" but missing from "available_mod_files". ---
+  // --- mods/{game}/mods/{id}/files.json ---
+  //
+  // The shape is the CAPTURED one (tests/engine/fixtures/nexus/files_6832.json):
+  // `files` at top level with `file_updates` beside it, each entry carrying
+  // `file_id` and an `id` that is the PAIR [file_id, mod_id]. The fixture that
+  // stood here invented a `data` envelope and an `available_mod_files` key that
+  // Nexus has never sent, and parsed `id` as a number - so it confirmed a
+  // parser that could not read a single real reply, and select_file_id fell
+  // back for every download.
+  //
+  // File 20 is the ARCHIVED one (category_id 7): still listed, no longer
+  // downloadable, and so not offered as a target.
   const std::string body = R"({
-      "data": {
-        "files": [
-          { "id": 10, "version": "1.0" },
-          { "id": 20, "version": "2.0" },
-          { "id": 30, "version": "3.0" }
-        ],
-        "available_mod_files": [10, 30]
-      }
+      "file_updates": [],
+      "files": [
+        { "id": [10, 6832], "file_id": 10, "version": "1.0",
+          "category_id": 1, "category_name": "MAIN" },
+        { "id": [20, 6832], "file_id": 20, "version": "2.0",
+          "category_id": 7, "category_name": "ARCHIVED" },
+        { "id": [30, 6832], "file_id": 30, "version": "3.0",
+          "category_id": 2, "category_name": "UPDATE" }
+      ]
     })";
   const auto list        = Provider::parse_file_list(body);
   require(list.ok, "file list parsed");
