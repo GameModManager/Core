@@ -107,6 +107,7 @@ class InstallProgressDialog;
 class LootSortThread;
 class ConflictScanThread;
 class ModScanThread;
+class NexusUpdateThread;
 class PluginDbLoadThread;
 struct ModInfoData;
 struct ModEntry;
@@ -389,6 +390,18 @@ private:
   // thread serializes queued scans.
   ui::ModScanThread *mod_scan_thread_ = nullptr;
   quint64 mod_scan_generation_        = 0;
+  // Nexus mod-update sweep machinery: ModListController::check_mod_updates()
+  // runs UpdateCheck::run() on NexusUpdateThread (gmm-nexus-update). One sweep
+  // in flight (nexus_update_running_); a second request while it runs is
+  // refused rather than queued, because the sweep answers from a persisted
+  // cache - asking twice in a row cannot find anything the first did not, and
+  // every request spends the Nexus budget. generation drops a result that a
+  // game switch superseded. NO timer drives this: a settled library costs one
+  // request a sweep and the verdict lives in each meta.ini, so a re-check is a
+  // user action, never an automatic poll.
+  ui::NexusUpdateThread *nexus_update_thread_ = nullptr;
+  bool nexus_update_running_                  = false;
+  quint64 nexus_update_generation_            = 0;
   // Plugin-DB preload machinery (P8.5/T6): launch_plugin_db_preload() runs
   // the plugin-DB disk load concurrently with the mod scan on
   // PluginDbLoadThread (gmm-plugin-db). plugin_db_generation_ drops a stale

@@ -11,6 +11,7 @@
 #include <string>
 #include <vector>
 
+#include "engine/source/nexus/update_check.h"
 #include "ui/controllers/mod_actions.h"
 #include "ui/controllers/backup_actions.h"
 #include "ui/controllers/mod_context_menu.h"
@@ -96,6 +97,18 @@ public slots:
   void launch_conflict_scan_batch(std::vector<std::function<void()>> follow_ups);
   ui::ConflictScanRequest build_conflict_scan_request();
   void reload_open_modinfo_dialog();
+  // Nexus mod-update sweep (Workspace-sc4z). The DRIVER for
+  // engine::Source::Nexus::UpdateCheck::run(): resolves the game's Nexus
+  // domain + the stored API key on the main thread, runs the sweep on
+  // NexusUpdateThread, and reports the outcome into the status bar's
+  // persistent update notice. Manual by design - see the MainWindow comment.
+  void check_mod_updates();
+  void on_nexus_update_finished(engine::Source::Nexus::UpdateCheck::Report report,
+                                quint64 generation);
+  // Silence (or un-silence) the newest Nexus version for ONE mod. The write is
+  // the engine's (per-mod meta.ini, never per-profile); this only routes it
+  // and re-reads the metas so the row's badge follows what was just written.
+  void set_mod_update_ignored(const QString &mod_id, bool ignore);
   // LOOT advisory-tool sort (PLAN.md §7.1).
   void run_loot_sort();
   void on_loot_progress(int stage, const QString &message);

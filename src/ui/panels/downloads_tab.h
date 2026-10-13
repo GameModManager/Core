@@ -205,12 +205,15 @@ read_download_meta(const std::filesystem::path &meta_path);
 // An orphan - a meta with no archive and no partial on disk - is DELETED, to
 // the trash bin, exactly as MO2 does. But only when its own state says the
 // work is not in progress: a "paused" meta (Failed / Downloading / Paused) is
-// kept, because MO2 sweeps it by accident (its bytes are in the ".unfinished"
-// file, so the base file is always missing) and we do not. See meta_is_orphan()
-// in downloads_tab.cpp for the exact swept/kept list. The other two paths agree:
-// remove_entry() deletes the meta of an explicit Remove, and scan_downloads_dir()
-// drops vanished rows, but now only FINISHED ones - it used to drop a paused row
-// whose archive had never landed, which deleted the meta this sweep keeps.
+// kept. MO2 does not need that guard (its in-flight meta is named
+// "<name>.unfinished.meta" after the file the bytes are in, so its base file
+// exists and MO2's own check keeps it); we do, because we write "paused" into
+// "<name>.meta" with nothing at "<name>" - a shape MO2 never produces. See
+// meta_is_orphan() in downloads_tab.cpp for the exact swept/kept list. The
+// other two paths agree: remove_entry() deletes the meta of an explicit Remove,
+// and scan_downloads_dir() drops vanished rows, but now only FINISHED ones - it
+// used to drop a paused row whose archive had never landed, which deleted the
+// meta this sweep keeps.
 [[nodiscard]] std::vector<DownloadMeta>
 read_download_metas(const std::filesystem::path &downloads_dir);
 

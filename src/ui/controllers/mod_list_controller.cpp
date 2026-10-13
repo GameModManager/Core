@@ -1,6 +1,8 @@
 #include "ui/controllers/mod_list_controller.h"
 #include "engine/plugin_host/plugin_loader.h"
 #include "engine/profile/profile_creation.h"
+#include "engine/source/nexus/auth.h"
+#include "ui/main_window/nexus_update_worker.h"
 #include "ui/controllers/downloads_controller.h"
 #include "ui/controllers/launch_controller.h"
 #include "ui/controllers/mod_actions.h"
@@ -16,6 +18,7 @@
 #include <QActionGroup>
 #include <QApplication>
 #include <QColorDialog>
+#include <QDateTime>
 #include <QDesktopServices>
 #include <QFile>
 #include <QFileDialog>
@@ -1418,6 +1421,17 @@ void ModListController::load_mods_from_game() {
   // (P8.2, THREADING.md §3.5/§3.6).
   w_->mod_scan_generation_ = w_->mod_scan_generation_ + 1;
 
+  // The same for an in-flight Nexus update sweep: its verdicts describe the
+  // PREVIOUS game's mods, so drop them when they land rather than badge the
+  // new game's list with another instance's answer. The status-bar notice goes
+  // with them - "12 mods have updates" from a different game is worse than no
+  // notice at all. nexus_update_running_ is deliberately NOT cleared here: the
+  // worker thread really is busy, and the flag is cleared when its (dropped)
+  // result lands.
+  w_->nexus_update_generation_ = w_->nexus_update_generation_ + 1;
+  if (w_->status_bar_ && !w_->nexus_update_running_)
+    w_->status_bar_->set_update_notice(QString());
+
   ui::ModScanRequest request = build_mod_scan_request();
   if (!w_->mod_scan_thread_) {
     w_->mod_scan_thread_ = new ui::ModScanThread(w_);
@@ -1503,6 +1517,136 @@ bool ModListController::adopt_preloaded_plugin_db() {
   w_->preloaded_plugin_db_.reset();
   w_->preload_pending_ = false;
   return true;
+}
+
+// ---------------------------------------------------------------------------
+// Nexus mod-update sweep (Workspace-sc4z)
+// ---------------------------------------------------------------------------
+
+void ModListController::check_mod_updates() {
+  if (w_->nexus_update_running_) {
+    // One sweep in flight. Queued would be pointless: the sweep answers from
+    // a cache persisted in every meta.ini, so a second pass cannot find
+    // anything the first did not, and every request spends Nexus's budget.
+    if (w_->status_bar_)
+      w_->status_bar_->set_status(tr("A Nexus update check is already running"));
+    return;
+  }
+
+  // Every reason not to start says WHY, on the status bar, rather than
+  // returning silently - an action that swallows a click teaches the user it
+  // is broken, which is the failure this whole path exists to avoid.
+  const QString domain = current_nexus_domain();
+  if (domain.isEmpty()) {
+    if (w_->status_bar_)
+      w_->status_bar_->set_status(tr("This game is not registered with Nexus Mods"));
+    return;
+  }
+  if (!engine::Source::Nexus::Auth::instance().has_api_key()) {
+    if (w_->status_bar_)
+      w_->status_bar_->set_status(
+          tr("No Nexus API key is configured - add one in Settings > Nexus"));
+    return;
+  }
+  const auto mods_dir = w_->mods_dir_path();
+  if (mods_dir.empty()) {
+    if (w_->status_bar_)
+      w_->status_bar_->set_status(tr("No instance is loaded"));
+    return;
+  }
+
+  // Read the key ONCE here and hand the worker a copy. The worker never
+  // reaches the keyring, and the string exists off the GUI thread only inside
+  // this request snapshot.
+  ui::NexusUpdateRequest request;
+  request.nexus_domain = domain.toStdString();
+  request.api_key      = engine::Source::Nexus::Auth::instance().get_api_key();
+  request.mods_dir     = mods_dir;
+  request.now          = QDateTime::currentSecsSinceEpoch();
+
+  w_->nexus_update_generation_ = w_->nexus_update_generation_ + 1;
+  w_->nexus_update_running_    = true;
+  if (w_->status_bar_)
+    w_->status_bar_->set_status(tr("Checking for updates on Nexus…"));
+
+  if (!w_->nexus_update_thread_) {
+    w_->nexus_update_thread_ = new ui::NexusUpdateThread(w_);
+    connect(w_->nexus_update_thread_->worker(), &ui::NexusUpdateWorker::finished, this,
+            &ModListController::on_nexus_update_finished, Qt::UniqueConnection);
+  }
+  w_->nexus_update_thread_->start(std::move(request), w_->nexus_update_generation_);
+}
+
+void ModListController::on_nexus_update_finished(
+    engine::Source::Nexus::UpdateCheck::Report report, quint64 generation) {
+  // The worker thread is idle again whatever the generation says - that is
+  // what the flag tracks, and it has to be cleared even for a dropped result
+  // or the action would refuse forever.
+  w_->nexus_update_running_ = false;
+  if (generation != w_->nexus_update_generation_)
+    return;  // a game switch superseded it; its verdict is about another game
+
+  // The sweep wrote newestversion / nexus_update / ignoredversion into each
+  // mod's meta.ini, so re-reading the metas is what turns those into badges.
+  // Read-only from here: load_meta_for_mods() spends no request and decides
+  // no update of its own.
+  load_meta_for_mods();
+
+  if (!w_->status_bar_)
+    return;
+  auto *bar = w_->status_bar_;
+
+  // The order of these three branches IS the feature. A sweep that could not
+  // answer must never be rendered in the shape of a sweep that found nothing:
+  //   !ok          the API refused or the body was unreadable
+  //   !message     ok, but some mods were unreachable - still a partial answer
+  //   otherwise    a complete answer, and only now may "none" be said
+  if (!report.ok) {
+    bar->set_update_notice(QString::fromStdString(report.message), true);
+    return;
+  }
+  if (!report.message.empty()) {
+    bar->set_update_notice(QString::fromStdString(report.message), true);
+    return;
+  }
+  if (report.updates > 0) {
+    bar->set_update_notice(
+        tr("%n mod(s) have an update available on Nexus", nullptr, report.updates),
+        false);
+    return;
+  }
+  bar->set_update_notice(
+      report.total == 0
+          ? tr("No Nexus mods in this instance to check")
+          : tr("All %1 Nexus mods are up to date").arg(QString::number(report.total)),
+      false);
+}
+
+void ModListController::set_mod_update_ignored(const QString &mod_id, bool ignore) {
+  auto *bar = w_->status_bar_;
+
+  // The engine refuses when there is no known newest version: there would be
+  // nothing to record, and an empty ignore suppresses nothing while looking
+  // exactly like a working control. So say why instead of going quiet.
+  if (!engine::Source::Nexus::UpdateCheck::set_ignored_version(
+          w_->mods_dir_path(), mod_id.toStdString(), ignore)) {
+    if (bar)
+      bar->set_status(ignore
+                          ? tr("This mod has no known Nexus version yet, so there is "
+                               "nothing to ignore - run a check for updates first")
+                          : tr("Could not clear the ignored update for this mod"));
+    return;
+  }
+
+  // Re-read the metas rather than poking the row: the verdict and the ignore
+  // both live in meta.ini, so this is the same path a finished sweep takes and
+  // the two can never drift. Local reads only - no request is spent.
+  load_meta_for_mods();
+
+  if (bar)
+    bar->set_status(ignore ? tr("Ignoring this mod's newest Nexus version until a "
+                                "newer one appears")
+                           : tr("Stopped ignoring updates for this mod"));
 }
 
 void ModListController::on_mod_scan_finished(ui::ModScanResult result,
@@ -2125,6 +2269,21 @@ void ModListController::load_meta_for_mods() {
       w_->mod_model_->set_source_info(mod.id, QString::fromStdString(st),
                                       QString::fromStdString(sid),
                                       QString::fromStdString(meta.source_page_url()));
+    }
+
+    // Nexus update state (Workspace-sc4z). The verdict itself was written by
+    // engine::Source::Nexus::UpdateCheck::run() into this same meta.ini, so
+    // reading it here is what makes the badge appear after a sweep without
+    // re-querying Nexus. Read-only on the load path: a scan must never spend
+    // a request or decide an update on its own.
+    if (st == "nexus") {
+      auto newest = meta.get("General", "newestversion");
+      if (newest.empty())
+        newest = meta.get("General", "newestVersion");
+      w_->mod_model_->set_update_state(
+          mod.id, meta.get("General", "nexus_update") == "true",
+          QString::fromStdString(newest),
+          QString::fromStdString(meta.get("General", "ignoredversion")));
     }
 
     // Git provenance, independent of source_type: a Nexus mod whose folder is
