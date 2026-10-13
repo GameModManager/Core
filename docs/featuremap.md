@@ -674,15 +674,15 @@ port - their cited GMM symbol names were invented, the features are not.
 | Download notifications | ✅ `showDownloadNotifications` (tray `downloadmanager.cpp:1825`) | ✅ gates a status-bar message; all four EventBus names dispatched - `downloads_controller.cpp:88` | ✅ ✔ |
 | Compact downloads view | ✅ `compactDownloads` | ✅ `apply_compact_style` / `row_height` - `downloads_tab.cpp:302` | ✅ ✔ |
 | Drag-and-drop import | ❌ | 🚀 drop moves/copies + "Manual" row; single link -> Add-from-URL - `downloads_tab.cpp:844` | 🚀 ✔ |
-| Directory watcher (auto-detect) | ❌ | 🚀 `QFileSystemWatcher`, 200 ms debounce, re-armed on switch - `downloads_tab.cpp:289` | 🚀 ✔ |
-| Manifest serialization (JSON) | ❌ | 🚀 `serialize`/`deserialize` + legacy-label repairs - `downloads_tab.cpp:1186` | 🚀 ✔ |
+| Directory watcher (auto-detect) | ❌ | 🚀 `QFileSystemWatcher`, 200 ms debounce, re-armed on switch - `downloads_tab.cpp:470`; a 0-byte file in the dir is not surfaced as a download - `downloads_tab.cpp:1057` | 🚀 ✔ |
+| Manifest serialization (JSON) | ❌ | 🚀 `serialize`/`deserialize` + legacy-label repairs - `downloads_tab.cpp:1691`; a restored Complete/Installed row whose archive is missing, empty or short of its recorded size comes back Failed - `archive_is_complete` `downloads_tab.cpp:118` | 🚀 ✔ |
 | Content-Disposition filename parsing | ❌ | 🚀 RFC 6266/5987 incl. `filename*`, `..` reject - `curl_download.cpp:136` | 🚀 ✔ |
-| HTTP Range resume | ❌ | ⚠️ `CURLOPT_RESUME_FROM_LARGE`; repeat link refused first - `downloads_controller.cpp:826` | ⚠️ ✔ |
+| HTTP Range resume | ❌ | ⚠️ `CURLOPT_RESUME_FROM_LARGE`; repeat link refused first - `downloads_controller.cpp:994` | ⚠️ ✔ |
 | NXM protocol download handler | ✅ `addNXMDownload()` (nxm:// link processing) | ✅ `NxmIpcServer` -> `Uri::Router::parse` -> `handle_nxm_download`; `modl://` shares it - `uri/router.cpp:57` | ✅ ✔ |
 | Plugin download API (startDownloadURLs, etc.) | ✅ `IDownloadManager` plugin API | ❌ ABI-shaped: no download surface in v1/v2, needs a v3 decision - `projects/ABI/include/` | ❌ ✔ |
 | Nexus collection link rejection | ✅ `nxmInfo.isCollection()` "Collections Not Supported" `downloadmanager.cpp:740` | ⚠️ rejects malformed collection links; collection import is a planned epic - `downloads_controller.cpp:691` - Workspace-kdfn | ⚠️ ✔ |
 | Duplicate download detection (file name + auto-rename) | ✅ `getDownloadFileName(baseName, renameToUnique)` | ✅ Overwrite/Rename/Ignore, MO2's 1-based `N_` naming - `downloads_tab.cpp:800` | ✅ ✔ |
-| Duplicate NXM prevention (mod+file ID dedup) | ✅ checks pending+active for (modID, fileID) `downloadmanager.cpp:788` | ✅ `blocks_refetch` refuses Downloading/Complete/Installed at all 3 link entry points - `downloads_controller.cpp:826` | ✅ ✔ |
+| Duplicate NXM prevention (mod+file ID dedup) | ✅ checks pending+active for (modID, fileID) `downloadmanager.cpp:788` | ✅ `blocks_refetch` refuses Downloading/Complete/Installed at all 3 link entry points, gated on `add_download` having returned false so a row the same call created cannot refuse the transfer it was made for - `downloads_controller.cpp:994` | ✅ ✔ |
 | .unfinished extension for in-progress files | ✅ `UNFINISHED[]` `downloadmanager.cpp:57` | ✅ the partial lands as `<name>.unfinished` and is renamed to the final archive name only once every byte has arrived - `fetch_stage.cpp:125` | ✅ ✔ |
 | HTTP/2 download support | ✅ `QHttp2Configuration` (16 MiB windows, Windows QNAM) | 🚀 HTTP/3 via `use_http3` with ALPN fallback to HTTP/2 - `network_manager.cpp:800` | 🚀 ✔ |
 | Login-gated resume | ✅ `m_core.loggedInAction(...)` `downloadstab.cpp:112` | ✅ a Nexus resume with neither a still-valid download key nor an API key is refused with the reason - `downloads_controller.cpp:476` | ✅ ✔ |
