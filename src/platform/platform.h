@@ -347,6 +347,22 @@ spawn_detached_process(const std::filesystem::path &executable,
                        const std::vector<std::string> &argv,
                        const std::filesystem::path &work_dir, bool shell_fallback);
 
+// Set one variable in THIS process's environment, replacing whatever was there
+// (setenv(key, value, 1) / SetEnvironmentVariableW). Set per variable on
+// purpose: replacing the block wholesale would drop PATH, HOME and DISPLAY,
+// and a game launched without them does not start.
+//
+// The value reaches a child spawned afterwards: every spawn path in this
+// codebase starts the child from this process's environment (fork+exec, and
+// CreateProcessW with lpEnvironment == nullptr), so a variable set here is
+// inherited by the game, by Proton, and by anything they start.
+//
+// Not a Platform virtual: this is a libc call on POSIX and one Win32 call on
+// Windows, so it belongs with spawn_detached_process and load_shared_library as
+// a free function rather than as something every Platform has to implement.
+[[nodiscard]] bool set_process_env_var(const std::string &key,
+                                       const std::string &value);
+
 // --- Shared libraries --------------------------------------------------------
 //
 // dlopen/dlsym/dlclose versus LoadLibraryExW/GetProcAddress/FreeLibrary, behind

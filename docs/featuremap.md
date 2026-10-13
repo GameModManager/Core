@@ -337,7 +337,7 @@ port - their cited GMM symbol names were invented, the features are not.
 | Per-executable Steam App ID | ✅ `Executable::steamAppID` | ✅ `Entry::steam_app_id` field, editor row, persisted to instance.toml and resolved into the launch - `executables_entry.h:41` | ✅ · |
 | Per-executable custom overwrite | ✅ `Executable::customOverwrites` | ❌ | ❌ · |
 | Per-executable forced libraries | ✅ `Executable::forcedLibraries` | ❌ | ❌ · |
-| Per-executable environment variables | ❌ | 🚀 `parse_environment_text` (KEY=VALUE) - `executables_content_widget.cpp:45` | 🚀 · |
+| Per-executable environment variables | ❌ | 🚀 `parse_environment_text` (KEY=VALUE) - `executables_content_widget.cpp:49` | 🚀 · |
 | Per-executable output-to-mod routing | ❌ | 🚀 `output_mod` load + combo - `executables_content_widget.cpp:119` | 🚀 · |
 | Toolbar pinning | ✅ `ShowInToolbar` flag | ✅ `add_shortcut_to_toolbar` - `main_window.cpp:229` | ✅ · |
 | Desktop shortcut creation | ❌ | 🚀 `add_shortcut_to_desktop` (.desktop file) - `main_window.cpp:232` | 🚀 · |

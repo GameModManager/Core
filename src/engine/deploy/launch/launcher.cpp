@@ -54,10 +54,53 @@ void apply_launch_env(const std::vector<std::string> &vars) {
     }
     const std::string key   = var.substr(0, eq);
     const std::string value = var.substr(eq + 1);
-#ifndef _WIN32
-    setenv(key.c_str(), value.c_str(), 1);
-#endif
+    // One variable at a time, overwriting the inherited value: the platform
+    // adaptor owns the libc call, because setenv has no Windows spelling and
+    // guessing one is how these silently became a no-op there.
+    if (!set_process_env_var(key, value)) {
+      Logger::instance().warn("Launch env: could not set " + key + " for the launch");
+    }
     Logger::instance().debug("Launch env: " + key + "=<redacted>");
+  }
+}
+
+namespace {
+
+  // The NAME part of every well-formed launch env entry - the same rule
+  // apply_launch_env accepts entries by, so "the user set this key" means one
+  // thing in both places.
+  std::vector<std::string> launch_env_keys(const std::vector<std::string> &entries) {
+    std::vector<std::string> keys;
+    keys.reserve(entries.size());
+    for (const auto &entry : entries) {
+      auto eq = entry.find('=');
+      if (eq == std::string::npos || eq == 0)
+        continue;
+      keys.push_back(entry.substr(0, eq));
+    }
+    return keys;
+  }
+
+}  // namespace
+
+void apply_proton_env_defaults(
+    const std::vector<std::pair<std::string, std::string>> &defaults,
+    const std::vector<std::string> &user_entries) {
+  const std::vector<std::string> user_keys = launch_env_keys(user_entries);
+  for (const auto &[key, value] : defaults) {
+    if (std::find(user_keys.begin(), user_keys.end(), key) != user_keys.end()) {
+      // The user's value is already in this process (apply_launch_env ran
+      // first) and it stays: they asked for this prefix, this install path,
+      // this app id. Saying so is the point - Proton's value points somewhere
+      // else, so a launch that quietly used ours would run a different prefix
+      // than the one on screen, and the log is where that gets noticed.
+      Logger::instance().warn(
+          "Launch env: " + key +
+          " is set by the user for this launch; Proton's default (" + value +
+          ") is not applied.");
+      continue;
+    }
+    set_process_env_var(key, value);
   }
 }
 
@@ -371,9 +414,21 @@ static LaunchResult do_launch(const LaunchParams &params) {
   // Per-executable environment overrides. Set in this (already-forked
   // game-launch) process; the OverlayFS child, Proton, and the game inherit
   // them via fork/exec. Explicit overrides take precedence over inherited
-  // values (setenv overwrite=1), which is what lets WINEDEBUG=+file and
+  // values (overwrite=1), which is what lets WINEDEBUG=+file and
   // friends reach the tool while leaving everything else untouched.
   apply_launch_env(params.environment);
+
+  // Proton's STEAM_COMPAT_* defaults go in HERE, once, rather than from inside
+  // the branches below. Applied after apply_launch_env they overwrote a value
+  // the user had set for the same key, with nothing said - the user pointed the
+  // launch at one prefix and the game started in another. Order is the whole
+  // contract: the user's entries are in the environment first, and the defaults
+  // step around them.
+  if (params.is_windows_exe && params.platform) {
+    apply_proton_env_defaults(ProtonRuntime::proton_environment_defaults(
+                                  params.platform, params.game_dir, params.steam_appid),
+                              params.environment);
+  }
 
 #ifdef GMM_PLATFORM_LINUX
   // Priority 1: OverlayFS - kernel VFS level, works for any binary format.
@@ -401,8 +456,6 @@ static LaunchResult do_launch(const LaunchParams &params) {
       auto proton = ProtonRuntime::find_proton_binary(
           params.platform, params.steam_appid, params.proton_runner);
       if (!proton.empty()) {
-        ProtonRuntime::prepare_proton_environment(params.platform, params.game_dir,
-                                                  params.steam_appid);
         // proton waitforexitandrun <exe> <args...> - the per-executable
         // args are appended after the executable so the game receives them.
         std::vector<std::string> ovl_args = {proton.string(), "waitforexitandrun",

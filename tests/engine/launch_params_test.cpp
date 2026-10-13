@@ -19,11 +19,14 @@
 #include "engine/deploy/launch/launcher.h"
 #include "engine/deploy/launch/overlay_launcher.h"
 #include "engine/game/registry/game_knowledge.h"
+#include "platform/linux/linux_platform.h"
+#include "runtime/runtime.h"
 
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <optional>
 #include <string>
 #include <unistd.h>
 #include <utility>
@@ -658,6 +661,205 @@ TEST_CASE("launch env entries never log their value", "[engine][redaction]") {
 
   unsetenv("GMM_TEST_ENV_NAME");
 }
+
+#ifdef GMM_PLATFORM_LINUX
+// --- Proton precedence over the launch Environment field -----------------------
+//
+// The bug these pin: apply_launch_env put the user's value in first, then
+// prepare_proton_environment set the same STEAM_COMPAT_* key from inside the
+// launch branch, overwriting it. A user who pointed the launch at their own
+// prefix got Proton's instead and nothing said so.
+//
+// Everything below runs against the REAL LinuxPlatform with a Steam-shaped
+// HOME, so the defaults under test are the ones production actually computes
+// from a real install - not a double handing back whatever the test told it to.
+// Linux-guarded because that real adaptor is what makes the computed paths
+// meaningful; the precedence helper itself is OS-neutral.
+
+namespace {
+
+constexpr uint32_t kAppId = 440;
+
+const std::vector<std::string> kProtonKeys = {
+    "STEAM_COMPAT_DATA_PATH",     "STEAM_COMPAT_CLIENT_INSTALL_PATH",
+    "STEAM_COMPAT_INSTALL_PATH",  "STEAM_COMPAT_APP_ID",
+    "STEAM_COMPAT_LIBRARY_PATHS",
+};
+
+// Saves the named variables and puts them back on destruction, so a test that
+// repoints HOME or a STEAM_COMPAT_* value cannot leak into the next TEST_CASE
+// in this same process.
+struct ScopedEnv {
+  std::vector<std::pair<std::string, std::optional<std::string>>> saved;
+
+  explicit ScopedEnv(const std::vector<std::string> &names) {
+    for (const auto &n : names) {
+      const char *v = std::getenv(n.c_str());
+      saved.emplace_back(n, v ? std::optional<std::string>(v) : std::nullopt);
+    }
+  }
+  void set(const std::string &k, const std::string &v) {
+    ::setenv(k.c_str(), v.c_str(), 1);
+  }
+  void clear(const std::string &k) { ::unsetenv(k.c_str()); }
+  ~ScopedEnv() {
+    for (const auto &[k, v] : saved) {
+      if (v)
+        ::setenv(k.c_str(), v->c_str(), 1);
+      else
+        ::unsetenv(k.c_str());
+    }
+  }
+};
+
+std::string env_value(const std::string &key) {
+  const char *v = std::getenv(key.c_str());
+  return v ? std::string(v) : std::string();
+}
+
+// Everything SteamHome repoints: HOME plus the five STEAM_COMPAT_* keys.
+std::vector<std::string> watched_env_names() {
+  std::vector<std::string> names{"HOME"};
+  names.insert(names.end(), kProtonKeys.begin(), kProtonKeys.end());
+  return names;
+}
+
+// A Steam install the real platform accepts, under a HOME only this test uses.
+// find_steam_root() only accepts a candidate root that has
+// steamapps/libraryfolders.vdf in it, so that file is what makes this a real
+// discovery rather than a planted path.
+struct SteamHome {
+  fs::path base;
+  ScopedEnv env;
+
+  explicit SteamHome(const fs::path &dir) : base(dir), env(watched_env_names()) {
+    std::error_code ec;
+    fs::create_directories(steam_root() / "steamapps", ec);
+    std::ofstream(steam_root() / "steamapps" / "libraryfolders.vdf");
+    env.set("HOME", (base / "home").string());
+    for (const auto &k : kProtonKeys)
+      env.clear(k);
+  }
+  [[nodiscard]] fs::path steam_root() const {
+    return base / "home" / ".local" / "share" / "Steam";
+  }
+  [[nodiscard]] fs::path expected_prefix() const {
+    return steam_root() / "steamapps" / "compatdata" / std::to_string(kAppId);
+  }
+};
+
+}  // namespace
+
+TEST_CASE("launch env: a user-set STEAM_COMPAT_* survives Proton's defaults",
+          "[engine][launch-env]") {
+  const fs::path base =
+      fs::current_path() / ("gmm_test_proton_precedence_" + std::to_string(getpid()));
+  fs::remove_all(base);
+  SteamHome steam(base);
+
+  engine::LinuxPlatform platform;
+  const fs::path game_dir = base / "game";
+  const auto defaults =
+      engine::ProtonRuntime::proton_environment_defaults(&platform, game_dir, kAppId);
+  require(!defaults.empty(),
+          "the real platform found the Steam install and produced defaults to "
+          "fight over");
+
+  const std::string user_prefix           = (base / "user_prefix").string();
+  const std::vector<std::string> user_env = {"STEAM_COMPAT_DATA_PATH=" + user_prefix};
+
+  // Production order: the user's entries first, then Proton's defaults with the
+  // same entry list handed back.
+  engine::apply_launch_env(user_env);
+  engine::apply_proton_env_defaults(defaults, user_env);
+
+  require(env_value("STEAM_COMPAT_DATA_PATH") == user_prefix,
+          "the user's STEAM_COMPAT_DATA_PATH is what the game inherits");
+  require(env_value("STEAM_COMPAT_APP_ID") == std::to_string(kAppId),
+          "a key the user did not set still gets Proton's default");
+
+  fs::remove_all(base);
+}
+
+TEST_CASE("launch env: a Proton default applies when the user set nothing",
+          "[engine][launch-env]") {
+  const fs::path base =
+      fs::current_path() / ("gmm_test_proton_default_" + std::to_string(getpid()));
+  fs::remove_all(base);
+  SteamHome steam(base);
+
+  engine::LinuxPlatform platform;
+  const fs::path game_dir = base / "game";
+  const auto defaults =
+      engine::ProtonRuntime::proton_environment_defaults(&platform, game_dir, kAppId);
+  require(!defaults.empty(), "the real platform produced defaults to apply");
+
+  // A value that merely ARRIVED with the environment (GMM itself started by
+  // Steam, or left behind by an earlier launch in this process) is not a user
+  // setting. Precedence is against the Environment field, not against whatever
+  // the shell happened to have, so the computed prefix has to win this too -
+  // otherwise the game runs in the wrong prefix with no trace of why.
+  steam.env.set("STEAM_COMPAT_DATA_PATH", (base / "stale_prefix").string());
+
+  engine::apply_proton_env_defaults(defaults, {});
+
+  require(env_value("STEAM_COMPAT_DATA_PATH") == steam.expected_prefix().string(),
+          "Proton's computed prefix is what lands when the user set nothing");
+  require(env_value("STEAM_COMPAT_CLIENT_INSTALL_PATH") == steam.steam_root().string(),
+          "the Steam root lands too, not just the one key checked above");
+  require(env_value("STEAM_COMPAT_INSTALL_PATH") == game_dir.string(),
+          "the game dir is the install path");
+
+  fs::remove_all(base);
+}
+
+TEST_CASE("launch env: a skipped Proton default says so", "[engine][launch-env]") {
+  const fs::path base =
+      fs::current_path() / ("gmm_test_proton_loud_" + std::to_string(getpid()));
+  fs::remove_all(base);
+  SteamHome steam(base);
+
+  // Same lifetime caveat as the redaction test above: the callback outlives the
+  // TEST_CASE, so `seen` is static and only ever written to.
+  static std::vector<std::pair<engine::LogLevel, std::string>> seen;
+  engine::Logger::instance().add_callback(
+      [](engine::LogLevel level, const std::string &, const std::string &msg) {
+        seen.emplace_back(level, msg);
+      });
+  const auto lines_mentioning = [](const std::string &needle) {
+    for (const auto &[level, msg] : seen)
+      if (level >= engine::LogLevel::Warn && msg.find(needle) != std::string::npos)
+        return true;
+    return false;
+  };
+
+  engine::LinuxPlatform platform;
+  const auto defaults = engine::ProtonRuntime::proton_environment_defaults(
+      &platform, base / "game", kAppId);
+  require(!defaults.empty(), "the real platform produced defaults to skip");
+
+  const std::vector<std::string> user_env = {"STEAM_COMPAT_DATA_PATH=" +
+                                             (base / "user_prefix").string()};
+  engine::apply_launch_env(user_env);
+
+  seen.clear();
+  engine::apply_proton_env_defaults(defaults, user_env);
+
+  require(lines_mentioning("STEAM_COMPAT_DATA_PATH"),
+          "the key the user set is named, so the user can tell which one");
+  require(lines_mentioning("not applied"),
+          "the skip is stated outright rather than leaving a reader to infer it");
+
+  // Control: the capture is live, so the two checks above are reading the
+  // logger and not an empty vector that would match nothing either way.
+  seen.clear();
+  engine::Logger::instance().warn("control line GMM_PROTON_PRECEDENCE_MARKER");
+  require(lines_mentioning("GMM_PROTON_PRECEDENCE_MARKER"),
+          "control: an unrelated warn line is captured, so the checks above bite");
+
+  fs::remove_all(base);
+}
+#endif  // GMM_PLATFORM_LINUX
 
 TEST_CASE("launch params", "[engine]") {
   const fs::path base =
