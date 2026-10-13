@@ -12,6 +12,7 @@ set(UI_SOURCES
     settings/settings_content_widget.cpp
     settings/source_pages.cpp
     settings/categories_dialog.cpp
+    settings/category_import_dialog.cpp
     main_window/main_window.cpp
     main_window/loot_sort_worker.cpp
     main_window/conflict_scan_worker.cpp

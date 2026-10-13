@@ -1,6 +1,7 @@
 #include "ui/settings/categories_dialog.h"
 
 #include "engine/plugin_host/category_factory.h"
+#include "ui/settings/category_import_dialog.h"
 #include "engine/source/nexus/categories.h"
 
 #include <QAbstractItemView>
@@ -354,9 +355,15 @@ void CategoriesDialog::on_import_nexus_clicked() {
   }
   commit_changes();
 
-  // Merge, not Replace: the user's own categories are already in the table and
-  // MO2's default strategy is Merge too
-  // (references/modorganizer/src/categoryimportdialog.cpp:37-45).
+  // MO2 asks before it imports (CategoryImportDialog,
+  // references/modorganizer/src/categoryimportdialog.cpp:37-55): the strategy,
+  // whether the rows this import adds carry their Nexus mapping, and whether
+  // rows already in the list should be remapped onto it. A single button that
+  // silently picked Merge could only ever express one of the four answers.
+  CategoryImportDialog ask(this);
+  if (ask.exec() != QDialog::Accepted || ask.strategy() == CategoryImportDialog::None)
+    return;
+
   std::vector<engine::Category::Factory::Entry> entries;
   entries.reserve(list.categories.size());
   for (const auto &cat : list.categories) {
@@ -367,7 +374,18 @@ void CategoriesDialog::on_import_nexus_clicked() {
     entries.push_back(std::move(entry));
   }
   const int added = engine::Category::Factory::instance().import_external(
-      entries, engine::Category::Factory::ImportMode::Merge);
+      entries,
+      ask.strategy() == CategoryImportDialog::Overwrite
+          ? engine::Category::Factory::ImportMode::Replace
+          : engine::Category::Factory::ImportMode::Merge,
+      ask.assign(), ask.remap());
+
+  // The mapping now has to outlive this session, or resolve_nexus_id() answers
+  // 0 on the next run and the installed mod falls back to no category at all.
+  // MO2 writes nexuscatmap.dat from the same save as categories.dat
+  // (references/modorganizer/src/categories.cpp:213-226).
+  if (!instance_root_.empty())
+    engine::Category::Factory::instance().save(instance_root_ / "categories.dat");
 
   fill_table();
   QMessageBox::information(
