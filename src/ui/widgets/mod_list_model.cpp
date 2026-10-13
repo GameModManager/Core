@@ -2,6 +2,7 @@
 #include "ui/settings/settings.h"
 
 #include "engine/source/git/git_info.h"
+#include "engine/source/nexus/update_check.h"
 #include "ui/theme/icon_manager.h"
 
 #include <QBrush>
@@ -53,7 +54,14 @@ ModList::ModList(QObject *parent) : QAbstractTableModel(parent) {
   // A toggle whose on-disk write failed. Same key as the missing-source
   // warning on purpose: both mean "this row does not describe what the game
   // will see", and neither is a reason to raise a modal over the list.
-  toggle_error_icon_   = icons.resolve_icon("plugin-warning");
+  toggle_error_icon_ = icons.resolve_icon("plugin-warning");
+  // Version-column badge for an available Nexus update. MO2 paints
+  // :/MO/gui/update_available in the same column
+  // (modlistversiondelegate.cpp:44); the same artwork ships in both bundled
+  // packs under this key. It is deliberately NOT in ACTIVE_ICONS.txt - the
+  // registry lives in the Resources submodule, which this change cannot
+  // touch - so the key resolves through the base-pack tier instead.
+  update_icon_ = icons.resolve_icon("update-available");
   // Vendor icons for the Source column (MO2 COL_GAME analogue): resolved
   // through the same vendor_icon_key() mapping the Source tab uses. "github",
   // "gitlab", "gitea" and "git" are git_icon_key() outputs - git's source_type
@@ -264,6 +272,9 @@ QVariant ModList::data(const QModelIndex &index, int role) const {
       f.setBold(true);
       return f;
     }
+    // The update badge on the Version cell. MO2 paints it with a dedicated
+    // delegate; Qt's default item painting already lays a DecorationRole icon
+    // out beside the cell text, so the same picture costs no delegate here.
     if (role == Qt::DisplayRole) {
       switch (index.column()) {
       case Name:
@@ -462,6 +473,24 @@ QVariant ModList::data(const QModelIndex &index, int role) const {
   // Source tooltip: the download source name.
   if (role == Qt::ToolTipRole && index.column() == Source && !mod.source_type.isEmpty())
     return mod.source_type;
+  // The update badge on the Version cell. MO2 paints it with a dedicated
+  // delegate (ModListVersionDelegate::paint, modlistversiondelegate.cpp:44);
+  // Qt's default item painting already lays a DecorationRole icon out beside
+  // the cell text, so the same picture costs no delegate here.
+  //
+  // This has to sit on the NORMAL-row path, after the separator block's
+  // `return {}`. Inside that block it answered only for separator rows, which
+  // by definition never carry a Nexus verdict - so the badge could never be
+  // seen on the rows that earn it.
+  if (role == Qt::DecorationRole && index.column() == Version && shows_update(mod))
+    return update_icon_;
+  // Version cell: MO2 has no tooltip here beyond the installed version, but
+  // it does draw an update badge in this column (modlistversiondelegate.cpp
+  // :44), so a mod with a newer Nexus file says which one is waiting.
+  if (role == Qt::ToolTipRole && index.column() == Version && shows_update(mod))
+    return mod.newest_version.isEmpty()
+               ? tr("An update is available on Nexus")
+               : tr("Newest version on Nexus: %1").arg(mod.newest_version);
   if (role == Qt::ToolTipRole && index.column() == Flags &&
       (!mod.tags.isEmpty() || mod.is_fomod || mod.root_override || mod.invalid_data ||
        mod.no_metadata || mod.is_empty || mod.has_hidden_files || mod.is_mirrored ||
@@ -1718,6 +1747,33 @@ void ModList::set_git_info(const QString &id, bool is_git, const QString &remote
       return;
     }
   }
+}
+
+void ModList::set_update_state(const QString &id, bool available, const QString &newest,
+                               const QString &ignored) {
+  for (int i = 0; i < mods_.size(); ++i) {
+    if (mods_[i].id != id)
+      continue;
+    if (mods_[i].nexus_update_available == available &&
+        mods_[i].newest_version == newest && mods_[i].ignored_version == ignored)
+      return;
+    mods_[i].nexus_update_available = available;
+    mods_[i].newest_version         = newest;
+    mods_[i].ignored_version        = ignored;
+    // The Version cell wears the badge (DecorationRole) and names the newest
+    // version in its tooltip, so both roles have to repaint.
+    emit dataChanged(index(i, Version), index(i, Version),
+                     {Qt::DisplayRole, Qt::DecorationRole, Qt::ToolTipRole});
+    return;
+  }
+}
+
+bool ModList::shows_update(const ModEntry &mod) const {
+  // The engine owns the ignore rule: it records the version the user turned
+  // away from and suppresses only while the newest version is STILL that one.
+  return engine::Source::Nexus::UpdateCheck::update_visible(
+      mod.nexus_update_available, mod.newest_version.toStdString(),
+      mod.ignored_version.toStdString());
 }
 
 void ModList::set_category(const QString &id, const QString &category) {

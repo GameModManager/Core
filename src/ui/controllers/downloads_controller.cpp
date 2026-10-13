@@ -333,9 +333,15 @@ void DownloadsController::setup_nxm_ipc() {
               "[NXM-Parse] NXM parse failed, trying modl://");
           auto modl = engine::Uri::Router::parse_modl(raw);
           if (modl.valid()) {
+            // The inner https URL of a modl:// link is the same signed, session-bound
+            // download URL an nxm:// link delivers, so it carries key= / user_id=
+            // just the same. Redact it here too - the sibling line above does, and
+            // handle_modl_download strips the query string again for its own log,
+            // but this line logged the value whole.
             engine::Logger::instance().debug(
                 "[NXM-Parse] Parsed modl link: game_id=" + modl.game_id +
-                " direct_url=" + modl.direct_url);
+                " direct_url=" +
+                engine::network::redaction::redact_url(modl.direct_url));
             handle_modl_download(modl);
           } else {
             engine::Logger::instance().warn(

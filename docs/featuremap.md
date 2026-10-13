@@ -404,7 +404,7 @@ port - their cited GMM symbol names were invented, the features are not.
 | U116 Rename toasts ("Invalid name", "Name is already in use") | ✅ `modlist.cpp:490-496` | ✅ 4 warnings wired through apply_rename - `mod_actions.cpp:627` | ✅ · |
 | U117 Mod remove confirmation dialog | ✅ `modlist.cpp:1233-1234` | ✅ 3/3 destructive paths confirm, trashes + restore note - `mod_actions.cpp:115` | ✅ · |
 | U201 meta.ini full key set (~29 keys incl. Endorsed/Abstained, tracked, nexus*) | ✅ `modinfo.cpp:80-330` | ⚠️ core keys only, 29-key set unproven - `mod_meta.cpp:117` | ⚠️ · |
-| U202 meta.ini version / newestVersion / ignoredVersion keys | ✅ `modinforegular.cpp` | ⚠️ newestVersion only, ignoredVersion unproven - `nexus_source_panel.cpp:255` | ⚠️ · |
+| U202 meta.ini version / newestVersion / ignoredVersion keys | ✅ `modinforegular.cpp` | ✅ MO2's exact casing for all three - `update_check.cpp` (`ignoredVersion`) + `mod_meta.cpp` (`version`) | ✅ · |
 | U203 meta.ini modId / fileId / repository / gameName keys | ✅ `modinforegular.cpp` | ⚠️ modid + repository only - `mod_meta.cpp:736` | ⚠️ · |
 | U204 meta.ini category (primary) / categories CSV | ✅ `modinfo.cpp` | ✅ category=0 write + CSV parse - `mod_meta.cpp:739` | ✅ · |
 | U205 meta.ini comments / notes / color (hex) | ✅ `modinfo.cpp` | ⚠️ store exists, accessors unproven - `mod_meta.cpp:292` | ⚠️ · |
@@ -512,9 +512,9 @@ port - their cited GMM symbol names were invented, the features are not.
 |---------|-----|-----|--------|
 | Version checking (installed vs newest) | ✅ `ModInfo::updateAvailable` | ✅ `has_update()` + `newestVersion` in meta - `mod_update_db_client.h:150` | ✅ · |
 | Newest version tracking | ✅ `ModInfo::newestVersion()` | ✅ `ModInfoResult::newest_version` + meta key - `provider.h:16` | ✅ · |
-| Ignored version | ✅ `ModInfo::ignoredVersion()` | ❌ | ❌ · |
+| Ignored version | ✅ `ModInfo::ignoredVersion()` | ✅ MO2-spelled `[General] ignoredVersion`, lowercase still read, row-menu Ignore/Stop Ignoring - `engine/source/nexus/update_check.cpp` | ✅ · |
 | Downgrade detection | ✅ `ModInfo::downgradeAvailable()` | ❌ | ❌ · |
-| Batch update check | ✅ `checkAllForUpdate` | ❌ | ❌ · |
+| Batch update check | ✅ `checkAllForUpdate` | ✅ one bulk updated.json + per-mod follow-ups, driver on the All Mods menu - `engine/source/nexus/update_check.cpp:326` | ✅ · |
 | Check update after install | ✅ `Settings::checkUpdateAfterInstallation` | ❌ | ❌ · |
 | ModUpdateDbClient (per-game DB poll, ETag/304, offline cache) | ❌ | 🚀 ISO 8601 compare, `by_game` index - `mod_update_db_client.h:124` | 🚀 · |
 | Per-game index pipeline (by_game directory, manifest) | ❌ | 🚀 per-game index + shard lookup - `mod_update_db_client.h:164` | 🚀 · |
@@ -522,7 +522,7 @@ port - their cited GMM symbol names were invented, the features are not.
 | Prerelease filtering | ✅ `selfupdater.cpp` filters by draft/prerelease flags | ✅ filters by prerelease - `self_updater.cpp:107` | ✅ · |
 | Update dialog with Markdown changelogs | ✅ `UpdateDialog` (version diff + release notes) | ❌ | ❌ · |
 | MOTD (Message of the Day) | ✅ `motdAvailable` signal | ❌ | ❌ · |
-| U064 Update check dialogs (no-recent-updates + rate-limit notices) | ✅ `mainwindow.cpp:3151-3170` | ❌ | ❌ · |
+| U064 Update check dialogs (no-recent-updates + rate-limit notices) | ✅ `mainwindow.cpp:3151-3170` | ⚠️ persistent status-bar notice covers the rate-limit and partial-sweep cases, no modal - `src/ui/widgets/status_bar.cpp:129` | ⚠️ · |
 | U207 meta.ini nexus timestamps (nexusLastModified/nexusLastQuery/lastNexus*) | ✅ `modinforegular.cpp` | ⚠️ `[Nexusmods]` section exists, 4 keys unproven - `mod_meta.h:32` | ⚠️ · |
 | U209 versioningScheme (changeVersioningScheme) | ✅ `modlistviewactions changeVersioningScheme` | ❌ | ❌ · |
 | U210 ignoreUpdate flag (setIgnoreUpdate) | ✅ `modlistviewactions setIgnoreUpdate` | ❌ | ❌ · |
@@ -744,7 +744,7 @@ port - their cited GMM symbol names were invented, the features are not.
 | "Never endorse" option | ✅ `ModInfo::setNeverEndorse` | ❌ | ❌ · |
 | Nexus description (HTML) | ✅ `ModInfo::getNexusDescription` | ✅ meta key + BBCode rendering - `mod_meta.cpp:118` | ✅ · |
 | Nexus category ID tracking | ✅ `ModInfo::getNexusCategory` | ✅ meta key, read/write - `mod_meta.cpp:117` | ✅ · |
-| Nexus update timestamps | ✅ `getLastNexusUpdate/Query` | ⚠️ key recognized in meta, not actively used - `mod_meta.cpp:115` | ⚠️ · |
+| Nexus update timestamps | ✅ `getLastNexusUpdate/Query` | ✅ `lastnexusquery` read + re-stamped every sweep, drives the cache - `engine/source/nexus/update_check.cpp:27` | ✅ · |
 | OAuth login flow | ✅ `NexusOAuthLogin` | ❌ | ❌ · |
 | Nexus user account info | ✅ `APIUserAccount` `apiuseraccount.h` | ✅ `NexusUserInfo` - `nexus/auth.h:29` | ✅ · |
 | Rate limit tracking | ✅ | ✅ `RateLimitInfo` (hourly + daily) - `nexus/auth.h:15` | ✅ · |
@@ -875,7 +875,7 @@ port - their cited GMM symbol names were invented, the features are not.
 | Remove mod | ✅ | ✅ `remove_selected_mods()` (folder to trash) - `mod_actions.cpp:158` | ✅ · |
 | Root override toggle | ✅ | ✅ `toggle_root_override()` - `mod_list_controller.h:142` | ✅ · |
 | U052 listOptionsBtn hosts ModListGlobalContextMenu | ✅ `mainwindow.cpp:374-376` | ⚠️ the whole-list menu ships and opens on the mod list's empty space, but not from a toolbar button - `mod_context_menu.cpp:49` | ⚠️ ✔ |
-| U071 ModListGlobalContextMenu full tree (install/create above-below-inside, collapse, enable-matching, update, auto-categories, refresh, csv) | ✅ `modlistcontextmenu.cpp:33-102` | ⚠️ create empty mod / create separator / collapse+expand all / enable+disable all (filter-aware labels, acts on the filtered set) / refresh; no install, position entries, auto-categories, update check or csv - `mod_context_menu.cpp:49`, `mod_actions.cpp:388` | ⚠️ ✔ |
+| U071 ModListGlobalContextMenu full tree (install/create above-below-inside, collapse, enable-matching, update, auto-categories, refresh, csv) | ✅ `modlistcontextmenu.cpp:33-102` | ⚠️ create empty mod / create separator / collapse+expand all / enable+disable all (filter-aware labels, acts on the filtered set) / refresh / Nexus update check; no install, position entries, auto-categories or csv - `mod_context_menu.cpp:49`, `mod_context_menu.cpp:128`, `mod_actions.cpp:388` | ⚠️ ✔ |
 | U072 Type-dispatched context menus (Overwrite/Backup/Separator/Foreign/Regular trees) | ✅ `modlistcontextmenu.cpp:225-245` | ❌ no per-row-type menu variants | ❌ · |
 | U073 "All Mods" submenu (global menu nested in row menu) | ✅ `modlistcontextmenu.cpp:230-234` | ✅ first entry of every row menu, whatever the row type - `mod_context_menu.cpp:121` | ✅ ✔ |
 | U075 "Information..." default (bold) action, omitted for foreign | ✅ `modlistcontextmenu.cpp:247-255` | ⚠️ action exists, bolding unproven - `mod_context_menu.cpp:114` | ⚠️ · |
@@ -1429,12 +1429,12 @@ column.
 | 8. Mod Conflict Detection | 5 | 2 | 3 | 6 | 0 | 0 | 0 |
 | 9. Mod Content Analysis | 9 | 6 | 0 | 11 | 0 | 0 | 0 |
 | 10. Mod Info Dialog | 13 | 0 | 1 | 0 | 0 | 0 | 0 |
-| 11. Version & Update Management | 3 | 1 | 2 | 12 | 0 | 0 | 0 |
+| 11. Version & Update Management | 5 | 2 | 2 | 9 | 0 | 0 | 0 |
 | 12. Plugin Management | 32 | 5 | 3 | 11 | 0 | 0 | 0 |
 | 13. LOOT Integration | 11 | 3 | 1 | 5 | 0 | 0 | 0 |
 | 14. Profile Management | 30 | 5 | 3 | 3 | 0 | 0 | 0 |
 | 15. Download Management | 31 | 12 | 7 | 13 | 8 | 0 | 0 |
-| 16. Nexus Integration | 8 | 10 | 2 | 20 | 0 | 0 | 0 |
+| 16. Nexus Integration | 9 | 9 | 2 | 20 | 0 | 0 | 0 |
 | 17. Source Providers | 4 | 0 | 7 | 1 | 0 | 0 | 0 |
 | 18. Mod List Features | 27 | 13 | 3 | 8 | 0 | 0 | 0 |
 | 19. Mod Context Menu | 19 | 3 | 0 | 10 | 0 | 0 | 0 |
@@ -1470,7 +1470,7 @@ column.
 | 49. CLI Help Grammar | 0 | 1 | 0 | 1 | 0 | 0 | 0 |
 | 50. My Games Resolution | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
 | 51. Conflict Scan Refresh | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
-| **TOTAL** | **421** | **154** | **178** | **201** | **51** | **38** | **62** |
+| **TOTAL** | **424** | **154** | **178** | **198** | **51** | **38** | **62** |
 
 ### The arithmetic
 
@@ -1478,18 +1478,34 @@ column.
 rows in file                          1043
 scored rows (ok + part + miss)         776
 
-MO2 parity        ok   / scored        421 /  776  = 54.3%
+MO2 parity        ok   / scored        424 /  776  = 54.6%
 partial           part / scored        154 /  776  = 19.8%
-missing           miss / scored        201 /  776  = 25.9%
+missing           miss / scored        198 /  776  = 25.5%
 GMM-exclusive     surp / all rows      178 / 1043  = 17.1%   (not scored)
 ```
 
-**Parity is 421 / 776 = 54.3%.** 201 rows are outright missing and 154 partial.
+**Parity is 424 / 776 = 54.6%.** 198 rows are outright missing and 154 partial.
 The largest untouched surfaces are **44. Tutorial** and **46. Notifications /
 Problems** (zero matched rows), then **16. Nexus** and **15. Downloads**, which
 carry the most missing rows in absolute terms.
 
-**This batch moved parity from 54.2% to 54.3%** (`420 / 775` to `421 / 776`).
+**This batch moved parity from 54.3% to 54.6%** (`421 / 776` to `424 / 776`).
+Four rows moved, all on the Nexus update sweep: three earned a `✅` and one
+came off `❌` onto `⚠️`.
+- "Batch update check" and "Ignored version" went `❌` to `✅`. MO2's mechanism
+  is now the mechanism: one bulk `updated.json` request per game answers the
+  whole library, per-mod `files.json` only follows what that call caught moving,
+  and the ignore is a per-mod meta.ini key written from a row-menu action.
+- "Nexus update timestamps" went `⚠️` to `✅`. `lastnexusquery` was a key the
+  parser recognised and nothing read; the sweep reads it, decides from it, and
+  re-stamps it, so it is now the cache the whole cost argument rests on.
+- "U064 Update check dialogs" went `❌` to `⚠️`, not further. A refused or
+  partial sweep now reports itself in a persistent status-bar notice rather
+  than reading as "no updates", but MO2 shows a modal and we show a notice, so
+  the dialog half is honestly still partial.
+
+**The previous batch moved parity from 54.2% to 54.3%** (`420 / 775` to
+`421 / 776`).
 Two rows moved, and they moved in opposite directions for opposite reasons.
 - `U172` went `⚠️` to `✅`, the only row that earned a `✅` here: MO2's
   import dialog now exists, asking the three questions it asks (strategy,

@@ -18,8 +18,30 @@ MainToolbar::MainToolbar(QWidget *parent) : QWidget(parent) {
   auto *instances_btn = add_gmm_button("Switch Instance", "computer");
   auto *settings_btn  = add_gmm_button("Settings", "preferences-system");
 
+  // Check for Nexus mod updates. This is reachability, not a new feature: the
+  // sweep already existed and was proven, reachable only from the mod list
+  // context menu (mod_context_menu.cpp add_global_actions). A user who never
+  // right-clicks the mod list never sees the feature exists.
+  //
+  // MO2 does NOT have this on its toolbar, and the code comment must not imply
+  // it does: the MO2 toolbar button is actionUpdate, "&Update Mod
+  // Organizer", which runs startMOUpdate() - the APPLICATION updater, a
+  // different feature gated on settings().checkForUpdates()
+  // (references/modorganizer/src/mainwindow.ui:1799-1815, mainwindow.cpp:2964
+  // -2968, 2985-2987). MO2's mod-update check is only the mod list context
+  // menu (modlistcontextmenu.cpp:95) and the after-install hook
+  // (mainwindow.cpp:2473) - both of which we already have. This button is our
+  // own fix for our own discoverability gap, not a parity row.
+  //
+  // It stays a button and not a timer, for the reason the sweep has: Nexus
+  // meters the API hard and bans keys that keep exceeding it.
+  auto *check_updates_btn =
+      add_gmm_button("Check every mod on Nexus for updates", "update-available");
+
   connect(settings_btn, &QToolButton::clicked, this, &MainToolbar::settings_clicked);
   connect(instances_btn, &QToolButton::clicked, this, &MainToolbar::instances_clicked);
+  connect(check_updates_btn, &QToolButton::clicked, this,
+          &MainToolbar::check_updates_clicked);
 
   separator_ = new QFrame();
   separator_->setFrameShape(QFrame::VLine);

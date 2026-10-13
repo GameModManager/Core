@@ -67,6 +67,15 @@ StatusBar::StatusBar(QWidget *parent) : QWidget(parent) {
 
   layout_->addStretch();
 
+  // Nexus update notice. Sits left of the source meters so a "3 mods have
+  // updates" line is where the eye already goes for instance state. Hidden
+  // until a check reports something, so it never advertises an answer we do
+  // not have.
+  update_label_ = new QLabel(this);
+  update_label_->setObjectName("nexusUpdateNotice");
+  update_label_->setVisible(false);
+  layout_->addWidget(update_label_);
+
   // MO2 statusbar.cpp:31-37 and :45 (setProgress(-1) at startup): a bar that
   // stays hidden until an operation reports progress, so the resting bar never
   // claims work that is not running.
@@ -115,6 +124,22 @@ void StatusBar::set_context(const QString &text) {
 void StatusBar::set_status(const QString &text) {
   status_label_->setText(text);
   status_timer_->start();
+}
+
+void StatusBar::set_update_notice(const QString &text, bool warning) {
+  update_notice_  = text;
+  update_warning_ = warning;
+  update_label_->setText(text);
+  // QPalette, never a hardcoded colour, so the notice follows the active
+  // theme. A warning reads as "we could not find out", which must not look
+  // like the calm of "everything is current".
+  update_label_->setStyleSheet(warning ? QStringLiteral("color: palette(link-visited);")
+                                       : QString());
+  update_label_->setToolTip(
+      warning ? QObject::tr("The last check did not complete, so "
+                            "this is not a statement about your mods.")
+              : QString());
+  update_label_->setVisible(!text.isEmpty());
 }
 
 // MO2 StatusBar::setProgress (statusbar.cpp:58-70): a percent outside 0-99

@@ -308,12 +308,16 @@ TEST_CASE("source tab", "[ui]") {
 //
 //   1) NexusSourcePanel::has_data() used to return true whenever any of
 //      {data_.source_id, [General]version, [Nexusmods]modid} was
-//      non-empty. Every install writes a version (default 1.0), so
-//      has_data() was ALWAYS true - the Source tab's red-dot in the
-//      mod list fired for every mod, manual or otherwise, and any
-//      "Nexus has data" aggregation in SourceTab::set_mod() was
-//      polluted. The fix checks source_type=="nexus" OR a non-zero
-//      [Nexusmods]modid.
+//      non-empty. write_game_metadata used to fabricate version="1.0"
+//      when it had none to record, so every install carried a non-empty
+//      version and has_data() was ALWAYS true - the Source tab's
+//      red-dot in the mod list fired for every mod, manual or
+//      otherwise, and any "Nexus has data" aggregation in
+//      SourceTab::set_mod() was polluted. The fix checks
+//      source_type=="nexus" OR a non-zero [Nexusmods]modid. An install
+//      now writes no version at all rather than an invented one, which
+//      also makes this hold - but for the right reason, and only once
+//      the other bug stopped manufacturing the input.
 //
 //   2) SourceTab::populate() used to derive the visible source tabs
 //      ONLY from the game's knowledge-hook "download_sources". When

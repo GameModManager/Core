@@ -43,6 +43,20 @@ public:
   // that meter a request budget get a label - see SourceRateLimit.
   void set_sources(const QStringList &sources);  // e.g. {"Nexus Mods", "Steam"}
 
+  // Persistent notice about Nexus mod updates, on the left of the source
+  // meters. Unlike set_status() this does NOT time out: "12 mods have
+  // updates" has to survive until the user deals with it, which is the whole
+  // point of reporting it - a message that vanished after five seconds is the
+  // "hunting" this exists to avoid.
+  //
+  // `warning` tints the text, and is what distinguishes "the check could not
+  // be made" from "the check says there is nothing". Callers must pass
+  // warning=true whenever the count could not be established, so a refused
+  // check never reads as an up-to-date library.
+  void set_update_notice(const QString &text, bool warning = false);
+  [[nodiscard]] QString update_notice() const { return update_notice_; }
+  [[nodiscard]] bool update_notice_is_warning() const { return update_warning_; }
+
   QString context_text() const { return context_; }
   // The sources that have a readout, and what each currently reads.
   QStringList source_names() const;
@@ -59,6 +73,11 @@ private:
 
   QHBoxLayout *layout_  = nullptr;
   QLabel *status_label_ = nullptr;
+  QLabel *update_label_ = nullptr;
+  // The update notice as last set, kept so a caller can read back what the
+  // bar is claiming and a theme change can re-apply the tint.
+  QString update_notice_;
+  bool update_warning_ = false;
   // The resting left-hand text; the single source of truth for what the left
   // label shows when no transient message is on screen.
   QString context_;
