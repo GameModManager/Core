@@ -299,49 +299,49 @@ void DownloadsController::setup_nxm_ipc() {
   // Start IPC server to receive nxm:// URLs from other GMM processes
   w_->nxm_ipc_ = new engine::NxmIpcServer(w_);
   if (w_->nxm_ipc_->startListening()) {
-    connect(w_->nxm_ipc_, &engine::NxmIpcServer::nxmUrlReceived, this,
-            [this](const QString &url) {
-              std::string raw = url.toStdString();
-              // The nxm:// key= is a bearer token for the user's Nexus account.
-              // Every log of this URL goes through the redactor - the sibling
-              // NXM-IPC log does, and this one did not, which wrote the key to
-              // the log file in the clear.
-              const auto log_raw = engine::network::redaction::redact_url(raw);
-              engine::Logger::instance().debug("[NXM-Parse] Raw URL received: " + log_raw);
-              // Accept gmm:// URLs too - convert to nxm:// for the parser
-              static const std::string gmm_pre = "gmm://nexus/";
-              if (raw.compare(0, gmm_pre.size(), gmm_pre) == 0) {
-                raw = "nxm://" + raw.substr(gmm_pre.size());
-                engine::Logger::instance().debug(
-                    "[NXM-Parse] Converted gmm:// to nxm://: " + log_raw);
-              }
-              // Try nxm first; fall back to modl (the protocol is a
-              // generic URL forwarder, not nxm-specific - keep the signal
-              // name for backward-compat with older builds).
-              auto nxm = engine::Uri::Router::parse(raw);
-              if (nxm.valid()) {
-                engine::Logger::instance().debug(
-                    "[NXM-Parse] Parsed NXM link: domain=" + nxm.nexus_domain +
-                    " mod_id=" + std::to_string(nxm.mod_id) +
-                    " file_id=" + std::to_string(nxm.file_id) +
-                    " key=" + (nxm.key.empty() ? "absent" : "present") + " expire=" +
-                    (nxm.expire > 0 ? std::to_string(nxm.expire) : "none"));
-                handle_nxm_download(nxm);
-                return;
-              }
-              engine::Logger::instance().debug(
-                  "[NXM-Parse] NXM parse failed, trying modl://");
-              auto modl = engine::Uri::Router::parse_modl(raw);
-              if (modl.valid()) {
-                engine::Logger::instance().debug(
-                    "[NXM-Parse] Parsed modl link: game_id=" + modl.game_id +
-                    " direct_url=" + modl.direct_url);
-                handle_modl_download(modl);
-              } else {
-                engine::Logger::instance().warn(
-                    "[NXM-Parse] Failed to parse URL as nxm:// or modl://: " + log_raw);
-              }
-            });
+    connect(
+        w_->nxm_ipc_, &engine::NxmIpcServer::nxmUrlReceived, this,
+        [this](const QString &url) {
+          std::string raw = url.toStdString();
+          // The nxm:// key= is a bearer token for the user's Nexus account.
+          // Every log of this URL goes through the redactor - the sibling
+          // NXM-IPC log does, and this one did not, which wrote the key to
+          // the log file in the clear.
+          const auto log_raw = engine::network::redaction::redact_url(raw);
+          engine::Logger::instance().debug("[NXM-Parse] Raw URL received: " + log_raw);
+          // Accept gmm:// URLs too - convert to nxm:// for the parser
+          static const std::string gmm_pre = "gmm://nexus/";
+          if (raw.compare(0, gmm_pre.size(), gmm_pre) == 0) {
+            raw = "nxm://" + raw.substr(gmm_pre.size());
+            engine::Logger::instance().debug(
+                "[NXM-Parse] Converted gmm:// to nxm://: " + log_raw);
+          }
+          // Try nxm first; fall back to modl (the protocol is a
+          // generic URL forwarder, not nxm-specific - keep the signal
+          // name for backward-compat with older builds).
+          auto nxm = engine::Uri::Router::parse(raw);
+          if (nxm.valid()) {
+            engine::Logger::instance().debug(
+                "[NXM-Parse] Parsed NXM link: domain=" + nxm.nexus_domain + " mod_id=" +
+                std::to_string(nxm.mod_id) + " file_id=" + std::to_string(nxm.file_id) +
+                " key=" + (nxm.key.empty() ? "absent" : "present") +
+                " expire=" + (nxm.expire > 0 ? std::to_string(nxm.expire) : "none"));
+            handle_nxm_download(nxm);
+            return;
+          }
+          engine::Logger::instance().debug(
+              "[NXM-Parse] NXM parse failed, trying modl://");
+          auto modl = engine::Uri::Router::parse_modl(raw);
+          if (modl.valid()) {
+            engine::Logger::instance().debug(
+                "[NXM-Parse] Parsed modl link: game_id=" + modl.game_id +
+                " direct_url=" + modl.direct_url);
+            handle_modl_download(modl);
+          } else {
+            engine::Logger::instance().warn(
+                "[NXM-Parse] Failed to parse URL as nxm:// or modl://: " + log_raw);
+          }
+        });
   }
 }
 
