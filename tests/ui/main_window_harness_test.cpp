@@ -1902,6 +1902,101 @@ TEST_CASE("MainWindow: Check for Nexus Mod Updates runs the sweep and reports",
 }
 
 // ---------------------------------------------------------------------------
+// The TOOLBAR button for the same sweep.
+//
+// The sweep shipped reachable only from the mod list context menu, so a user
+// who never right-clicks the mod list never learns the feature exists. This
+// asserts the button is WIRED to the proven path and not merely present: it
+// clicks the real toolbar button and requires the PERSISTENT update notice.
+//
+// update_notice() is the assertion that carries the weight. It is set only by
+// set_update_notice(), which on this path is called from
+// ModListController::on_nexus_update_finished() with a Report that came back off
+// the NexusUpdateThread. The transient StatusBar::set_status() text a guard
+// writes cannot produce it, so every early return in check_mod_updates() - no
+// domain, no API key, no instance, already running - leaves the notice empty
+// and fails here. A decorative button, or one whose connect was dropped, fails
+// the same way.
+// ---------------------------------------------------------------------------
+TEST_CASE("MainWindow: the toolbar update button runs the same proven sweep",
+          "[ui][harness]") {
+  const fs::path root     = make_case_root("gmm_qs50_nexusupdbtn");
+  const fs::path inst_dir = root / "instances";
+
+  qputenv("QT_QPA_PLATFORM", "offscreen");
+  int app_argc     = 1;
+  char app_argv0[] = "main_window_harness_test";
+  char *app_argv[] = {app_argv0, nullptr};
+  QApplication app(app_argc, app_argv);
+  QCoreApplication::setOrganizationName("GameModManager");
+  QCoreApplication::setApplicationName("GameModManager");
+
+  // Same reasoning as the menu case above: a key that is not a real key, in a
+  // throwaway XDG_CONFIG_HOME, and an instance with no Nexus-sourced mod, so
+  // the sweep answers from its own logic and never reaches api.nexusmods.com.
+  engine::Source::Nexus::Auth::instance().set_api_key("harness-not-a-real-key");
+  REQUIRE(engine::Source::Nexus::Auth::instance().has_api_key());
+
+  auto inst           = engine::Instance::installed("TestGame", inst_dir);
+  inst.info().game_id = "testgame";
+  REQUIRE(inst.create_directories());
+  REQUIRE(inst.write_toml());
+  const fs::path inst_root = inst.info().root;
+  const fs::path mods_dir =
+      engine::Instance::from_root(inst_root).path_for(engine::InstanceKind::Mods);
+  fs::create_directories(mods_dir / "PlainMod");
+  write_file(mods_dir / "PlainMod" / "meta.ini", "[General]\npriority=0\n");
+
+  engine::GameKnowledge knowledge;
+  knowledge.set("testgame", "mods_subpath", "Mods");
+
+  engine::PluginLoader loader;
+  engine::PluginInfo info;
+  info.game_id      = "testgame";
+  info.game_support = true;
+  info.nexus_domain = "skyrimspecialedition";
+  loader.plugins_mutable().push_back(info);
+
+  ui::MainWindow w;
+  w.set_game_knowledge(&knowledge);
+  w.set_plugin_loader(&loader);
+  w.show();
+  w.set_game_info("testgame", "Test Game", "Default", {}, inst_root);
+  REQUIRE(pump_until([&w] {
+    return !w.is_loading();
+  }));
+
+  auto *bar = w.findChild<ui::StatusBar *>();
+  REQUIRE(bar != nullptr);
+  auto *toolbar = w.findChild<ui::MainToolbar *>();
+  REQUIRE(toolbar != nullptr);
+  CHECK(bar->update_notice().isEmpty());
+
+  // The real button, found the way a user finds it: by what the toolbar built.
+  QToolButton *check_updates_btn = nullptr;
+  for (auto *b : toolbar->findChildren<QToolButton *>())
+    if (b->toolTip() == QStringLiteral("Check for Nexus Mod Updates")) {
+      check_updates_btn = b;
+      break;
+    }
+  REQUIRE(check_updates_btn != nullptr);
+  REQUIRE(check_updates_btn->isEnabled());
+
+  check_updates_btn->click();
+
+  REQUIRE(pump_until([&] {
+    return !bar->update_notice().isEmpty();
+  }));
+
+  // Same verdict the menu entry produces, from the same Report: an answer, not
+  // a warning.
+  CHECK_FALSE(bar->update_notice_is_warning());
+  CHECK(bar->update_notice().contains(QStringLiteral("No Nexus mods")));
+
+  fs::remove_all(root);
+}
+
+// ---------------------------------------------------------------------------
 // The IGNORE control, and the consumer it has to reach.
 //
 // Landing the sweep without this would be the same defect one layer up: the

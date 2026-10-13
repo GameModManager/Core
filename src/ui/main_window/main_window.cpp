@@ -111,6 +111,11 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
           &TabModeController::route_settings);
   connect(toolbar_, &MainToolbar::instances_clicked, tab_mode_.get(),
           &TabModeController::route_instance_switcher);
+  // The toolbar button calls the same ModListController::check_mod_updates()
+  // the All Mods context entry calls (mod_context_menu.cpp). Both are the one
+  // proven sweep, so the two entry points cannot drift in what they do or cost.
+  connect(toolbar_, &MainToolbar::check_updates_clicked, mod_list_.get(),
+          &ModListController::check_mod_updates);
   connect(menu_bar_, &AppMenuBar::sort_mods_requested, mod_list_.get(),
           &ModListController::sort_mods);
   connect(toolbar_, &MainToolbar::shortcut_removed, this, [this](const QString &path) {
