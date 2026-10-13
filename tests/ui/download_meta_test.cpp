@@ -14,16 +14,17 @@
 //   - a corrupt meta (no readable keys) restores as Failed, never as the
 //     Complete that a default-constructed meta would otherwise read as, and
 //     the row is not dropped.
-//   - a meta whose archive is gone still restores its row, as Failed.
-//     MO2 deletes these orphans outright (downloadmanager.cpp:409-422); we
-//     do not, and this test is what holds that difference in place.
+//   - MO2's orphan sweep (downloadmanager.cpp:409-422) deletes a meta with no
+//     archive on disk, and so do we - but NOT when the meta says the download
+//     is still in progress (paused, or beside its partial), which MO2 sweeps
+//     by accident. That swept/kept split is the whole point of the case.
 //   - an archive with no meta still surfaces through the dir scan, so the
 //     migration never turns a manually downloaded archive invisible.
 //   - a migration that cannot write every meta keeps the legacy manifest, so
 //     the next run repeats it with nothing lost.
 //
-// Hermetic: offscreen platform, throwaway XDG_CONFIG_HOME, no network, no
-// access to the real instance downloads dirs.
+// Hermetic: offscreen platform, throwaway HOME + XDG_CONFIG_HOME +
+// XDG_DATA_HOME, no network, no access to the real instance downloads dirs.
 #include "ui/panels/downloads_tab.h"
 
 #include <QApplication>
@@ -46,20 +47,33 @@
 
 namespace {
 
-constexpr const char *kRoot = "/tmp/gmm_download_meta";
+constexpr const char *kRoot = "/tmp/opencode/gmm_download_meta";
 
 // Every case starts from the same clean slate: a throwaway config dir (the
 // QSettings sandbox - never the real user config) and a throwaway downloads
 // dir (never the real instance data).
+//
+// HOME is redirected alongside XDG_CONFIG_HOME, not because this file needs the
+// settings writer to be safe, but because the orphan sweep DELETES through
+// engine::remove_path() -> move_to_recycle_bin(), and that resolves
+// XDG_DATA_HOME with a "$HOME/.local/share/Trash" fallback (linux_platform.cpp:
+// trash_root()). One of the two env vars alone would put the real user's trash
+// in the blast radius. Both are set, so the trash is part of the sandbox and
+// the deletion this suite performs is provably confined to kRoot.
 struct Sandbox {
   std::filesystem::path dl;
+  std::filesystem::path trash;
   Sandbox() {
     qputenv("QT_QPA_PLATFORM", "offscreen");
-    const std::filesystem::path cfg = std::filesystem::path(kRoot) / "config";
-    std::filesystem::remove_all(kRoot);
+    const std::filesystem::path root(kRoot);
+    const std::filesystem::path cfg = root / "config";
+    std::filesystem::remove_all(root);
     std::filesystem::create_directories(cfg);
+    qputenv("HOME", root.string().c_str());
     qputenv("XDG_CONFIG_HOME", cfg.string().c_str());
-    dl = std::filesystem::path(kRoot) / "dl";
+    qputenv("XDG_DATA_HOME", root.string().c_str());
+    dl    = root / "dl";
+    trash = root / "Trash";
     std::filesystem::create_directories(dl);
   }
   void app(int &argc, char **argv) {
@@ -300,7 +314,7 @@ TEST_CASE("a corrupt meta restores as failed, never as complete", "[ui]") {
   CHECK(partial[0].state == ui::DownloadState::Installed);
 }
 
-TEST_CASE("a meta with no archive keeps its row", "[ui]") {
+TEST_CASE("orphan meta files are swept, in-progress ones are kept", "[ui]") {
   Sandbox sandbox;
   int test_argc     = 1;
   char test_argv0[] = "download_meta_test";
@@ -309,49 +323,176 @@ TEST_CASE("a meta with no archive keeps its row", "[ui]") {
   sandbox.app(test_argc, test_argv);
 
   const std::filesystem::path dl = sandbox.dl;
-  // The archive is NOT created: the user deleted it out from under us, or the
-  // download never finished. The meta is all that is left of the row.
-  const auto gone = dl / "Deleted Mod-777-3-3.zip";
 
-  ui::DownloadMeta meta;
-  meta.archive       = gone;
-  meta.id            = "777-3";
-  meta.name          = "Deleted Mod";
-  meta.source        = "Nexus Mods";
-  meta.parent_mod_id = "777";
-  meta.file_id       = 3;
-  meta.nexus_domain  = "skyrimspecialedition";
-  meta.total_size    = 12345;
-  meta.state         = ui::DownloadState::Complete;
-  REQUIRE(ui::write_download_meta(meta, ui::download_meta_path(meta, dl)));
+  // 1. The orphan. No archive, no partial, a finished download - the archive
+  //    was deleted from outside the app and the meta is all that is left.
+  //    MO2 deletes exactly this (downloadmanager.cpp:409-422).
+  const auto orphan = dl / "Orphan Mod-777-3-3.zip";
+  ui::DownloadMeta orphan_meta;
+  orphan_meta.archive       = orphan;
+  orphan_meta.id            = "777-3";
+  orphan_meta.name          = "Orphan Mod";
+  orphan_meta.source        = "Nexus Mods";
+  orphan_meta.parent_mod_id = "777";
+  orphan_meta.file_id       = 3;
+  orphan_meta.nexus_domain  = "skyrimspecialedition";
+  orphan_meta.total_size    = 12345;
+  orphan_meta.state         = ui::DownloadState::Complete;
+  REQUIRE(
+      ui::write_download_meta(orphan_meta, ui::download_meta_path(orphan_meta, dl)));
 
+  // 1b. A second orphan, named so it sorts LAST. MO2 collects orphans into a
+  //     QStringList and deletes them all in one pass, so "the first one works"
+  //     is not the behaviour being adopted - every orphan in the dir goes.
+  const auto orphan_last            = dl / "Zzz Orphan Mod-444-9-9.zip";
+  ui::DownloadMeta orphan_last_meta = orphan_meta;
+  orphan_last_meta.archive          = orphan_last;
+  orphan_last_meta.id               = "444-9";
+  orphan_last_meta.name             = "Zzz Orphan Mod";
+  orphan_last_meta.file_id          = 9;
+  REQUIRE(ui::write_download_meta(orphan_last_meta,
+                                  ui::download_meta_path(orphan_last_meta, dl)));
+
+  // 2. A meta whose archive IS on disk. Never a candidate, whatever its state.
+  const auto present = dl / "Present Mod-888-4-4.zip";
+  write_file(present, 4096);
+  ui::DownloadMeta present_meta;
+  present_meta.archive    = present;
+  present_meta.id         = "888-4";
+  present_meta.name       = "Present Mod";
+  present_meta.state      = ui::DownloadState::Complete;
+  present_meta.total_size = 4096;
+  REQUIRE(
+      ui::write_download_meta(present_meta, ui::download_meta_path(present_meta, dl)));
+
+  // 3. A paused transfer with no completed archive. "paused" is how this comes
+  //    back from disk, and it is the one state the sweep must not touch: the
+  //    meta is the only record of what was being fetched.
+  const auto paused = dl / "Paused Mod-999-5-5.zip";
+  ui::DownloadMeta paused_meta;
+  paused_meta.archive       = paused;
+  paused_meta.id            = "999-5";
+  paused_meta.name          = "Paused Mod";
+  paused_meta.source        = "Nexus Mods";
+  paused_meta.parent_mod_id = "999";
+  paused_meta.file_id       = 5;
+  paused_meta.total_size    = 999999;
+  paused_meta.state         = ui::DownloadState::Paused;
+  REQUIRE(
+      ui::write_download_meta(paused_meta, ui::download_meta_path(paused_meta, dl)));
+
+  // 4. An in-flight row written beside its partial, which is MO2's layout too
+  //    (the ".unfinished" suffix, downloadmanager.cpp:111-114). No archive by
+  //    design, so a filesystem-only sweep would take this one with it.
+  const auto partial = dl / "Partial Mod-1212-6-6.zip.unfinished";
+  write_file(partial, 512);
+  ui::DownloadMeta partial_meta;
+  partial_meta.archive       = std::filesystem::path{};
+  partial_meta.partial_file  = partial.filename().string();
+  partial_meta.id            = "1212-6";
+  partial_meta.name          = "Partial Mod";
+  partial_meta.source        = "Nexus Mods";
+  partial_meta.parent_mod_id = "1212";
+  partial_meta.file_id       = 6;
+  partial_meta.total_size    = 40960;
+  partial_meta.state         = ui::DownloadState::Downloading;
+  REQUIRE(
+      ui::write_download_meta(partial_meta, ui::download_meta_path(partial_meta, dl)));
+
+  // 5. A SHORT archive - the P0 case. The file exists but is smaller than the
+  //    recorded total_size, so archive_is_complete() rejects it downstream and
+  //    deserialize() restores the row Failed. Its meta is what carries the
+  //    total_size, so sweeping it would throw away the evidence.
+  const auto short_zip = dl / "Short Mod-1313-7-7.zip";
+  write_file(short_zip, 512);
+  ui::DownloadMeta short_meta;
+  short_meta.archive       = short_zip;
+  short_meta.id            = "1313-7";
+  short_meta.name          = "Short Mod";
+  short_meta.source        = "Nexus Mods";
+  short_meta.parent_mod_id = "1313";
+  short_meta.file_id       = 7;
+  short_meta.total_size    = 40960;
+  short_meta.state         = ui::DownloadState::Complete;
+  REQUIRE(ui::write_download_meta(short_meta, ui::download_meta_path(short_meta, dl)));
+
+  // The sweep: exactly one meta disappears.
   const auto metas = ui::read_download_metas(dl);
-  REQUIRE(metas.size() == 1);
-  // MO2 would delete this orphan outright (downloadmanager.cpp:409-422). We
-  // keep it: the row is still a remembered download, and the identity fields
-  // are what let the user recognise and remove it.
-  CHECK(metas[0].id == "777-3");
-  CHECK(metas[0].parent_mod_id == "777");
-  CHECK(metas[0].total_size == 12345);
+  CHECK(std::filesystem::exists((dl / "Present Mod-888-4-4.zip.meta").string()));
+  CHECK(std::filesystem::exists((dl / "Paused Mod-999-5-5.zip.meta").string()));
+  CHECK(std::filesystem::exists(partial.string() + ".meta"));
+  CHECK(std::filesystem::exists((dl / "Short Mod-1313-7-7.zip.meta").string()));
+  CHECK_FALSE(std::filesystem::exists((dl / "Orphan Mod-777-3-3.zip.meta").string()));
+  CHECK_FALSE(
+      std::filesystem::exists((dl / "Zzz Orphan Mod-444-9-9.zip.meta").string()));
 
-  // Through the restore path it comes back Failed, not Complete: a row whose
-  // bytes are gone must not claim to be a finished download.
+  // It went to the trash bin, MO2's shellDelete() behaviour, and into the
+  // SANDBOX trash - which is the assertion that matters here: this suite
+  // deletes files, and this is where they went. Both orphans, not just the
+  // first one found.
+  CHECK(
+      std::filesystem::exists(sandbox.trash / "files" / "Orphan Mod-777-3-3.zip.meta"));
+  CHECK(std::filesystem::exists(sandbox.trash / "files" /
+                                "Zzz Orphan Mod-444-9-9.zip.meta"));
+
+  REQUIRE(metas.size() == 4);
+  for (const char *gone : {"777-3", "444-9"}) {
+    const ui::DownloadMeta *found = find_meta(metas, gone);
+    INFO("swept meta id: " << gone);
+    CHECK(found == nullptr);
+  }
+  for (const char *kept : {"888-4", "999-5", "1212-6", "1313-7"}) {
+    const ui::DownloadMeta *found = find_meta(metas, kept);
+    INFO("kept meta id: " << kept);
+    REQUIRE(found != nullptr);
+  }
+
+  // The kept identity fields are intact: the paused row is still the row it
+  // was, so a fresh link can act on it instead of the list losing it.
+  const ui::DownloadMeta *kept_paused = find_meta(metas, "999-5");
+  REQUIRE(kept_paused != nullptr);
+  CHECK(kept_paused->parent_mod_id == "999");
+  CHECK(kept_paused->total_size == 999999);
+  CHECK(kept_paused->state == ui::DownloadState::Failed);
+  CHECK(kept_paused->archive == paused);
+  // The in-flight row keeps its partial, which is what it resumes from.
+  const ui::DownloadMeta *kept_partial = find_meta(metas, "1212-6");
+  REQUIRE(kept_partial != nullptr);
+  CHECK(kept_partial->partial_file == partial.filename().string());
+  CHECK(kept_partial->archive.empty());
+
+  // The P0 interaction: the short archive survives the sweep and comes back
+  // Failed through the real restore path, because its meta still carries the
+  // total_size the byte comparison needs.
   ui::DownloadsTab tab;
   tab.deserialize(ui::metas_to_manifest_json(metas, dl), dl);
-  const auto restored = tab.to_metas();
-  REQUIRE(restored.size() == 1);
-  CHECK(restored[0].state == ui::DownloadState::Failed);
+  const ui::DownloadMeta *restored_short = find_meta(tab.to_metas(), "1313-7");
+  REQUIRE(restored_short != nullptr);
+  CHECK(restored_short->state == ui::DownloadState::Failed);
 
-  // But a full wiring does NOT keep it, and that is pre-existing behaviour we
-  // are not changing here: scan_downloads_dir() drops any row whose archive
-  // is gone from the dir (downloads_tab.cpp:1052) and removes its meta with
-  // it. This was equally true of the single manifest - the row was restored
-  // by deserialize() and then dropped by the same scan - so the migration
-  // neither introduces nor fixes it. Pinned here so the difference between
-  // "the reader keeps it" and "the tab keeps it" is written down rather than
-  // assumed.
-  tab.set_downloads_dir(dl);
-  CHECK(tab.to_metas().empty());
+  // The two paths agree. scan_downloads_dir() drops vanished rows end-to-end
+  // (downloads_tab.cpp:1040) and remove_entry() takes the meta with it, so
+  // the orphan was never going to survive a full wiring - but it got there by
+  // accident of call order, and only for FINISHED rows, and only when no
+  // download was active (has_active_download() skips the scan). The sweep
+  // removes it at the read instead, so it no longer depends on either.
+  const auto orphan_meta_back = dl / "Orphan Mod-777-3-3.zip.meta";
+  REQUIRE(
+      ui::write_download_meta(orphan_meta, ui::download_meta_path(orphan_meta, dl)));
+  REQUIRE(std::filesystem::exists(orphan_meta_back));
+  ui::DownloadsTab agree;
+  agree.deserialize(ui::metas_to_manifest_json(ui::read_download_metas(dl), dl), dl);
+  CHECK_FALSE(std::filesystem::exists(orphan_meta_back));
+  CHECK(find_meta(agree.to_metas(), "777-3") == nullptr);
+  // And the scan must not take the rows the sweep kept. A paused row has a
+  // file_path but no bytes, which is what it looks like when the app starts -
+  // the scan used to read that as a deleted archive and dropped the row along
+  // with its meta, which defeated the whole "keep in-progress work" rule.
+  agree.set_downloads_dir(dl);
+  CHECK(find_meta(agree.to_metas(), "999-5") != nullptr);
+  CHECK(find_meta(agree.to_metas(), "1212-6") != nullptr);
+  CHECK(std::filesystem::exists((dl / "Paused Mod-999-5-5.zip.meta").string()));
+  CHECK(std::filesystem::exists(partial.string() + ".meta"));
 }
 
 TEST_CASE("an archive with no meta still surfaces", "[ui]") {
