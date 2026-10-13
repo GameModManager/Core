@@ -205,6 +205,16 @@ public:
   // assertions until the async instance scan has landed.
   [[nodiscard]] bool is_loading() const { return loading_; }
 
+  // The generation a Nexus update result must carry to be accepted;
+  // ModListController::on_nexus_update_finished() drops anything else as
+  // stale. Readable so a test can hand that slot a Report of its own: the
+  // branch order in that slot is the feature, and the only Reports that can
+  // expose it (a refusal that also counts updates) are ones UpdateCheck::run()
+  // does not currently produce.
+  [[nodiscard]] quint64 nexus_update_generation() const {
+    return nexus_update_generation_;
+  }
+
   // Lock or unlock the whole mod manager interface. Locking blocks user
   // interaction (mouse + keyboard) across the main window and greys it out,
   // so long-running operations like archive installs can't race the user.
