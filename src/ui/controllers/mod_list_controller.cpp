@@ -3331,6 +3331,20 @@ void ModListController::run_loot_sort() {
   loot_dialog_->set_stage(tr("Running LOOT..."));
   loot_dialog_->show();
   loot_dialog_->raise();
+  // gmm_lootcli is a real external subprocess (engine::Sorter::Loot::run_sort
+  // -> run_captured, engine/util/process_utils.h:66), so the Workarounds
+  // lock_gui setting governs it: LockUI is gated on the setting, exactly like
+  // MO2's lockGUI gate over ProcessRunner (processrunner.cpp:873-880). Taken
+  // here, after every refusal above, so no early return can strand it, and
+  // released in on_loot_finished - the single point all exit paths reach.
+  //
+  // While it is engaged the sort cannot be started again: LootReportDialog is
+  // modeless (shown with show(), not exec()), so without this a second click
+  // queued a second sort behind the first (Workspace-y24o). LootSortThread
+  // delivers requests through a QueuedConnection, so the two would not have
+  // raced in memory - they would have run back to back, and on_loot_finished
+  // would have applied and saved the load order twice.
+  loot_locked_ = w_->lock_ui(LockReason::LockUI);
   w_->loot_sort_thread_->start(std::move(request));
 }
 
@@ -3372,6 +3386,15 @@ void ModListController::on_loot_finished(engine::Sorter::Loot::Result result) {
   // by whichever branch is taken.
   if (w_->status_bar_)
     w_->status_bar_->set_progress(-1);
+  // Mirror of the lock run_loot_sort took, released on the same "every path
+  // passes through here" rule. Conditional on having actually engaged it: with
+  // lock_gui off the lock was declined, and an unconditional unlock here would
+  // lift an install's OutputRequired lock - the one lock that is never
+  // optional - whenever a sort happened to finish during one.
+  if (loot_locked_) {
+    loot_locked_ = false;
+    w_->unlock_ui();
+  }
   if (!result.ok) {
     engine::Logger::instance().warn("LOOT sort failed: " + result.error);
     const QString reason = QString::fromStdString(result.error);

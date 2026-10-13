@@ -617,9 +617,9 @@ void MainWindow::set_drop_overlay_visible(bool visible) {
   drop_overlay_->show();
 }
 
-void MainWindow::lock_ui(LockReason reason) {
+bool MainWindow::lock_ui(LockReason reason) {
   // Delegate to the UI Locker which handles the actual enable/disable logic
-  locker_->lock(reason);
+  return locker_->lock(reason);
 }
 
 void MainWindow::unlock_ui() {
