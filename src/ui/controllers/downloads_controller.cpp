@@ -381,35 +381,48 @@ void DownloadsController::save_download_manifest() {
   auto *dt = w_->right_panel_->downloads_tab();
   if (!dt)
     return;
-  auto path = w_->download_manifest_path();
-  if (path.empty())
+  auto downloads_dir = w_->downloads_dir_path();
+  if (downloads_dir.empty())
     return;
-  std::error_code ec;
-  std::filesystem::create_directories(path.parent_path(), ec);
-  if (ec)
-    return;
-  std::ofstream out(path);
-  if (!out)
-    return;
-  out << dt->serialize();
+  // One "<archive>.meta" beside each archive, MO2's per-file state
+  // (downloadmanager.cpp:1771-1799). Reached from discrete events (a
+  // download finishing, a row installing, a row being hidden or removed), not
+  // from progress ticks, so rewriting every row's meta here is cheap enough
+  // not to be worth tracking which single row changed.
+  write_download_metas(dt->to_metas(), downloads_dir);
 }
 
 void DownloadsController::load_download_manifest() {
-  auto path = w_->download_manifest_path();
-  if (path.empty() || !std::filesystem::exists(path))
-    return;
-  std::ifstream in(path);
-  if (!in)
-    return;
-  std::string json((std::istreambuf_iterator<char>(in)),
-                   std::istreambuf_iterator<char>());
-  if (json.empty())
-    return;
   auto *dt = w_->right_panel_->downloads_tab();
   if (!dt)
     return;
   auto downloads_dir = w_->downloads_dir_path();
-  dt->deserialize(json, downloads_dir);
+  if (downloads_dir.empty())
+    return;
+
+  const auto legacy = w_->legacy_download_manifest_path();
+  if (!legacy.empty() && std::filesystem::exists(legacy)) {
+    // MIGRATION from the single .download_manifest.json to per-file metas.
+    // The legacy entries are restored through the SAME per-item path the metas
+    // use, then migrate_download_state() writes one meta per row and removes
+    // the legacy manifest only if every write landed.
+    std::ifstream in(legacy);
+    std::string json;
+    if (in)
+      json.assign((std::istreambuf_iterator<char>(in)),
+                  std::istreambuf_iterator<char>());
+    if (!json.empty())
+      dt->deserialize(json, downloads_dir);
+
+    migrate_download_state(dt->to_metas(), downloads_dir, legacy);
+    return;
+  }
+
+  // Normal path: the metas are the state.
+  auto metas = read_download_metas(downloads_dir);
+  if (metas.empty())
+    return;
+  dt->deserialize(metas_to_manifest_json(metas, downloads_dir), downloads_dir);
 }
 
 void DownloadsController::wire_downloads_tab() {

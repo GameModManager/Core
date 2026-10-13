@@ -7,8 +7,10 @@
 
 #include <filesystem>
 #include <functional>
+#include <optional>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 class QCheckBox;
 class QDragEnterEvent;
@@ -124,6 +126,110 @@ enum class DownloadBatch {
 // Label for a batch action, as MO2 words it ("Delete Installed Downloads...",
 // "Hide Uninstalled...", "Un-Hide All..."). Empty scope names nothing.
 [[nodiscard]] QString download_batch_label(DownloadBatch batch, bool remove);
+
+// --- Per-file download meta (MO2 downloadmanager.cpp:88-164, 1771-1799) ---
+//
+// MO2 does not keep download state in one manifest. It writes a
+// "<archive>.meta" file BESIDE each archive in the downloads dir, in
+// QSettings IniFormat, and rebuilds the list by scanning the dir for "*.meta"
+// (downloadmanager.cpp:412). The meta travels with the file it describes, so
+// a single corrupt blob cannot describe - or destroy - the rest of the
+// folder.
+//
+// Our meta is that file, field for field, for every key MO2 has a slot for:
+//   MO2 key        ours
+//   gameName       nexus_domain     (the game's identifier)
+//   modID          parent_mod_id    (Nexus mod page id; MO2 stores an int,
+//                                   we store the id string and MO2's
+//                                   value("modID",0).toInt() parses it back)
+//   fileID         file_id
+//   name           name
+//   url            page_url
+//   repository     source label ("Nexus Mods" / "LoversLab" / "Manual")
+//   category       category
+//   installed / uninstalled / paused / removed   the state, as MO2's flags
+//
+// MO2 has NO format-version key in this file - its "version" key is the MOD's
+// version (VersionInfo::parse, downloadmanager.cpp:151), not a schema
+// version - so there is nothing to honour and nothing invented here. Unknown
+// keys are simply ignored by QSettings, which is what keeps the two or three
+// keys MO2 has no slot for harmless below.
+struct DownloadMeta {
+  // The archive this meta describes. Derived from the meta's own file name
+  // ("<archive>.meta"), never stored inside the file - that is the whole
+  // point of the format.
+  std::filesystem::path archive;
+  std::string id;        // row key: "<modID>-<fileID>", or the archive stem
+  std::string name;      // display name
+  std::string source;    // repository label
+  std::string page_url;  // "url"
+  std::string parent_mod_id;
+  int file_id = 0;
+  std::string nexus_domain;
+  std::string category;
+  // Our keys. MO2 derives size from the file on disk, but archive_is_complete()
+  // (downloads_tab.cpp) compares the bytes present against the RECORDED
+  // total_size - the P0 fix - so it has to survive the restart.
+  int64_t total_size = 0;
+  // Bare file name: the partial always lives in the downloads dir, so the dir
+  // is re-applied on read, same as the legacy manifest did.
+  std::string partial_file;
+  DownloadState state = DownloadState::Complete;
+  bool hidden         = false;
+};
+
+// "<archive>.meta" beside the archive. Falls back to the partial for a row
+// that has not landed its bytes yet, and to the row id for a queued row with
+// neither on disk, so every row owns exactly one meta and no row is silently
+// dropped for having nowhere to write itself.
+[[nodiscard]] std::filesystem::path
+download_meta_path(const DownloadMeta &meta,
+                   const std::filesystem::path &downloads_dir);
+
+// Writes one meta. False if the file could not be written, which is the
+// caller's cue to keep the legacy manifest and retry on the next run.
+bool write_download_meta(const DownloadMeta &meta,
+                         const std::filesystem::path &meta_path);
+
+// Reads one meta. std::nullopt when the file holds no parseable keys at all -
+// a truncated or garbage meta. Callers must NOT read that as "Complete": a
+// default-constructed DownloadMeta is a finished download, which is exactly
+// the "meta is stale against the filesystem" failure this format exists to
+// remove, so the honest answer is "unknown" and the caller restores Failed.
+[[nodiscard]] std::optional<DownloadMeta>
+read_download_meta(const std::filesystem::path &meta_path);
+
+// Every meta in the dir, MO2's "*.meta" scan (downloadmanager.cpp:412).
+//
+// Unlike MO2 we do NOT delete orphan metas (downloadmanager.cpp:409-422). MO2
+// can afford to: its rows are the folder. We keep the row instead and restore
+// it Failed, because a meta whose archive is gone is still a remembered
+// download and deleting its state on sight is how a user's list silently loses
+// entries. remove_entry() deletes the meta it owns, so an explicit Remove
+// still removes.
+[[nodiscard]] std::vector<DownloadMeta>
+read_download_metas(const std::filesystem::path &downloads_dir);
+
+// Writes every meta. False if any single write failed.
+bool write_download_metas(const std::vector<DownloadMeta> &metas,
+                          const std::filesystem::path &downloads_dir);
+
+// The one-way migration off the legacy single-file manifest: write one meta
+// per entry, then remove the legacy manifest ONLY once every write landed.
+// False if any meta failed, in which case the legacy manifest is left in
+// place untouched and the next run repeats the whole thing - so a migration
+// that dies halfway costs the user nothing and is retried, not lost.
+bool migrate_download_state(const std::vector<DownloadMeta> &metas,
+                            const std::filesystem::path &downloads_dir,
+                            const std::filesystem::path &legacy_manifest);
+
+// Re-renders the metas as the legacy manifest JSON that DownloadsTab::
+// deserialize() consumes, so BOTH on-disk formats restore through ONE
+// per-item path - the archive_is_complete() verification and the legacy
+// source repair both live there and are not duplicated or re-implemented.
+[[nodiscard]] std::string
+metas_to_manifest_json(const std::vector<DownloadMeta> &metas,
+                       const std::filesystem::path &downloads_dir);
 
 class DownloadsTab : public QWidget {
   Q_OBJECT
@@ -306,6 +412,8 @@ public:
   // Persistence
   [[nodiscard]] std::string serialize() const;
   void deserialize(const std::string &json, const std::filesystem::path &downloads_dir);
+  // The tab's rows as per-file metas, for writing one meta per archive.
+  [[nodiscard]] std::vector<DownloadMeta> to_metas() const;
 
 signals:
   void install_requested(const std::string &id, const std::filesystem::path &file_path,
