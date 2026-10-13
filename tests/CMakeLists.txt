@@ -186,7 +186,14 @@ gmm_catch2_test(profile_switching_test engine/profile_switching_test.cpp)
 # keep-10 eviction, the unconditional pre-restore safety backup and the
 # per-file restore reporting) is covered here without a GUI.
 gmm_catch2_test(backup_service_test engine/backup_service_test.cpp)
-gmm_catch2_test(launch_params_test engine/launch_params_test.cpp)
+# gmm_platform/gmm_runtime as well as gmm_engine: the Proton precedence cases
+# below drive the real LinuxPlatform and ProtonRuntime rather than a double, so
+# the defaults under test are the ones production computes from a real Steam
+# install. TIMEOUT because those cases repoint HOME and read the environment:
+# a wedge there has to go red rather than hang the suite.
+gmm_catch2_test(launch_params_test engine/launch_params_test.cpp
+    LIBS gmm_platform gmm_runtime
+    PROPERTIES TIMEOUT 120)
 
 # Workspace-cch0: headless CLI launch honors per-executable args/env/cwd -
 # Qt-free splitter/cwd/entry-lookup helpers mirrored from the GUI path.

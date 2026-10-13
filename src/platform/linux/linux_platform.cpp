@@ -1467,6 +1467,12 @@ std::int64_t spawn_detached_process(const std::filesystem::path &executable,
   return static_cast<std::int64_t>(pid);
 }
 
+bool set_process_env_var(const std::string &key, const std::string &value) {
+  // overwrite = 1: the caller's value replaces the inherited one, which is the
+  // whole point of an explicit launch override.
+  return ::setenv(key.c_str(), value.c_str(), 1) == 0;
+}
+
 bool filesystem_is_case_insensitive() {
   // The build target is Linux; the filesystem could still be NTFS via ntfs-3g
   // or exFAT via a driver, so this is not a compile-time constant in
