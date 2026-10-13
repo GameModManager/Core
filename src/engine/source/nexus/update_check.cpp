@@ -444,7 +444,17 @@ Report run(const std::string &nexus_domain, const std::string &api_key,
       continue;
     }
 
-    const auto state   = evaluate(mod.installed_file_id, available);
+    const auto state = evaluate(mod.installed_file_id, available);
+    // parse_files only returns true with a non-empty list, so Unknown here means
+    // exactly one thing: our own meta.ini records no Nexus file id, so there is
+    // nothing to compare the list against. Recording nexus_update=false would
+    // state as fact something nobody checked - the same lie as stamping the mod
+    // as freshly checked, and the reason this mod is named instead.
+    if (state.state == Verdict::Unknown) {
+      unanswerable(mod,
+                   "this mod's meta.ini records no Nexus file id to compare against");
+      continue;
+    }
     const bool visible = update_visible(state.state == Verdict::Update, newest_version,
                                         mod.ignored_version);
 
