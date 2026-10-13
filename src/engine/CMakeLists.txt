@@ -147,6 +147,7 @@ install/conflict_resolver.cpp
     source/http_util.cpp
     source/nexus/provider.cpp
     source/nexus/categories.cpp
+    source/nexus/update_check.cpp
     source/nexus/account.cpp
     source/nexus/http.cpp
     source/nexus/servers.cpp

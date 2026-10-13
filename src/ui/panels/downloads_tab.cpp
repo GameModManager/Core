@@ -1833,10 +1833,20 @@ std::optional<DownloadMeta> read_download_meta(const std::filesystem::path &meta
 // is what its "paused" flag exists for (downloadmanager.cpp:1796-1797, where
 // STATE_ERROR is written as paused too).
 //
-// MO2 sweeps on the FILESYSTEM alone, so a paused download is collateral: its
-// bytes live in "<name>.unfinished" (downloadmanager.cpp:111-114), never at
-// "<name>", so the meta that remembers an unfinished transfer is exactly the
-// meta whose base file is missing. We ask the meta before deleting anything:
+// MO2 IS safe here, by layout rather than by logic, and the reason is worth
+// keeping straight: createMetaFile names the meta from m_Output.fileName()
+// (downloadmanager.cpp:1775), and m_Output is the file the bytes are actually
+// being written to - which in flight carries ".unfinished" (the rename at
+// downloadmanager.cpp:247-264). So an in-progress download's meta is
+// "<name>.unfinished.meta", its base file IS the file holding the bytes, and
+// MO2's own base-file check keeps it. It does NOT sweep in-progress metas
+// blind.
+//
+// We keep the extra guard anyway, because WE can produce a shape MO2 never
+// has: we write "paused" into "<name>.meta" itself, with no "<name>" on disk
+// to match it. Under MO2's rule that meta is an orphan; under ours it is the
+// only record of an in-progress download. So the meta is asked before anything
+// is deleted:
 //
 //   swept - no archive on disk AND no partial on disk AND not "paused".
 //           A finished download whose archive the user deleted from outside

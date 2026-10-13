@@ -54,6 +54,7 @@ signals:
   void settings_clicked();
   void instances_clicked();
   void instance_options_clicked();
+  void check_updates_clicked();
   void shortcut_removed(const QString &path);
 
 private:

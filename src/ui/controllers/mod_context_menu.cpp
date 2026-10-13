@@ -5,6 +5,7 @@
 #include "engine/mod/meta/mod_meta.h"
 #include "engine/mod/overwrite/overwrite_utils.h"
 #include "engine/plugin_host/category_factory.h"
+#include "engine/source/nexus/update_check.h"
 #include "ui/controllers/mod_actions.h"
 #include "ui/controllers/mod_list_controller.h"
 #include "ui/controllers/overwrite_controller.h"
@@ -114,6 +115,19 @@ void ModContextMenu::add_global_actions(QMenu &menu) {
   menu.addAction(reload, QObject::tr("Refresh"), w_, [this]() {
     actions_->reload_mod_list();
   });
+
+  // Check for Nexus mod updates (MO2 ModListViewActions::checkModsForUpdates,
+  // modlistviewactions.cpp:223-228, reached from the same global menu). This
+  // is the ONLY caller of the sweep and the only thing that spends a request:
+  // deliberately an action, not a timer. Nexus meters the API hard (a key that
+  // keeps exceeding it is banned), a settled library already costs one request
+  // a check, and the verdict persists in each mod's meta.ini - so the badge
+  // the user needs is on screen without ever polling for it. Clicking this
+  // always reports something: a reason it did not run, a count, or a warning.
+  menu.addAction(engine::IconManager::instance().resolve_icon("update-available"),
+                 QObject::tr("Check for Nexus Mod Updates"), w_, [this]() {
+                   w_->mod_list_->check_mod_updates();
+                 });
 }
 
 void ModContextMenu::add_all_mods_menu(QMenu &parent) {
@@ -478,6 +492,27 @@ void ModContextMenu::setup_mod_list_context_menu() {
                              w_->mod_model_->set_no_metadata(mod_id, false);
                            }
                          });
+        }
+
+        // MO2 ModInfoRegular::ignoreUpdate (modinforegular.cpp:330-338) and its
+        // "Stop ignoring this version" counterpart, reached from the row menu
+        // exactly as MO2 reaches them. Gated on the same predicate the badge
+        // uses, so the entry appears in precisely the two states it can act on
+        // and is never a visible-but-inert control.
+        {
+          const bool shows_update = engine::Source::Nexus::UpdateCheck::update_visible(
+              entry.nexus_update_available, entry.newest_version.toStdString(),
+              entry.ignored_version.toStdString());
+          if (shows_update || !entry.ignored_version.isEmpty()) {
+            const bool ignoring = shows_update;
+            menu.addAction(engine::IconManager::instance().resolve_icon(
+                               ignoring ? "dialog-information" : "edit-clear"),
+                           ignoring ? QObject::tr("Ignore This Update")
+                                    : QObject::tr("Stop Ignoring This Version"),
+                           w_, [this, mod_id, ignoring]() {
+                             w_->mod_list_->set_mod_update_ignored(mod_id, ignoring);
+                           });
+          }
         }
 
         // MO2 addBackupActions "Restore Backup" (modlistcontextmenu.cpp:413-415) and

@@ -818,8 +818,20 @@ bool ModMeta::write_game_metadata(const std::filesystem::path &mod_dir,
     // mods do NOT inherit a fake Nexus attribution.
     mf << "[General]\n";
     mf << "modid=" << (nexus_mod_id.empty() ? "0" : nexus_mod_id) << "\n";
-    mf << "version=" << (version.empty() ? "1.0" : version) << "\n";
-    mf << "newestVersion=" << (version.empty() ? "1.0" : version) << "\n";
+    // A version is WRITTEN, never invented. This used to fall back to "1.0"
+    // when the caller had none to give, which made every mod of a MO2-style
+    // game display 1.0 forever: only XML-metadata games ship a version inside
+    // the archive (extract_stage.cpp reads it from metadata.xml), so for
+    // Skyrim and friends `version` was ALWAYS empty here and the fallback was
+    // always the one that shipped. An empty key reads back as an empty version
+    // and the mod list shows MO2's "?" for a mod it can still update
+    // (mod_list_model.cpp, modlist.cpp:198-206) - which is true, where "1.0"
+    // was a confident lie. The authoritative version arrives later, from
+    // Nexus, in UpdateCheck::run().
+    if (!version.empty()) {
+      mf << "version=" << version << "\n";
+      mf << "newestVersion=" << version << "\n";
+    }
     mf << "category=0\n";
     if (!installation_file.empty())
       mf << "installationFile=" << installation_file << "\n";
@@ -835,9 +847,12 @@ bool ModMeta::write_game_metadata(const std::filesystem::path &mod_dir,
   std::string name = display_name.empty() ? mod_dir.filename().string() : display_name;
   mf << "<?xml version=\"1.0\"?>\n"
      << "<mod>\n"
-     << "  <name>" << name << "</name>\n"
-     << "  <version>" << (version.empty() ? "1.0" : version) << "</version>\n"
-     << "</mod>\n";
+     << "  <name>" << name << "</name>\n";
+  // Same rule as the ini branch: an absent version is written as an absent
+  // element, not as a fabricated one.
+  if (!version.empty())
+    mf << "  <version>" << version << "</version>\n";
+  mf << "</mod>\n";
   return mf.good();
 }
 

@@ -35,6 +35,8 @@
 #include "engine/instance/instance.h"
 #include "engine/game/registry/game_capabilities.h"
 #include "engine/game/registry/game_knowledge.h"
+#include "engine/plugin_host/plugin_loader.h"
+#include "engine/source/nexus/auth.h"
 #include "engine/source/update/mod_update_db_client.h"
 #include "platform/platform.h"
 #include "test_platform.h"
@@ -1768,6 +1770,376 @@ TEST_CASE("MainWindow: All Mods menu enables only the filter-matching mods",
   CHECK(mod_enabled(QStringLiteral("Foo_mod")));
   CHECK(mod_enabled(QStringLiteral("Bar_mod")));
   CHECK(mod_enabled(QStringLiteral("Baz_mod")));
+
+  fs::remove_all(root);
+}
+
+// ---------------------------------------------------------------------------
+// The Nexus update sweep DRIVER (Workspace-sc4z).
+//
+// The feature shipped inert once already: the engine's UpdateCheck::run() and
+// the status bar's set_update_notice() both existed with no caller, so no
+// verdict was ever produced and no notice ever appeared. This case is the
+// regression guard for exactly that shape - it triggers the REAL menu action
+// and requires a notice that only a real Report off the worker thread can
+// produce.
+//
+// The notice text asserted here is reached only through
+// on_nexus_update_finished()'s "ok && message empty && total == 0" branch, and
+// this instance deliberately holds NO Nexus-sourced mod - which is also what
+// keeps the sweep at zero requests. Nothing in this case reaches
+// api.nexusmods.com.
+// ---------------------------------------------------------------------------
+TEST_CASE("MainWindow: Check for Nexus Mod Updates runs the sweep and reports",
+          "[ui][harness]") {
+  const fs::path root     = make_case_root("gmm_qs50_nexusupd");
+  const fs::path inst_dir = root / "instances";
+
+  qputenv("QT_QPA_PLATFORM", "offscreen");
+  int app_argc     = 1;
+  char app_argv0[] = "main_window_harness_test";
+  char *app_argv[] = {app_argv0, nullptr};
+  QApplication app(app_argc, app_argv);
+  QCoreApplication::setOrganizationName("GameModManager");
+  QCoreApplication::setApplicationName("GameModManager");
+
+  // A test key, written through the production keyring path. Auth resolves its
+  // fallback store from XDG_CONFIG_HOME, which make_case_root just pointed into
+  // this case's throwaway root, so the blob lands there and never in the real
+  // ~/.config. It is not a valid key - nothing can authenticate with it - and
+  // the sweep below never sends it anywhere, because the instance has no Nexus
+  // mods and run() returns before the first request.
+  engine::Source::Nexus::Auth::instance().set_api_key("harness-not-a-real-key");
+  REQUIRE(engine::Source::Nexus::Auth::instance().has_api_key());
+
+  auto inst           = engine::Instance::installed("TestGame", inst_dir);
+  inst.info().game_id = "testgame";
+  REQUIRE(inst.create_directories());
+  REQUIRE(inst.write_toml());
+  const fs::path inst_root = inst.info().root;
+  const fs::path mods_dir =
+      engine::Instance::from_root(inst_root).path_for(engine::InstanceKind::Mods);
+  fs::create_directories(mods_dir / "PlainMod");
+  write_file(mods_dir / "PlainMod" / "meta.ini", "[General]\npriority=0\n");
+
+  engine::GameKnowledge knowledge;
+  knowledge.set("testgame", "mods_subpath", "Mods");
+
+  // The game must declare a Nexus domain: current_nexus_domain() reads it off
+  // the registered plugin identity, and the driver refuses without one.
+  engine::PluginLoader loader;
+  engine::PluginInfo info;
+  info.game_id      = "testgame";
+  info.game_support = true;
+  info.nexus_domain = "skyrimspecialedition";
+  loader.plugins_mutable().push_back(info);
+
+  ui::MainWindow w;
+  w.set_game_knowledge(&knowledge);
+  w.set_plugin_loader(&loader);
+  w.show();
+  w.set_game_info("testgame", "Test Game", "Default", {}, inst_root);
+  REQUIRE(pump_until([&w] {
+    return !w.is_loading();
+  }));
+
+  auto *view = w.mod_view();
+  REQUIRE(view != nullptr);
+  REQUIRE(pump_until([&] {
+    return find_mod_row(view, QStringLiteral("PlainMod")) >= 0;
+  }));
+
+  auto *bar = w.findChild<ui::StatusBar *>();
+  REQUIRE(bar != nullptr);
+  // Nothing has asked Nexus anything yet: the notice starts empty.
+  CHECK(bar->update_notice().isEmpty());
+
+  // The real gesture: the row context menu's "All Mods" submenu.
+  const int row = find_mod_row(view, QStringLiteral("PlainMod"));
+  REQUIRE(row >= 0);
+  const QRect cell = view->visualRect(view->model()->index(row, 0));
+  REQUIRE(cell.isValid());
+
+  QMenu *menu     = nullptr;
+  QMenu *all_mods = nullptr;
+  QTimer::singleShot(0, [&] {
+    menu = qobject_cast<QMenu *>(QApplication::activePopupWidget());
+    if (!menu)
+      return;
+    for (auto *a : menu->actions())
+      if (a->text() == QStringLiteral("All Mods") && a->menu()) {
+        all_mods = a->menu();
+        break;
+      }
+    if (all_mods) {
+      for (auto *a : all_mods->actions())
+        if (a->text() == QStringLiteral("Check for Nexus Mod Updates")) {
+          a->trigger();
+          break;
+        }
+    }
+    menu->close();
+  });
+  QContextMenuEvent ctx(QContextMenuEvent::Mouse, cell.center(),
+                        view->viewport()->mapToGlobal(cell.center()));
+  QCoreApplication::sendEvent(view->viewport(), &ctx);
+  REQUIRE(menu != nullptr);
+  REQUIRE(all_mods != nullptr);
+
+  // The sweep runs on the worker thread and its Report comes back through a
+  // queued signal, so pump the loop rather than assuming it landed.
+  REQUIRE(pump_until([&] {
+    return !bar->update_notice().isEmpty();
+  }));
+
+  // A sweep that completed and had nothing of ours on Nexus: an answer, not a
+  // warning. The wording matters - if the driver had reported a failure here
+  // the user would see a warning over an instance with no Nexus mods in it.
+  CHECK_FALSE(bar->update_notice_is_warning());
+  CHECK(bar->update_notice().contains(QStringLiteral("No Nexus mods")));
+
+  fs::remove_all(root);
+}
+
+// ---------------------------------------------------------------------------
+// The TOOLBAR button for the same sweep.
+//
+// The sweep shipped reachable only from the mod list context menu, so a user
+// who never right-clicks the mod list never learns the feature exists. This
+// asserts the button is WIRED to the proven path and not merely present: it
+// clicks the real toolbar button and requires the PERSISTENT update notice.
+//
+// The button is the FORCED entry point (the context menu entry keeps the cheap
+// cached sweep). Forcing only changes how many mods the sweep asks Nexus
+// about, and this instance has no Nexus-sourced mod at all, so both entries
+// reach the same proven path here - which is what this test is about.
+//
+// update_notice() is the assertion that carries the weight. It is set only by
+// set_update_notice(), which on this path is called from
+// ModListController::on_nexus_update_finished() with a Report that came back off
+// the NexusUpdateThread. The transient StatusBar::set_status() text a guard
+// writes cannot produce it, so every early return in check_mod_updates() - no
+// domain, no API key, no instance, already running - leaves the notice empty
+// and fails here. A decorative button, or one whose connect was dropped, fails
+// the same way.
+// ---------------------------------------------------------------------------
+TEST_CASE("MainWindow: the toolbar update button runs the same proven sweep",
+          "[ui][harness]") {
+  const fs::path root     = make_case_root("gmm_qs50_nexusupdbtn");
+  const fs::path inst_dir = root / "instances";
+
+  qputenv("QT_QPA_PLATFORM", "offscreen");
+  int app_argc     = 1;
+  char app_argv0[] = "main_window_harness_test";
+  char *app_argv[] = {app_argv0, nullptr};
+  QApplication app(app_argc, app_argv);
+  QCoreApplication::setOrganizationName("GameModManager");
+  QCoreApplication::setApplicationName("GameModManager");
+
+  // Same reasoning as the menu case above: a key that is not a real key, in a
+  // throwaway XDG_CONFIG_HOME, and an instance with no Nexus-sourced mod, so
+  // the sweep answers from its own logic and never reaches api.nexusmods.com.
+  engine::Source::Nexus::Auth::instance().set_api_key("harness-not-a-real-key");
+  REQUIRE(engine::Source::Nexus::Auth::instance().has_api_key());
+
+  auto inst           = engine::Instance::installed("TestGame", inst_dir);
+  inst.info().game_id = "testgame";
+  REQUIRE(inst.create_directories());
+  REQUIRE(inst.write_toml());
+  const fs::path inst_root = inst.info().root;
+  const fs::path mods_dir =
+      engine::Instance::from_root(inst_root).path_for(engine::InstanceKind::Mods);
+  fs::create_directories(mods_dir / "PlainMod");
+  write_file(mods_dir / "PlainMod" / "meta.ini", "[General]\npriority=0\n");
+
+  engine::GameKnowledge knowledge;
+  knowledge.set("testgame", "mods_subpath", "Mods");
+
+  engine::PluginLoader loader;
+  engine::PluginInfo info;
+  info.game_id      = "testgame";
+  info.game_support = true;
+  info.nexus_domain = "skyrimspecialedition";
+  loader.plugins_mutable().push_back(info);
+
+  ui::MainWindow w;
+  w.set_game_knowledge(&knowledge);
+  w.set_plugin_loader(&loader);
+  w.show();
+  w.set_game_info("testgame", "Test Game", "Default", {}, inst_root);
+  REQUIRE(pump_until([&w] {
+    return !w.is_loading();
+  }));
+
+  auto *bar = w.findChild<ui::StatusBar *>();
+  REQUIRE(bar != nullptr);
+  auto *toolbar = w.findChild<ui::MainToolbar *>();
+  REQUIRE(toolbar != nullptr);
+  CHECK(bar->update_notice().isEmpty());
+
+  // The real button, found the way a user finds it: by what the toolbar built.
+  // The tooltip is the lookup key AND the only label the button has (it is
+  // ToolButtonIconOnly), so it states what the click actually does: this is
+  // the FORCED sweep, which ignores the per-mod lastnexusquery cache.
+  QToolButton *check_updates_btn = nullptr;
+  for (auto *b : toolbar->findChildren<QToolButton *>())
+    if (b->toolTip() == QStringLiteral("Check every mod on Nexus for updates")) {
+      check_updates_btn = b;
+      break;
+    }
+  REQUIRE(check_updates_btn != nullptr);
+  REQUIRE(check_updates_btn->isEnabled());
+
+  check_updates_btn->click();
+
+  REQUIRE(pump_until([&] {
+    return !bar->update_notice().isEmpty();
+  }));
+
+  // Same verdict the menu entry produces, from the same Report: an answer, not
+  // a warning.
+  CHECK_FALSE(bar->update_notice_is_warning());
+  CHECK(bar->update_notice().contains(QStringLiteral("No Nexus mods")));
+
+  fs::remove_all(root);
+}
+
+// ---------------------------------------------------------------------------
+// The IGNORE control, and the consumer it has to reach.
+//
+// Landing the sweep without this would be the same defect one layer up: the
+// engine wrote ignoredVersion, load_meta_for_mods() read it and the model
+// honoured it, but nothing could ever SET it - a read half wired to a write
+// half nobody calls. So this drives the REAL row-menu action and asserts the
+// badge it is supposed to clear actually cleared.
+//
+// The meta.ini is seeded with exactly what a finished sweep writes, so the row
+// starts badged and the sweep never runs: no request, no network, no key.
+// ---------------------------------------------------------------------------
+TEST_CASE("MainWindow: Ignore This Update clears the Version badge", "[ui][harness]") {
+  const fs::path root     = make_case_root("gmm_nexus_ignore");
+  const fs::path inst_dir = root / "instances";
+
+  qputenv("QT_QPA_PLATFORM", "offscreen");
+  int app_argc     = 1;
+  char app_argv0[] = "main_window_harness_test";
+  char *app_argv[] = {app_argv0, nullptr};
+  QApplication app(app_argc, app_argv);
+  QCoreApplication::setOrganizationName("GameModManager");
+  QCoreApplication::setApplicationName("GameModManager");
+
+  auto inst           = engine::Instance::installed("TestGame", inst_dir);
+  inst.info().game_id = "testgame";
+  REQUIRE(inst.create_directories());
+  REQUIRE(inst.write_toml());
+  const fs::path inst_root = inst.info().root;
+  const fs::path mods_dir =
+      engine::Instance::from_root(inst_root).path_for(engine::InstanceKind::Mods);
+
+  // What UpdateCheck::run() writes into a mod's own meta.ini when Nexus offers
+  // a newer file: the engine verdict, the newest version string, and no
+  // ignore yet. The source marker is [GameModManager] source_type, which is
+  // the key ModMeta::source_type() reads and the only one the sweep itself
+  // filters on - [General] sourceType is not it.
+  fs::create_directories(mods_dir / "NexusMod");
+  write_file(mods_dir / "NexusMod" / "meta.ini", "[General]\n"
+                                                 "version=1.0\n"
+                                                 "newestversion=2.0\n"
+                                                 "nexus_update=true\n"
+                                                 "\n[Nexusmods]\n"
+                                                 "modid=123\n"
+                                                 "fileid=456\n"
+                                                 "\n[GameModManager]\n"
+                                                 "source_type=nexus\n"
+                                                 "source_id=123\n");
+
+  engine::GameKnowledge knowledge;
+  knowledge.set("testgame", "mods_subpath", "Mods");
+
+  engine::PluginLoader loader;
+  engine::PluginInfo info;
+  info.game_id      = "testgame";
+  info.game_support = true;
+  info.nexus_domain = "skyrimspecialedition";
+  loader.plugins_mutable().push_back(info);
+
+  ui::MainWindow w;
+  w.set_game_knowledge(&knowledge);
+  w.set_plugin_loader(&loader);
+  w.show();
+  w.set_game_info("testgame", "Test Game", "Default", {}, inst_root);
+  REQUIRE(pump_until([&w] {
+    return !w.is_loading();
+  }));
+
+  auto *view = w.mod_view();
+  REQUIRE(view != nullptr);
+  REQUIRE(pump_until([&] {
+    return find_mod_row(view, QStringLiteral("NexusMod")) >= 0;
+  }));
+
+  const int row = find_mod_row(view, QStringLiteral("NexusMod"));
+  REQUIRE(row >= 0);
+  auto *model     = view->model();
+  const auto cell = model->index(row, ui::ModList::Version);
+
+  // Before: the model has taken the verdict on. The TOOLTIP is the decisive
+  // signal - it is text the model builds out of the verdict, with no icon asset
+  // involved - and the decoration's presence says the badge cell is live.
+  //
+  // Deliberately NOT asserting the icon is non-null: icon packs are staged
+  // beside the binary, and under ctest resources/ is not populated, so the
+  // pixmap decodes to nothing even when the badge is correctly switched on.
+  // Whether the artwork actually paints is the user's GUI check.
+  REQUIRE(cell.data(Qt::ToolTipRole).toString() ==
+          QStringLiteral("Newest version on Nexus: 2.0"));
+  REQUIRE(cell.data(Qt::DecorationRole).isValid());
+
+  // The real gesture: the row context menu.
+  const QRect geom = view->visualRect(model->index(row, 0));
+  REQUIRE(geom.isValid());
+
+  QMenu *menu = nullptr;
+  QTimer::singleShot(0, [&] {
+    menu = qobject_cast<QMenu *>(QApplication::activePopupWidget());
+    if (!menu)
+      return;
+    for (auto *a : menu->actions())
+      if (a->text() == QStringLiteral("Ignore This Update")) {
+        a->trigger();
+        break;
+      }
+    menu->close();
+  });
+  // Safety watchdog so a failed menu dance FAILS instead of hanging.
+  QTimer::singleShot(10000, [] {
+    if (auto *popup = QApplication::activePopupWidget())
+      popup->close();
+  });
+  QContextMenuEvent ctx(QContextMenuEvent::Mouse, geom.center(),
+                        view->viewport()->mapToGlobal(geom.center()));
+  QCoreApplication::sendEvent(view->viewport(), &ctx);
+  REQUIRE(menu != nullptr);
+
+  // The badge clears synchronously (the handler re-reads the metas inline), so
+  // pump just enough for the event that triggers it to have been delivered.
+  REQUIRE(pump_until([&] {
+    return !cell.data(Qt::ToolTipRole)
+                .toString()
+                .contains(QStringLiteral("Newest version on Nexus"));
+  }));
+  CHECK_FALSE(cell.data(Qt::DecorationRole).isValid());
+
+  // The persisted half: the version the user turned away from is recorded in
+  // the MOD's own meta.ini, so the ignore survives a restart.
+  const engine::ModMeta after = engine::ModMeta::load(mods_dir, "NexusMod");
+  CHECK(after.get("General", "ignoredVersion") == "2.0");
+  CHECK(after.get("General", "nexus_update") == "true");  // the verdict is kept
+
+  // And the menu offers the way back, now that something is being ignored.
+  auto *bar = w.findChild<ui::StatusBar *>();
+  REQUIRE(bar != nullptr);
+  CHECK(bar->update_notice().isEmpty());  // ignoring one mod says nothing global
 
   fs::remove_all(root);
 }

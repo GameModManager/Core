@@ -172,6 +172,12 @@ gmm_catch2_test(category_per_game_test engine/category_per_game_test.cpp
     PROPERTIES TIMEOUT 120)
 gmm_catch2_test(nexus_categories_test engine/nexus_categories_test.cpp
     PROPERTIES TIMEOUT 120)
+# Nexus mod-update sweep: the cost rule (a settled library owes no per-mod
+# request) and the refusal contract (a refused check is never renderable as
+# "no updates"). TIMEOUT because a case that reaches libcurl would sit in a
+# 30s DNS timeout rather than failing fast.
+gmm_catch2_test(nexus_update_check_test engine/nexus_update_check_test.cpp
+    PROPERTIES TIMEOUT 120)
 # A digest mismatch must discard the bad bytes, not leave a resumable orphan
 # (Workspace-wrx7). TIMEOUT for the same reason as the three above.
 gmm_catch2_test(fetch_stage_digest_test engine/fetch_stage_digest_test.cpp
@@ -908,7 +914,11 @@ gmm_catch2_test(error_popup_test ui/error_popup_test.cpp
 # binary are needed.
 gmm_catch2_test(main_window_harness_test ui/main_window_harness_test.cpp
     UI
-    LIBS gmm_ui Qt6::Test PkgConfig::ZLIB)
+    LIBS gmm_ui Qt6::Test PkgConfig::ZLIB
+    # A real window, real modals and a worker thread all in one binary: this is
+    # the target that hangs offscreen, so it gets a ceiling rather than
+    # running until ctest's global default.
+    PROPERTIES TIMEOUT 300)
 
 # Workspace-czc0: the load-order / mod-list backup and restore points, driven
 # through the real window's four toolbar buttons with QTest clicks, asserting
