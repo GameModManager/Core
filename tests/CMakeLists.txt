@@ -629,6 +629,14 @@ gmm_catch2_test(mod_list_model_test ui/mod_list_model_test.cpp
     # tree gives the coexistence case real icons to compare.
     DEFINES GMM_TEST_RESOURCES_DIR="${PROJECT_SOURCE_DIR}/resources")
 
+# Scroll-frame cost measurement (Workspace-lb45). Prints the per-frame model
+# cost of one mod-list repaint; TIMEOUT so a wedged measurement goes red
+# instead of hanging CI.
+gmm_catch2_test(scroll_frame_bench ui/scroll_frame_bench.cpp
+    UI
+    LIBS gmm_ui
+    PROPERTIES TIMEOUT 120)
+
 # Settings > Workarounds > Network: the custom browser actually receives the URL
 # (a real recorder program is started, not just a getter round-trip).
 gmm_catch2_test(web_link_test ui/web_link_test.cpp
