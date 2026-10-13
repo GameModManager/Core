@@ -34,6 +34,10 @@
 #include <string_view>
 #include <vector>
 
+namespace engine {
+class ModMeta;
+}
+
 namespace engine::Source::Nexus::UpdateCheck {
 
 // The window asked of updated.json. A wider window costs exactly the same
@@ -59,7 +63,7 @@ struct InstalledMod {
   int64_t last_checked        = 0;  // [Nexusmods] lastnexusquery, Unix seconds;
                                     // 0 means never checked
   std::string newest_version;       // [General] newestversion (or MO2's casing)
-  std::string ignored_version;      // [General] ignoredversion
+  std::string ignored_version;      // [General] ignoredVersion
 };
 
 // Parse an updated.json body. Returns false (and leaves `out` untouched) for
@@ -70,7 +74,7 @@ bool parse_updated(const std::string &body, std::vector<UpdatedMod> &out);
 
 // One mod's `files.json` answer: the ids Nexus still serves, the version
 // string of the newest of them (which is what `newestversion` displays and
-// what `ignoredversion` has to match), and the version string of OUR OWN
+// what `ignoredVersion` has to match), and the version string of OUR OWN
 // installed file.
 //
 // That last one is not decoration. `data.files[]` names every file the mod has
@@ -222,5 +226,20 @@ Report run(const std::string &nexus_domain, const std::string &api_key,
 // suppress nothing.
 bool set_ignored_version(const std::filesystem::path &mods_dir,
                          const std::string &folder, bool ignore);
+
+// The ignored version already recorded in a mod's meta.ini, under whichever
+// spelling that file carries.
+//
+// MO2's key is `ignoredVersion` (modinforegular.cpp:96 reads it, :260 writes
+// it); this app used to write and read only the all-lowercase `ignoredversion`.
+// The mismatch was silent in both directions - an ignore set in MO2 was dropped
+// on import, and saving here left both spellings in one file. The lowercase
+// form is still accepted on read so meta.ini files already on disk are not
+// treated as "nothing ignored"; set_ignored_version() clears it once it writes,
+// so a file never keeps a stale twin that would resurrect the ignore.
+//
+// Public because the mod list resolves the same key to paint the same badge:
+// one reader, so the two cannot disagree about what the user ignored.
+std::string read_ignored_version(const ModMeta &meta);
 
 }  // namespace engine::Source::Nexus::UpdateCheck

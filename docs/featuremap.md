@@ -404,7 +404,7 @@ port - their cited GMM symbol names were invented, the features are not.
 | U116 Rename toasts ("Invalid name", "Name is already in use") | ✅ `modlist.cpp:490-496` | ✅ 4 warnings wired through apply_rename - `mod_actions.cpp:627` | ✅ · |
 | U117 Mod remove confirmation dialog | ✅ `modlist.cpp:1233-1234` | ✅ 3/3 destructive paths confirm, trashes + restore note - `mod_actions.cpp:115` | ✅ · |
 | U201 meta.ini full key set (~29 keys incl. Endorsed/Abstained, tracked, nexus*) | ✅ `modinfo.cpp:80-330` | ⚠️ core keys only, 29-key set unproven - `mod_meta.cpp:117` | ⚠️ · |
-| U202 meta.ini version / newestVersion / ignoredVersion keys | ✅ `modinforegular.cpp` | ⚠️ newestVersion only, ignoredVersion unproven - `nexus_source_panel.cpp:255` | ⚠️ · |
+| U202 meta.ini version / newestVersion / ignoredVersion keys | ✅ `modinforegular.cpp` | ✅ MO2's exact casing for all three - `update_check.cpp` (`ignoredVersion`) + `mod_meta.cpp` (`version`) | ✅ · |
 | U203 meta.ini modId / fileId / repository / gameName keys | ✅ `modinforegular.cpp` | ⚠️ modid + repository only - `mod_meta.cpp:736` | ⚠️ · |
 | U204 meta.ini category (primary) / categories CSV | ✅ `modinfo.cpp` | ✅ category=0 write + CSV parse - `mod_meta.cpp:739` | ✅ · |
 | U205 meta.ini comments / notes / color (hex) | ✅ `modinfo.cpp` | ⚠️ store exists, accessors unproven - `mod_meta.cpp:292` | ⚠️ · |
@@ -512,7 +512,7 @@ port - their cited GMM symbol names were invented, the features are not.
 |---------|-----|-----|--------|
 | Version checking (installed vs newest) | ✅ `ModInfo::updateAvailable` | ✅ `has_update()` + `newestVersion` in meta - `mod_update_db_client.h:150` | ✅ · |
 | Newest version tracking | ✅ `ModInfo::newestVersion()` | ✅ `ModInfoResult::newest_version` + meta key - `provider.h:16` | ✅ · |
-| Ignored version | ✅ `ModInfo::ignoredVersion()` | ✅ per-mod meta.ini key + row-menu Ignore/Stop Ignoring - `engine/source/nexus/update_check.cpp:455` | ✅ · |
+| Ignored version | ✅ `ModInfo::ignoredVersion()` | ✅ MO2-spelled `[General] ignoredVersion`, lowercase still read, row-menu Ignore/Stop Ignoring - `engine/source/nexus/update_check.cpp` | ✅ · |
 | Downgrade detection | ✅ `ModInfo::downgradeAvailable()` | ❌ | ❌ · |
 | Batch update check | ✅ `checkAllForUpdate` | ✅ one bulk updated.json + per-mod follow-ups, driver on the All Mods menu - `engine/source/nexus/update_check.cpp:326` | ✅ · |
 | Check update after install | ✅ `Settings::checkUpdateAfterInstallation` | ❌ | ❌ · |

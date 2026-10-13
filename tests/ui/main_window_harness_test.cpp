@@ -2008,7 +2008,7 @@ TEST_CASE("MainWindow: the toolbar update button runs the same proven sweep",
 // The IGNORE control, and the consumer it has to reach.
 //
 // Landing the sweep without this would be the same defect one layer up: the
-// engine wrote ignoredversion, load_meta_for_mods() read it and the model
+// engine wrote ignoredVersion, load_meta_for_mods() read it and the model
 // honoured it, but nothing could ever SET it - a read half wired to a write
 // half nobody calls. So this drives the REAL row-menu action and asserts the
 // badge it is supposed to clear actually cleared.
@@ -2133,7 +2133,7 @@ TEST_CASE("MainWindow: Ignore This Update clears the Version badge", "[ui][harne
   // The persisted half: the version the user turned away from is recorded in
   // the MOD's own meta.ini, so the ignore survives a restart.
   const engine::ModMeta after = engine::ModMeta::load(mods_dir, "NexusMod");
-  CHECK(after.get("General", "ignoredversion") == "2.0");
+  CHECK(after.get("General", "ignoredVersion") == "2.0");
   CHECK(after.get("General", "nexus_update") == "true");  // the verdict is kept
 
   // And the menu offers the way back, now that something is being ignored.
