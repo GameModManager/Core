@@ -235,6 +235,55 @@ TEST_CASE("nexus update sweep: an unreadable answer is named and not stamped",
   REQUIRE(meta.get("Nexusmods", "lastnexusquery").empty());
 }
 
+// The other way a mod gets no verdict WITHOUT the body being unreadable: Nexus
+// answers fine, but our own meta.ini never recorded which file is installed, so
+// there is nothing to compare against. This is the last path where a sweep could
+// answer "no update" for a mod nobody checked - and answering it that way is
+// worse than answering nothing, because it is indistinguishable from a real
+// result and gets stored as one.
+TEST_CASE("nexus update sweep: an undecidable mod is named, never called current",
+          "[engine][nexus]") {
+  using engine::network::FakeNetworkManager;
+  using engine::Source::Nexus::UpdateCheck::run;
+
+  const TempDir tmp("sweep_nofileid");
+  const int64_t now = 1700000000;
+  seed_mod(tmp.root, "NoFileIdMod", 400, 0);  // a Nexus mod we cannot place on Nexus
+
+  auto fake     = std::make_unique<FakeNetworkManager>();
+  auto *fakeptr = fake.get();
+  engine::network::set_instance(std::move(fake));
+
+  engine::network::Response bulk;
+  bulk.http_code = 200;
+  bulk.body      = R"([{"mod_id":400,"latest_file_update":1699999999}])";
+  fakeptr->enqueue_response(bulk);
+
+  // A perfectly good file list - the parse succeeds, so this is NOT the
+  // unreadable-body path; there is simply no installed id to judge it by.
+  engine::network::Response files;
+  files.http_code = 200;
+  files.body      = kRealFilesBody;
+  fakeptr->enqueue_response(files);
+
+  const auto report = run("skyrimspecialedition", "test-key", tmp.root, now);
+  engine::network::set_instance(nullptr);
+
+  REQUIRE(report.ok == true);
+  REQUIRE(report.checked == 1);  // the request was made and the body was fine
+  REQUIRE(report.unreachable.size() == 1);
+  REQUIRE(report.unreachable.front().folder == "NoFileIdMod");
+  REQUIRE_FALSE(report.unreachable.front().reason.empty());
+  REQUIRE(report.updates == 0);
+  REQUIRE_FALSE(report.message.empty());
+
+  const auto meta = engine::ModMeta::load(tmp.root, "NoFileIdMod");
+  // The whole point: no verdict at all. "false" here would be a fabricated
+  // result, and the mod list would read it as a mod that was checked.
+  REQUIRE(meta.get("General", "nexus_update").empty());
+  REQUIRE(meta.get("Nexusmods", "lastnexusquery").empty());
+}
+
 // The cost claim: one bulk request answers every mod, and a mod absent from
 // the window (or untouched since we looked) owes nothing further.
 TEST_CASE("nexus update sweep: only mods whose page moved owe a request") {
