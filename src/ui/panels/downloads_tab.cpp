@@ -14,6 +14,7 @@
 #include <QColor>
 #include <QCoreApplication>
 #include <QDesktopServices>
+#include <QDir>
 #include <QDragEnterEvent>
 #include <QDropEvent>
 #include <QFileSystemWatcher>
@@ -32,6 +33,7 @@
 #include <QObject>
 #include <QProgressBar>
 #include <QPushButton>
+#include <QSettings>
 #include <QTableWidget>
 #include <QTableWidgetItem>
 #include <QTimer>
@@ -1673,6 +1675,19 @@ void DownloadsTab::remove_entry(const std::string &id) {
     }
   }
 
+  // The row's meta goes with it. The meta outlives the archive by design (an
+  // archive deleted from outside the app still restores as a Failed row), so
+  // an explicit Remove has to take the meta too or the row reappears on the
+  // next launch. MO2 removes the meta in removeFile alongside the download.
+  DownloadMeta removed_meta;
+  removed_meta.archive      = entry.file_path;
+  removed_meta.id           = id;
+  removed_meta.partial_file = entry.partial_path.empty()
+                                  ? std::string{}
+                                  : entry.partial_path.filename().string();
+  std::error_code meta_ec;
+  std::filesystem::remove(download_meta_path(removed_meta, downloads_dir_), meta_ec);
+
   const int removed_row = entry.row;
   table_->removeRow(removed_row);
   downloads_.erase(it);
@@ -1686,7 +1701,235 @@ void DownloadsTab::remove_entry(const std::string &id) {
   emit entry_removed(id);
 }
 
+// --- Per-file download meta (MO2 downloadmanager.cpp:88-164, 1771-1799) ---
+//
+// MO2 writes one "<archive>.meta" beside each archive and rebuilds the list
+// by scanning for "*.meta". State is not a stored enum but a set of flags
+// derived in a fixed priority (downloadmanager.cpp:118-126):
+//   paused -> PAUSED, else uninstalled -> UNINSTALLED, else installed ->
+//   INSTALLED, else READY. We write the flags it has a slot for and derive
+//   back the same way.
+
+std::filesystem::path download_meta_path(const DownloadMeta &meta,
+                                         const std::filesystem::path &downloads_dir) {
+  // Prefer the archive, then the partial (a queued row has no archive yet),
+  // then the row id (a queued row has neither on disk). Every branch yields a
+  // name inside the downloads dir, so the "*.meta" scan always finds it.
+  std::filesystem::path base = !meta.archive.empty() ? meta.archive
+                               : !meta.partial_file.empty()
+                                   ? downloads_dir / meta.partial_file
+                                   : downloads_dir / meta.id;
+  return base.string() + ".meta";
+}
+
+bool write_download_meta(const DownloadMeta &meta,
+                         const std::filesystem::path &meta_path) {
+  std::error_code ec;
+  std::filesystem::create_directories(meta_path.parent_path(), ec);
+
+  // MO2's own read path is `QSettings metaFile(metaFileName, IniFormat)`;
+  // writing through the same class keeps the on-disk bytes identical in
+  // shape to a meta MO2 wrote, which is the point of using its format.
+  QSettings s(QString::fromStdString(meta_path.string()), QSettings::IniFormat);
+
+  // MO2 keys, for everything MO2 has a slot for.
+  s.setValue("gameName", QString::fromStdString(meta.nexus_domain));
+  s.setValue("modID", QString::fromStdString(meta.parent_mod_id));
+  s.setValue("fileID", meta.file_id);
+  s.setValue("name", QString::fromStdString(meta.name));
+  s.setValue("url", QString::fromStdString(meta.page_url));
+  s.setValue("repository", QString::fromStdString(meta.source));
+  s.setValue("category", QString::fromStdString(meta.category));
+  // installed/uninstalled/paused/removed, MO2 downloadmanager.cpp:1794-1798.
+  // Failed is our equivalent of MO2's STATE_ERROR, which MO2 also writes as
+  // paused. Downloading and Paused join it deliberately: a transfer cannot
+  // survive the restart - the resume links are in-memory only - and
+  // deserialize() already coerces both to Failed for exactly that reason.
+  // Writing them as "nothing set" would read back as STATE_READY, i.e. a
+  // finished download, for a row whose bytes were never fetched. MO2 encodes
+  // the same fact in the ".unfinished" file-name suffix
+  // (downloadmanager.cpp:111-114) instead of a flag; ours is a flag, and the
+  // outcome is the same.
+  s.setValue("installed", meta.state == DownloadState::Installed);
+  s.setValue("paused", meta.state == DownloadState::Failed ||
+                           meta.state == DownloadState::Downloading ||
+                           meta.state == DownloadState::Paused);
+  s.setValue("removed", meta.hidden);
+
+  // Our keys. QSettings ignores what it does not know, so MO2 reads the file
+  // above without tripping over these.
+  s.setValue("id", QString::fromStdString(meta.id));
+  s.setValue("totalSize", static_cast<qlonglong>(meta.total_size));
+  s.setValue("partialFile", QString::fromStdString(meta.partial_file));
+
+  s.sync();
+  return s.status() == QSettings::NoError;
+}
+
+std::optional<DownloadMeta> read_download_meta(const std::filesystem::path &meta_path) {
+  QSettings s(QString::fromStdString(meta_path.string()), QSettings::IniFormat);
+  // An empty or garbage file parses to no keys at all. That is NOT a
+  // zero-valued meta (which would read as a finished download) - it is an
+  // unreadable one, and the caller must treat it as unknown.
+  if (s.allKeys().isEmpty())
+    return std::nullopt;
+
+  DownloadMeta meta;
+  // The name IS the path: "<archive>.meta" -> "<archive>".
+  meta.archive      = meta_path.parent_path() / meta_path.stem().string();
+  meta.partial_file = s.value("partialFile").toString().toStdString();
+  // A row that never landed its bytes was written beside its PARTIAL (that is
+  // all it had on disk). Leaving "archive" pointing at the partial would hand
+  // the restore path the same file as both archive and partial, so drop it and
+  // let partialFile carry the row, exactly as the legacy manifest did.
+  if (!meta.partial_file.empty() && meta.archive.filename() == meta.partial_file)
+    meta.archive.clear();
+  meta.id            = s.value("id").toString().toStdString();
+  meta.name          = s.value("name").toString().toStdString();
+  meta.source        = s.value("repository").toString().toStdString();
+  meta.page_url      = s.value("url").toString().toStdString();
+  meta.parent_mod_id = s.value("modID").toString().toStdString();
+  meta.file_id       = s.value("fileID").toInt();
+  meta.nexus_domain  = s.value("gameName").toString().toStdString();
+  meta.category      = s.value("category").toString().toStdString();
+  meta.total_size    = static_cast<int64_t>(s.value("totalSize").toLongLong());
+  meta.hidden        = s.value("removed", false).toBool();
+
+  // MO2's derivation order (downloadmanager.cpp:118-126). "removed" is not
+  // part of it: it is visibility, not state, and folding it into the state
+  // would relabel every hidden row as Removed.
+  if (s.value("paused", false).toBool())
+    meta.state = DownloadState::Failed;
+  else if (s.value("installed", false).toBool())
+    meta.state = DownloadState::Installed;
+  else
+    meta.state = DownloadState::Complete;
+
+  // A meta that never learned its own row key (older writer, hand-edited
+  // file) still needs one, or the row cannot be addressed. The archive name
+  // is the same fallback the legacy manifest used for a Manual row.
+  if (meta.id.empty())
+    meta.id = meta.archive.stem().string();
+  return meta;
+}
+
+std::vector<DownloadMeta>
+read_download_metas(const std::filesystem::path &downloads_dir) {
+  std::vector<DownloadMeta> out;
+  if (downloads_dir.empty() || !std::filesystem::is_directory(downloads_dir))
+    return out;
+  const QStringList files = QDir(QString::fromStdString(downloads_dir.string()))
+                                .entryList({QStringLiteral("*.meta")}, QDir::Files);
+  for (const auto &f : files) {
+    auto meta_path = downloads_dir / f.toStdString();
+    if (auto meta = read_download_meta(meta_path)) {
+      out.push_back(*meta);
+      continue;
+    }
+    // Corrupt meta: keep the row rather than dropping it, and let it read
+    // back Failed. Silently reading a damaged meta as a finished download
+    // is the failure this format was adopted to prevent.
+    engine::Logger::instance().warn("downloads: meta '" + meta_path.string() +
+                                    "' holds no readable keys - restored as failed");
+    DownloadMeta broken;
+    broken.archive = meta_path.parent_path() / meta_path.stem().string();
+    broken.id      = broken.archive.stem().string();
+    broken.state   = DownloadState::Failed;
+    out.push_back(std::move(broken));
+  }
+  return out;
+}
+
+bool write_download_metas(const std::vector<DownloadMeta> &metas,
+                          const std::filesystem::path &downloads_dir) {
+  bool all_ok = true;
+  for (const auto &meta : metas) {
+    if (!write_download_meta(meta, download_meta_path(meta, downloads_dir))) {
+      engine::Logger::instance().warn("downloads: could not write meta for '" +
+                                      meta.id + "'");
+      all_ok = false;
+    }
+  }
+  return all_ok;
+}
+
+bool migrate_download_state(const std::vector<DownloadMeta> &metas,
+                            const std::filesystem::path &downloads_dir,
+                            const std::filesystem::path &legacy_manifest) {
+  // Write everything first, remove the legacy manifest only after every meta
+  // has landed. A crash partway through therefore always leaves the old
+  // manifest fully intact and the next run simply repeats the migration
+  // (writing the same meta twice is idempotent), so the user is never left
+  // with neither the old state nor a valid new one.
+  if (!write_download_metas(metas, downloads_dir)) {
+    engine::Logger::instance().warn("downloads: migration incomplete - '" +
+                                    legacy_manifest.string() +
+                                    "' kept, will be retried next run");
+    return false;
+  }
+  std::error_code ec;
+  std::filesystem::remove(legacy_manifest, ec);
+  if (ec)
+    engine::Logger::instance().warn("downloads: could not remove migrated '" +
+                                    legacy_manifest.string() +
+                                    "'; it will be re-migrated next run");
+  return !ec;
+}
+
+std::string metas_to_manifest_json(const std::vector<DownloadMeta> &metas,
+                                   const std::filesystem::path &downloads_dir) {
+  QJsonArray arr;
+  for (const auto &meta : metas) {
+    QJsonObject obj;
+    obj["id"]     = QString::fromStdString(meta.id);
+    obj["name"]   = QString::fromStdString(meta.name);
+    obj["source"] = QString::fromStdString(meta.source);
+    obj["size"]   = meta.total_size > 0 ? format_size(meta.total_size) : QString();
+    // The archive path is not stored in the meta - it IS the meta's name, and
+    // this is where that fact reaches the restore path.
+    obj["file_path"]     = QString::fromStdString(meta.archive.string());
+    obj["partial_file"]  = QString::fromStdString(meta.partial_file);
+    obj["state"]         = static_cast<int>(meta.state);
+    obj["total_size"]    = static_cast<qint64>(meta.total_size);
+    obj["parent_mod_id"] = QString::fromStdString(meta.parent_mod_id);
+    obj["file_id"]       = meta.file_id;
+    obj["domain"]        = QString::fromStdString(meta.nexus_domain);
+    obj["category"]      = QString::fromStdString(meta.category);
+    obj["page_url"]      = QString::fromStdString(meta.page_url);
+    obj["hidden"]        = meta.hidden;
+    arr.append(obj);
+  }
+  QJsonDocument doc(arr);
+  return doc.toJson(QJsonDocument::Compact).toStdString();
+}
+
 // --- Manifest persistence ---
+
+std::vector<DownloadMeta> DownloadsTab::to_metas() const {
+  std::vector<DownloadMeta> metas;
+  metas.reserve(downloads_.size());
+  for (const auto &[id, entry] : downloads_) {
+    DownloadMeta meta;
+    meta.archive = entry.file_path;
+    meta.id      = id;
+    meta.name = entry.name_item ? entry.name_item->text().toStdString() : std::string{};
+    meta.source =
+        entry.source_item ? entry.source_item->text().toStdString() : std::string{};
+    meta.page_url      = entry.page_url;
+    meta.parent_mod_id = entry.parent_mod_id;
+    meta.file_id       = entry.file_id;
+    meta.nexus_domain  = entry.nexus_domain;
+    meta.category      = entry.category;
+    meta.total_size    = entry.total_size;
+    meta.partial_file  = entry.partial_path.empty()
+                             ? std::string{}
+                             : entry.partial_path.filename().string();
+    meta.state         = entry.state;
+    meta.hidden        = entry.hidden;
+    metas.push_back(std::move(meta));
+  }
+  return metas;
+}
 
 std::string DownloadsTab::serialize() const {
   QJsonArray arr;
