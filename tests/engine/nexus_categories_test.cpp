@@ -12,15 +12,35 @@
 // treats a category id as global.
 #include "engine/source/nexus/categories.h"
 
+#include "engine/mod/meta/categories.h"
 #include "engine/plugin_host/category_factory.h"
 
 #include <catch2/catch_test_macros.hpp>
+
+#include <unistd.h>
+
+#include <filesystem>
 
 namespace {
 void check(bool cond, const char *what) {
   INFO(what);
   REQUIRE(cond);
 }
+
+struct TempDir {
+  std::filesystem::path root;
+  TempDir() {
+    root = std::filesystem::temp_directory_path() /
+           ("gmm_nexus_catmap_" + std::to_string(::getpid()));
+    std::error_code ec;
+    std::filesystem::remove_all(root, ec);
+    std::filesystem::create_directories(root);
+  }
+  ~TempDir() {
+    std::error_code ec;
+    std::filesystem::remove_all(root, ec);
+  }
+};
 }  // namespace
 
 using engine::Source::Nexus::CategoryList;
@@ -131,4 +151,139 @@ TEST_CASE("a parsed nexus list reaches the active category set",
   check(orphan == 1, "the row itself still imports");
   check(f.categoryById(900)->parent_id == 0,
         "a parent that does not exist degrades to root, not to a dangling id");
+}
+
+TEST_CASE("an imported category records the nexus mapping, and resolve_nexus_id "
+          "reads it back through the file the UI loads",
+          "[engine][categories]") {
+  // The install-time half of the feature: a mod installed from Nexus carries a
+  // per-game Nexus category id, and the local category it belongs in is only
+  // knowable through the mapping the import wrote. Before this, nothing in the
+  // tree ever wrote a mapping, so resolve_nexus_id() could only ever answer 0.
+  //
+  // MO2 stores the pair of files the same way and resolves at install time:
+  // CategoryFactory::resolveNexusID
+  // (references/modorganizer/src/categories.cpp:513-525), fed by
+  // installationmanager.cpp:668 from the nexuscatmap.dat its own save writes
+  // (categories.cpp:213-226).
+  using engine::Category::Factory;
+
+  TempDir tmp;
+  const std::filesystem::path dat = tmp.root / "categories.dat";
+
+  // --- The import the Categories dialog runs with MO2's default options:
+  // assign on, remap off (categoryimportdialog.ui ships them that way). ---
+  {
+    Factory &f = Factory::instance();
+    f.activate_game("nexusresolgame");
+    f.import_external({{1, "Animations", 0}, {52, "Poses", 1}},
+                      Factory::ImportMode::Merge,
+                      /*assign=*/true, /*remap=*/false);
+
+    check(f.resolve_nexus_id(1) == 1, "an imported Nexus id resolves to its own row");
+    check(f.resolve_nexus_id(52) == 52,
+          "a child category carries its mapping too, not just the root");
+    check(f.resolve_nexus_id(999) == 0, "an id nobody imported is unmapped, i.e. None");
+
+    // A mapping whose category has since been removed must not resolve to a
+    // dangling id - MO2 checks its ID map for exactly this and returns 0
+    // (categories.cpp:517-521).
+    f.removeCategory(52);
+    check(f.resolve_nexus_id(52) == 0,
+          "a mapping pointing at a removed category resolves to None, not to its id");
+
+    f.save(dat);
+    check(std::filesystem::exists(tmp.root / "nexuscatmap.dat"),
+          "the mapping is persisted beside categories.dat, as MO2 keeps it");
+  }
+
+  // --- A fresh session: the factory is rebuilt from disk, and the OTHER store
+  // that reads it - engine::Categories, the one the mod list and the Mod Info
+  // Categories tab already load from the instance root - finds the mapping.
+  // That consumer is the whole point: an installed mod lands in the right local
+  // category only if this resolves. ---
+  {
+    Factory &f = Factory::instance();
+    f.activate_game("nexusresolgame");
+    f.load(dat);
+    check(f.resolve_nexus_id(1) == 1, "the mapping survives a reload from disk");
+
+    const engine::Categories cats = engine::Categories::load(tmp.root);
+    const auto *mapped            = cats.category_for_nexus(1);
+    check(mapped != nullptr, "the installed-mod consumer resolves the Nexus id");
+    check(mapped && mapped->id == 1 && mapped->name == "Animations",
+          "and it lands on the internal category, not on a copy of the Nexus id");
+  }
+
+  // --- remap: the option MO2 offers for a category the user already has, under
+  // their own local id (categoriesdialog.cpp:330-354). ---
+  {
+    Factory &f = Factory::instance();
+    f.activate_game("nexusremapgame");
+    // The user's own row: local id 700, named "Animation Replacers".
+    f.addCategory(700, "Animation Replacers", 0);
+
+    // Nexus id 52 is "Animation Replacers" for this game. Matching is by name,
+    // so the import must attach 52 to the user's row 700 rather than adding a
+    // second "Animation Replacers" carrying the Nexus id.
+    const int added =
+        f.import_external({{52, "Animation Replacers", 0}}, Factory::ImportMode::Merge,
+                          /*assign=*/false, /*remap=*/true);
+    check(added == 0, "remap adds no row: the name was already in the list");
+    check(!f.categoryExists(52), "and in particular no duplicate under the Nexus id");
+    check(f.resolve_nexus_id(52) == 700,
+          "remap points the Nexus id at the user's own category of that name");
+    check(f.categoryById(700)->name == "Animation Replacers",
+          "the user's row is untouched - an import never rewrites a category");
+  }
+
+  // --- remap off, assign off: the category the user already has is left
+  /// alone and no mapping is written, so an installed mod still has nothing to
+  // resolve. This is the case the single-button import used to be in, silently.
+  {
+    Factory &f = Factory::instance();
+    f.activate_game("nexusassignoffgame");
+    f.addCategory(800, "Audio", 0);
+    const int added = f.import_external({{3, "Audio", 0}}, Factory::ImportMode::Merge,
+                                        /*assign=*/false, /*remap=*/false);
+    check(added == 0, "with remap off an already-present name is not duplicated");
+    check(f.resolve_nexus_id(3) == 0,
+          "and with assign off too there is deliberately no mapping to resolve");
+  }
+
+  // --- assign off, remap off: a name nobody has yet still imports as a row,
+  // it just carries no mapping. That is the difference the two options make. ---
+  {
+    Factory &f = Factory::instance();
+    f.activate_game("nexusassignoffnew");
+    f.import_external({{1, "Audio", 0}}, Factory::ImportMode::Merge,
+                      /*assign=*/false, /*remap=*/false);
+    check(f.categoryExists(1), "the category itself still imports");
+    check(f.resolve_nexus_id(1) == 0,
+          "with assign off there is deliberately no mapping to resolve");
+  }
+
+  // --- Replace drops the mapping too: the table it points into is gone. ---
+  {
+    Factory &f = Factory::instance();
+    f.activate_game("nexusreplacegame");
+    f.import_external({{1, "Audio", 0}}, Factory::ImportMode::Merge);
+    check(f.resolve_nexus_id(1) == 1, "the mapping is there before the replace");
+    f.import_external({{1, "Audio", 0}}, Factory::ImportMode::Replace);
+    check(f.resolve_nexus_id(1) == 1,
+          "Replace re-adds the category and its mapping from the incoming list");
+  }
+
+  // --- A game switch clears the mappings: a Nexus id is per game, so carrying
+  // one game's mapping into another's categories is the cross-game leak
+  // activate_game() exists to stop. ---
+  {
+    Factory &f = Factory::instance();
+    f.activate_game("nexusresolgame");
+    f.import_external({{1, "Animations", 0}}, Factory::ImportMode::Merge);
+    check(f.resolve_nexus_id(1) == 1, "the mapping is there before the switch");
+    f.activate_game("someothergame");
+    check(f.resolve_nexus_id(1) == 0,
+          "switching games drops the mapping along with the category set");
+  }
 }

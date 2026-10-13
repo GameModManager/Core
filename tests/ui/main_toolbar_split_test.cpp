@@ -16,11 +16,16 @@
 // off QToolButton::mousePressEvent, which is where the regression lives.
 //
 // NOT covered: the arrow half (a press in the menu area opening the menu).
-// It cannot be driven headless - QToolButton::showMenu() BLOCKS under the
-// offscreen platform, while a bare QMenu::popup() on the same parent does
-// not (measured, see the report). What is asserted instead is the property
-// Qt documents for that half: "MenuButtonPopup ... the menu is displayed when
-// the arrow part of the button is pressed", with a menu actually attached.
+// It cannot be driven headless - QToolButton::showMenu() calls
+// QMenu::popup(), which enters a nested event loop that only returns when the
+// menu is dismissed, and nothing headless can dismiss it (the offscreen
+// platform has no user to click away). That is an artifact of the platform,
+// not a product path: on a real display the click that opens the menu is
+// followed by the click that closes it. What is asserted instead is the
+// property Qt documents for that half: "MenuButtonPopup ... the menu is
+// displayed when the arrow part of the button is pressed", with a menu
+// actually attached - and, first of all, the mode assertion, which now runs
+// BEFORE the body click so a regression is a red rather than a wedge.
 #include "ui/widgets/main_toolbar.h"
 
 #include <QApplication>
@@ -104,22 +109,26 @@ TEST_CASE("instance options toolbar button is a split button", "[ui][toolbar]") 
   toolbar.set_instance_options_menu(menu);
   check(button->menu() == menu, "the arrow half needs a menu to open");
 
-  // The behaviour the mode below protects: with a menu attached, a click on the
+  // The regression itself, asserted BEFORE the click below. Under the
+  // regressed InstantPopup mode that click is swallowed by
+  // QToolButton::showMenu(), which calls QMenu::popup() - a NESTED EVENT LOOP
+  // that returns when the menu is dismissed. Nothing can dismiss a menu
+  // headless, so the loop never returns and the process wedges there; an
+  // assertion placed after the click can therefore never report the very
+  // regression that causes the wedge. Asserted first, the mode is a plain
+  // property read and the regressed build goes red before it can block.
+  check(button->popupMode() == QToolButton::MenuButtonPopup,
+        "attaching a menu must not turn the button into InstantPopup, whose "
+        "whole contract is that the body click no longer fires the action");
+
+  // The behaviour the mode above protects: with a menu attached, a click on the
   // BODY (the left edge, well clear of the menu area Qt reserves on the right)
   // still reaches the consumer - MainWindow connects this signal to
-  // TabModeController::route_instance_options (main_window.cpp:161-162). Under
-  // the regressed InstantPopup mode this click never reaches the assertion: it
-  // is swallowed by showMenu() and, headless, blocks there forever.
+  // TabModeController::route_instance_options (main_window.cpp:161-162).
   press_and_release(button, 1);
   QApplication::processEvents();
   check(panel_opens == 2,
         "a body click still opens the panel once the dropdown menu is attached");
-
-  // The regression itself. Asserted after the click above on purpose, so the
-  // failing mode is reported as a clean red and not as the block it causes.
-  check(button->popupMode() == QToolButton::MenuButtonPopup,
-        "attaching a menu must not turn the button into InstantPopup, whose "
-        "whole contract is that the body click no longer fires the action");
 
   // Detaching the menu must not cost the body half either.
   toolbar.set_instance_options_menu(nullptr);
