@@ -55,6 +55,25 @@ std::string read_file(const fs::path &p) {
 
 TEST_CASE("git ops run against a real mod repository", "[ui]") {
   qputenv("QT_QPA_PLATFORM", "offscreen");
+
+  // A committer identity for the child git processes, and nothing else.
+  //
+  // The suite runs with HOME redirected at a throwaway directory (the QSettings
+  // writer resolves $HOME directly, so redirecting only XDG_CONFIG_HOME is not
+  // isolation enough), which means the developer's ~/.gitconfig is not visible
+  // here - and git refuses to commit without an author. So the identity comes
+  // from the environment: GIT_AUTHOR_*/GIT_COMMITTER_* are what git reads when
+  // there is no config, and putting them on THIS process means every git this
+  // test spawns inherits them, including the ones ui::gitops spawns for itself.
+  //
+  // Deliberately NOT a config file: reading the real one would make the test
+  // depend on the machine it runs on, and writing one would put a file in a
+  // HOME that other tests share. Nothing here writes to a real ~/.gitconfig.
+  qputenv("GIT_AUTHOR_NAME", "gmm test");
+  qputenv("GIT_AUTHOR_EMAIL", "gmm-test@example.invalid");
+  qputenv("GIT_COMMITTER_NAME", "gmm test");
+  qputenv("GIT_COMMITTER_EMAIL", "gmm-test@example.invalid");
+
   int test_argc     = 1;
   char test_argv0[] = "test";
   char *test_argv[] = {test_argv0, nullptr};
@@ -76,8 +95,6 @@ TEST_CASE("git ops run against a real mod repository", "[ui]") {
   REQUIRE(sh(root, {"init", "--quiet", "upstream"}) == 0);
   fs::create_directories(upstream / "Data");
   write(upstream / "Data" / "plugin.esp", "v1\n");
-  REQUIRE(sh(upstream, {"config", "user.email", "t@t"}) == 0);
-  REQUIRE(sh(upstream, {"config", "user.name", "t"}) == 0);
   REQUIRE(sh(upstream, {"add", "-A"}) == 0);
   REQUIRE(sh(upstream, {"commit", "--quiet", "-m", "one"}) == 0);
 

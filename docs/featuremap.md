@@ -675,7 +675,7 @@ port - their cited GMM symbol names were invented, the features are not.
 | Compact downloads view | ✅ `compactDownloads` | ✅ `apply_compact_style` / `row_height` - `downloads_tab.cpp:302` | ✅ ✔ |
 | Drag-and-drop import | ❌ | 🚀 drop moves/copies + "Manual" row; single link -> Add-from-URL - `downloads_tab.cpp:844` | 🚀 ✔ |
 | Directory watcher (auto-detect) | ❌ | 🚀 `QFileSystemWatcher`, 200 ms debounce, re-armed on switch - `downloads_tab.cpp:470`; a 0-byte file in the dir is not surfaced as a download - `downloads_tab.cpp:1057` | 🚀 ✔ |
-| Manifest serialization (JSON) | 🚫 MO2 has no JSON manifest - state is per-file `"<archive>.meta"`, QSettings IniFormat, beside each archive (`downloadmanager.cpp:88-164`, `:1771-1799`), rebuilt by an `*.meta` dir scan (`:412`) | 🚀 per-file `"<archive>.meta"` in MO2's format and location - `write_download_meta` `downloads_tab.cpp:1725`, `read_download_metas` `downloads_tab.cpp:1817`; no JSON on disk, `metas_to_manifest_json` is only an in-memory bridge into the one restore path - `downloads_tab.cpp:1879`; one-way off the legacy single-file manifest, removed only after every meta lands - `migrate_download_state` `downloads_tab.cpp:1856`; a restored Complete/Installed row whose archive is missing, empty or short of its recorded size comes back Failed - `archive_is_complete` `downloads_tab.cpp:120` | 🚀 ✔ |
+| Manifest serialization (JSON) | 🚫 MO2 has no JSON manifest - state is per-file `"<archive>.meta"`, QSettings IniFormat, beside each archive (`downloadmanager.cpp:88-164`, `:1771-1799`), rebuilt by an `*.meta` dir scan (`:412`) | 🚀 per-file `"<archive>.meta"` in MO2's format and location - `write_download_meta` `downloads_tab.cpp:1739`, `read_download_metas` `downloads_tab.cpp:1868`; no JSON on disk, `metas_to_manifest_json` is only an in-memory bridge into the one restore path - `downloads_tab.cpp:1943`; one-way off the legacy single-file manifest, removed only after every meta lands - `migrate_download_state` `downloads_tab.cpp:1920`; a restored Complete/Installed row whose archive is missing, empty or short of its recorded size comes back Failed - `archive_is_complete` `downloads_tab.cpp:120` | 🚀 ✔ |
 | Content-Disposition filename parsing | ❌ | 🚀 RFC 6266/5987 incl. `filename*`, `..` reject - `curl_download.cpp:136` | 🚀 ✔ |
 | HTTP Range resume | ❌ | ⚠️ `CURLOPT_RESUME_FROM_LARGE`; repeat link refused first - `downloads_controller.cpp:994` | ⚠️ ✔ |
 | NXM protocol download handler | ✅ `addNXMDownload()` (nxm:// link processing) | ✅ `NxmIpcServer` -> `Uri::Router::parse` -> `handle_nxm_download`; `modl://` shares it - `uri/router.cpp:57` | ✅ ✔ |
@@ -687,7 +687,7 @@ port - their cited GMM symbol names were invented, the features are not.
 | HTTP/2 download support | ✅ `QHttp2Configuration` (16 MiB windows, Windows QNAM) | 🚀 HTTP/3 via `use_http3` with ALPN fallback to HTTP/2 - `network_manager.cpp:800` | 🚀 ✔ |
 | Login-gated resume | ✅ `m_core.loggedInAction(...)` `downloadstab.cpp:112` | ✅ a Nexus resume with neither a still-valid download key nor an API key is refused with the reason - `downloads_controller.cpp:476` | ✅ ✔ |
 | Empty URL resume prevention | ✅ "No known download urls." `downloadmanager.cpp:1072` | ✅ refuses to resume, now posts to the status bar - `downloads_controller.cpp:421` | ✅ ✔ |
-| Orphan meta file cleanup | ✅ `refreshList()` `downloadmanager.cpp` | 🚫 no download sidecar is written, so no orphan class | 🚫 ✔ |
+| Orphan meta file cleanup | ✅ `refreshList()` `downloadmanager.cpp` | 🚀 per-file metas are swept before the list is built, to the trash bin like MO2's `shellDelete` - `meta_is_orphan` `downloads_tab.cpp:1856`, called from `read_download_metas` `downloads_tab.cpp:1878`; swept only when no archive AND no partial is on disk AND the meta is not `paused`, which MO2 sweeps by accident because an in-flight download's bytes are in its `.unfinished` file | 🚀 ✔ |
 | Server preference sorting (mirror priority) | ✅ `ServerByPreference`, `evaluateFileInfoMap()` | 🚫 one signed CDN URL per request, no mirror list to order | 🚫 ✔ |
 | Per-server speed history (persistent stats) | ✅ `ServerInfo` rolling speed list | 🚫 nothing identifies which server served a byte | 🚫 ✔ |
 | Download speed signal for stats persistence | ✅ `downloadSpeed(serverName, bytesPerSecond)` | 🚫 feeds the per-server history; no server name to put on it | 🚫 ✔ |
@@ -1433,7 +1433,7 @@ column.
 | 12. Plugin Management | 32 | 5 | 3 | 11 | 0 | 0 | 0 |
 | 13. LOOT Integration | 11 | 3 | 1 | 5 | 0 | 0 | 0 |
 | 14. Profile Management | 30 | 5 | 3 | 3 | 0 | 0 | 0 |
-| 15. Download Management | 31 | 12 | 6 | 13 | 9 | 0 | 0 |
+| 15. Download Management | 31 | 12 | 7 | 13 | 8 | 0 | 0 |
 | 16. Nexus Integration | 8 | 10 | 2 | 20 | 0 | 0 | 0 |
 | 17. Source Providers | 4 | 0 | 7 | 1 | 0 | 0 | 0 |
 | 18. Mod List Features | 27 | 13 | 3 | 8 | 0 | 0 | 0 |
@@ -1470,7 +1470,7 @@ column.
 | 49. CLI Help Grammar | 0 | 1 | 0 | 1 | 0 | 0 | 0 |
 | 50. My Games Resolution | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
 | 51. Conflict Scan Refresh | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
-| **TOTAL** | **421** | **154** | **177** | **201** | **52** | **38** | **62** |
+| **TOTAL** | **421** | **154** | **178** | **201** | **51** | **38** | **62** |
 
 ### The arithmetic
 
@@ -1481,7 +1481,7 @@ scored rows (ok + part + miss)         776
 MO2 parity        ok   / scored        421 /  776  = 54.3%
 partial           part / scored        154 /  776  = 19.8%
 missing           miss / scored        201 /  776  = 25.9%
-GMM-exclusive     surp / all rows      177 / 1043  = 17.0%   (not scored)
+GMM-exclusive     surp / all rows      178 / 1043  = 17.1%   (not scored)
 ```
 
 **Parity is 421 / 776 = 54.3%.** 201 rows are outright missing and 154 partial.
