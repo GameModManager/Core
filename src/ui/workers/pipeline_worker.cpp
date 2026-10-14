@@ -213,7 +213,8 @@ void PipelineWorker::install_mod(const std::string &id, const std::string &zip_p
                                       " left no mod");
       emit mod_replaced(pipeline_->ctx().replaced_archive);
     }
-    emit install_complete(id, true, "Success", pipeline_->ctx().installed_mod_folder);
+    emit install_complete(id, true, "Success", pipeline_->ctx().installed_mod_folder,
+                          mod.archive_filename);
   } else if (result == engine::PipelineResult::Canceled) {
     // User canceled an interactive stage (FOMOD wizard, overwrite dialog).
     // Not a failure: the download keeps whatever state it had.

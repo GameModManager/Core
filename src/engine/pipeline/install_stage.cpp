@@ -162,6 +162,15 @@ namespace Source {
     // under a new folder name (re-checked in a loop, since the new name may
     // also exist), Cancel aborts. Without a callback the headless default is a
     // silent replace (the behavior before the query dialog existed).
+
+    // Load-order state a Replace would otherwise destroy, carried out of the
+    // folder before it is deleted and read back in when the new meta.ini is
+    // stamped below. MO2 saves the whole of meta.ini around the delete and
+    // restores it (installationmanager.cpp:417-447); we only need the two keys
+    // the install path below does not write itself.
+    int replaced_priority = -1;
+    std::string replaced_separator;
+
     auto dest_dir = mods_dir / folder_name;
     while (std::filesystem::exists(dest_dir)) {
       if (!ctx.overwrite_query_cb) {
@@ -221,6 +230,13 @@ namespace Source {
         const std::string old_archive = old_meta.get("General", "installationfile");
         if (!old_archive.empty())
           ctx.replaced_archive = old_archive;
+        // The same read carries the mod's place in the list. meta.ini dies
+        // with the folder, and nothing below re-derives either key, so without
+        // this the reinstalled mod loses its load-order position and drops out
+        // of its separator (from_default never writes either key, and
+        // priority() reads -1 for an absent one).
+        replaced_priority  = old_meta.priority();
+        replaced_separator = old_meta.get("GameModManager", "separator_id");
         std::error_code ec;
         std::filesystem::remove_all(dest_dir, ec);
       }
@@ -298,8 +314,12 @@ namespace Source {
       auto meta      = ModMeta::load_file(meta_path);
 
       // Reinstall (Merge): keep the persisted priority so the mod holds its
-      // load-order position instead of resetting to the top.
-      const int existing_priority = meta.priority();
+      // load-order position instead of resetting to the top. A Replace has no
+      // meta.ini left to read, so the values carried out of the deleted folder
+      // stand in - without them the branch below can never fire on Replace and
+      // the mod reappears at the bottom of the user band.
+      const int existing_priority =
+          meta.priority() >= 0 ? meta.priority() : replaced_priority;
 
       auto fresh = ModMeta::from_default(
           folder_name,
@@ -343,6 +363,11 @@ namespace Source {
 
       if (existing_priority >= 0)
         meta.set_priority(existing_priority);
+
+      // Separator membership is not derived from anything the install knows, so
+      // it is carried the same way. Empty means the mod was not in a separator.
+      if (meta.separator_id().empty() && !replaced_separator.empty())
+        meta.set_separator_id(replaced_separator);
 
       // For Nexus downloads, add [Nexusmods] section
       if (mod.download_source_type == "nexus" && mod.download_nxm.file_id > 0) {
