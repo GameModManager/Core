@@ -188,6 +188,10 @@ void DownloadsController::setup_pipeline() {
         if (dt) {
           if (success) {
             if (!w_->current_game_id_.empty() && !installed_folder.empty()) {
+              engine::Logger::instance().debug(
+                  "[Flow] install landed in the mod list: id='" + mod_id +
+                  "' folder='" + installed_folder + "' game='" + w_->current_game_id() +
+                  "'");
               engine::Logger::instance().debug("Install finished for " + mod_id +
                                                ", adding " + installed_folder);
               w_->mod_list_->add_installed_mod(installed_folder);
@@ -1283,6 +1287,8 @@ void DownloadsController::check_mod_updates_after_install() {
   const std::string game = w_ ? w_->current_game_id() : std::string();
   if (game.empty())
     return;
+  engine::Logger::instance().debug(
+      "[Flow] update check: fetching the update index for game='" + game + "'");
   QThread::create([game] {
     engine::update::ModUpdateDbClient::instance().fetch_index(game);
   })->start();
@@ -1301,17 +1307,30 @@ void DownloadsController::record_installed_version(const std::string &folder_nam
 
   const std::filesystem::path mods_dir = w_->mods_dir_path();
   auto meta                            = engine::ModMeta::load(mods_dir, folder_name);
-  // A version already on file is the answer - a reinstall kept it, and asking
-  // Nexus to confirm what we would overwrite it with spends a request to
-  // learn nothing.
-  if (!meta.get("General", "version").empty())
+  // Every gate below spends nothing and says nothing, so each one names
+  // itself. "The version never arrived" and "we never asked" are the same
+  // blank cell in the row, and only this line tells them apart.
+  const std::string version_on_file = meta.get("General", "version");
+  const std::string mod_id          = meta.get("Nexusmods", "modid");
+  const std::string file_id_text    = meta.get("Nexusmods", "fileid");
+  const long long file_id = file_id_text.empty() ? 0 : std::stoll(file_id_text);
+  if (!version_on_file.empty()) {
+    engine::Logger::instance().debug("[Flow] installed version: folder='" +
+                                     folder_name + "' skipped, version already " +
+                                     "recorded as '" + version_on_file + "'");
     return;
-
-  const std::string mod_id       = meta.get("Nexusmods", "modid");
-  const std::string file_id_text = meta.get("Nexusmods", "fileid");
-  const long long file_id        = file_id_text.empty() ? 0 : std::stoll(file_id_text);
-  if (mod_id.empty() || file_id <= 0)
+  }
+  if (mod_id.empty() || file_id <= 0) {
+    engine::Logger::instance().debug("[Flow] installed version: folder='" +
+                                     folder_name +
+                                     "' skipped, not a Nexus download (modid='" +
+                                     mod_id + "' fileid='" + file_id_text + "')");
     return;
+  }
+  engine::Logger::instance().debug("[Flow] installed version: folder='" + folder_name +
+                                   "' game='" + game + "' mod_id=" + mod_id +
+                                   " file_id=" + std::to_string(file_id) +
+                                   " -> asking Nexus");
 
   // The request is a blocking network call, so it never runs on the GUI thread
   // the install just unblocked; the write and the row refresh hop back onto it.
