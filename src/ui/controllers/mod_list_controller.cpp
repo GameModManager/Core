@@ -2048,6 +2048,18 @@ void ModListController::add_installed_mod(const std::string &folder_name) {
   update_mod_count_label();
 
   engine::Logger::instance().debug("Added installed mod row: " + folder_name);
+
+  // Which row the install landed in and what it now says. "added" vs
+  // "refreshed" is the one fact a row count cannot explain - a Merge or a
+  // Replace rewrites a row that was already there - and the version on it is
+  // what the user looks for after an update, before anything has asked Nexus.
+  engine::Logger::instance().debug(
+      "[Flow] mod list: folder='" + folder_name +
+      "' row=" + (exists ? std::string("refreshed") : std::string("added")) +
+      " name='" + mod.display_name + "' version='" + mod.version + "' priority=" +
+      std::to_string(mod.priority) + (mod.is_separator ? " separator=true" : "") +
+      (mod.enabled ? "" : " enabled=false") +
+      " rows=" + std::to_string(w_->mod_model_->mods().size()));
 }
 
 void ModListController::focus_installed_mod(const std::string &folder_name) {

@@ -828,6 +828,19 @@ void DownloadsTab::mark_installed(const std::string &id,
   entry.state = DownloadState::Installed;
   replace_bar_with_label(target, tr("Installed"), QColor(), QColor());
 
+  // Which row absorbed the mark, and how it was found. "The archive" is the
+  // fallback MO2 also uses (downloadmanager.cpp:1556-1560) and it is the one
+  // that can silently land on a row the caller never named, so which of the two
+  // lookups answered is part of the answer.
+  engine::Logger::instance().debug(
+      "[Flow] downloads tab: row marked installed id='" + target + "' archive='" +
+      archive_filename + "' matched_by=" +
+      (target == id ? std::string("id")
+                    : (archive_filename == id
+                           ? std::string("archive")
+                           : std::string("archive (id '" + id + "' not a row)"))) +
+      " notice_kept_on_screen=true");
+
   // Show final archive size
   if (entry.total_size > 0) {
     entry.size_item->setText(format_size(entry.total_size));
@@ -1061,8 +1074,11 @@ void DownloadsTab::scan_downloads_dir() {
     add_downloads_dir_file(entry.path());
   }
   engine::Logger::instance().debug(
-      "downloads: scanned " + std::to_string(scanned) +
-      " files, tracked=" + std::to_string(downloads_.size()));
+      "downloads: scanned " + std::to_string(scanned) + " files, tracked=" +
+      std::to_string(downloads_.size()) + " dir=" + downloads_dir_.string());
+  engine::Logger::instance().debug(
+      "[Flow] downloads tab scan: dir=" + downloads_dir_.string() + " files_on_disk=" +
+      std::to_string(scanned) + " rows=" + std::to_string(downloads_.size()));
 
   // Drop rows whose archive file is gone from the dir, so the tab mirrors
   // disk state (the watchdog can't see a file a file manager just deleted).
@@ -1150,6 +1166,11 @@ bool DownloadsTab::add_downloads_dir_file(const std::filesystem::path &path) {
   if (ec)
     added.total_size = 0;
   mark_complete(id, true);
+  engine::Logger::instance().debug(
+      "[Flow] downloads tab: adopted an untracked archive from disk as row '" + id +
+      "' archive='" + path.filename().string() + "' name='" + path.stem().string() +
+      "' source=Manual bytes=" +
+      std::to_string(static_cast<long long>(std::filesystem::file_size(path, ec))));
   engine::Logger::instance().debug("downloads: added Manual entry '" + id +
                                    "' (total=" + std::to_string(downloads_.size()) +
                                    ")");
@@ -1270,6 +1291,12 @@ void DownloadsTab::apply_installed_filter() {
     return;
   const bool hide    = hide_installed_->isChecked();
   const QString text = current_filter_text_;
+  // One line per pass, not per row: the pass is what has to be legible when a
+  // row is on screen that should not be. A ticked "Hide installed" that leaves
+  // an Installed row visible looks exactly like a filter that is not wired, so
+  // the counts - hidden, held open by an install notice, kept by the text
+  // filter - are the answer, and they are all a single line.
+  int hidden = 0, held = 0, text_hidden = 0;
   for (const auto &[id, entry] : downloads_) {
     // A row the user hid through the batch actions stays hidden until
     // "Un-Hide All..." clears the flag OR the "Hidden files" box shows them
@@ -1282,6 +1309,7 @@ void DownloadsTab::apply_installed_filter() {
     // next filter pass.
     if (entry.hidden && !show_hidden_) {
       table_->setRowHidden(entry.row, true);
+      ++hidden;
       continue;
     }
     // "Hide installed" always wins over the text filter - except for a row an
@@ -1289,8 +1317,11 @@ void DownloadsTab::apply_installed_filter() {
     // readable at all (DownloadEntry::installed_notice).
     if (hide && entry.state == DownloadState::Installed && !entry.installed_notice) {
       table_->setRowHidden(entry.row, true);
+      ++hidden;
       continue;
     }
+    if (hide && entry.state == DownloadState::Installed && entry.installed_notice)
+      ++held;
     // A row hidden by the shared text filter (RightFilterBar::apply_to) is
     // never unhidden here - without this the re-apply clobbered the text
     // filter and "Filter..." did nothing on the Downloads tab.
@@ -1304,10 +1335,18 @@ void DownloadsTab::apply_installed_filter() {
         }
       }
       table_->setRowHidden(entry.row, !match);
+      if (!match)
+        ++text_hidden;
     } else {
       table_->setRowHidden(entry.row, false);
     }
   }
+  engine::Logger::instance().debug("[Flow] downloads tab filter: hide_installed=" +
+                                   std::string(hide ? "on" : "off") +
+                                   " rows=" + std::to_string(downloads_.size()) +
+                                   " hidden=" + std::to_string(hidden) +
+                                   " held_by_install_notice=" + std::to_string(held) +
+                                   " hidden_by_text=" + std::to_string(text_hidden));
 }
 
 void DownloadsTab::set_filter_text(const QString &text) {
