@@ -486,6 +486,16 @@ private:
     // ?do=download query). Persisted in the manifest so the "Open on ..."
     // context action and install provenance survive restarts.
     std::string page_url;
+    // Set by mark_installed, and cleared by a fresh load or by the user
+    // re-asserting the "Hide installed" box. A row carrying it is exempt from
+    // that filter: the filter is there to declutter the list, and hiding the
+    // row in the same call that recorded the install destroys the only
+    // evidence the install happened. With a second download of the same mod on
+    // screen, the user is left reading that one, still saying "Install", for
+    // the mod they just installed. Background refreshes (the directory scan)
+    // deliberately do NOT clear it - the panel's own re-scan fires 200 ms after
+    // the install and would hide the row again before it could be read.
+    bool installed_notice = false;
     // Hidden from the table without being deleted (MO2 DownloadInfo::m_Hidden
     // / DownloadManager::isHidden, downloadmanager.cpp:1523-1529). Persisted
     // in the manifest, so a row the user hid stays hidden across restarts and

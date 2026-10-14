@@ -22,6 +22,7 @@
 
 #include "engine/events/event_bus.h"
 #include "engine/log/logger.h"
+#include "engine/mod/meta/mod_meta.h"
 #include "engine/network/network_manager.h"
 #include "engine/trace/trace_recorder.h"
 #include "engine/util/fs_utils.h"
@@ -40,6 +41,7 @@
 #include "engine/source/loverslab/provider.h"
 #include "engine/source/modpub/provider.h"
 #include "engine/source/nexus/provider.h"
+#include "engine/source/nexus/update_check.h"
 #include "engine/source/managed_games.h"
 #include "engine/source/registry.h"
 #include "engine/uri/router.h"
@@ -202,6 +204,7 @@ void DownloadsController::setup_pipeline() {
                                                         {"name", installed_folder},
                                                     }));
               check_mod_updates_after_install();
+              record_installed_version(installed_folder);
             }
             // The archive is the fallback lookup: a reinstall arrives with
             // the mod folder as mod_id, which is not a row's key.
@@ -1283,6 +1286,67 @@ void DownloadsController::check_mod_updates_after_install() {
   QThread::create([game] {
     engine::update::ModUpdateDbClient::instance().fetch_index(game);
   })->start();
+}
+
+void DownloadsController::record_installed_version(const std::string &folder_name) {
+  if (folder_name.empty())
+    return;
+  const std::string game = w_ ? w_->current_game_id() : std::string();
+  if (game.empty())
+    return;
+
+  const std::string api_key = engine::Source::Nexus::Auth::instance().get_api_key();
+  if (api_key.empty())
+    return;
+
+  const std::filesystem::path mods_dir = w_->mods_dir_path();
+  auto meta                            = engine::ModMeta::load(mods_dir, folder_name);
+  // A version already on file is the answer - a reinstall kept it, and asking
+  // Nexus to confirm what we would overwrite it with spends a request to
+  // learn nothing.
+  if (!meta.get("General", "version").empty())
+    return;
+
+  const std::string mod_id       = meta.get("Nexusmods", "modid");
+  const std::string file_id_text = meta.get("Nexusmods", "fileid");
+  const long long file_id        = file_id_text.empty() ? 0 : std::stoll(file_id_text);
+  if (mod_id.empty() || file_id <= 0)
+    return;
+
+  // The request is a blocking network call, so it never runs on the GUI thread
+  // the install just unblocked; the write and the row refresh hop back onto it.
+  QThread::create([this, game, api_key, mod_id, file_id, folder_name, mods_dir] {
+    const std::string version =
+        engine::Source::Nexus::UpdateCheck::lookup_installed_version(game, mod_id,
+                                                                     api_key, file_id);
+    if (version.empty())
+      return;
+    QMetaObject::invokeMethod(
+        w_,
+        [this, version, folder_name, mods_dir] {
+          apply_installed_version(w_, mods_dir, folder_name, version);
+        },
+        Qt::QueuedConnection);
+  })->start();
+}
+
+void DownloadsController::apply_installed_version(ui::MainWindow *w,
+                                                  const std::filesystem::path &mods_dir,
+                                                  const std::string &folder_name,
+                                                  const std::string &version) {
+  if (!w || folder_name.empty() || version.empty())
+    return;
+  auto meta = engine::ModMeta::load(mods_dir, folder_name);
+  meta.set("General", "version", version);
+  if (!meta.save(mods_dir, folder_name)) {
+    engine::Logger::instance().warn("Could not record version " + version + " for " +
+                                    folder_name + "; the Version column stays blank");
+    return;
+  }
+  engine::Logger::instance().debug("Install recorded version " + version + " for " +
+                                   folder_name);
+  w->mod_list_->set_mod_version(QString::fromStdString(folder_name),
+                                QString::fromStdString(version));
 }
 
 }  // namespace ui

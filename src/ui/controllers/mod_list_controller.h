@@ -66,6 +66,10 @@ public slots:
   void focus_installed_mod(const std::string &folder_name);
   void update_status_bar_for_game();
   void sync_mod_enable_state(const QString &mod_id, bool enabled);
+  // Repaint one mod's Version cell. Used when the version arrives AFTER the
+  // row was added - the install path fetches it from Nexus once the row is
+  // already on screen, so the row is refreshed in place rather than rebuilt.
+  void set_mod_version(const QString &mod_id, const QString &version);
   void sync_priorities();
   void sort_mods();
   void create_separator();

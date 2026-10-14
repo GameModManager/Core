@@ -271,6 +271,13 @@ TEST_CASE("download keys never act on a row the filter has hidden",
 
   hide_cb->setChecked(true);
   tab.mark_installed("id-done");
+  // The install itself leaves its row on screen for one look (that is the
+  // whole point of the notice: hiding it in the same breath left the user
+  // staring at a same-named sibling still saying "Install"). The filter has to
+  // be re-asserted for the row to go - the deliberate re-apply the right panel
+  // does when the filter bar changes - and THAT is the state this test turns
+  // on.
+  tab.reapply_installed_filter();
   REQUIRE(table->isRowHidden(done_row));
   // The precondition this test turns on: hiding a row does NOT move Qt's
   // current row, so currentRow() still names a row with no extent on screen.

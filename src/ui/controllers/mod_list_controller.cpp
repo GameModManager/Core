@@ -1033,6 +1033,10 @@ void ModListController::update_mod_count_label() {
           .arg(total));
 }
 
+void ModListController::set_mod_version(const QString &mod_id, const QString &version) {
+  w_->mod_model_->set_version(mod_id, version);
+}
+
 void ModListController::sync_mod_enable_state(const QString &mod_id, bool enabled) {
   if (w_->loading_)
     return;
