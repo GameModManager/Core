@@ -1,0 +1,27 @@
+{
+	"file_updates": [],
+	"files": [
+		{
+			"id": [16268, 1704],
+			"uid": 7318624288652,
+			"file_id": 16268,
+			"name": "QASmoke2 - Special Edition",
+			"version": "v1.0",
+			"category_id": 1,
+			"category_name": "MAIN",
+			"is_primary": true,
+			"size": 8632,
+			"file_name": "QASmoke2 - Special Edition-6832-v1-0.rar",
+			"detected_file_extension": null,
+			"uploaded_timestamp": 1483146448,
+			"uploaded_time": "2016-12-31T01:07:28.000+00:00",
+			"mod_version": "v1.0",
+			"external_virus_scan_url": "https://www.virustotal.com/file/efe8ba1d5ea2b60583237bdb25f5adfb464e41594e0f62c8b09db67524b9b4be/analysis/1483146484/",
+			"description": "",
+			"size_kb": 8632,
+			"size_in_bytes": 8838800,
+			"changelog_html": null,
+			"content_preview_link": "https://file-metadata.nexusmods.com/file/nexus-files-s3-meta/1704/6832/QASmoke2 - Special Edition-6832-v1-0.rar.json"
+		}
+	]
+}

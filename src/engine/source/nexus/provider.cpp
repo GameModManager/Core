@@ -37,23 +37,46 @@ Provider::FileList Provider::parse_file_list(const std::string &body) {
   FileList list;
   try {
     auto j = nlohmann::json::parse(body);
-    if (!j.contains("data") || !j["data"].is_object())
+    // The same reply the update sweep reads, and the same two names that used
+    // to be wrong here: `files` is TOP LEVEL (no `data` envelope) and each
+    // entry's scalar id is `file_id`, while `id` is the pair `[file_id,
+    // mod_id]`. MO2 takes the bare document and indexes `files` in it
+    // (mainwindow.cpp:3313-3315). Reading it any other way returns an empty
+    // list, so `ok` was false and `select_file_id` fell back for every mod.
+    // The envelope is still accepted because /categories.json genuinely uses
+    // one (categories.cpp:17) and a wrapped reply should not read as empty.
+    const nlohmann::json *files_at = nullptr;
+    if (j.is_object() && j.contains("files") && j["files"].is_array())
+      files_at = &j["files"];
+    else if (j.is_object() && j.contains("data") && j["data"].is_object() &&
+             j["data"].contains("files") && j["data"]["files"].is_array())
+      files_at = &j["data"]["files"];
+    if (files_at == nullptr)
       return list;
-    const auto &data = j["data"];
 
-    // The ids Nexus still serves. Preferred over "files" because it is exactly
-    // the downloadable set: archived and deleted files are left out of it.
-    if (data.contains("available_mod_files") &&
-        data["available_mod_files"].is_array()) {
-      for (const auto &id : data["available_mod_files"]) {
-        if (id.is_number_integer())
-          list.available.push_back(id.get<long long>());
+    for (const auto &f : *files_at) {
+      if (!f.is_object())
+        continue;
+      const long long id = f.value("file_id", 0LL);
+      if (id <= 0)
+        continue;
+      // Archived and removed files are not downloadable, so they are not
+      // offered as a target: the same filter the update sweep applies, decided
+      // on `category_id` as MO2 does (nexusinterface.h:181-193).
+      const auto cat = f.find("category_id");
+      if (cat != f.end() && cat->is_number_integer()) {
+        const int status = cat->get<int>();
+        if (status != 1 && status != 2 && status != 3 && status != 5)
+          continue;
+      } else {
+        // Null on most files, so it cannot be read with value(): that throws
+        // and takes the whole parse with it.
+        const auto name = f.find("category_name");
+        if (name != f.end() && name->is_string() &&
+            name->get<std::string>() == "ARCHIVED")
+          continue;
       }
-    } else if (data.contains("files") && data["files"].is_array()) {
-      for (const auto &f : data["files"]) {
-        if (f.is_object() && f.value("id", 0LL) > 0)
-          list.available.push_back(f["id"].get<long long>());
-      }
+      list.available.push_back(id);
     }
     list.ok = !list.available.empty();
   } catch (const std::exception &e) {

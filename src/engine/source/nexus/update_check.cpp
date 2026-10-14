@@ -124,9 +124,23 @@ namespace {
     return it->get<std::string>();
   }
 
-  // True for a file Nexus has retracted. An archived file is not downloadable,
-  // so counting it would let a withdrawn file masquerade as the newest one.
+  // True for a file Nexus no longer offers. An archived file is not
+  // downloadable, so counting it would let a withdrawn file masquerade as the
+  // newest one.
+  //
+  // The decision is made on `category_id`, not the name, because that is what
+  // MO2 reads: NexusInterface::FileStatus (nexusinterface.h:181-193) puts MAIN
+  // 1, UPDATE 2, OPTIONAL 3 and MISCELLANEOUS 5 outside isActiveFileStatus, so
+  // an unknown id counts as not downloadable - the direction that yields "could
+  // not tell" and names the mod, rather than one that invents a badge. The name
+  // stays as a fallback because the captured response carries both and an entry
+  // without an id would otherwise silently pass as current.
   bool is_archived(const nlohmann::json &file) {
+    const auto it = file.find("category_id");
+    if (it != file.end() && it->is_number_integer()) {
+      const int id = it->get<int>();
+      return id != 1 && id != 2 && id != 3 && id != 5;
+    }
     return string_field(file, "category_name") == "ARCHIVED";
   }
 
@@ -221,37 +235,65 @@ bool parse_files(const std::string &body, long long installed_file_id,
   long long newest_id = 0;
   try {
     const auto j = nlohmann::json::parse(body);
-    if (!j.contains("data") || !j["data"].is_object())
-      return false;
-    const auto &data = j["data"];
-    if (!data.contains("files") || !data["files"].is_array())
+    // `files` and `file_updates` are TOP LEVEL siblings of each other. There is
+    // no `data` envelope: that is the captured response
+    // (tests/engine/fixtures/nexus/files_6832.json), and MO2 reads it the same
+    // way, off the bare document (mainwindow.cpp:3313-3315 takes `toMap()` of
+    // the whole reply and then indexes `files` and `file_updates` in it).
+    //
+    // Reading `data.files` - which is what this used to require - returns false
+    // for every real body, and `false` here means "unreadable", so the sweep
+    // billed the request, logged it, and named every one of the user's mods
+    // with the identical sentence. The envelope is a real Nexus habit on OTHER
+    // endpoints (categories.cpp:17 reads it from /categories.json) and that is
+    // where the belief came from; accepting it here too costs one probe and
+    // means a reply wrapped either way is still read.
+    const nlohmann::json *files_at = nullptr;
+    if (j.is_object() && j.contains("files") && j["files"].is_array()) {
+      files_at = &j["files"];
+    } else if (j.is_object() && j.contains("data") && j["data"].is_object() &&
+               j["data"].contains("files") && j["data"]["files"].is_array()) {
+      files_at = &j["data"]["files"];
+    }
+    if (files_at == nullptr)
       return false;
 
-    // `file_id` is the name Nexus uses, in every one of its clients' code and
-    // in MO2's (mainwindow.cpp:3329, nexusinterface.cpp:132). Reading `id`
-    // here instead - or waiting for an `available_mod_files` field that does
-    // not exist - silently yields an empty list, and an empty list means
-    // "could not tell", so every mod in the instance would come back
-    // undecided and no badge would ever light up.
-    for (const auto &f : data["files"]) {
+    // `file_id` is the scalar id. `id` exists in the same object but is the
+    // PAIR `[file_id, mod_id]`, so reading it as a number yields nothing -
+    // which is an empty list, and an empty list is "could not tell", never
+    // "up to date".
+    for (const auto &f : *files_at) {
       if (!f.is_object())
         continue;
       const long long id = f.value("file_id", 0LL);
-      if (id <= 0 || is_archived(f))
+      if (id <= 0)
+        continue;
+      // `version` first and `mod_version` only when `version` states nothing:
+      // MO2's own order (downloadmanager.cpp:2274-2276), and the same reason.
+      // The author-typed version belongs to this file; `mod_version` is the
+      // mod-wide value, which is what a file with no version of its own gets.
+      std::string version = string_field(f, "version");
+      if (version.empty())
+        version = string_field(f, "mod_version");
+
+      // Our own file's version, read BEFORE the availability filter below. A
+      // file Nexus has since marked OLD_VERSION or ARCHIVED is still the file
+      // we have and still names its version - MO2 reads the installed file out
+      // of the list regardless of status (mainwindow.cpp:3269-3308). Skipping it
+      // would skip precisely the installs most likely to be carrying the
+      // fabricated version, which is the whole point of reading it at all.
+      // Empty when Nexus no longer lists the installed file at all, which is
+      // "not stated" and leaves the recorded value alone.
+      if (id == installed_file_id)
+        installed = version;
+
+      if (is_archived(f))
         continue;
       available.push_back(id);
-      const std::string version = string_field(f, "version");
       if (id > newest_id) {
         newest_id = id;
         newest    = version;
       }
-      // Our own file's version, from the same body. The Version column reads
-      // [General] version, and an install that had no version to record wrote
-      // a fabricated one there - so this is where the real string comes back
-      // in. Empty when Nexus no longer lists the file we installed, which is
-      // "not stated" and leaves the recorded value alone.
-      if (id == installed_file_id)
-        installed = version;
     }
   } catch (const std::exception &e) {
     Logger::instance().error(
@@ -287,6 +329,18 @@ bool parse_updated(const std::string &body, std::vector<UpdatedMod> &out) {
   std::vector<UpdatedMod> parsed;
   try {
     auto j = nlohmann::json::parse(body);
+    // This one IS a bare top-level array, and not for symmetry with files.json -
+    // the two endpoints genuinely differ. MO2 proves it: the reply is handed
+    // straight through and taken as a list of the WHOLE document
+    // (mainwindow.cpp:3134, `resultData.toList()`), which is then iterated as
+    // rows carrying `mod_id` and `latest_file_update` (modinfo.cpp:398-407).
+    // A `{ "data": [...] }` envelope would make that toList() empty and the
+    // bulk check would silently stop flagging anything for every user, so the
+    // envelope cannot be what this endpoint sends.
+    //
+    // Note what this list is NOT: it is not per-file. Each row is one MOD whose
+    // page moved inside the window, with the upstream timestamp. The per-file
+    // replacement chain is the separate `file_updates` array inside files.json.
     if (!j.is_array())
       return false;
     for (const auto &row : j) {
