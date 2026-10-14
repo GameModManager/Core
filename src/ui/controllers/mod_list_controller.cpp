@@ -25,6 +25,7 @@
 #include <QFileInfo>
 #include <QHBoxLayout>
 #include <QInputDialog>
+#include <QItemSelectionModel>
 #include <QLCDNumber>
 #include <QMenu>
 #include <QMessageBox>
@@ -1032,6 +1033,10 @@ void ModListController::update_mod_count_label() {
           .arg(total));
 }
 
+void ModListController::set_mod_version(const QString &mod_id, const QString &version) {
+  w_->mod_model_->set_version(mod_id, version);
+}
+
 void ModListController::sync_mod_enable_state(const QString &mod_id, bool enabled) {
   if (w_->loading_)
     return;
@@ -1994,6 +1999,18 @@ void ModListController::add_installed_mod(const std::string &folder_name) {
     sync_priorities();
     sync_separator_ids();
   } else {
+    // The folder already had a row (Merge/Replace into it, or a reinstall), so
+    // there is nothing to insert - but the install rewrote its meta.ini, and a
+    // row that only gets its timestamps refreshed keeps showing the version
+    // and badges of the install it just replaced. Re-apply everything the
+    // insert branch above sets, from the same scan, so the row describes the
+    // mod that is now on disk. Free: the scan already read all of it, and no
+    // extra Nexus request is made (the newest-version question is separate).
+    w_->mod_model_->set_version(id, QString::fromStdString(mod.version));
+    w_->mod_model_->set_fomod(id, mod.is_fomod);
+    w_->mod_model_->set_root_override(id, mod.root_override);
+    w_->mod_model_->set_invalid_data(id, mod.invalid_data);
+    w_->mod_model_->set_no_metadata(id, mod.no_metadata);
     // Replace/merge into an existing folder changed its birth/write time,
     // so the Installation/Changed cells must follow (single-row refresh).
     w_->mod_model_->set_timestamps(id, mod.install_time, mod.changed_time);
@@ -2031,6 +2048,48 @@ void ModListController::add_installed_mod(const std::string &folder_name) {
   update_mod_count_label();
 
   engine::Logger::instance().debug("Added installed mod row: " + folder_name);
+}
+
+void ModListController::focus_installed_mod(const std::string &folder_name) {
+  if (folder_name.empty())
+    return;
+  auto *view = w_->mod_view_;
+  if (!view || !w_->mod_model_)
+    return;
+
+  const int row = w_->mod_model_->priority_of(QString::fromStdString(folder_name));
+  if (row < 0 || row >= w_->mod_model_->mods().size())
+    return;
+
+  // A folded band hides the row, so selecting a hidden index scrolls to
+  // nothing and reads as "nothing happened". Open the separator that scopes
+  // this row first - MO2 opens the parent in onModInstalled too
+  // (modlistview.cpp:473-475), the flat equivalent of the same step.
+  if (w_->mod_model_->is_row_fold_hidden(row)) {
+    for (int sep = row - 1; sep >= 0; --sep) {
+      if (!w_->mod_model_->mods()[sep].is_separator)
+        continue;
+      if (row < w_->mod_model_->separator_band_end(sep)) {
+        w_->mod_model_->set_folded(sep, false);
+        w_->mod_model_->apply_fold_state();
+      }
+      break;
+    }
+  }
+
+  const QModelIndex index = w_->mod_model_->index(row, 0);
+  if (!index.isValid())
+    return;
+  view->scrollTo(index);
+  view->setCurrentIndex(index);
+  view->selectionModel()->select(index, QItemSelectionModel::Select |
+                                            QItemSelectionModel::Rows);
+  // MO2 defers the focus by 50 ms (modlistview.cpp:432-434): the selection
+  // change is what triggers the repaint, and focusing the view inside the
+  // same event would fight it.
+  QTimer::singleShot(50, view, [view] {
+    view->setFocus();
+  });
 }
 
 void ModListController::load_meta_for_mods() {

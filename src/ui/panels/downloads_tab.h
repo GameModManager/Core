@@ -335,7 +335,12 @@ public:
   void update_progress(const std::string &id, int64_t downloaded, int64_t total,
                        double speed);
   void mark_complete(const std::string &id, bool success);
-  void mark_installed(const std::string &id);
+  // `id` is the download row's key. `archive_filename` is the fallback lookup
+  // for installs that did not come from this tab's own rows (a reinstall hands
+  // over the mod FOLDER as the id), matched on the row's archive file name -
+  // the lookup MO2 does when it marks a download installed
+  // (downloadmanager.cpp:1556-1560, indexByName).
+  void mark_installed(const std::string &id, const std::string &archive_filename = {});
   // A Replace deleted the mod this download installed, so the row must stop
   // claiming it is installed. `archive_filename` is the bare name recorded in
   // that mod's meta.ini. No-op when no installed row matches.
@@ -481,6 +486,16 @@ private:
     // ?do=download query). Persisted in the manifest so the "Open on ..."
     // context action and install provenance survive restarts.
     std::string page_url;
+    // Set by mark_installed, and cleared by a fresh load or by the user
+    // re-asserting the "Hide installed" box. A row carrying it is exempt from
+    // that filter: the filter is there to declutter the list, and hiding the
+    // row in the same call that recorded the install destroys the only
+    // evidence the install happened. With a second download of the same mod on
+    // screen, the user is left reading that one, still saying "Install", for
+    // the mod they just installed. Background refreshes (the directory scan)
+    // deliberately do NOT clear it - the panel's own re-scan fires 200 ms after
+    // the install and would hide the row again before it could be read.
+    bool installed_notice = false;
     // Hidden from the table without being deleted (MO2 DownloadInfo::m_Hidden
     // / DownloadManager::isHidden, downloadmanager.cpp:1523-1529). Persisted
     // in the manifest, so a row the user hid stays hidden across restarts and

@@ -98,6 +98,7 @@ enum class FolderKind;
 class ConsolePanel;
 class StatusBar;
 class PipelineThread;
+class PipelineWorker;
 class AppMenuBar;
 class PipelineWindow;
 class PluginsTab;
@@ -214,6 +215,13 @@ public:
   [[nodiscard]] quint64 nexus_update_generation() const {
     return nexus_update_generation_;
   }
+
+  // The install worker, so a test can emit the real install_complete signal and
+  // be answered by the real DownloadsController lambda. The worker is created
+  // without a QObject parent (PipelineThread owns it), so findChild cannot
+  // reach it, and the branch under test - which download row an install marks
+  // Installed - lives in that lambda, not in anything the panel exposes.
+  [[nodiscard]] ui::PipelineWorker *pipeline_worker() const;
 
   // Lock or unlock the whole mod manager interface. Locking blocks user
   // interaction (mouse + keyboard) across the main window and greys it out,

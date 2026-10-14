@@ -132,6 +132,22 @@ struct UpdateState {
 UpdateState evaluate(long long installed_file_id,
                      const std::vector<long long> &available_file_ids);
 
+// One mod's own `files.json`, asked for and read back for the version of the
+// file we just installed. Empty string on any failure, and empty when Nexus
+// does not list the file id - "not stated" is the only thing an empty return
+// means, and callers must leave the recorded version alone rather than blank
+// it.
+//
+// Why this exists at all: an install rewrites meta.ini from scratch, and
+// nothing in the download path knows a version (the NXM link carries a mod id
+// and a file id and no more, and the archive NAME encodes one only by Nexus
+// naming convention). So the version column reads "?" after every install
+// until something asks Nexus. This is that ask: ONE request per install, at a
+// few installs a day against a 20000/day cap.
+std::string lookup_installed_version(const std::string &nexus_domain,
+                                     const std::string &mod_id,
+                                     const std::string &api_key, long long file_id);
+
 // MO2 ModInfoRegular::ignoreUpdate / ::updateAvailable (modinforegular.cpp:
 // 330-338, :665-672): the ignore records the version the user turned away
 // from, and suppresses the notice only while the newest version is STILL that
