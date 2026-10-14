@@ -335,7 +335,12 @@ public:
   void update_progress(const std::string &id, int64_t downloaded, int64_t total,
                        double speed);
   void mark_complete(const std::string &id, bool success);
-  void mark_installed(const std::string &id);
+  // `id` is the download row's key. `archive_filename` is the fallback lookup
+  // for installs that did not come from this tab's own rows (a reinstall hands
+  // over the mod FOLDER as the id), matched on the row's archive file name -
+  // the lookup MO2 does when it marks a download installed
+  // (downloadmanager.cpp:1556-1560, indexByName).
+  void mark_installed(const std::string &id, const std::string &archive_filename = {});
   // A Replace deleted the mod this download installed, so the row must stop
   // claiming it is installed. `archive_filename` is the bare name recorded in
   // that mod's meta.ini. No-op when no installed row matches.

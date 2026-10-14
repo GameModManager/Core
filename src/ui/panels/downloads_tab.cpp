@@ -795,13 +795,32 @@ void DownloadsTab::mark_complete(const std::string &id, bool success) {
     on_downloads_dir_changed();
 }
 
-void DownloadsTab::mark_installed(const std::string &id) {
-  auto &entry = entry_for(id);
+void DownloadsTab::mark_installed(const std::string &id,
+                                  const std::string &archive_filename) {
+  // MO2's markInstalled(QString) looks the row up by the archive's file name
+  // (downloadmanager.cpp:1556-1560), because the caller only ever holds a
+  // path. Same fallback, same reason: an install started from the mod list
+  // arrives with the mod FOLDER as its id, which is not any row's key, and
+  // without the fallback the row the install just came from keeps reading
+  // "Install" for the rest of the session.
+  std::string target = id;
+  if (!downloads_.count(target) && !archive_filename.empty()) {
+    for (const auto &[eid, entry] : downloads_) {
+      (void)eid;
+      if (!entry.file_path.empty() &&
+          entry.file_path.filename() == std::filesystem::path(archive_filename)) {
+        target = eid;
+        break;
+      }
+    }
+  }
+
+  auto &entry = entry_for(target);
   if (entry.row < 0)
     return;
 
   entry.state = DownloadState::Installed;
-  replace_bar_with_label(id, tr("Installed"), QColor(), QColor());
+  replace_bar_with_label(target, tr("Installed"), QColor(), QColor());
 
   // Show final archive size
   if (entry.total_size > 0) {

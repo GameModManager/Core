@@ -176,56 +176,61 @@ void DownloadsController::setup_pipeline() {
   // lock put up at install_requested is released on every terminal signal
   // (success, failure, cancel). A failed install leaves the download row in
   // its download state - only a failed download marks it Failed.
-  connect(w_->pipeline_thread_->worker(), &PipelineWorker::install_complete, this,
-          [this](const std::string &mod_id, bool success,
-                 const std::string &error_message,
-                 const std::string &installed_folder) {
-            hide_install_progress();
-            w_->unlock_ui();
-            auto *dt = w_->right_panel_->downloads_tab();
-            if (dt) {
-              if (success) {
-                if (!w_->current_game_id_.empty() && !installed_folder.empty()) {
-                  engine::Logger::instance().debug("Install finished for " + mod_id +
-                                                   ", adding " + installed_folder);
-                  w_->mod_list_->add_installed_mod(installed_folder);
-                  // P1.3 event bus: mirror MO2 onModInstalled. The bus
-                  // handler runs synchronously here (install is UI-thread);
-                  // a subscribed plugin must not block.
-                  engine::EventBus::instance().dispatch(engine::events::kModInstalled,
-                                                        engine::json_obj({
-                                                            {"mod", installed_folder},
-                                                            {"name", installed_folder},
-                                                        }));
-                  check_mod_updates_after_install();
-                }
-                dt->mark_installed(mod_id);
-              }
-              // Install failure is NOT a download failure: the row keeps its
-              // download state (Complete, retryable Install button), so the
-              // reason is reported below instead of marking the download
-              // Failed. The reason was already logged to the console by the
-              // pipeline worker / extract stage - only shown once.
+  connect(
+      w_->pipeline_thread_->worker(), &PipelineWorker::install_complete, this,
+      [this](const std::string &mod_id, bool success, const std::string &error_message,
+             const std::string &installed_folder, const std::string &archive_filename) {
+        hide_install_progress();
+        w_->unlock_ui();
+        auto *dt = w_->right_panel_->downloads_tab();
+        if (dt) {
+          if (success) {
+            if (!w_->current_game_id_.empty() && !installed_folder.empty()) {
+              engine::Logger::instance().debug("Install finished for " + mod_id +
+                                               ", adding " + installed_folder);
+              w_->mod_list_->add_installed_mod(installed_folder);
+              // MO2 ModListView::onModInstalled (modlistview.cpp:465-478):
+              // scroll to the mod the install just wrote and select it.
+              // Navigation only, so it runs after the row is in the model.
+              w_->mod_list_->focus_installed_mod(installed_folder);
+              // P1.3 event bus: mirror MO2 onModInstalled. The bus
+              // handler runs synchronously here (install is UI-thread);
+              // a subscribed plugin must not block.
+              engine::EventBus::instance().dispatch(engine::events::kModInstalled,
+                                                    engine::json_obj({
+                                                        {"mod", installed_folder},
+                                                        {"name", installed_folder},
+                                                    }));
+              check_mod_updates_after_install();
             }
-            // Persist download state
-            save_download_manifest();
+            // The archive is the fallback lookup: a reinstall arrives with
+            // the mod folder as mod_id, which is not a row's key.
+            dt->mark_installed(mod_id, archive_filename);
+          }
+          // Install failure is NOT a download failure: the row keeps its
+          // download state (Complete, retryable Install button), so the
+          // reason is reported below instead of marking the download
+          // Failed. The reason was already logged to the console by the
+          // pipeline worker / extract stage - only shown once.
+        }
+        // Persist download state
+        save_download_manifest();
 
-            // A failed install is otherwise completely silent: the progress
-            // popup is gone and the row is unchanged, so a corrupt download, a
-            // password-protected archive and a disk error would all look like
-            // nothing happened. Report the reason the failing stage recorded.
-            // A modal is the right weight here - only one install runs at a
-            // time (the UI is locked for its duration), the progress popup has
-            // just been torn down, and a row or status line would be missed.
-            if (!success) {
-              const QString reason = QString::fromStdString(error_message);
-              ui::report_error(
-                  tr("Installation failed"), w_,
-                  reason.isEmpty()
-                      ? tr("No reason was recorded. See the log for details.")
-                      : reason);
-            }
-          });
+        // A failed install is otherwise completely silent: the progress
+        // popup is gone and the row is unchanged, so a corrupt download, a
+        // password-protected archive and a disk error would all look like
+        // nothing happened. Report the reason the failing stage recorded.
+        // A modal is the right weight here - only one install runs at a
+        // time (the UI is locked for its duration), the progress popup has
+        // just been torn down, and a row or status line would be missed.
+        if (!success) {
+          const QString reason = QString::fromStdString(error_message);
+          ui::report_error(tr("Installation failed"), w_,
+                           reason.isEmpty()
+                               ? tr("No reason was recorded. See the log for details.")
+                               : reason);
+        }
+      });
 
   // Install canceled by the user (FOMOD wizard or overwrite dialog): NOT a
   // failure - leave the download in whatever state it had (no Failed mark).

@@ -299,6 +299,11 @@ fs::path make_case_root(const char *name) {
   fs::create_directories(root / "instances");
   qputenv("XDG_CONFIG_HOME", QByteArray((root / "config").string().c_str()));
   qputenv("XDG_DATA_HOME", QByteArray((root / "data").string().c_str()));
+  // HOME too, not just the XDG pair: QSettings resolves $HOME whenever
+  // XDG_CONFIG_HOME is unset, and the freedesktop trash falls back to
+  // $HOME/.local/share/Trash. Redirecting only the XDG vars leaves the real
+  // user's config and trash reachable from code that misses one of them.
+  qputenv("HOME", QByteArray(root.string().c_str()));
   // set_game_info posts ensure_nxm_handler_default() via singleShot(0); it
   // pops a modal NXM-handler QMessageBox inside the first processEvents
   // (infinite hang offscreen). The "dont_ask" setting is its early-out -
@@ -2299,6 +2304,285 @@ TEST_CASE("MainWindow: a refusing or partial Nexus sweep never wears the count's
   }
   CHECK_FALSE(bar->update_notice_is_warning());
   CHECK(bar->update_notice().contains(QStringLiteral("up to date")));
+
+  fs::remove_all(root);
+}
+
+// ---------------------------------------------------------------------------
+// The install completed and the Downloads panel has to show it.
+//
+// An install started from the MOD LIST (Reinstall, ModActions::reinstall_mod)
+// arrives at install_complete carrying the mod FOLDER as its id, not the
+// download row's key, so a mark_installed keyed on that id silently matched
+// nothing: the install wrote the mod to disk and the row the archive belongs
+// to went on reading "Install" for the rest of the session. MO2 resolves the
+// row from the archive it installed (organizercore.cpp:945 ->
+// DownloadManager::markInstalled(QString), downloadmanager.cpp:1556-1560,
+// indexByName) and never from an install id at all.
+//
+// The assertion is the PANEL's rendered Status cell, not the persisted meta:
+// the meta was already correct while the user watched a stale row.
+// ---------------------------------------------------------------------------
+TEST_CASE("MainWindow: an install from the mod list reaches the Downloads panel row",
+          "[ui][harness][downloads]") {
+  const fs::path root     = make_case_root("gmm_dl_install_row");
+  const fs::path inst_dir = root / "instances";
+
+  qputenv("QT_QPA_PLATFORM", "offscreen");
+  int app_argc     = 1;
+  char app_argv0[] = "main_window_harness_test";
+  char *app_argv[] = {app_argv0, nullptr};
+  QApplication app(app_argc, app_argv);
+  QCoreApplication::setOrganizationName("GameModManager");
+  QCoreApplication::setApplicationName("GameModManager");
+
+  auto inst           = engine::Instance::installed("TestGame", inst_dir);
+  inst.info().game_id = "testgame";
+  REQUIRE(inst.create_directories());
+  REQUIRE(inst.write_toml());
+  const fs::path inst_root = inst.info().root;
+  const auto instance      = engine::Instance::from_root(inst_root);
+  const fs::path mods_dir  = instance.path_for(engine::InstanceKind::Mods);
+  const fs::path dl_dir    = instance.path_for(engine::InstanceKind::Downloads);
+  fs::create_directories(dl_dir);
+  fs::create_directories(mods_dir / "Foo_mod");
+
+  // The archive the mod was installed from, with its download meta beside it -
+  // the state a finished, not-yet-installed download restores as.
+  const fs::path archive = dl_dir / "Foo-42.zip";
+  write_file(archive, "a real archive would be here");
+  ui::DownloadMeta meta;
+  meta.archive       = archive;
+  meta.id            = "42-9";
+  meta.name          = "Foo";
+  meta.source        = "Nexus Mods";
+  meta.parent_mod_id = "42";
+  meta.file_id       = 9;
+  meta.nexus_domain  = "testgame";
+  meta.total_size    = static_cast<int64_t>(std::filesystem::file_size(archive));
+  meta.state         = ui::DownloadState::Complete;
+  REQUIRE(ui::write_download_meta(meta, ui::download_meta_path(meta, dl_dir)));
+
+  engine::GameKnowledge knowledge;
+  knowledge.set("testgame", "mods_subpath", "Mods");
+
+  ui::MainWindow w;
+  w.set_game_knowledge(&knowledge);
+  w.show();
+  w.set_game_info("testgame", "Test Game", "Default", {}, inst_root);
+  REQUIRE(pump_until([&w] {
+    return !w.is_loading();
+  }));
+
+  auto *panel = w.findChild<ui::RightPanel *>();
+  REQUIRE(panel != nullptr);
+  auto *tab = panel->ensure_downloads_tab();
+  REQUIRE(tab != nullptr);
+  auto *table = tab->table();
+  REQUIRE(table != nullptr);
+
+  // The row restored from its own meta, and it reads the action still
+  // available - the pre-fix state the user reported.
+  int row = -1;
+  for (int r = 0; r < table->rowCount(); ++r) {
+    auto *name = table->item(r, ui::DownloadsTab::Name);
+    if (name && name->text() == QLatin1String("Foo")) {
+      row = r;
+      break;
+    }
+  }
+  REQUIRE(row >= 0);
+  auto *status = table->item(row, ui::DownloadsTab::Status);
+  REQUIRE(status != nullptr);
+  REQUIRE(status->text() == QLatin1String("Install"));
+
+  // Exactly what the reinstall path delivers: the mod folder as the id, the
+  // archive it installed as the lookup. "Hide installed" is forced OFF so the
+  // assertion is about the cell's text and not about the row being hidden.
+  Settings::instance().set_hide_installed_downloads(false);
+  tab->mark_installed(QStringLiteral("Foo_mod").toStdString(),
+                      archive.filename().string());
+  QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
+
+  // THE assertion: the panel reads Installed. Compared as std::string so a
+  // failure prints the label instead of QString's internal encoding.
+  CHECK(table->item(row, ui::DownloadsTab::Status)->text().toStdString() ==
+        std::string("Installed"));
+
+  fs::remove_all(root);
+}
+
+// A mod installed over an existing folder keeps its row but the folder's
+// meta.ini was just rewritten - the row has to follow, or it keeps showing
+// the version and badges of the install it replaced. Only the free part of
+// the rescan: what ModScanner already read off the folder.
+TEST_CASE("MainWindow: re-installing over an existing row refreshes that row's data",
+          "[ui][harness]") {
+  const fs::path root     = make_case_root("gmm_overwrite_row_refresh");
+  const fs::path inst_dir = root / "instances";
+
+  qputenv("QT_QPA_PLATFORM", "offscreen");
+  int app_argc     = 1;
+  char app_argv0[] = "main_window_harness_test";
+  char *app_argv[] = {app_argv0, nullptr};
+  QApplication app(app_argc, app_argv);
+  QCoreApplication::setOrganizationName("GameModManager");
+  QCoreApplication::setApplicationName("GameModManager");
+
+  auto inst           = engine::Instance::installed("TestGame", inst_dir);
+  inst.info().game_id = "testgame";
+  REQUIRE(inst.create_directories());
+  REQUIRE(inst.write_toml());
+  const fs::path inst_root = inst.info().root;
+  const fs::path mods_dir =
+      engine::Instance::from_root(inst_root).path_for(engine::InstanceKind::Mods);
+  fs::create_directories(mods_dir / "Foo_mod");
+  write_file(mods_dir / "Foo_mod" / "Foo.esp", "plugin");
+  write_file(mods_dir / "Foo_mod" / "meta.ini",
+             "[General]\nversion=1.24.0\ninstalled=2026-01-01T00:00:00\n"
+             "[GameModManager]\nfolder=Foo_mod\n");
+
+  engine::GameKnowledge knowledge;
+  knowledge.set("testgame", "mods_subpath", "Mods");
+
+  ui::MainWindow w;
+  w.set_game_knowledge(&knowledge);
+  w.show();
+  w.set_game_info("testgame", "Test Game", "Default", {}, inst_root);
+  REQUIRE(pump_until([&w] {
+    return !w.is_loading();
+  }));
+
+  auto *model = w.findChild<ui::ModList *>();
+  auto *ctl   = w.findChild<ui::ModListController *>();
+  REQUIRE(model != nullptr);
+  REQUIRE(ctl != nullptr);
+  auto *view = w.mod_view();
+  REQUIRE(view != nullptr);
+  REQUIRE(pump_until([&] {
+    return find_mod_row(view, QStringLiteral("Foo_mod")) >= 0;
+  }));
+
+  const int row = model->priority_of(QStringLiteral("Foo_mod"));
+  REQUIRE(row >= 0);
+  REQUIRE(model->index(row, ui::ModList::Version).data().toString().toStdString() ==
+          std::string("1.24.0"));
+
+  // What the overwrite wrote: the same folder, a newer version.
+  write_file(mods_dir / "Foo_mod" / "meta.ini",
+             "[General]\nversion=1.25.0\ninstalled=2026-10-14T07:56:30\n"
+             "[GameModManager]\nfolder=Foo_mod\n");
+
+  ctl->add_installed_mod("Foo_mod");
+  QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
+
+  // One row, not two - the folder already had one.
+  CHECK(find_mod_row(view, QStringLiteral("Foo_mod")) >= 0);
+  // ...and it describes the install that is on disk now. Before the fix only
+  // the timestamps moved, so this cell still read the replaced version.
+  CHECK(model->index(row, ui::ModList::Version).data().toString().toStdString() ==
+        std::string("1.25.0"));
+
+  fs::remove_all(root);
+}
+
+// MO2 ModListView::onModInstalled (modlistview.cpp:465-478): after an install
+// the mod is scrolled to and selected, opening the separator band it sits in
+// first. Navigation only - the mod does not move.
+TEST_CASE("MainWindow: the installed mod is selected with its separator opened",
+          "[ui][harness]") {
+  const fs::path root     = make_case_root("gmm_install_focus");
+  const fs::path inst_dir = root / "instances";
+
+  qputenv("QT_QPA_PLATFORM", "offscreen");
+  int app_argc     = 1;
+  char app_argv0[] = "main_window_harness_test";
+  char *app_argv[] = {app_argv0, nullptr};
+  QApplication app(app_argc, app_argv);
+  QCoreApplication::setOrganizationName("GameModManager");
+  QCoreApplication::setApplicationName("GameModManager");
+
+  auto inst           = engine::Instance::installed("TestGame", inst_dir);
+  inst.info().game_id = "testgame";
+  REQUIRE(inst.create_directories());
+  REQUIRE(inst.write_toml());
+  const fs::path inst_root = inst.info().root;
+  const fs::path mods_dir =
+      engine::Instance::from_root(inst_root).path_for(engine::InstanceKind::Mods);
+  fs::create_directories(mods_dir / "Foo_mod");
+  write_file(mods_dir / "Foo_mod" / "Foo.esp", "plugin");
+  write_file(mods_dir / "Foo_mod" / "meta.ini",
+             "[General]\ninstalled=2026-10-14T07:56:30\n"
+             "[GameModManager]\nfolder=Foo_mod\npriority=5\n");
+
+  engine::GameKnowledge knowledge;
+  knowledge.set("testgame", "mods_subpath", "Mods");
+
+  ui::MainWindow w;
+  w.set_game_knowledge(&knowledge);
+  w.show();
+  w.set_game_info("testgame", "Test Game", "Default", {}, inst_root);
+  REQUIRE(pump_until([&w] {
+    return !w.is_loading();
+  }));
+
+  auto *model = w.findChild<ui::ModList *>();
+  auto *ctl   = w.findChild<ui::ModListController *>();
+  REQUIRE(model != nullptr);
+  REQUIRE(ctl != nullptr);
+  auto *view = w.mod_view();
+  REQUIRE(view != nullptr);
+  REQUIRE(pump_until([&] {
+    return find_mod_row(view, QStringLiteral("Foo_mod")) >= 0;
+  }));
+
+  // A separator above the mod, then folded: the mod is inside a band that is
+  // shut, which is the state that made the scroll-to a no-op.
+  const QString sep_id =
+      ctl->create_separator_named(QStringLiteral("Group"), QString());
+  REQUIRE_FALSE(sep_id.isEmpty());
+  model->move_mod(sep_id, 0);
+  QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
+  const int sep_row = model->priority_of(sep_id);
+  REQUIRE(sep_row >= 0);
+  REQUIRE(model->mods()[sep_row].is_separator);
+  REQUIRE(model->has_content(sep_row));
+  const int mod_row = model->priority_of(QStringLiteral("Foo_mod"));
+  REQUIRE(mod_row > sep_row);
+
+  model->set_folded(sep_row, true);
+  model->apply_fold_state();
+  QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
+  REQUIRE(model->is_row_fold_hidden(mod_row));
+
+  ctl->focus_installed_mod("Foo_mod");
+  QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
+
+  // The separator band is open again, so the row the user has to see is
+  // actually on screen.
+  CHECK_FALSE(model->mods()[sep_row].folded);
+  CHECK_FALSE(model->is_row_fold_hidden(mod_row));
+  CHECK_FALSE(view->isRowHidden(mod_row, QModelIndex()));
+
+  // The row is selected - scrollTo alone leaves the selection where it was,
+  // which is what made this look like "nothing happened".
+  CHECK(view->currentIndex().isValid());
+  CHECK(view->currentIndex().row() == mod_row);
+  CHECK(view->selectionModel()->isSelected(model->index(mod_row, 0)));
+
+  // The 50 ms deferred focus MO2 uses (modlistview.cpp:432-434). Bounded, so
+  // a callback that never fires FAILs the case instead of hanging it.
+  QElapsedTimer focus_timer;
+  focus_timer.start();
+  bool focused = false;
+  while (focus_timer.elapsed() < 2000 && !focused) {
+    QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
+    focused = view->hasFocus();
+  }
+  CHECK(focused);
+
+  // Navigation only: the mod is still exactly where it was.
+  CHECK(model->priority_of(QStringLiteral("Foo_mod")) == mod_row);
 
   fs::remove_all(root);
 }
