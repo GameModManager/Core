@@ -416,6 +416,12 @@ DownloadsTab::DownloadsTab(QWidget *parent) : QWidget(parent) {
   table_->installEventFilter(this);
   connect(hide_installed_, &QCheckBox::toggled, this, [this](bool checked) {
     Settings::instance().set_hide_installed_downloads(checked);
+    // The user re-asserted the filter, so the install notices are spent: the
+    // rows an install left on screen go back to obeying it.
+    for (auto &[id, entry] : downloads_) {
+      (void)id;
+      entry.installed_notice = false;
+    }
     apply_installed_filter();
   });
   connect(show_hidden, &QCheckBox::toggled, this, [this](bool checked) {
@@ -827,7 +833,9 @@ void DownloadsTab::mark_installed(const std::string &id,
     entry.size_item->setText(format_size(entry.total_size));
   }
 
-  // If "hide installed" is on, the row disappears immediately
+  // The install is on screen now, so "Hide installed" must not take it away
+  // again in the same breath - see DownloadEntry::installed_notice.
+  entry.installed_notice = true;
   apply_installed_filter();
 }
 
@@ -1276,8 +1284,10 @@ void DownloadsTab::apply_installed_filter() {
       table_->setRowHidden(entry.row, true);
       continue;
     }
-    // "Hide installed" always wins over the text filter.
-    if (hide && entry.state == DownloadState::Installed) {
+    // "Hide installed" always wins over the text filter - except for a row an
+    // install has just marked, which stays on screen so the outcome is
+    // readable at all (DownloadEntry::installed_notice).
+    if (hide && entry.state == DownloadState::Installed && !entry.installed_notice) {
       table_->setRowHidden(entry.row, true);
       continue;
     }
@@ -1305,6 +1315,16 @@ void DownloadsTab::set_filter_text(const QString &text) {
 }
 
 void DownloadsTab::reapply_installed_filter() {
+  // A DELIBERATE re-application - the user typing in the filter bar, or the
+  // right panel re-composing - is where a spent install notice is dropped, so
+  // "Hide installed" is fully in force again. The background directory scan
+  // calls apply_installed_filter() directly and must not: it fires on its own
+  // a couple of hundred ms after an install, and dropping the notice there
+  // would yank the row away before anyone could read it.
+  for (auto &[id, entry] : downloads_) {
+    (void)id;
+    entry.installed_notice = false;
+  }
   apply_installed_filter();
 }
 
@@ -2173,6 +2193,10 @@ void DownloadsTab::deserialize(const std::string &json,
     entry.category      = obj["category"].toString().toStdString();
     entry.page_url      = page_url;
     entry.hidden        = obj["hidden"].toBool();
+    // A fresh load is a fresh look at the list: an install notice is something
+    // you witness once, not something that survives a restart and pins a row
+    // open forever.
+    entry.installed_notice = false;
 
     table_->insertRow(entry.row);
 

@@ -37,6 +37,8 @@
 #include "engine/game/registry/game_knowledge.h"
 #include "engine/plugin_host/plugin_loader.h"
 #include "engine/source/nexus/auth.h"
+#include "engine/source/nexus/update_check.h"
+#include "engine/mod/meta/mod_meta.h"
 #include "engine/source/update/mod_update_db_client.h"
 #include "platform/platform.h"
 #include "test_platform.h"
@@ -66,6 +68,7 @@
 #include "ui/widgets/right_filter_bar.h"
 #include "ui/widgets/right_panel.h"
 #include "ui/widgets/status_bar.h"
+#include "ui/workers/pipeline_worker.h"
 
 #include <QApplication>
 #include <QCommandLinkButton>
@@ -2583,6 +2586,372 @@ TEST_CASE("MainWindow: the installed mod is selected with its separator opened",
 
   // Navigation only: the mod is still exactly where it was.
   CHECK(model->priority_of(QStringLiteral("Foo_mod")) == mod_row);
+
+  fs::remove_all(root);
+}
+
+// The Downloads row that was clicked, located by the archive its tooltip
+// carries. Two downloads of the SAME mod share a display name, so the name
+// cannot pick the row - which is precisely how the user ended up looking at
+// the wrong one.
+int find_download_row_for_archive(QTableWidget *table, const QString &archive) {
+  for (int r = 0; r < table->rowCount(); ++r) {
+    auto *name = table->item(r, ui::DownloadsTab::Name);
+    if (name && name->toolTip().contains(archive))
+      return r;
+  }
+  return -1;
+}
+
+std::string cell_text(QTableWidget *table, int row, int col) {
+  auto *item = table->item(row, col);
+  return item ? item->text().toStdString() : std::string("<no cell>");
+}
+
+// The install the user actually performs: double-click "Install" on a
+// DOWNLOADS row. That is the path the real log records
+// ("Installing mod: 59818-769017" - the row key, not a mod folder), and it is
+// the only thing the test here exercises. Driving the real
+// PipelineWorker::install_complete signal, not DownloadsTab::mark_installed
+// directly, is the point: the controller lambda is where the row is resolved
+// and where a fix that only holds when called by hand dies.
+TEST_CASE(
+    "MainWindow: an install started from a Downloads row marks THAT row Installed",
+    "[ui][harness][downloads][install]") {
+  const fs::path root     = make_case_root("gmm_dl_row_from_tab");
+  const fs::path inst_dir = root / "instances";
+
+  qputenv("QT_QPA_PLATFORM", "offscreen");
+  int app_argc     = 1;
+  char app_argv0[] = "main_window_harness_test";
+  char *app_argv[] = {app_argv0, nullptr};
+  QApplication app(app_argc, app_argv);
+  QCoreApplication::setOrganizationName("GameModManager");
+  QCoreApplication::setApplicationName("GameModManager");
+
+  // The setting the user has ON: "Hide installed". Left as-is on purpose - the
+  // assertion below is made against the cell TEXT and against which rows are
+  // left on screen, so a pass cannot come from the row simply being hidden.
+  Settings::instance().set_hide_installed_downloads(false);
+
+  auto inst           = engine::Instance::installed("TestGame", inst_dir);
+  inst.info().game_id = "testgame";
+  REQUIRE(inst.create_directories());
+  REQUIRE(inst.write_toml());
+  const fs::path inst_root = inst.info().root;
+  const auto instance      = engine::Instance::from_root(inst_root);
+  const fs::path mods_dir  = instance.path_for(engine::InstanceKind::Mods);
+  const fs::path dl_dir    = instance.path_for(engine::InstanceKind::Downloads);
+  fs::create_directories(dl_dir);
+  fs::create_directories(mods_dir / "CrashLogger");
+  write_file(mods_dir / "CrashLogger" / "CrashLogger.dll", "plugin");
+  write_file(mods_dir / "CrashLogger" / "meta.ini",
+             "[General]\ninstallationFile=CrashLogger-59818-1-24-0-1782605772.7z\n"
+             "[GameModManager]\nfolder=CrashLogger\npriority=17\n");
+
+  // Two downloads of the SAME mod, exactly as the user's downloads folder
+  // holds them: v1.24.0 and v1.25.0, both displayed as "CrashLogger". The
+  // install overwrites the mod folder, so the row the user clicked must be the
+  // one that changes - the other one is still an un-installed download.
+  struct Row {
+    const char *archive;
+    const char *id;
+    int file_id;
+  };
+  const Row rows[] = {
+      {"CrashLogger-59818-1-24-0-1782605772.7z", "59818-769017", 769017},
+      {"CrashLogger 59818 1.25.0 2026-08-21T09-21Z yIjvuh041.7z", "59818-792670",
+       792670},
+  };
+  for (const auto &r : rows) {
+    const fs::path archive = dl_dir / r.archive;
+    write_file(archive, "a real archive would be here");
+    ui::DownloadMeta meta;
+    meta.archive       = archive;
+    meta.id            = r.id;
+    meta.name          = "CrashLogger";
+    meta.source        = "Nexus Mods";
+    meta.parent_mod_id = "59818";
+    meta.file_id       = r.file_id;
+    meta.nexus_domain  = "testgame";
+    meta.total_size    = static_cast<int64_t>(std::filesystem::file_size(archive));
+    meta.state         = ui::DownloadState::Complete;
+    REQUIRE(ui::write_download_meta(meta, ui::download_meta_path(meta, dl_dir)));
+  }
+
+  engine::GameKnowledge knowledge;
+  knowledge.set("testgame", "mods_subpath", "Mods");
+
+  ui::MainWindow w;
+  w.set_game_knowledge(&knowledge);
+  w.show();
+  w.set_game_info("testgame", "Test Game", "Default", {}, inst_root);
+  REQUIRE(pump_until([&w] {
+    return !w.is_loading();
+  }));
+
+  auto *panel = w.findChild<ui::RightPanel *>();
+  REQUIRE(panel != nullptr);
+  auto *tab = panel->ensure_downloads_tab();
+  REQUIRE(tab != nullptr);
+  auto *table = tab->table();
+  REQUIRE(table != nullptr);
+
+  const int clicked =
+      find_download_row_for_archive(table, QStringLiteral("CrashLogger-59818-1-24-0"));
+  const int sibling =
+      find_download_row_for_archive(table, QStringLiteral("CrashLogger 59818 1.25.0"));
+  REQUIRE(clicked >= 0);
+  REQUIRE(sibling >= 0);
+  REQUIRE(clicked != sibling);
+  REQUIRE(cell_text(table, clicked, ui::DownloadsTab::Status) == "Install");
+  REQUIRE(cell_text(table, sibling, ui::DownloadsTab::Status) == "Install");
+
+  auto *worker = w.pipeline_worker();
+  REQUIRE(worker != nullptr);
+
+  // The exact payload the real worker emits on success: the row key as the id,
+  // and the archive it installed as the fallback lookup.
+  Q_EMIT worker->install_complete("59818-769017", true, "Success", "CrashLogger",
+                                  "CrashLogger-59818-1-24-0-1782605772.7z");
+  REQUIRE(pump_until(
+      [&] {
+        return cell_text(table, clicked, ui::DownloadsTab::Status) != "Install";
+      },
+      5000));
+
+  // THE assertion, on the row the user clicked: it reads Installed.
+  CHECK(cell_text(table, clicked, ui::DownloadsTab::Status) == "Installed");
+  // And the sibling, a different file that is genuinely not installed, is left
+  // alone - a mark that moved to the wrong row would show up here.
+  CHECK(cell_text(table, sibling, ui::DownloadsTab::Status) == "Install");
+
+  fs::remove_all(root);
+}
+
+// The same install with the setting the user actually has ON
+// (downloads/hide_installed=true). What must not happen is what the user saw:
+// the install completes, and the panel is left showing a row for that mod
+// reading "Install" with nothing anywhere saying it was installed.
+TEST_CASE("MainWindow: 'Hide installed' leaves the user able to see the install landed",
+          "[ui][harness][downloads][install]") {
+  const fs::path root     = make_case_root("gmm_dl_row_hidden");
+  const fs::path inst_dir = root / "instances";
+
+  qputenv("QT_QPA_PLATFORM", "offscreen");
+  int app_argc     = 1;
+  char app_argv0[] = "main_window_harness_test";
+  char *app_argv[] = {app_argv0, nullptr};
+  QApplication app(app_argc, app_argv);
+  QCoreApplication::setOrganizationName("GameModManager");
+  QCoreApplication::setApplicationName("GameModManager");
+
+  Settings::instance().set_hide_installed_downloads(true);
+
+  auto inst           = engine::Instance::installed("TestGame", inst_dir);
+  inst.info().game_id = "testgame";
+  REQUIRE(inst.create_directories());
+  REQUIRE(inst.write_toml());
+  const fs::path inst_root = inst.info().root;
+  const auto instance      = engine::Instance::from_root(inst_root);
+  const fs::path mods_dir  = instance.path_for(engine::InstanceKind::Mods);
+  const fs::path dl_dir    = instance.path_for(engine::InstanceKind::Downloads);
+  fs::create_directories(dl_dir);
+  fs::create_directories(mods_dir / "CrashLogger");
+  write_file(mods_dir / "CrashLogger" / "CrashLogger.dll", "plugin");
+  write_file(mods_dir / "CrashLogger" / "meta.ini",
+             "[General]\ninstallationFile=CrashLogger-59818-1-24-0-1782605772.7z\n"
+             "[GameModManager]\nfolder=CrashLogger\npriority=17\n");
+
+  const char *archive = "CrashLogger-59818-1-24-0-1782605772.7z";
+  const fs::path ap   = dl_dir / archive;
+  write_file(ap, "a real archive would be here");
+  ui::DownloadMeta meta;
+  meta.archive       = ap;
+  meta.id            = "59818-769017";
+  meta.name          = "CrashLogger";
+  meta.source        = "Nexus Mods";
+  meta.parent_mod_id = "59818";
+  meta.file_id       = 769017;
+  meta.nexus_domain  = "testgame";
+  meta.total_size    = static_cast<int64_t>(std::filesystem::file_size(ap));
+  meta.state         = ui::DownloadState::Complete;
+  REQUIRE(ui::write_download_meta(meta, ui::download_meta_path(meta, dl_dir)));
+
+  engine::GameKnowledge knowledge;
+  knowledge.set("testgame", "mods_subpath", "Mods");
+
+  ui::MainWindow w;
+  w.set_game_knowledge(&knowledge);
+  w.show();
+  w.set_game_info("testgame", "Test Game", "Default", {}, inst_root);
+  REQUIRE(pump_until([&w] {
+    return !w.is_loading();
+  }));
+
+  auto *panel = w.findChild<ui::RightPanel *>();
+  REQUIRE(panel != nullptr);
+  auto *tab = panel->ensure_downloads_tab();
+  REQUIRE(tab != nullptr);
+  auto *table = tab->table();
+  REQUIRE(table != nullptr);
+
+  const int clicked =
+      find_download_row_for_archive(table, QStringLiteral("CrashLogger-59818-1-24-0"));
+  REQUIRE(clicked >= 0);
+  REQUIRE_FALSE(table->isRowHidden(clicked));
+
+  auto *worker = w.pipeline_worker();
+  REQUIRE(worker != nullptr);
+  Q_EMIT worker->install_complete("59818-769017", true, "Success", "CrashLogger",
+                                  archive);
+  QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
+
+  // THE assertion, with the setting the user has ON: the row they installed
+  // from is STILL ON SCREEN and reads "Installed". Hiding it is what left the
+  // user staring at the sibling download, still saying "Install", for the mod
+  // they had just installed - the filter destroyed the only evidence the
+  // install had happened.
+  CHECK_FALSE(table->isRowHidden(clicked));
+  CHECK(cell_text(table, clicked, ui::DownloadsTab::Status) == "Installed");
+
+  // The panel's own re-scan fires right after an install (the manifest write
+  // trips the directory watcher). Re-pointing the tab at the same directory
+  // runs that same scan, and it must not take the row away either.
+  tab->set_downloads_dir(dl_dir);
+  REQUIRE(pump_until(
+      [&] {
+        return cell_text(table, clicked, ui::DownloadsTab::Status) == "Installed";
+      },
+      5000));
+  CHECK_FALSE(table->isRowHidden(clicked));
+
+  // The notice is not permanent: re-asserting the filter is how the user puts
+  // the row away, and "Hide installed" has to keep working afterwards.
+  QCheckBox *hide_box = nullptr;
+  for (auto *box : tab->findChildren<QCheckBox *>()) {
+    if (box->text() == QLatin1String("Hide installed"))
+      hide_box = box;
+  }
+  REQUIRE(hide_box != nullptr);
+  REQUIRE(hide_box->isChecked());
+  hide_box->setChecked(false);
+  hide_box->setChecked(true);
+  CHECK(table->isRowHidden(clicked));
+
+  fs::remove_all(root);
+}
+
+// The version an install leaves blank. The archive NAME says 1.24.0 and Nexus
+// says "v1.0" for that same file - they deliberately disagree, because
+// "1.24.0" is a Nexus naming convention and not a contract, and a version
+// read off the filename is the wrong answer dressed as a right one. The
+// captured body is the real Nexus v1 files.json reply
+// (tests/engine/fixtures/nexus/files_6832.json), so the version that lands is
+// Nexus's own, not one the test made up.
+TEST_CASE(
+    "MainWindow: an install records Nexus's version for it, not the archive's name",
+    "[ui][harness][install][version]") {
+  const fs::path root     = make_case_root("gmm_install_version");
+  const fs::path inst_dir = root / "instances";
+
+  qputenv("QT_QPA_PLATFORM", "offscreen");
+  int app_argc     = 1;
+  char app_argv0[] = "main_window_harness_test";
+  char *app_argv[] = {app_argv0, nullptr};
+  QApplication app(app_argc, app_argv);
+  QCoreApplication::setOrganizationName("GameModManager");
+  QCoreApplication::setApplicationName("GameModManager");
+
+  auto inst           = engine::Instance::installed("TestGame", inst_dir);
+  inst.info().game_id = "testgame";
+  REQUIRE(inst.create_directories());
+  REQUIRE(inst.write_toml());
+  const fs::path inst_root = inst.info().root;
+  const auto instance      = engine::Instance::from_root(inst_root);
+  const fs::path mods_dir  = instance.path_for(engine::InstanceKind::Mods);
+  const fs::path dl_dir    = instance.path_for(engine::InstanceKind::Downloads);
+  fs::create_directories(dl_dir);
+  fs::create_directories(mods_dir / "CrashLogger");
+  write_file(mods_dir / "CrashLogger" / "CrashLogger.dll", "plugin");
+
+  const char *archive = "CrashLogger-59818-1-24-0-1782605772.7z";
+  const fs::path ap   = dl_dir / archive;
+  write_file(ap, "a real archive would be here");
+  ui::DownloadMeta meta;
+  meta.archive       = ap;
+  meta.id            = "59818-769017";
+  meta.name          = "CrashLogger";
+  meta.source        = "Nexus Mods";
+  meta.parent_mod_id = "59818";
+  meta.file_id       = 769017;
+  meta.nexus_domain  = "testgame";
+  meta.total_size    = static_cast<int64_t>(std::filesystem::file_size(ap));
+  meta.state         = ui::DownloadState::Complete;
+  REQUIRE(ui::write_download_meta(meta, ui::download_meta_path(meta, dl_dir)));
+
+  engine::GameKnowledge knowledge;
+  knowledge.set("testgame", "mods_subpath", "Mods");
+
+  ui::MainWindow w;
+  w.set_game_knowledge(&knowledge);
+  w.show();
+  w.set_game_info("testgame", "Test Game", "Default", {}, inst_root);
+  REQUIRE(pump_until([&w] {
+    return !w.is_loading();
+  }));
+
+  auto *ctl = w.findChild<ui::DownloadsController *>();
+  REQUIRE(ctl != nullptr);
+  auto *panel = w.findChild<ui::RightPanel *>();
+  REQUIRE(panel != nullptr);
+  REQUIRE(panel->ensure_downloads_tab() != nullptr);
+
+  // What the install leaves behind: a meta.ini with the archive and the Nexus
+  // ids, and NO version key - from_default never writes one.
+  auto *worker = w.pipeline_worker();
+  REQUIRE(worker != nullptr);
+  fs::create_directories(mods_dir / "CrashLogger");
+  write_file(mods_dir / "CrashLogger" / "meta.ini",
+             "[General]\ninstallationFile=CrashLogger-59818-1-24-0-1782605772.7z\n"
+             "[GameModManager]\nfolder=CrashLogger\npriority=17\n"
+             "[Nexusmods]\nmodid=59818\nfileid=769017\n");
+
+  const int mod_row = find_mod_row(w.mod_view(), QStringLiteral("CrashLogger"));
+  REQUIRE(mod_row >= 0);
+  auto *model = w.findChild<ui::ModList *>();
+  REQUIRE(model != nullptr);
+  // Before: the install's own truth, which is "not stated".
+  CHECK(model->mods()[mod_row].version.toStdString().empty());
+
+  // The version Nexus answers with for file 16268, taken from the CAPTURED
+  // reply rather than typed in here.
+  const fs::path fixture = fs::path(__FILE__).parent_path() / ".." / "engine" /
+                           "fixtures" / "nexus" / "files_6832.json";
+  std::ifstream fin(fixture, std::ios::binary);
+  REQUIRE(fin.good());
+  const std::string captured((std::istreambuf_iterator<char>(fin)),
+                             std::istreambuf_iterator<char>());
+  REQUIRE(!captured.empty());
+  std::vector<long long> available;
+  std::string newest;
+  std::string from_nexus;
+  REQUIRE(engine::Source::Nexus::UpdateCheck::parse_files(captured, 16268, available,
+                                                          newest, from_nexus));
+  REQUIRE(from_nexus == "v1.0");
+
+  // The one production step that turns that answer into what the user sees.
+  ui::DownloadsController::apply_installed_version(&w, mods_dir, "CrashLogger",
+                                                   from_nexus);
+  QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
+
+  // THE assertions: Nexus's version is in meta.ini and on the row.
+  CHECK(engine::ModMeta::load(mods_dir, "CrashLogger").get("General", "version") ==
+        "v1.0");
+  REQUIRE(find_mod_row(w.mod_view(), QStringLiteral("CrashLogger")) == mod_row);
+  CHECK(model->mods()[mod_row].version.toStdString() == "v1.0");
+  // And it is NOT the version the archive name would have suggested.
+  CHECK(model->mods()[mod_row].version.toStdString() != "1.24.0");
 
   fs::remove_all(root);
 }

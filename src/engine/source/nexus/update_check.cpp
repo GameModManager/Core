@@ -309,6 +309,31 @@ bool parse_files(const std::string &body, long long installed_file_id,
   return true;
 }
 
+std::string lookup_installed_version(const std::string &nexus_domain,
+                                     const std::string &mod_id,
+                                     const std::string &api_key, long long file_id) {
+  if (nexus_domain.empty() || mod_id.empty() || api_key.empty() || file_id <= 0)
+    return {};
+
+  const std::string url = "https://api.nexusmods.com/v1/games/" + nexus_domain +
+                          "/mods/" + mod_id + "/files.json";
+  const auto reply      = nexus_get(url, api_key);
+  if (!reply.ok) {
+    Logger::instance().warn("[NexusUpdateCheck] version lookup for file " +
+                            std::to_string(file_id) + " failed (HTTP " +
+                            std::to_string(reply.http_code) +
+                            "); the Version column stays as it was");
+    return {};
+  }
+
+  std::vector<long long> available;
+  std::string newest;
+  std::string installed;
+  if (!parse_files(reply.body, file_id, available, newest, installed))
+    return {};
+  return installed;
+}
+
 const char *period_query_value(Period p) {
   switch (p) {
   case Period::Day:

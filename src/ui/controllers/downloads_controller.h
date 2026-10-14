@@ -36,6 +36,26 @@ public:
   // This is a MOD update check, never an application update check.
   void check_mod_updates_after_install();
 
+  // Fill in the version an install left blank. An install rewrites meta.ini
+  // from scratch and nothing in the download path knows a version, so the
+  // Version column reads "?" until Nexus is asked. One files.json request for
+  // the file that was just installed - a few a day against a 20000/day cap -
+  // then the version is written into meta.ini and pushed into the row. A
+  // no-op for a non-Nexus mod, a mod that already records one, or a mod with
+  // no API key.
+  void record_installed_version(const std::string &folder_name);
+
+public:
+  // Record the version Nexus answered with into one mod's meta.ini and repaint
+  // its row. Split out of record_installed_version so the write is one named
+  // step rather than a lambda buried in a thread callback - it runs on the GUI
+  // thread, once, after the request has come back, and it is the step that has
+  // to be right that the version lands in the row the user is looking at.
+  static void apply_installed_version(ui::MainWindow *w,
+                                      const std::filesystem::path &mods_dir,
+                                      const std::string &folder_name,
+                                      const std::string &version);
+
 public slots:
   void save_download_manifest();
   void load_download_manifest();
