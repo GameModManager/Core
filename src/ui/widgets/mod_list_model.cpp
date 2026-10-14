@@ -1590,6 +1590,19 @@ void ModList::set_empty(const QString &id, bool on) {
   }
 }
 
+void ModList::set_version(const QString &id, const QString &version) {
+  for (int i = 0; i < mods_.size(); ++i) {
+    if (mods_[i].id == id && mods_[i].version != version) {
+      mods_[i].version = version;
+      // The update badge rides on the version column (modlistversiondelegate),
+      // so both roles have to be re-read.
+      emit dataChanged(index(i, Version), index(i, Version),
+                       {Qt::DisplayRole, Qt::ToolTipRole});
+      return;
+    }
+  }
+}
+
 void ModList::set_fomod(const QString &id, bool on) {
   for (int i = 0; i < mods_.size(); ++i) {
     if (mods_[i].id == id && mods_[i].is_fomod != on) {

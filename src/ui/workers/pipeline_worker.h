@@ -175,9 +175,16 @@ signals:
   // installed_folder is the final mods/<folder> the install produced (empty
   // when nothing was installed, e.g. a metadata-only mod). The UI can add
   // just that one row instead of rescanning the whole mods dir.
+  // archive_filename is the archive the install ran from. mod_id is the
+  // download row's key on the Downloads-tab path but the mod FOLDER on the
+  // reinstall path (ModActions::reinstall_mod), so the row is addressed by the
+  // archive - the lookup MO2 does too (organizercore.cpp:945 passes the archive
+  // path to DownloadManager::markInstalled, which resolves the row by file
+  // name, downloadmanager.cpp:1556-1560).
   void install_complete(const std::string &mod_id, bool success,
                         const std::string &message,
-                        const std::string &installed_folder = {});
+                        const std::string &installed_folder = {},
+                        const std::string &archive_filename = {});
   // The user canceled an interactive install stage (FOMOD wizard, overwrite
   // dialog). The download's state must be left untouched - this is NOT a
   // failure, and no Failed/Installed mark is applied.

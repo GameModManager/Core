@@ -342,6 +342,10 @@ public:
   void set_hidden_files(const QString &id, bool has_hidden);
   void set_empty(const QString &id, bool on);
   void set_fomod(const QString &id, bool on);
+  // Version string of an already-listed mod. A reinstall/overwrite rewrites
+  // the mod's own meta.ini, so a row that was not re-added has to be told the
+  // version the folder now carries. No-op for unknown ids and when unchanged.
+  void set_version(const QString &id, const QString &version);
   void set_root_override(const QString &id, bool on);
   // MO2 FLAG_INVALID / missing-metadata markers (see ModEntry).
   void set_invalid_data(const QString &id, bool on);

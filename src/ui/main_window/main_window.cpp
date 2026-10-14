@@ -627,6 +627,10 @@ void MainWindow::set_drop_overlay_visible(bool visible) {
   drop_overlay_->show();
 }
 
+ui::PipelineWorker *MainWindow::pipeline_worker() const {
+  return pipeline_thread_ ? pipeline_thread_->worker() : nullptr;
+}
+
 bool MainWindow::lock_ui(LockReason reason) {
   // Delegate to the UI Locker which handles the actual enable/disable logic
   return locker_->lock(reason);

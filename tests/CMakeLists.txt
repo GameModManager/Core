@@ -146,6 +146,10 @@ gmm_catch2_test(fresh_install_test engine/fresh_install_test.cpp)
 gmm_catch2_test(append_install_test engine/append_install_test.cpp)
 gmm_catch2_test(pipeline_test engine/pipeline_test.cpp)
 gmm_catch2_test(pipeline_failure_reason_test engine/pipeline_failure_reason_test.cpp)
+# A Replace overwrite keeps the mod's load-order position (priority +
+# separator_id) across the folder delete. Filesystem only, no UI.
+gmm_catch2_test(install_overwrite_order_test engine/install_overwrite_order_test.cpp
+    PROPERTIES TIMEOUT 120)
 gmm_catch2_test(plugin_database_test engine/plugin_database_test.cpp)
 gmm_catch2_test(loot_sorter_test engine/loot_sorter_test.cpp)
 gmm_catch2_test(logger_test engine/logger_test.cpp)
