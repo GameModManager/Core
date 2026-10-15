@@ -16,7 +16,17 @@
 // Replace that restored the old installationfile would leave the new install
 // unrecorded.
 //
-// Hermetic: throwaway temp root, real InstallStage, no UI, no network.
+// The same reasoning reaches further than the two keys above. Everything in a
+// mod folder's meta.ini that describes the MOD ROW rather than the archive -
+// rootOverride, which the deploy reads to send the mod to the GAME ROOT,
+// validated, color, category, the tree's fold and parent links, the mirror
+// record - went the same way, one shipped release at a time. The carry is a
+// deny-list now, so those cases pin both halves of it: the row keys that must
+// ride along, and the archive keys that must not.
+//
+// Hermetic: throwaway temp root, real InstallStage, the real deploy, no UI, no
+// network.
+#include "engine/deploy/deploy_utils.h"
 #include "engine/mod/meta/mod_meta.h"
 #include "engine/mod/model/mod.h"
 #include "engine/pipeline/install_stage.h"
@@ -66,6 +76,16 @@ fs::path seed_staging(const fs::path &root, const std::string &content = "v2 pay
   return staging;
 }
 
+// An archive that ships its own meta.ini - what every Bethesda archive MO2
+// installs does. write_game_metadata then early-returns and the shipped file
+// IS the mod's meta, so anything the carry writes has to be a key the shipped
+// file does not already carry.
+fs::path seed_staging_with_meta(const fs::path &root) {
+  const fs::path staging = seed_staging(root, "v2 payload");
+  std::ofstream(staging / "meta.ini") << "[General]\nversion=1.0.0\n";
+  return staging;
+}
+
 // An existing install with a real position in the list: priority 17 and a
 // separator membership, both written by the app's own key names.
 void seed_installed(const fs::path &mods_dir, const std::string &folder,
@@ -79,6 +99,73 @@ void seed_installed(const fs::path &mods_dir, const std::string &folder,
   meta.set("GameModManager", "separator_id", "01.1 EARLY LOADERS - CORE_separator");
   meta.set_priority(17);
   REQUIRE(meta.save_file(mods_dir / folder / "meta.ini"));
+}
+
+// The state the USER put on the mod row, as opposed to the state the install
+// wrote. Each key is written by a different part of the app and read back by a
+// different one, so this is the shape of what a Replace used to destroy:
+//   rootOverride - mod_actions.cpp writes it, deploy_utils.cpp:413 reads it and
+//                  sends the mod to the GAME ROOT instead of the data dir
+//   validated    - mod_scanner.cpp:885 writes it, :590 reads it to suppress the
+//                  invalid / no-metadata badges
+//   color        - mod_actions.cpp / notes_tab write it, mod_scanner.cpp:445
+//                  reads it for the row and separator tint
+//   category     - mod_context_menu / categories_tab write it, the filter reads
+//                  it; write_game_metadata resets it to 0
+const char *kRootOverride = "1";
+const char *kValidated    = "true";
+const char *kColor        = "#ff00ff";
+const char *kCategories   = "5,7";
+
+// Stamps that row state onto an install that seed_installed already made.
+// `root_tagged` false writes the "user turned it off again" value (0), which is
+// what the app writes for every mod that was never tagged.
+void seed_row_state(const fs::path &mods_dir, const std::string &folder,
+                    bool root_tagged = true) {
+  auto meta = ModMeta::load_file(mods_dir / folder / "meta.ini");
+  meta.set("General", "rootOverride", root_tagged ? kRootOverride : "0");
+  meta.set("General", "validated", kValidated);
+  meta.set("General", "color", kColor);
+  meta.set("General", "category", kCategories);
+  // A key nobody has written yet. The carry is a deny-list, so this one is the
+  // point: it has to survive without anyone naming it, which is the only way
+  // the next rootOverride-sized bug does not ship.
+  meta.set("General", "aKeyNoOneHasNamedYet", "carried");
+  meta.set("GameModManager", "parent_id", "RootFolder");
+  meta.set("Mirror", "sourcePath", "/outside/mods/ExternalMod");
+  meta.set("Mirror", "sourceTimestamp", "1700000000");
+  REQUIRE(meta.save_file(mods_dir / folder / "meta.ini"));
+}
+
+// Replace the folder with a fresh install of `archive`. The decision is
+// Replace unless `headless` says otherwise (no callback at all = the CLI's
+// silent replace, a different branch of the same install). `ships_meta` makes
+// the new archive bring its own meta.ini along.
+void run_replace(const fs::path &mods_dir, const fs::path &root,
+                 const std::string &archive, bool headless = false,
+                 bool ships_meta = false) {
+  Mod mod;
+  mod.id               = "MetaMod";
+  mod.name             = "MetaMod";
+  mod.state            = ModState::Extracted;
+  mod.archive_filename = archive;
+  ModFile staged;
+  staged.relative_path =
+      (ships_meta ? seed_staging_with_meta(root) : seed_staging(root, "v2 payload"))
+          .string();
+  mod.files.push_back(staged);
+
+  PipelineContext ctx;
+  ctx.mods_dir = mods_dir.string();
+  if (!headless) {
+    ctx.overwrite_query_cb = [](const std::string &) {
+      OverwriteDecision d;
+      d.action = OverwriteAction::Replace;
+      return d;
+    };
+  }
+  InstallStage stage;
+  REQUIRE(stage.execute(mod, ctx));
 }
 
 }  // namespace
@@ -527,4 +614,275 @@ TEST_CASE("a merge of a versionless archive drops the previous version",
   REQUIRE(same_stage.execute(again, same_ctx));
   CHECK(ModMeta::load_file(same_mods / "MetaMod" / "meta.ini")
             .get("General", "version") == "1.25.0");
+}
+
+// ---------------------------------------------------------------------------
+// The mod row's own state. The whole point of an update is that the CONTENT
+// changed and the MOD did not.
+//
+// The carry used to be one hand-written variable per key, which is how four
+// deploy- and filter-affecting keys came to be destroyed on every overwrite
+// without anyone noticing: rootOverride (the deploy read at deploy_utils.cpp:413
+// sends the mod to the GAME ROOT), validated, color and category. They are
+// written by four different parts of the app and read back by four others, and
+// nothing in the install re-derives any of them - the install knows the
+// archive, not what the user did to the mod row.
+//
+// The carry is now a deny-list over [General] / [GameModManager] / [Mirror], so
+// an unknown key survives by default. These cases pin both halves: the keys
+// that must ride along, and the keys that must NOT (they describe the archive
+// that was just installed and are re-stamped from the manifest).
+//
+// Hermetic: throwaway temp root, real InstallStage, no UI, no network.
+TEST_CASE("an overwrite carries the mod row's own state forward",
+          "[engine][install][overwrite][state]") {
+  const auto assert_row_state_kept = [](const ModMeta &after) {
+    INFO("surviving meta.ini:\n" << after.serialize());
+    CHECK(after.get("General", "rootOverride") == kRootOverride);
+    CHECK(after.get("General", "validated") == kValidated);
+    CHECK(after.get("General", "color") == kColor);
+    // category is the sharp one: write_game_metadata writes category=0 into
+    // every fresh meta, so the carry has to test key PRESENCE, not emptiness.
+    CHECK(after.get("General", "category") == kCategories);
+    // The same rules one section over, and one key nobody has named yet.
+    CHECK(after.get("GameModManager", "parent_id") == "RootFolder");
+    CHECK(after.get("General", "aKeyNoOneHasNamedYet") == "carried");
+    CHECK(after.get("Mirror", "sourcePath") == "/outside/mods/ExternalMod");
+    // ...and what the archive DID install is not a survivor.
+    CHECK(after.get("General", "installationfile") == "MetaMod 1.25.0 new.7z");
+  };
+
+  SECTION("the decision the user picked") {
+    TempDir tmp("row_state");
+    const fs::path mods_dir = tmp.root / "mods";
+    fs::create_directories(mods_dir);
+    seed_installed(mods_dir, "MetaMod", "MetaMod 1.24.0 old.7z");
+    seed_row_state(mods_dir, "MetaMod");
+
+    run_replace(mods_dir, tmp.root, "MetaMod 1.25.0 new.7z");
+
+    const auto after = ModMeta::load_file(mods_dir / "MetaMod" / "meta.ini");
+    assert_row_state_kept(after);
+    // The content really moved, so the row state above survived a genuine
+    // Replace and not a Merge that never deleted anything.
+    CHECK(fs::exists(mods_dir / "MetaMod" / "meshes" / "thing.nif"));
+  }
+
+  SECTION("the headless silent replace carries it too") {
+    // No overwrite_query_cb at all: the CLI branch, which takes its own
+    // remove_all. It used to carry nothing whatsoever, so a headless update
+    // lost the sentinel, the position AND the row state.
+    TempDir tmp("row_state_headless");
+    const fs::path mods_dir = tmp.root / "mods";
+    fs::create_directories(mods_dir);
+    seed_installed(mods_dir, "MetaMod", "MetaMod 1.24.0 old.7z");
+    seed_row_state(mods_dir, "MetaMod");
+
+    run_replace(mods_dir, tmp.root, "MetaMod 1.25.0 new.7z", /*headless=*/true);
+
+    assert_row_state_kept(ModMeta::load_file(mods_dir / "MetaMod" / "meta.ini"));
+    // Same branch, same proof that it deleted: the old payload is gone and the
+    // new one is there.
+    CHECK(fs::exists(mods_dir / "MetaMod" / "meshes" / "thing.nif"));
+  }
+
+  SECTION("a merge keeps it, because merge never deletes the folder") {
+    // Not a second implementation of the carry - a Merge keeps meta.ini, so
+    // there is nothing to carry and the rows above are reached by NOT having
+    // been touched. Pinned because "Merge keeps the folder" is a claim about
+    // install_stage's loop, and a Replace that started falling through to here
+    // would take it away silently.
+    TempDir tmp("row_state_merge");
+    const fs::path mods_dir = tmp.root / "mods";
+    fs::create_directories(mods_dir);
+    seed_installed(mods_dir, "MetaMod", "MetaMod 1.24.0 old.7z");
+    seed_row_state(mods_dir, "MetaMod");
+
+    Mod mod;
+    mod.id               = "MetaMod";
+    mod.name             = "MetaMod";
+    mod.state            = ModState::Extracted;
+    mod.archive_filename = "MetaMod 1.25.0 new.7z";
+    ModFile staged;
+    staged.relative_path = seed_staging(tmp.root, "merged").string();
+    mod.files.push_back(staged);
+
+    PipelineContext ctx;
+    ctx.mods_dir           = mods_dir.string();
+    ctx.overwrite_query_cb = [](const std::string &) {
+      OverwriteDecision d;
+      d.action = OverwriteAction::Merge;
+      return d;
+    };
+    InstallStage stage;
+    REQUIRE(stage.execute(mod, ctx));
+
+    assert_row_state_kept(ModMeta::load_file(mods_dir / "MetaMod" / "meta.ini"));
+  }
+
+  SECTION("a fresh install invents none of it") {
+    // The other half. A carry that wrote these keys unconditionally would
+    // root-deploy every mod on its first install and give it filter
+    // membership it never had.
+    TempDir tmp("row_state_fresh");
+    const fs::path mods_dir = tmp.root / "mods";
+    fs::create_directories(mods_dir);
+    Mod mod;
+    mod.id               = "BrandNew";
+    mod.name             = "BrandNew";
+    mod.state            = ModState::Extracted;
+    mod.archive_filename = "BrandNew-1-1.7z";
+    ModFile staged;
+    staged.relative_path = seed_staging(tmp.root, "brand new").string();
+    mod.files.push_back(staged);
+
+    PipelineContext ctx;
+    ctx.mods_dir = mods_dir.string();
+    InstallStage stage;
+    REQUIRE(stage.execute(mod, ctx));
+
+    const auto after = ModMeta::load_file(mods_dir / "BrandNew" / "meta.ini");
+    CHECK(after.get("General", "rootOverride").empty());
+    CHECK(after.get("General", "validated").empty());
+    CHECK(after.get("General", "color").empty());
+    // "0" and not empty: that is what write_game_metadata writes for a mod with
+    // no categories. Asserting it is empty would be asserting a change nobody
+    // asked for.
+    CHECK(after.get("General", "category") == "0");
+  }
+
+  SECTION("the archive's own identity is never carried") {
+    // The deny-list, exercised on the key where a carried value would be a lie
+    // rather than a loss: [General] modid is the NEXUS id namespace. The old
+    // install came from Nexus 99999; this one is a plain manual archive. A
+    // blanket carry would leave 99999 in place and every MO2-style reader would
+    // believe the manual archive is a Nexus mod.
+    TempDir tmp("row_state_modid");
+    const fs::path mods_dir = tmp.root / "mods";
+    fs::create_directories(mods_dir);
+    seed_installed(mods_dir, "MetaMod", "MetaMod 1.24.0 old.7z");
+    {
+      auto meta = ModMeta::load_file(mods_dir / "MetaMod" / "meta.ini");
+      meta.set("General", "modid", "99999");
+      meta.set("General", "version", "1.24.0");
+      meta.set("General", "newestVersion", "1.24.0");
+      meta.set("GameModManager", "download_sha256", "deadbeef");
+      meta.set("GameModManager", "download_size", "12345");
+      REQUIRE(meta.save_file(mods_dir / "MetaMod" / "meta.ini"));
+    }
+
+    run_replace(mods_dir, tmp.root, "MetaMod 1.25.0 new.7z");
+
+    const auto after = ModMeta::load_file(mods_dir / "MetaMod" / "meta.ini");
+    INFO("surviving meta.ini:\n" << after.serialize());
+    CHECK(after.get("General", "modid") == "0");
+    CHECK(after.get("General", "newestVersion").empty());
+    // The archive hash/size are recomputed from the file actually installed,
+    // and this fixture has no archive on disk, so the stale pair is gone
+    // rather than left describing a file that is not there.
+    CHECK(after.get("GameModManager", "download_sha256").empty());
+    CHECK(after.get("GameModManager", "download_size").empty());
+  }
+
+  SECTION("and an archive that ships its own meta.ini gets neither") {
+    // The second shape, and the only one where the deny-list is doing real
+    // work: the shipped meta.ini has no modid and no download hash, so there is
+    // no key for the presence rule to protect, and a carried 99999 would make
+    // this plain archive look like a Nexus mod to MO2 and to us.
+    TempDir tmp("row_state_shipped_meta");
+    const fs::path mods_dir = tmp.root / "mods";
+    fs::create_directories(mods_dir);
+    seed_installed(mods_dir, "MetaMod", "MetaMod 1.24.0 old.7z");
+    {
+      auto meta = ModMeta::load_file(mods_dir / "MetaMod" / "meta.ini");
+      meta.set("General", "modid", "99999");
+      meta.set("GameModManager", "download_sha256", "deadbeef");
+      meta.set("General", "rootOverride", kRootOverride);
+      REQUIRE(meta.save_file(mods_dir / "MetaMod" / "meta.ini"));
+    }
+
+    run_replace(mods_dir, tmp.root, "MetaMod 1.25.0 new.7z", /*headless=*/false,
+                /*ships_meta=*/true);
+
+    const auto after = ModMeta::load_file(mods_dir / "MetaMod" / "meta.ini");
+    INFO("surviving meta.ini:\n" << after.serialize());
+    CHECK(after.get("General", "modid").empty());
+    CHECK(after.get("GameModManager", "download_sha256").empty());
+    // The shipped version is the archive's own answer and is kept - the carry
+    // does not touch it, which is the same rule that protects every other key
+    // the shipped file states.
+    CHECK(after.get("General", "version") == "1.0.0");
+    // And the row state still rides along past the shipped file.
+    CHECK(after.get("General", "rootOverride") == kRootOverride);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// The reason rootOverride is the priority: it is the one row key the DEPLOY
+// reads, and getting it wrong does not dim a badge - the mod stops reaching
+// the game. deploy_utils.cpp:413 reads [General] rootOverride == "1" and sends
+// the whole folder to the game root instead of the data dir (deploy_root_for,
+// deploy_utils.cpp:491). A Bethesda mod's plugins, textures and SKSE files all
+// live in that root, so a dropped flag is a mod that deploys fine and works on
+// nothing.
+//
+// The user settled it: root tagged mods ALWAYS deploy to root, including after
+// an update.
+//
+// Hermetic: throwaway temp root, real InstallStage, the real deploy.
+TEST_CASE("a root-tagged mod still deploys to the game root after an update",
+          "[engine][install][overwrite][deploy]") {
+  // Deploy one instance into a FRESH staging dir and report where the payload
+  // landed. Root-override mods land at the staging root, every other mod under
+  // the data dir - that difference IS the behaviour under test.
+  const auto deploy_to = [&](const fs::path &mods_dir, const fs::path &staging) {
+    INFO("staging after deploy: " << staging.string());
+    REQUIRE(engine::deploy_all_enabled_mods(mods_dir, staging, "Data",
+                                            /*deploy_include_mod_id=*/false,
+                                            /*disable_mechanism=*/""));
+    return fs::exists(staging / "meshes" / "thing.nif");
+  };
+
+  SECTION("tagged, so it reaches the root before AND after the update") {
+    TempDir tmp("root_deploy");
+    const fs::path mods_dir = tmp.root / "mods";
+    fs::create_directories(mods_dir);
+    seed_installed(mods_dir, "MetaMod", "MetaMod 1.24.0 old.7z");
+    seed_row_state(mods_dir, "MetaMod");
+
+    CHECK(deploy_to(mods_dir, tmp.root / "staging_before"));
+
+    run_replace(mods_dir, tmp.root, "MetaMod 1.25.0 new.7z");
+
+    // Fresh staging dir, so nothing the earlier deploy left behind can answer
+    // for this one.
+    const fs::path staging_after = tmp.root / "staging_after";
+    CHECK(deploy_to(mods_dir, staging_after));
+    // The load-bearing half: reaching the ROOT, not merely deploying at all.
+    CHECK_FALSE(fs::exists(staging_after / "Data" / "meshes" / "thing.nif"));
+  }
+
+  SECTION("not tagged, and the update does not tag it either") {
+    // The safety check. rootOverride=0 is the value every mod that was never
+    // tagged carries around, and the deploy reads it as "not root" - so this
+    // section is what proves the carry did not change ANY existing mod's
+    // deploy behaviour, only the ones that were already tagged.
+    TempDir tmp("no_root_deploy");
+    const fs::path mods_dir = tmp.root / "mods";
+    fs::create_directories(mods_dir);
+    seed_installed(mods_dir, "MetaMod", "MetaMod 1.24.0 old.7z");
+    seed_row_state(mods_dir, "MetaMod", /*root_tagged=*/false);
+
+    const fs::path before = tmp.root / "staging_before";
+    REQUIRE(deploy_all_enabled_mods(mods_dir, before, "Data", false, ""));
+    CHECK(fs::exists(before / "Data" / "meshes" / "thing.nif"));
+    CHECK_FALSE(fs::exists(before / "meshes" / "thing.nif"));
+
+    run_replace(mods_dir, tmp.root, "MetaMod 1.25.0 new.7z");
+
+    const fs::path after = tmp.root / "staging_after";
+    REQUIRE(deploy_all_enabled_mods(mods_dir, after, "Data", false, ""));
+    CHECK(fs::exists(after / "Data" / "meshes" / "thing.nif"));
+    CHECK_FALSE(fs::exists(after / "meshes" / "thing.nif"));
+  }
 }
