@@ -924,6 +924,19 @@ gmm_catch2_test(main_window_harness_test ui/main_window_harness_test.cpp
     # running until ctest's global default.
     PROPERTIES TIMEOUT 300)
 
+# The whole mod pipeline in one case: download -> install -> verify -> a newer
+# archive -> install over the top -> verify again -> the update check. Real
+# window, real downloads table, real PipelineWorker running the real stages,
+# two real zips built with libarchive, and the two install modals answered by
+# clicking their real buttons. libarchive is listed because the case WRITES the
+# archives itself rather than shipping a stand-in the extractor never sees.
+gmm_catch2_test(mod_pipeline_e2e_test ui/mod_pipeline_e2e_test.cpp
+    UI
+    LIBS gmm_ui Qt6::Test PkgConfig::LIBARCHIVE
+    # Two full installs with real modal round trips, so the same ceiling as the
+    # window harness.
+    PROPERTIES TIMEOUT 300)
+
 # Workspace-czc0: the load-order / mod-list backup and restore points, driven
 # through the real window's four toolbar buttons with QTest clicks, asserting
 # the bytes on disk. Consumer-reaches-control: a button click is the whole

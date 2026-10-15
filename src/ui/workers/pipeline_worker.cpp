@@ -166,6 +166,17 @@ void PipelineWorker::install_mod(const std::string &id, const std::string &zip_p
                                  const std::string &name, const std::string &page_url) {
   engine::Logger::instance().debug("Installing mod: " + id);
 
+  // One line naming every object the install will act on. "Which archive did
+  // this install actually run from" is the question the whole Downloads tab
+  // hangs on - the row it came from, the file the user downloaded and the file
+  // meta.ini will record are three separate names, and only this line states
+  // all three together.
+  engine::Logger::instance().debug(
+      "[Flow] install begin: id=" + id + " archive='" +
+      std::filesystem::path(zip_path).filename().string() + "' path=" + zip_path +
+      " source=" + source_type + " source_id=" + source_id +
+      " file_id=" + std::to_string(file_id) + " name='" + name + "'");
+
   if (!pipeline_) {
     emit install_complete(id, false, "the install pipeline is not configured");
     return;
@@ -206,6 +217,12 @@ void PipelineWorker::install_mod(const std::string &id, const std::string &zip_p
   auto result = pipeline_->run(mod);
 
   if (result == engine::PipelineResult::Success) {
+    engine::Logger::instance().debug(
+        "[Flow] install finished: id=" + id + " archive='" + mod.archive_filename +
+        "' folder='" + pipeline_->ctx().installed_mod_folder + "'" +
+        (pipeline_->ctx().replaced_archive.empty()
+             ? std::string()
+             : " replaced_archive='" + pipeline_->ctx().replaced_archive + "'"));
     engine::Logger::instance().debug("Mod installed: " + id);
     if (!pipeline_->ctx().replaced_archive.empty()) {
       engine::Logger::instance().info("InstallStage: replacing " +

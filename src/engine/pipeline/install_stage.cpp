@@ -325,6 +325,13 @@ namespace Source {
           folder_name,
           mod.download_source_type.empty() ? "manual" : mod.download_source_type,
           mod.download_source_id, mod.archive_filename, mod.version);
+      // Which archive does the meta we are holding DESCRIBE? Read before the
+      // refresh loop below overwrites the key, and from both spellings:
+      // write_game_metadata writes installationFile (mod_meta.cpp) and
+      // from_default writes installationfile.
+      std::string meta_names = meta.get("General", "installationfile");
+      if (meta_names.empty())
+        meta_names = meta.get("General", "installationFile");
       for (const auto &key : fresh.keys("GameModManager"))
         meta.set("GameModManager", key, fresh.get("GameModManager", key));
       // Reinstall/merge must refresh the version stamp from the install
@@ -336,6 +343,26 @@ namespace Source {
       for (const auto &key : fresh.keys("General"))
         if (key == "installed" || key == "version" || key == "installationfile")
           meta.set("General", key, fresh.get("General", key));
+      // When the install supplied NO version, the loop above never visits
+      // "version" (from_default writes the key only for a non-empty version,
+      // mod_meta.cpp) and the meta.ini still on disk can be the PREVIOUS
+      // install's. That is not a stale cache, it is a confident wrong answer:
+      // the Version column shows the version of content that is no longer the
+      // whole of what is installed. It is also self-sealing, because
+      // record_installed_version skips the Nexus lookup whenever that value is
+      // non-empty - so the wrong value could never be corrected by anything.
+      //
+      // Cleared only when the meta on disk names a DIFFERENT archive, which is
+      // the one case that proves the value is a survivor rather than this
+      // install's own. That exclusion cuts both ways, and both are the same bug
+      // in a different coat: a Replace reads the meta the copy just put there,
+      // and a Merge of an archive that ships its own meta.ini reads that one -
+      // both name mod.archive_filename, and wiping their version would invent a
+      // new wrong answer. A reinstall of the SAME archive keeps its version,
+      // which is true (it is the same content) and spends no Nexus request.
+      if (mod.version.empty() && !meta_names.empty() &&
+          meta_names != mod.archive_filename)
+        meta.set("General", "version", "");
       // newestVersion + installationFile are NOT in fresh (from_default never
       // writes them - they come from write_game_metadata on fresh installs),
       // so stamp them explicitly from the manifest or they go stale on Merge.

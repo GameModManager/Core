@@ -8,6 +8,10 @@
 
 #include "ui/main_window/main_window.h"
 
+namespace engine {
+class ModMeta;
+}  // namespace engine
+
 namespace ui {
 
 // Downloads & saves: NXM/LoversLab download routing, the Downloads and Saves
@@ -55,6 +59,17 @@ public:
                                       const std::filesystem::path &mods_dir,
                                       const std::string &folder_name,
                                       const std::string &version);
+
+  // Clear the update-available symbol when the version that was just recorded
+  // IS the newest the sweep knows about. Both version-recording paths call this
+  // (record_installed_version and apply_installed_version), because either one
+  // can be the version that makes a sweep's verdict stale, and neither knew
+  // about the other. Public so the e2e test can drive the real step rather than
+  // a stand-in for it.
+  static void reconcile_update_symbol(ui::MainWindow *w,
+                                      const std::filesystem::path &mods_dir,
+                                      const std::string &folder_name,
+                                      engine::ModMeta &meta);
 
 public slots:
   void save_download_manifest();

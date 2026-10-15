@@ -52,6 +52,7 @@
 #include <QLocale>
 #include <QMenu>
 #include <QMimeData>
+#include <QSettings>
 #include <QTableWidget>
 #include <QTableWidgetItem>
 #include <QSet>
@@ -1242,10 +1243,18 @@ TEST_CASE("downloads resume without a link keeps the row paused", "[ui]") {
   CHECK(logged);
 }
 
-// Replacing a mod deletes the folder an earlier download had installed, so
-// that download must stop claiming it is installed. Driven through the tab
-// because the Status cell is the only public observable for a row's state.
-TEST_CASE("a replaced mod's download stops claiming it is installed", "[ui]") {
+// A newer archive of the same mod replaced the folder this download installed,
+// so the row must stop claiming it is installed AND stop reading "Install" -
+// "Install" on the superseded archive is the action that would put the version
+// the user just replaced back on top. MO2 marks it STATE_UNINSTALLED
+// (downloadmanager.h:153, downloadlist.cpp:198) via modReplaced ->
+// markUninstalled (installationmanager.cpp:423, mainwindow.cpp:2555).
+//
+// Driven through the tab because the Status cell is the only public observable
+// for a row's state, and then through the real per-file meta round trip,
+// because a label that is not persisted is not a state.
+TEST_CASE("a superseded download reads Uninstalled and survives the meta round trip",
+          "[ui]") {
   qputenv("QT_QPA_PLATFORM", "offscreen");
   const std::filesystem::path root = "/tmp/gmm_downloads_replaced";
   std::filesystem::remove_all(root);
@@ -1259,45 +1268,193 @@ TEST_CASE("a replaced mod's download stops claiming it is installed", "[ui]") {
   QCoreApplication::setOrganizationName("GameModManager");
   QCoreApplication::setApplicationName("GameModManager");
 
+  const auto alpha_zip = root / "dl" / "alpha-1.0.zip";
+  const auto beta_zip  = root / "dl" / "beta-2.0.zip";
+  // The archives are real files: the meta round trip re-derives from what is on
+  // disk, and a state that only lives in a label proves nothing there.
+  write_file(alpha_zip, 4096);
+  write_file(beta_zip, 8192);
+
+  {
+    ui::DownloadsTab tab;
+    auto *table = tab.table();
+    REQUIRE(table != nullptr);
+
+    // Two downloads, both installed. Only one of them installed the mod that
+    // the Replace deleted, and the engine reports that by bare archive name.
+    // Added BEFORE the tab is pointed at the directory, or the scan claims both
+    // archives as "Manual" rows keyed by their file names first and the rows
+    // this case is about never exist.
+    tab.add_download("a", "Alpha", "Nexus Mods", alpha_zip);
+    tab.add_download("b", "Beta", "Nexus Mods", beta_zip);
+    tab.mark_complete("a", true);
+    tab.mark_complete("b", true);
+    tab.mark_installed("a");
+    tab.mark_installed("b");
+    tab.set_downloads_dir(root / "dl");
+
+    const int row_a = row_with_name(table, "Alpha");
+    const int row_b = row_with_name(table, "Beta");
+    REQUIRE(row_a >= 0);
+    REQUIRE(row_b >= 0);
+    REQUIRE(table->item(row_a, 2)->text() == QLatin1String("Installed"));
+    REQUIRE(table->item(row_b, 2)->text() == QLatin1String("Installed"));
+
+    // A bare name with no directory has to match: meta.ini records the bare
+    // archive name, while the row holds a full path.
+    tab.mark_uninstalled("alpha-1.0.zip");
+    REQUIRE(table->item(row_a, 2)->text() == QLatin1String("Uninstalled"));
+    // NOT "Install" - that is the action for a finished download, and this one
+    // is the version the user replaced on purpose.
+    REQUIRE(table->item(row_a, 2)->text() != QLatin1String("Install"));
+    // The download that actually installed the mod is untouched.
+    REQUIRE(table->item(row_b, 2)->text() == QLatin1String("Installed"));
+
+    // Only a matching row is touched, and an empty name is a no-op.
+    tab.mark_uninstalled("no-such-archive.zip");
+    REQUIRE(table->item(row_b, 2)->text() == QLatin1String("Installed"));
+    REQUIRE(table->item(row_a, 2)->text() == QLatin1String("Uninstalled"));
+    tab.mark_uninstalled("");
+    REQUIRE(table->item(row_b, 2)->text() == QLatin1String("Installed"));
+
+    // "Hide installed" is MO2's "Hide downloads after installation"
+    // (settingsdialog.ui:157-168). A ticked box takes BOTH off the screen: the
+    // archive that installed the mod, and the archive a newer one superseded -
+    // neither is pending for this mod any more.
+    QCheckBox *hide_box = nullptr;
+    for (auto *box : tab.findChildren<QCheckBox *>())
+      if (box->text() == QLatin1String("Hide installed"))
+        hide_box = box;
+    REQUIRE(hide_box != nullptr);
+    hide_box->setChecked(true);
+    CHECK(table->isRowHidden(row_a));
+    CHECK(table->isRowHidden(row_b));
+    // And unticking puts them back - the filter hides, it does not remove.
+    hide_box->setChecked(false);
+    CHECK(!table->isRowHidden(row_a));
+    CHECK(!table->isRowHidden(row_b));
+
+    REQUIRE(ui::write_download_metas(tab.to_metas(), root / "dl"));
+  }
+
+  // Restart. The state has to come back from the meta alone, which is the only
+  // thing that proves the flag was written rather than the cell repainted.
+  {
+    const auto metas = ui::read_download_metas(root / "dl");
+    REQUIRE(metas.size() == 2);
+    std::string ids;
+    for (const auto &m : metas)
+      ids += (ids.empty() ? "" : ",") + m.id + "@" + m.archive.filename().string();
+    INFO("metas: " << ids);
+    ui::DownloadsTab restored;
+    restored.deserialize(ui::metas_to_manifest_json(metas, root / "dl"), root / "dl");
+
+    const ui::DownloadMeta *alpha = nullptr;
+    const ui::DownloadMeta *beta  = nullptr;
+    for (const auto &m : metas) {
+      if (m.id == "a")
+        alpha = &m;
+      if (m.id == "b")
+        beta = &m;
+    }
+    REQUIRE(alpha != nullptr);
+    REQUIRE(beta != nullptr);
+    CHECK(alpha->state == ui::DownloadState::Uninstalled);
+    CHECK(beta->state == ui::DownloadState::Installed);
+
+    // MO2's flag, spelled MO2's way, and derived in MO2's order
+    // (downloadmanager.cpp:118-126): a superseded archive's meta carries BOTH
+    // installed and uninstalled (its markUninstalled leaves "installed" alone),
+    // and only reading uninstalled first puts the row back as "Uninstalled".
+    QSettings meta(
+        QString::fromStdString((root / "dl" / "alpha-1.0.zip.meta").string()),
+        QSettings::IniFormat);
+    CHECK(meta.value("uninstalled").toBool());
+    CHECK(meta.value("installed").toBool());
+
+    // And the restored table renders it, not just the meta behind it.
+    const int row = row_with_name(restored.table(), "Alpha");
+    REQUIRE(row >= 0);
+    CHECK(restored.table()->item(row, 2)->text() == QLatin1String("Uninstalled"));
+  }
+}
+
+// The scan's per-file rejections are silent, and the count that replaced them
+// is one line.
+//
+// The user's own downloads dir is 77 archives and 77 ".meta" sidecars, and the
+// scan asked is_archive_path about every one of them on EVERY scan - every
+// panel show, every watcher tick - logging one "skip non-archive <name>" for
+// each rejection. That is 79 identical lines per scan, drowning the handful of
+// lines that carry news. The name of a file we deliberately do not track is not
+// information the user acts on; the number of them is.
+//
+// Hermetic: offscreen platform, throwaway dir, no network.
+TEST_CASE("a downloads scan logs its rejections once, not once per file",
+          "[ui][downloads][log]") {
+  qputenv("QT_QPA_PLATFORM", "offscreen");
+  const std::filesystem::path root = "/tmp/gmm_downloads_scan_log";
+  std::filesystem::remove_all(root);
+  std::filesystem::create_directories(root / "dl");
+  int test_argc     = 1;
+  char test_argv0[] = "test";
+  char *test_argv[] = {test_argv0, nullptr};
+  QApplication app(test_argc, test_argv);
+  QCoreApplication::setOrganizationName("GameModManager");
+  QCoreApplication::setApplicationName("GameModManager");
+
+  // The shape of the real folder: one sidecar meta per archive, plus a couple
+  // of files that are not archives at all.
+  constexpr int kArchives = 40;
+  for (int i = 0; i < kArchives; ++i) {
+    const std::string stem = "Mod " + std::to_string(i) + " 1.0.0 2026-08-21.7z";
+    write_file(root / "dl" / stem, 1024 + i);
+    write_file(root / "dl" / (stem + ".meta"), 200);
+  }
+  write_file(root / "dl" / "notes.txt", 100);
+  write_file(root / "dl" / ".download_manifest.json", 100);
+
+  // Function-local static on purpose: Logger::add_callback cannot be removed,
+  // so a sink captured by reference from a TEST_CASE local would dangle for the
+  // rest of the process. Constructed before the Logger singleton, so it is
+  // destroyed after it and no callback can outlive it.
+  static std::vector<std::string> debug_lines;
+  engine::Logger::instance().add_callback(
+      [](engine::LogLevel level, const std::string &, const std::string &message) {
+        if (level == engine::LogLevel::Debug)
+          debug_lines.push_back(message);
+      });
+  debug_lines.clear();  // drop the replay buffer handed to late subscribers
+
   ui::DownloadsTab tab;
   tab.set_downloads_dir(root / "dl");
-  auto *table = tab.table();
-  REQUIRE(table != nullptr);
 
-  // Two downloads, both installed. Only one of them installed the mod that
-  // the Replace deleted, and the engine reports that by bare archive name.
-  tab.add_download("a", "Alpha", "Nexus Mods", root / "dl" / "alpha-1.0.zip");
-  tab.add_download("b", "Beta", "Nexus Mods", root / "dl" / "beta-2.0.zip");
-  tab.mark_complete("a", true);
-  tab.mark_complete("b", true);
-  tab.mark_installed("a");
-  tab.mark_installed("b");
+  // The scan really ran over the whole dir, or nothing below means anything.
+  REQUIRE(tab.table()->rowCount() == kArchives);
 
-  const int row_a = row_with_name(table, "Alpha");
-  const int row_b = row_with_name(table, "Beta");
-  REQUIRE(row_a >= 0);
-  REQUIRE(row_b >= 0);
-  REQUIRE(table->item(row_a, 2)->text() == QLatin1String("Installed"));
-  REQUIRE(table->item(row_b, 2)->text() == QLatin1String("Installed"));
+  int per_file = 0;
+  for (const auto &line : debug_lines)
+    if (line.find("skip non-archive") != std::string::npos ||
+        line.find("skip non-file") != std::string::npos ||
+        line.find("skip empty or unreadable") != std::string::npos)
+      ++per_file;
+  INFO("debug lines during the scan: " << debug_lines.size()
+                                       << ", per-file rejections: " << per_file);
+  CHECK(per_file == 0);
 
-  // A bare name with no directory has to match: meta.ini records the bare
-  // archive name, while the row holds a full path. "Install" is the label a
-  // Complete row carries, so the action comes back with the state.
-  tab.mark_uninstalled("alpha-1.0.zip");
-  REQUIRE(table->item(row_a, 2)->text() != QLatin1String("Installed"));
-  REQUIRE(table->item(row_a, 2)->text() == QLatin1String("Install"));
-  REQUIRE(table->item(row_b, 2)->text() == QLatin1String("Installed"));
-
-  // Only an installed row is touched, and only the one that matches.
-  tab.mark_uninstalled("no-such-archive.zip");
-  REQUIRE(table->item(row_b, 2)->text() == QLatin1String("Installed"));
-  tab.mark_uninstalled("");
-  REQUIRE(table->item(row_b, 2)->text() == QLatin1String("Installed"));
-
-  // "Hide installed" must let the row back, or the user never sees the
-  // archive again.
-  tab.mark_uninstalled("beta-2.0.zip");
-  REQUIRE(table->item(row_b, 2)->text() == QLatin1String("Install"));
+  // And the number that answers the question the spam was in the way of is
+  // still there, as ONE line: 40 archives + 40 metas + 2 others = 82 files,
+  // of which 42 are not archives.
+  int summaries = 0;
+  std::string summary;
+  for (const auto &line : debug_lines) {
+    if (line.find("not archives, tracked=") == std::string::npos)
+      continue;
+    ++summaries;
+    summary = line;
+  }
+  CHECK(summaries == 1);
+  CHECK(summary.find("scanned 82 files, 42 not archives") != std::string::npos);
 }
 
 // MO2 column parity for the downloads list, locked against the rendered table.
