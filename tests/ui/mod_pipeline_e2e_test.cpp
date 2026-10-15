@@ -53,6 +53,7 @@
 #include <QEventLoop>
 #include <QMouseEvent>
 #include <QPushButton>
+#include <QSettings>
 #include <QTabBar>
 #include <QTableWidget>
 #include <QTabWidget>
@@ -265,6 +266,23 @@ std::string version_cell(ui::ModList *model, const QString &id) {
   return model->index(row, ui::ModList::Version).data().toString().toStdString();
 }
 
+// Whether the row actually ADVERTISES an available update. The verdict in
+// meta.ini is the input; this is the output the user sees - the Version cell's
+// tooltip, built by the model out of the same shows_update() the badge icon is
+// gated on. The tooltip rather than the icon on purpose, matching the existing
+// harness case: icon packs are staged beside the binary and are not populated
+// under ctest, so whether the artwork paints is the user's GUI check. The
+// decision the badge is gated on is not.
+bool wears_update_badge(ui::ModList *model, const QString &id) {
+  const int row = model->priority_of(id);
+  if (row < 0)
+    return false;
+  return model->index(row, ui::ModList::Version)
+      .data(Qt::ToolTipRole)
+      .toString()
+      .contains(QStringLiteral("Newest version on Nexus"));
+}
+
 }  // namespace
 
 TEST_CASE(
@@ -441,12 +459,14 @@ TEST_CASE(
   }));
   CHECK(version_cell(model, QStringLiteral("Foo")) == "1.0.0");
 
-  // The downloads entry reached Installed and is still on screen with "Hide
-  // installed" ON.
+  // The downloads entry reached Installed, and a ticked "Hide installed" - MO2's
+  // "Hide downloads after installation" - took it off the screen in the same
+  // call. The cell still says Installed: the row is hidden, not deleted.
   CHECK(cell_text(table, row_v1, ui::DownloadsTab::Status) == "Installed");
-  CHECK_FALSE(table->isRowHidden(row_v1));
+  CHECK(table->isRowHidden(row_v1));
   // The sibling is untouched - it is a different file, genuinely not installed.
   CHECK(cell_text(table, row_v2, ui::DownloadsTab::Status) == "Install");
+  CHECK_FALSE(table->isRowHidden(row_v2));
 
   // === STEP 5: focused ====================================================
   const int foo_row_v1 = model->priority_of(QStringLiteral("Foo"));
@@ -485,6 +505,36 @@ TEST_CASE(
     return cell_text(table, row_v2, ui::DownloadsTab::Status) == "Installed";
   }));
   REQUIRE(modals.refused_modal.isEmpty());
+
+  // The superseded download. This is the user's own screenshot: two real
+  // downloads of one mod, and the OLD one sitting at "Install" forever, which is
+  // the action that would put 1.0.0 back on top of the 2.0.0 they just
+  // installed. The Replace branch reports the archive it replaced
+  // (ctx.replaced_archive, out of the old meta.ini's installationfile), and MO2
+  // routes exactly that through modReplaced -> markUninstalled
+  // (installationmanager.cpp:423, mainwindow.cpp:2555). So it reads
+  // "Uninstalled", and it is persisted that way in its own meta.
+  REQUIRE(pump_until([&] {
+    return cell_text(table, row_v1, ui::DownloadsTab::Status) == "Uninstalled";
+  }));
+  CHECK(cell_text(table, row_v1, ui::DownloadsTab::Status) != "Install");
+  {
+    QSettings superseded_meta(
+        QString::fromStdString((dl_dir / "Foo-1.0.0.zip.meta").string()),
+        QSettings::IniFormat);
+    CHECK(superseded_meta.value("uninstalled").toBool());
+    // BOTH flags, which is MO2's own shape and the reason the derivation order
+    // matters: its markInstalled clears "uninstalled" and its markUninstalled
+    // leaves "installed" alone (downloadmanager.cpp:1549-1552, :1588-1591), so a
+    // superseded archive's meta carries installed=true AND uninstalled=true, and
+    // only reading uninstalled first puts it back on screen as "Uninstalled".
+    CHECK(superseded_meta.value("installed").toBool());
+  }
+  // With the filter on, NEITHER row for this mod is on screen: both are
+  // no-longer-pending states, and one of them reading "Install" is exactly the
+  // thing the user is meant not to see after installing over the top.
+  CHECK(table->isRowHidden(row_v1));
+  CHECK(table->isRowHidden(row_v2));
 
   // Files replaced, not merged: v1's own file is gone, v2's content is in place.
   CHECK_FALSE(fs::exists(mods_dir / "Foo" / "Data" / "OnlyInV1.txt"));
@@ -530,7 +580,11 @@ TEST_CASE(
   // Version updated, downloads row correct, focus correct.
   CHECK(version_cell(model, QStringLiteral("Foo")) == "2.0.0");
   CHECK(cell_text(table, row_v2, ui::DownloadsTab::Status) == "Installed");
-  CHECK_FALSE(table->isRowHidden(row_v2));
+  CHECK(table->isRowHidden(row_v2));
+  // Still Uninstalled after the reload: nothing re-derived it back to
+  // "Install".
+  CHECK(cell_text(table, row_v1, ui::DownloadsTab::Status) == "Uninstalled");
+  CHECK(table->isRowHidden(row_v1));
   REQUIRE(pump_until([&] {
     return view->currentIndex().isValid() &&
            view->currentIndex().row() == model->priority_of(QStringLiteral("Foo"));
@@ -784,6 +838,65 @@ TEST_CASE("Mod pipeline: an MO2-game archive that ships no version takes it from
   // byte transfer is the one seam - the same gap step 7 already declares for
   // the update check, and it is deliberately NOT closed by a second invented
   // capture, which would only ever test this test.
+
+  // === the symbol, which has to agree with the version ====================
+  // The user's own report: the Version column reads 1.0.2 and the row is STILL
+  // wearing the orange update-available symbol. The sweep had recorded
+  // nexus_update=true with newestversion=1.0.2; the install then recorded
+  // version=1.0.2 - the same string - and nothing re-read the verdict, so the
+  // badge outlived the fact that produced it. The badge is not cleared by
+  // waiting for the next sweep either; run() is monthly by default.
+  {
+    auto *ctl = w.findChild<ui::ModListController *>();
+    REQUIRE(ctl != nullptr);
+    auto flagged = engine::ModMeta::load(mods_dir, "CrashLogger");
+    INFO("CrashLogger meta: " << flagged.serialize());
+    flagged.set("General", "nexus_update", "true");
+    flagged.set("General", "newestversion", from_nexus);
+    REQUIRE(flagged.save(mods_dir, "CrashLogger"));
+    ctl->load_mods_from_game();
+    // Wait for the SCAN, not for the row. The scan runs on ModScanThread and
+    // load_mods_from_game is what the mod is badged by; the row was already on
+    // screen from the load above, so waiting for it proves the pump ran and
+    // says nothing about whether the new meta has been read. `loading_` goes
+    // false after the per-mod loop that calls set_update_state, which is the
+    // call under test's precondition.
+    REQUIRE(pump_until([&w] {
+      return !w.is_loading();
+    }));
+    REQUIRE(pump_until([&] {
+      return find_mod_row(view, QStringLiteral("CrashLogger")) >= 0;
+    }));
+    // The badge really is worn before the install path touches anything, so the
+    // assertions after it are measuring a change and not a row that never had
+    // one.
+    CHECK(wears_update_badge(model, QStringLiteral("CrashLogger")));
+    CHECK(version_cell(model, QStringLiteral("CrashLogger")) == "v1.0");
+
+    // The real production step, on the real meta, on the real row.
+    auto meta = engine::ModMeta::load(mods_dir, "CrashLogger");
+    ui::DownloadsController::reconcile_update_symbol(&w, mods_dir, "CrashLogger", meta);
+    QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
+
+    CHECK(
+        engine::ModMeta::load(mods_dir, "CrashLogger").get("General", "nexus_update") ==
+        "false");
+    // CONSUMER-REACHES-CONTROL: the verdict on disk is not the claim, the row
+    // no longer wearing the badge is.
+    CHECK_FALSE(wears_update_badge(model, QStringLiteral("CrashLogger")));
+
+    // A version that is NOT the newest leaves the badge alone - the reconcile is
+    // not a blanket "the install cleared it".
+    auto older = engine::ModMeta::load(mods_dir, "CrashLogger");
+    older.set("General", "nexus_update", "true");
+    older.set("General", "version", "0.9");
+    REQUIRE(older.save(mods_dir, "CrashLogger"));
+    ui::DownloadsController::reconcile_update_symbol(&w, mods_dir, "CrashLogger",
+                                                     older);
+    CHECK(
+        engine::ModMeta::load(mods_dir, "CrashLogger").get("General", "nexus_update") ==
+        "true");
+  }
 
   fs::remove_all(root);
 }

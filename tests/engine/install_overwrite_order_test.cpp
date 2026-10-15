@@ -184,3 +184,103 @@ TEST_CASE("a merge still keeps the position, and an uninstalled mod invents none
   CHECK(
       ModMeta::load_file(fresh_mods / "BrandNew" / "meta.ini").separator_id().empty());
 }
+
+// A Merge install of an archive that carries NO version must not inherit the
+// PREVIOUS install's.
+//
+// install_stage.cpp's refresh loop copies "version" out of
+// ModMeta::from_default, and from_default writes that key only for a non-empty
+// version - so a versionless archive never visits the key and the old one
+// survives in the meta.ini Merge kept. It is not a stale cache, it is a
+// confident wrong answer: the Version column names content that is no longer
+// the whole of what is installed. And it is self-sealing, because
+// record_installed_version skips the Nexus lookup whenever the value on file
+// is non-empty - so the wrong answer could never be corrected by anything, and
+// the user saw the old version next to the new files.
+//
+// Hermetic: throwaway temp root, real InstallStage, no UI, no network.
+TEST_CASE("a merge of a versionless archive drops the previous version",
+          "[engine][install][overwrite][version]") {
+  TempDir tmp("merge_version");
+  const fs::path mods_dir = tmp.root / "mods";
+  fs::create_directories(mods_dir);
+  seed_installed(mods_dir, "MetaMod", "MetaMod 1.24.0 old.7z");
+  // The version the previous install recorded. This is the survivor.
+  {
+    auto meta = ModMeta::load_file(mods_dir / "MetaMod" / "meta.ini");
+    meta.set("General", "version", "1.24.0");
+    REQUIRE(meta.save_file(mods_dir / "MetaMod" / "meta.ini"));
+  }
+
+  Mod mod;
+  mod.id               = "MetaMod";
+  mod.name             = "MetaMod";
+  mod.state            = ModState::Extracted;
+  mod.archive_filename = "MetaMod 1.25.0 new.7z";
+  // No version: the archive shipped none. This is the shape of the user's own
+  // case - a Nexus archive with no meta.ini at all.
+  mod.version.clear();
+  ModFile staged;
+  staged.relative_path = seed_staging(tmp.root, "v2 merge payload").string();
+  mod.files.push_back(staged);
+
+  PipelineContext ctx;
+  ctx.mods_dir           = mods_dir.string();
+  ctx.overwrite_query_cb = [](const std::string &) {
+    OverwriteDecision d;
+    d.action = OverwriteAction::Merge;
+    return d;
+  };
+
+  InstallStage stage;
+  REQUIRE(stage.execute(mod, ctx));
+
+  const auto after = ModMeta::load_file(mods_dir / "MetaMod" / "meta.ini");
+  INFO("surviving [General] version: '" << after.get("General", "version") << "'");
+  CHECK(after.get("General", "version").empty());
+  // The archive identity still moved, so this is a cleared survivor and not a
+  // meta.ini that simply stopped being written.
+  CHECK(after.get("General", "installationfile") == "MetaMod 1.25.0 new.7z");
+  CHECK(after.priority() == 17);
+
+  // The gate the clearing exists to reopen: record_installed_version skips the
+  // Nexus lookup whenever [General] version is non-empty
+  // (downloads_controller.cpp:1308), so an empty value is what lets the real
+  // version be asked for at all.
+  CHECK(after.get("General", "version").empty());
+
+  // A reinstall of the SAME archive keeps its version. The clear is aimed at a
+  // survivor, and "survivor" is proven only by the meta naming a DIFFERENT
+  // archive - a reinstall of the same file has the same content, so wiping its
+  // version would invent a new wrong answer and spend a Nexus request.
+  TempDir same("same_archive");
+  const fs::path same_mods = same.root / "mods";
+  fs::create_directories(same_mods);
+  seed_installed(same_mods, "MetaMod", "MetaMod 1.25.0 new.7z");
+  {
+    auto meta = ModMeta::load_file(same_mods / "MetaMod" / "meta.ini");
+    meta.set("General", "version", "1.25.0");
+    REQUIRE(meta.save_file(same_mods / "MetaMod" / "meta.ini"));
+  }
+  Mod again;
+  again.id               = "MetaMod";
+  again.name             = "MetaMod";
+  again.state            = ModState::Extracted;
+  again.archive_filename = "MetaMod 1.25.0 new.7z";
+  again.version.clear();
+  ModFile again_staged;
+  again_staged.relative_path = seed_staging(same.root, "same archive again").string();
+  again.files.push_back(again_staged);
+
+  PipelineContext same_ctx;
+  same_ctx.mods_dir           = same_mods.string();
+  same_ctx.overwrite_query_cb = [](const std::string &) {
+    OverwriteDecision d;
+    d.action = OverwriteAction::Merge;
+    return d;
+  };
+  InstallStage same_stage;
+  REQUIRE(same_stage.execute(again, same_ctx));
+  CHECK(ModMeta::load_file(same_mods / "MetaMod" / "meta.ini")
+            .get("General", "version") == "1.25.0");
+}
