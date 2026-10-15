@@ -261,6 +261,12 @@ gmm_catch2_test(loverslab_auth_test engine/loverslab_auth_test.cpp)
 gmm_catch2_test(loverslab_provider_test engine/loverslab_provider_test.cpp)
 gmm_catch2_test(modpub_provider_test engine/modpub_provider_test.cpp)
 gmm_catch2_test(loverslab_real_test engine/loverslab_real_test.cpp)
+# The --list-games document: derived from plugin registration plus
+# managed_games.json, validated against a checked-in sample. TIMEOUT because a
+# case that opens the Workshop SQLite client would sit on a lock rather than
+# failing fast.
+gmm_catch2_test(game_catalog_test engine/game_catalog_test.cpp
+    PROPERTIES TIMEOUT 120)
 gmm_catch2_test(mod_update_db_client_test engine/mod_update_db_client_test.cpp)
 gmm_catch2_test(install_method_test engine/install_method_test.cpp)
 gmm_catch2_test(self_updater_test engine/self_updater_test.cpp)

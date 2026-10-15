@@ -10,6 +10,7 @@ struct ParsedArgs {
   bool show_help    = false;
   bool show_version = false;
   bool headless     = false;
+  bool list_games   = false;
   bool handle_nxm   = false;
   bool handle_gmm   = false;
   bool handle_modl  = false;

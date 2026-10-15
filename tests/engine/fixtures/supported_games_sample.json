@@ -1,0 +1,77 @@
+{
+  "schema": "gmm.supported-games/1",
+  "games": [
+    {
+      "game_id": "TestGameAlpha",
+      "name": "Test Game Alpha",
+      "plugin": "TestGameAlpha.so",
+      "provenance": "plugin",
+      "identifiers": {
+        "steam_appid": 4242,
+        "nexus_domain": "testalpha",
+        "gog_id": null,
+        "epic_namespace": null
+      },
+      "sources": [
+        {
+          "source_id": "nexus",
+          "name": "Nexus Mods",
+          "provenance": "plugin",
+          "identifier": "testalpha"
+        },
+        {
+          "source_id": "steam",
+          "name": "Steam Workshop",
+          "provenance": "plugin",
+          "identifier": "4242"
+        },
+        {
+          "source_id": "loverslab",
+          "name": "LoversLab",
+          "provenance": "plugin",
+          "identifier": null
+        }
+      ]
+    },
+    {
+      "game_id": "TestGameBeta",
+      "name": "Test Game Beta",
+      "plugin": "TestGameBeta.so",
+      "provenance": "plugin",
+      "identifiers": {
+        "steam_appid": null,
+        "nexus_domain": null,
+        "gog_id": null,
+        "epic_namespace": null
+      },
+      "sources": [
+        {
+          "source_id": null,
+          "name": "ModDB Direct",
+          "provenance": "plugin",
+          "identifier": null
+        }
+      ]
+    },
+    {
+      "game_id": "UserOnlyGame",
+      "name": "UserOnlyGame",
+      "provenance": "user",
+      "identifiers": {
+        "steam_appid": null,
+        "nexus_domain": null,
+        "gog_id": null,
+        "epic_namespace": null
+      },
+      "sources": [
+        {
+          "source_id": "modpub",
+          "name": "ModPub",
+          "provenance": "user",
+          "identifier": "user-only-slug",
+          "website_url": "mod.pub"
+        }
+      ]
+    }
+  ]
+}

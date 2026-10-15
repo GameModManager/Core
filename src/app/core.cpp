@@ -27,6 +27,12 @@
 #include "engine/game/detect/game_detector.h"
 #include "engine/network/network_manager.h"
 #include "engine/plugin_host/plugin_loader.h"
+#include "engine/source/game_catalog.h"
+#include "engine/source/loverslab/provider.h"
+#include "engine/source/modpub/provider.h"
+#include "engine/source/nexus/provider.h"
+#include "engine/source/registry.h"
+#include "engine/source/steam/provider.h"
 #include "engine/theme/theme_manager.h"
 #include "engine/source/loverslab/auth.h"
 #include "engine/source/nexus/auth.h"
@@ -313,7 +319,10 @@ Application::Application(int &argc, char **argv)
   // is detached: it only touches the cache files and the thread-safe logger,
   // so outliving the Application during shutdown is harmless (worst case a
   // cache file finishes writing after exit).
-  {
+  //
+  // --list-games is a pure query: it must answer offline, so it never
+  // reaches the network on the way out.
+  if (!args.list_games) {
     std::vector<std::pair<std::string, std::string>> pending;
     for (const auto &game_id : plugin_loader_->knowledge().registered_games()) {
       std::string url =
@@ -367,6 +376,30 @@ int Application::run() {
     return early_exit_code_;
 
   const auto &args = command_line_.args();
+
+  // --list-games: a pure query. Answer from what is already loaded and exit,
+  // before the single-instance guard, before instance scanning and before any
+  // URL handling - nothing below it can add a game the catalog cannot see.
+  if (args.list_games) {
+    auto &registry = engine::Source::Registry::instance();
+    registry.register_provider(std::make_unique<engine::Source::Nexus::Provider>());
+    registry.register_provider(std::make_unique<engine::Source::LoversLab::Provider>());
+    registry.register_provider(std::make_unique<engine::Source::ModPub::Provider>());
+    // The Workshop db path is never opened here - Provider's constructor only
+    // records it and ensure_client() is the first thing to touch the file -
+    // but the path is still passed so this stays the same call the GUI makes
+    // in DownloadsController rather than a query-only variant of it.
+    registry.register_provider(std::make_unique<engine::Source::Steam::Provider>(
+        data_dir() + "/workshop_cache.db"));
+
+    engine::ManagedGames managed_games(fs::path(data_dir()) / "managed_games.json");
+    managed_games.load();
+    fprintf(stdout, "%s\n",
+            engine::build_supported_games(*plugin_loader_, managed_games, registry)
+                .dump(2)
+                .c_str());
+    return 0;
+  }
 
   // --logs (MO2 CommandLine::runEarly): duplicate the log stream to stdout.
   // Applied before the guard so a second instance's "another instance running"
