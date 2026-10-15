@@ -50,7 +50,24 @@ enum class DownloadState {
   // the manifest as an int (serialize, downloads_tab.cpp), so a value
   // inserted above would silently re-label every row written by an older
   // build.
-  Cancelled
+  Cancelled,
+  // A download that WAS installed and no longer is, because a newer archive of
+  // the same mod replaced the folder (MO2 STATE_UNINSTALLED,
+  // downloadmanager.h:153). MO2 emits modReplaced with the superseded
+  // archive's installationFile (installationmanager.cpp:418-424) and
+  // MainWindow::modRemoved routes it to DownloadManager::markUninstalled
+  // (mainwindow.cpp:507-510, :2552-2557), which sets exactly one meta flag:
+  // "uninstalled" = true (downloadmanager.cpp:1588-1591). It reads "Uninstalled"
+  // on the row (downloadlist.cpp:197-198) in dark yellow (:209-210).
+  //
+  // Without it the superseded archive reads "Install" forever, which is the row
+  // that tells the user to install the version they just replaced.
+  //
+  // APPEND ONLY, same reason as Cancelled: the state is persisted into the
+  // per-file meta as a DERIVED value and into the legacy JSON manifest as an
+  // int, so a value inserted above would silently re-label every row written by
+  // an older build.
+  Uninstalled
 };
 
 // What Enter / Delete / Space do on the selected download row, as a function
@@ -341,9 +358,13 @@ public:
   // the lookup MO2 does when it marks a download installed
   // (downloadmanager.cpp:1556-1560, indexByName).
   void mark_installed(const std::string &id, const std::string &archive_filename = {});
-  // A Replace deleted the mod this download installed, so the row must stop
-  // claiming it is installed. `archive_filename` is the bare name recorded in
-  // that mod's meta.ini. No-op when no installed row matches.
+  // A newer archive of the same mod replaced the folder this download
+  // installed, so the row must stop claiming it is installed: it reads
+  // "Uninstalled" (MO2 STATE_UNINSTALLED, downloadlist.cpp:198), not "Install",
+  // which would tell the user to install the version they just replaced.
+  // `archive_filename` is the bare name the engine read out of that mod's
+  // meta.ini (ctx.replaced_archive), the same name MO2's modReplaced carries
+  // (installationmanager.cpp:423). No-op when no finished row matches.
   void mark_uninstalled(const std::string &archive_filename);
   void mark_paused(const std::string &id);
   void mark_downloading(const std::string &id);
@@ -486,16 +507,6 @@ private:
     // ?do=download query). Persisted in the manifest so the "Open on ..."
     // context action and install provenance survive restarts.
     std::string page_url;
-    // Set by mark_installed, and cleared by a fresh load or by the user
-    // re-asserting the "Hide installed" box. A row carrying it is exempt from
-    // that filter: the filter is there to declutter the list, and hiding the
-    // row in the same call that recorded the install destroys the only
-    // evidence the install happened. With a second download of the same mod on
-    // screen, the user is left reading that one, still saying "Install", for
-    // the mod they just installed. Background refreshes (the directory scan)
-    // deliberately do NOT clear it - the panel's own re-scan fires 200 ms after
-    // the install and would hide the row again before it could be read.
-    bool installed_notice = false;
     // Hidden from the table without being deleted (MO2 DownloadInfo::m_Hidden
     // / DownloadManager::isHidden, downloadmanager.cpp:1523-1529). Persisted
     // in the manifest, so a row the user hid stays hidden across restarts and

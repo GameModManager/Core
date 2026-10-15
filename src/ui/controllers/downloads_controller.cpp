@@ -6,6 +6,7 @@
 #include "ui/install/install_name_dialog.h"
 #include "ui/overwrite/query_overwrite_dialog.h"
 #include "ui/widgets/task_dialog.h"
+#include "ui/widgets/mod_list_model.h"
 
 #include <QAbstractButton>
 #include <QMessageBox>
@@ -1294,6 +1295,59 @@ void DownloadsController::check_mod_updates_after_install() {
   })->start();
 }
 
+// Make the update-available symbol agree with the version that was just
+// recorded for this mod.
+//
+// The sweep writes [General] nexus_update = true and [General] newestversion
+// together (update_check.cpp:578-580), and nothing that ran afterwards re-read
+// them. Installing the newest file made [General] version equal the
+// newestversion the sweep had recorded, and the row kept wearing the orange
+// symbol for a mod that is now up to date - the user saw version 1.0.2 next to
+// "an update is available". The verdict is the engine's to make, but it was
+// made against the version Nexus last stated, and that is exactly what the
+// install replaced: so when the two now match, the verdict is recomputed here
+// rather than waiting for the next sweep, which can be a month away.
+//
+// Both paths that can record a version call this - the archive's own manifest
+// (record_installed_version, before its Nexus lookup) and the Nexus answer
+// itself (apply_installed_version) - because either one can be the version that
+// makes the badge stale, and neither one knew about the other's.
+//
+// Only a row that IS flagged is touched. Writing "false" into every freshly
+// installed mod would put a verdict nobody asked Nexus for into meta.ini - the
+// exact lie run() refuses to state for an unknown mod (update_check.cpp:
+// 566-570).
+void DownloadsController::reconcile_update_symbol(ui::MainWindow *w,
+                                                  const std::filesystem::path &mods_dir,
+                                                  const std::string &folder_name,
+                                                  engine::ModMeta &meta) {
+  if (!w || folder_name.empty())
+    return;
+  const std::string installed_version = meta.get("General", "version");
+  // Both spellings: the sweep writes newestversion (kKeyNewest) and the install
+  // stage writes newestVersion. The load path reads the same pair in the same
+  // order (mod_list_controller.cpp), and a badge that disagreed with the row's
+  // own version column would be worse than no badge.
+  std::string newest = meta.get("General", "newestversion");
+  if (newest.empty())
+    newest = meta.get("General", "newestVersion");
+  if (meta.get("General", "nexus_update") != "true" || installed_version.empty() ||
+      newest.empty() || installed_version != newest)
+    return;
+
+  meta.set("General", "nexus_update", "false");
+  if (!meta.save(mods_dir, folder_name))
+    return;
+  engine::Logger::instance().debug(
+      "[Flow] update check: cleared the update symbol for '" + folder_name +
+      "' - installed version '" + installed_version +
+      "' is the newest known, so the sweep's verdict no longer holds");
+  w->mod_model_->set_update_state(
+      QString::fromStdString(folder_name), false, QString::fromStdString(newest),
+      QString::fromStdString(
+          engine::Source::Nexus::UpdateCheck::read_ignored_version(meta)));
+}
+
 void DownloadsController::record_installed_version(const std::string &folder_name) {
   if (folder_name.empty())
     return;
@@ -1307,6 +1361,12 @@ void DownloadsController::record_installed_version(const std::string &folder_nam
 
   const std::filesystem::path mods_dir = w_->mods_dir_path();
   auto meta                            = engine::ModMeta::load(mods_dir, folder_name);
+  // Before the gate, not after it: this runs even when the lookup below is
+  // skipped because the archive already supplied a version, and that is the
+  // common case - the archive's own version is exactly what can make the badge
+  // stale.
+  reconcile_update_symbol(w_, mods_dir, folder_name, meta);
+
   // Every gate below spends nothing and says nothing, so each one names
   // itself. "The version never arrived" and "we never asked" are the same
   // blank cell in the row, and only this line tells them apart.
@@ -1366,6 +1426,12 @@ void DownloadsController::apply_installed_version(ui::MainWindow *w,
                                    folder_name);
   w->mod_list_->set_mod_version(QString::fromStdString(folder_name),
                                 QString::fromStdString(version));
+  // The version Nexus just answered with can be the newest one - which is
+  // exactly when the badge the last sweep left has to go with it. This is the
+  // user's own log line: "Install recorded version 1.0.2", with the row still
+  // wearing the orange symbol for 1.0.2. `meta` already carries the version
+  // just written, so the reconcile sees the post-install state.
+  reconcile_update_symbol(w, mods_dir, folder_name, meta);
 }
 
 }  // namespace ui
