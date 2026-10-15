@@ -482,8 +482,28 @@ QVariant ModList::data(const QModelIndex &index, int role) const {
   // `return {}`. Inside that block it answered only for separator rows, which
   // by definition never carry a Nexus verdict - so the badge could never be
   // seen on the rows that earn it.
-  if (role == Qt::DecorationRole && index.column() == Version && shows_update(mod))
-    return update_icon_;
+  if (index.column() == Version && shows_update(mod)) {
+    if (role == Qt::DecorationRole)
+      return update_icon_;
+    // MO2 does not stop at the icon. ModList::data answers two more roles for
+    // COL_VERSION (modlist.cpp:327-370): Qt::FontRole returns
+    // setWeight(QFont::Bold) when updateAvailable() || downgradeAvailable(),
+    // and Qt::ForegroundRole returns QBrush(Qt::red) on the same predicate
+    // (darkGreen once the mod is current, no brush at all when there is no
+    // valid newest version). The icon does not replace either - it sits on top
+    // of them in the same cell - so the badge alone was MO2's look replaced by
+    // one of MO2's signals, which is exactly the substitution this must not
+    // ship. Only the update branch is taken here: colouring every current
+    // version darkGreen would repaint the whole column, and the report is about
+    // the row that HAS an update.
+    if (role == Qt::FontRole) {
+      QFont font;
+      font.setWeight(QFont::Bold);
+      return font;
+    }
+    if (role == Qt::ForegroundRole)
+      return QBrush(Qt::red);
+  }
   // Version cell: MO2 has no tooltip here beyond the installed version, but
   // it does draw an update badge in this column (modlistversiondelegate.cpp
   // :44), so a mod with a newer Nexus file says which one is waiting.
@@ -1773,10 +1793,13 @@ void ModList::set_update_state(const QString &id, bool available, const QString 
     mods_[i].nexus_update_available = available;
     mods_[i].newest_version         = newest;
     mods_[i].ignored_version        = ignored;
-    // The Version cell wears the badge (DecorationRole) and names the newest
-    // version in its tooltip, so both roles have to repaint.
+    // The Version cell wears the badge (DecorationRole), goes bold red
+    // (FontRole / ForegroundRole) and names the newest version in its tooltip,
+    // so every role it answers has to repaint when the verdict flips - clearing
+    // the flag has to take the red and the bold with it, not just the icon.
     emit dataChanged(index(i, Version), index(i, Version),
-                     {Qt::DisplayRole, Qt::DecorationRole, Qt::ToolTipRole});
+                     {Qt::DisplayRole, Qt::DecorationRole, Qt::ToolTipRole,
+                      Qt::FontRole, Qt::ForegroundRole});
     return;
   }
 }

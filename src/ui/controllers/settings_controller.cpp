@@ -308,6 +308,12 @@ void SettingsController::set_game_info(const std::string &game_id,
     // registered the metadata_file hook.
     ctx.metadata_file =
         w_->knowledge_->get(w_->current_game_id_, "metadata_file", "meta.ini");
+    // The file that means "this mod is disabled", resolved by the SAME
+    // engine helper the scanner and the deploy filter use, so an overwriting
+    // install can carry the sentinel out of the folder it is about to delete
+    // instead of silently re-enabling a mod the user turned off.
+    ctx.disable_mechanism =
+        engine::disable_mechanism_for(*w_->knowledge_, w_->current_game_id_);
     // The game's declared data allow-lists (mod_valid_dirs / mod_valid_exts,
     // or a registered mod_data_checker feature) - the same resolution the mod
     // scanner uses, so the install layout decision reads one declaration and
