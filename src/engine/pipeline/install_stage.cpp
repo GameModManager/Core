@@ -13,6 +13,8 @@
 #include <fstream>
 #include <functional>
 #include <iterator>
+#include <set>
+#include <utility>
 
 namespace engine {
 
@@ -66,6 +68,65 @@ namespace Source {
     }
     return true;
   }
+
+  // The keys in a mod folder's meta.ini that describe the ARCHIVE that was
+  // installed, not the MOD ROW. Everything else in [General] and
+  // [GameModManager] describes the row and has to survive an overwrite,
+  // because nothing below re-derives it - the archive is new, the mod is the
+  // same mod.
+  //
+  // This list is the whole fix for the whack-a-mole. The carry used to be a
+  // hand-written pair of `replaced_*` variables per key, which is how
+  // rootOverride (deploy_utils.cpp:413 reads it and deploys the mod to the GAME
+  // ROOT), validated, color and category each shipped a release dropping on
+  // every overwrite before anyone noticed. A key nobody has thought about yet
+  // now survives by default; opting a NEW key out is the deliberate act.
+  //
+  // Every entry below is either re-stamped from the install manifest further
+  // down, or is exactly the identity of the archive that is being installed -
+  // carrying it would name the file that is no longer on disk. "modid" is the
+  // sharp one: it is the Nexus id namespace (mod_meta.cpp write_game_metadata),
+  // so carrying an old Nexus id onto a Steam or LoversLab install mis-attributes
+  // the mod's provenance to MO2 and to every reader that trusts it.
+  //
+  // Deliberately NOT carried, and why:
+  //   [Git]        - a commit id for content that is no longer that commit. A
+  //                  Replace of a git-tracked folder with an archive makes the
+  //                  folder no longer a checkout, so the badge would lie.
+  //   [Nexusmods], [LoversLab], [ModPub], [SteamWorkshop], [fomod] - per-install
+  //                  provenance. The sections for the NEW source are written
+  //                  below; carrying the old ones would attach a stale file id
+  //                  to a mod from a different provider, and a stale FOMOD
+  //                  choice set would flag a non-FOMOD archive as FOMOD-installed.
+  static const std::set<std::pair<std::string, std::string>> per_install_meta_keys = {
+      {"General", "modid"},
+      {"General", "version"},
+      {"General", "installationFile"},
+      {"General", "installationfile"},
+      {"General", "installed"},
+      // The update verdict, both spellings of each. Carried explicitly below,
+      // with the rules that go with them (reconcile_update_symbol reads the
+      // lowercase spelling first, so a blanket copy could leave the two
+      // casings disagreeing).
+      {"General", "nexus_update"},
+      {"General", "newestversion"},
+      {"General", "newestVersion"},
+      {"General", "ignoredVersion"},
+      {"General", "ignoredversion"},
+      // Re-derived from the install manifest below (from_default, and the
+      // download size/hash block).
+      {"GameModManager", "folder"},
+      {"GameModManager", "source_type"},
+      {"GameModManager", "source_id"},
+      {"GameModManager", "imported_from_mo2"},
+      {"GameModManager", "original_meta_path"},
+      {"GameModManager", "meta_version"},
+      {"GameModManager", "download_size"},
+      {"GameModManager", "download_sha256"},
+      // The mod's place in the list, carried explicitly below.
+      {"GameModManager", "priority"},
+      {"GameModManager", "separator_id"},
+  };
 
   // MO2's generateBackupName: "<name>_backup", "<name>_backup1", ... picking the
   // first name that does not already exist.
@@ -193,6 +254,20 @@ namespace Source {
     // in the row, in the deploy set, and therefore in the load order - by
     // nothing more than updating it.
     bool replaced_disabled = false;
+    // Which categories the user put this mod in. Held as its own variable, not
+    // left to the wholesale carry below, because write_game_metadata writes
+    // category=0 into every meta it creates and the carry's "only if the new
+    // meta does not hold the key" rule would read that default as an answer.
+    std::string replaced_categories;
+    // The mod's own meta.ini as the folder held it, whole, held in memory until
+    // the new one is stamped. This is the general form of every per-key carry
+    // below: MO2 saves the whole file around the delete and restores it
+    // (installationmanager.cpp:417-447), and the only reason we cannot do
+    // exactly that is per_install_meta_keys above. The named carries stay
+    // because each has a rule the wholesale copy does not have - priority
+    // survives only as a number, the archive is read for one field, the
+    // sentinel is a FILE and not a key at all.
+    ModMeta replaced_meta;
 
     auto dest_dir = mods_dir / folder_name;
     std::error_code ec_probe;
@@ -208,6 +283,8 @@ namespace Source {
       // installed. MO2 reads the same field off ModInfo just before it
       // removes the directory (installationmanager.cpp:418-424).
       const auto old_meta           = ModMeta::load_file(folder / "meta.ini");
+      replaced_meta                 = old_meta;
+      replaced_categories           = old_meta.get("General", "category");
       const std::string old_archive = old_meta.get("General", "installationfile");
       if (!old_archive.empty())
         ctx.replaced_archive = old_archive;
@@ -457,6 +534,44 @@ namespace Source {
           }
         }
       }
+
+      // Everything else the row's own meta.ini held, copied across key by key.
+      // A carried key is written only where the new meta does not already HAVE
+      // that key, so a meta.ini that arrived inside the archive keeps what it
+      // shipped - including a key it shipped deliberately empty, which is why
+      // the test is key PRESENCE and not "value is empty".
+      //
+      // This is where rootOverride, validated and color live, and where the keys
+      // nobody has named yet will live. Nothing above re-derives any of them:
+      // the install knows the archive, not what the user did to the mod row.
+      // Dropping rootOverride is the expensive one - deploy_utils reads
+      // [General] rootOverride to send the mod to the GAME ROOT instead of the
+      // data dir, so a mod flagged root-override quietly stopped reaching the
+      // game after every single update.
+      for (const auto &section : {std::string("General"), std::string("GameModManager"),
+                                  std::string("Mirror")}) {
+        const auto held = meta.keys(section);
+        for (const auto &key : replaced_meta.keys(section)) {
+          if (per_install_meta_keys.count({section, key}) != 0)
+            continue;
+          const bool already_there =
+              std::find(held.begin(), held.end(), key) != held.end();
+          const std::string value = replaced_meta.get(section, key);
+          if (!already_there && !value.empty())
+            meta.set(section, key, value);
+        }
+      }
+
+      // Filter membership, with the one carry that deliberately overrides the
+      // new meta. write_game_metadata writes category=0 into every meta it
+      // creates (mod_meta.cpp) and 0 means "no categories", which is a DEFAULT
+      // the installer picked, not anything it learned about this mod - so the
+      // presence rule above reads it as the archive having an opinion and
+      // leaves the user's own categories wiped on every update. Carried
+      // unconditionally, like the update verdict below, because the install has
+      // no opinion about which categories a mod belongs to.
+      if (!replaced_categories.empty())
+        meta.set("General", "category", replaced_categories);
 
       if (existing_priority >= 0)
         meta.set_priority(existing_priority);
