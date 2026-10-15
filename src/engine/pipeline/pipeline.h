@@ -94,6 +94,16 @@ struct PipelineContext {
   // (Isaac) register the filename via the metadata_file hook.
   std::string metadata_file = "meta.ini";
 
+  // The file whose presence in a mod folder means "this mod is disabled" -
+  // disable_mechanism_for(knowledge, game_id), i.e. the game's
+  // disable_mechanism hook or the .gmmdisabled default. InstallStage needs the
+  // name because an overwriting install deletes the folder it is about to
+  // recreate, and the sentinel is the only record of a DISABLED mod that lives
+  // inside it (the deploy filter reads the file and nothing else,
+  // deploy_utils.cpp:389). Empty = the game declares no mechanism and there is
+  // no sentinel to carry.
+  std::string disable_mechanism;
+
   // The game's declared data allow-lists (MO2 IModDataChecker): a registered
   // mod_data_checker feature, else the mod_valid_dirs / mod_valid_exts hooks,
   // as resolved by data_checker_for() from the same declaration the mod
