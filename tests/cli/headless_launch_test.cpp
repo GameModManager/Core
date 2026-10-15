@@ -302,4 +302,12 @@ TEST_CASE("CLI global options parse", "[cli]") {
         "multiple / pick / logs are off by default");
   check(bare.instance_name.isEmpty() && bare.profile_name.isEmpty(),
         "instance_name / profile_name are empty by default");
+  check(!bare.list_games, "list_games is off by default");
+
+  const auto listing = parse_argv({"gmm", "--list-games"});
+  check(listing.list_games, "--list-games sets list_games");
+  // It is a query, not a launch: it must not drag the launch paths with it.
+  check(!listing.headless && !listing.handle_nxm && !listing.handle_gmm &&
+            !listing.handle_modl,
+        "--list-games is independent of the launch and --handle-* flags");
 }

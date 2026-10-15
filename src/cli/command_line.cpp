@@ -35,6 +35,10 @@ CommandLine::CommandLine(int /*argc*/, char ** /*argv*/) {
   QCommandLineOption launchOpt("launch", "Launch game directly (headless mode)");
   parser_.addOption(launchOpt);
 
+  QCommandLineOption listGamesOpt(
+      "list-games", "Print the supported games per source as JSON to stdout and exit");
+  parser_.addOption(listGamesOpt);
+
   QCommandLineOption exeOpt("exe", "Executable path relative to game dir", "path");
   parser_.addOption(exeOpt);
 
@@ -65,6 +69,7 @@ bool CommandLine::parse() {
 
   args_.show_help   = parser_.isSet("help") || parser_.isSet("h");
   args_.headless    = parser_.isSet("launch");
+  args_.list_games  = parser_.isSet("list-games");
   args_.multiple    = parser_.isSet("multiple");
   args_.pick        = parser_.isSet("pick");
   args_.logs        = parser_.isSet("logs");
@@ -121,6 +126,10 @@ bool CommandLine::parse() {
             "specific instance\n",
             O, D, B, D);
     fprintf(stdout,
+            "  gamemodmanager %s--list-games%s         # Supported games per "
+            "source, as JSON on stdout\n",
+            O, D);
+    fprintf(stdout,
             "  gamemodmanager %s--handle-nxm%s %s<url>%s      # Handle an "
             "nxm:// download link\n",
             O, D, B, D);
@@ -171,6 +180,10 @@ bool CommandLine::parse() {
             D);
     fprintf(stdout, "  %s--launch%s            Launch game directly (headless)\n", O,
             D);
+    fprintf(stdout,
+            "  %s--list-games%s        Supported games per source, as JSON on "
+            "stdout\n",
+            O, D);
     fprintf(stdout,
             "  %s--exe%s %s<path>%s      Executable path relative to game "
             "dir\n",

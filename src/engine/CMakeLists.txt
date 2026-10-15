@@ -109,6 +109,7 @@ instance/mod_state.cpp
     modpack/pack/source_detector.cpp
     uri/router.cpp
     source/managed_games.cpp
+    source/game_catalog.cpp
     sort/sorter/abi.cpp
     sort/sorter/registry.cpp
     sort/sorter/loot/sorter.cpp
