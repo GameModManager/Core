@@ -90,8 +90,9 @@ bool FetchStage::execute(Mod &mod, PipelineContext &ctx) {
   // Nexus file_name, with the correct extension); otherwise fall back to the
   // generic "<source_id>[-<file_id>].zip".
   std::ostringstream fname;
-  auto info = provider->resolve_download_info(mod);
-  if (!info.archive_name.empty()) {
+  auto info                   = provider->resolve_download_info(mod);
+  const bool name_from_source = !info.archive_name.empty();
+  if (name_from_source) {
     fname << info.archive_name;
   } else {
     fname << mod.download_source_id;
@@ -100,6 +101,22 @@ bool FetchStage::execute(Mod &mod, PipelineContext &ctx) {
     fname << ".zip";
   }
   mod.archive_filename = fname.str();
+
+  // The archive NAME is the one thing in a download nobody can reconstruct
+  // afterwards, and "which file is this on disk" has to be answerable without
+  // guessing from a folder listing. The name comes from one of two places and
+  // they look nothing alike - the provider's own file name (Nexus publishes
+  // one per file, and it carries the mod id, the version, the upload time and
+  // a unique slug) or our "<source_id>-<file_id>.zip" fallback - so the origin
+  // is logged next to the name, not implied by it.
+  Logger::instance().debug(
+      "[Flow] fetch stage: mod=" + mod.id + " source=" + mod.download_source_type +
+      " source_id=" + mod.download_source_id +
+      " file_id=" + std::to_string(mod.download_nxm.file_id) + " archive='" +
+      mod.archive_filename + "' name_from=" +
+      (name_from_source ? "provider (" + provider->display_name() + ")"
+                        : std::string("fallback")) +
+      " display_name='" + info.display_name + "' dest_dir=" + dest_dir.string());
 
   // Carry the real display name (e.g. "SkyUI") up to the UI. Only when the
   // provider actually resolved one - the PipelineWorker's placeholder
@@ -220,6 +237,11 @@ bool FetchStage::execute(Mod &mod, PipelineContext &ctx) {
   mod.files.push_back(mf);
 
   mod.state = ModState::Downloaded;
+  Logger::instance().debug(
+      "[Flow] fetch stage finished: mod=" + mod.id + " archive='" +
+      mod.archive_filename + "' path=" + dest_path.string() +
+      " bytes=" + std::to_string(std::filesystem::file_size(dest_path, ec)) +
+      " digest=" + verified.message);
   Logger::instance().debug("[FetchStage] Download complete: " + mod.id + " -> " +
                            dest_path.string());
   return true;

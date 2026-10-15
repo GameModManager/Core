@@ -2730,10 +2730,22 @@ TEST_CASE(
 }
 
 // The same install with the setting the user actually has ON
-// (downloads/hide_installed=true). What must not happen is what the user saw:
-// the install completes, and the panel is left showing a row for that mod
-// reading "Install" with nothing anywhere saying it was installed.
-TEST_CASE("MainWindow: 'Hide installed' leaves the user able to see the install landed",
+// (downloads/hide_installed=true). That box IS MO2's "Hide downloads after
+// installation" (settingsdialog.ui:157-168, "Automatically hide downloads
+// after successful installation"), and MO2's install path removes the row in
+// the same call that records the install (organizercore.cpp:910-913). So a
+// ticked box takes the row away the moment it says Installed - no notice, no
+// grace period, no second click needed.
+//
+// The invented behaviour this replaces: a just-installed row was held on screen
+// past the filter ("installed_notice"), on the argument that hiding it in the
+// same call that recorded the install destroys the only evidence the install
+// happened. It had no MO2 precedent, and the evidence argument does not hold
+// when the row is the ONLY row: with the filter ticked and no sibling, an
+// empty table after a successful install reads as "nothing happened" too. The
+// user's own ruling is that a ticked checkbox hides Installed rows
+// immediately, and MO2's setting has exactly that semantics.
+TEST_CASE("MainWindow: a ticked 'Hide installed' takes the installed row at once",
           "[ui][harness][downloads][install]") {
   const fs::path root     = make_case_root("gmm_dl_row_hidden");
   const fs::path inst_dir = root / "instances";
@@ -2808,26 +2820,26 @@ TEST_CASE("MainWindow: 'Hide installed' leaves the user able to see the install 
   QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
 
   // THE assertion, with the setting the user has ON: the row they installed
-  // from is STILL ON SCREEN and reads "Installed". Hiding it is what left the
-  // user staring at the sibling download, still saying "Install", for the mod
-  // they had just installed - the filter destroyed the only evidence the
-  // install had happened.
-  CHECK_FALSE(table->isRowHidden(clicked));
+  // from is marked Installed and is OFF SCREEN, in the same call. The cell is
+  // still readable through the table - hiding a row is not deleting it - which
+  // is where the evidence went instead of onto a notice.
   CHECK(cell_text(table, clicked, ui::DownloadsTab::Status) == "Installed");
+  CHECK(table->isRowHidden(clicked));
 
   // The panel's own re-scan fires right after an install (the manifest write
   // trips the directory watcher). Re-pointing the tab at the same directory
-  // runs that same scan, and it must not take the row away either.
+  // runs that same scan, and the row stays hidden - a background refresh is
+  // not a user re-asserting the filter.
   tab->set_downloads_dir(dl_dir);
   REQUIRE(pump_until(
       [&] {
         return cell_text(table, clicked, ui::DownloadsTab::Status) == "Installed";
       },
       5000));
-  CHECK_FALSE(table->isRowHidden(clicked));
+  CHECK(table->isRowHidden(clicked));
 
-  // The notice is not permanent: re-asserting the filter is how the user puts
-  // the row away, and "Hide installed" has to keep working afterwards.
+  // Unticking is how the user gets the row back, and it must bring back exactly
+  // the rows the box took - the filter hides, it does not delete.
   QCheckBox *hide_box = nullptr;
   for (auto *box : tab->findChildren<QCheckBox *>()) {
     if (box->text() == QLatin1String("Hide installed"))
@@ -2836,6 +2848,8 @@ TEST_CASE("MainWindow: 'Hide installed' leaves the user able to see the install 
   REQUIRE(hide_box != nullptr);
   REQUIRE(hide_box->isChecked());
   hide_box->setChecked(false);
+  CHECK_FALSE(table->isRowHidden(clicked));
+  // Re-ticking puts it away again, so the box is not one-way.
   hide_box->setChecked(true);
   CHECK(table->isRowHidden(clicked));
 

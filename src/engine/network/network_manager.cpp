@@ -1102,8 +1102,13 @@ Response Manager::request(const Request &req) {
 }
 
 DownloadResult Manager::download(DownloadRequest &req) {
+  // redact_url, not req.url: a Nexus download_link reply hands the URL a
+  // one-shot key sits in, and this is the line every download writes first, so
+  // the raw form puts the key in the log before anything else has a chance to
+  // scrub it. The entry recorded below already carries the redacted form.
   Logger::instance().debug("[Network::Manager] download: caller=" + req.caller +
-                           " url=" + req.url + " dest=" + req.dest.string() +
+                           " url=" + redaction::redact_url(req.url) +
+                           " dest=" + req.dest.string() +
                            " resume_from=" + std::to_string(req.resume_from) +
                            " long_lived=" + (req.long_lived ? "true" : "false"));
   DownloadResult res;

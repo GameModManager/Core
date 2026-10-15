@@ -4,6 +4,9 @@
 // curl_download - so without the redactor at that call site the value lands in
 // gamemodmanager.log anyway.
 //
+// Both download call sites are covered, not just curl_download: Network::Manager
+// is the other one, and it is the one a transfer actually starts from.
+//
 // These are negative tests: they assert the secret is ABSENT from the captured
 // log, not that a redaction call was made. A redaction call that was later
 // dropped, or a URL field added to a new log line, would leave the secret
@@ -117,6 +120,50 @@ TEST_CASE("curl_download error path never logs a signed URL raw",
   }
 
   engine::network::set_instance(nullptr);
+}
+
+// The SECOND download call site, and the one that was actually leaking.
+//
+// curl_download is not the only thing that opens a download: Network::Manager
+// (downloadmanager.cpp and the Nexus/LoversLab providers' long-lived transfers)
+// is, and Manager::download logs its request line before it builds a handle.
+// That line used req.url raw, so a Nexus download_link URL - whose `key=` is
+// the one-shot download token - reached gamemodmanager.log even though every
+// LogEntry it records five lines later carries redact_url's output.
+//
+// No bytes move: cancel_all() is the documented kill switch, and download()
+// consults it right AFTER the log line under test, so the assertion is on the
+// shipped line and the run never opens a socket.
+TEST_CASE("Network::Manager::download never logs a signed URL raw",
+          "[engine][redaction]") {
+  const std::string kKey = "SUPER-SECRET-DOWNLOAD-TOKEN-7e4d2c";
+  const std::string url =
+      "https://nexus.nexusmods.com/skyrimspecialedition/mods/1234/files/5678?key=" +
+      kKey + "&expires=1700000000";
+
+  engine::network::Manager mgr;
+  mgr.cancel_all();
+
+  engine::network::DownloadRequest req;
+  req.url    = url;
+  req.caller = "redaction_callsite_test";
+  req.dest   = fs::temp_directory_path() / "gmm_redact_mgr_dest.bin";
+
+  {
+    LogCapture cap;
+    const auto res = mgr.download(req);
+    // The kill switch short-circuited, which is what proves nothing was
+    // fetched - if this ever becomes ok=true the case is testing the network,
+    // not the log line.
+    CHECK_FALSE(res.ok);
+    CHECK(res.error.find("cancelled") != std::string::npos);
+    CHECK(cap.lacks(kKey));
+    CHECK(cap.contains("[Network::Manager] download:"));
+    CHECK(cap.contains("key=<redacted>"));
+  }
+
+  std::error_code ec;
+  fs::remove(req.dest, ec);
 }
 
 TEST_CASE("redact_url covers the signed-URL keys the sources use",

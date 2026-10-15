@@ -67,6 +67,9 @@ static QString state_label(DownloadState s) {
     return QCoreApplication::translate("DownloadsTab", "Removed");
   case DownloadState::Cancelled:
     return QCoreApplication::translate("DownloadsTab", "Cancelled");
+  case DownloadState::Uninstalled:
+    // MO2's own status string for STATE_UNINSTALLED (downloadlist.cpp:198).
+    return QCoreApplication::translate("DownloadsTab", "Uninstalled");
   }
   return QCoreApplication::translate("DownloadsTab", "Unknown");
 }
@@ -192,6 +195,12 @@ DownloadShortcut download_shortcut_for(DownloadState state, int qt_key) {
   switch (state) {
   case DownloadState::Complete:
   case DownloadState::Installed:
+  // MO2's keyPressEvent keys on `state >= STATE_READY`
+  // (downloadlistview.cpp:337) and STATE_UNINSTALLED sits above STATE_READY
+  // (downloadmanager.h:151-153), so a superseded archive takes the same two
+  // actions as any other finished download: its bytes are still on disk and
+  // still re-installable.
+  case DownloadState::Uninstalled:
     if (qt_key == Qt::Key_Enter || qt_key == Qt::Key_Return)
       return DownloadShortcut::Install;
     if (qt_key == Qt::Key_Delete)
@@ -416,12 +425,11 @@ DownloadsTab::DownloadsTab(QWidget *parent) : QWidget(parent) {
   table_->installEventFilter(this);
   connect(hide_installed_, &QCheckBox::toggled, this, [this](bool checked) {
     Settings::instance().set_hide_installed_downloads(checked);
-    // The user re-asserted the filter, so the install notices are spent: the
-    // rows an install left on screen go back to obeying it.
-    for (auto &[id, entry] : downloads_) {
-      (void)id;
-      entry.installed_notice = false;
-    }
+    // MO2's "Hide downloads after installation" (settingsdialog.ui:157-168).
+    // The box is in force the moment it is ticked, and unticking it brings
+    // back exactly the rows it took: there is no notice to spend and no grace
+    // period, because a ticked box that needed a second click to take effect
+    // is not the setting it claims to be.
     apply_installed_filter();
   });
   connect(show_hidden, &QCheckBox::toggled, this, [this](bool checked) {
@@ -828,14 +836,29 @@ void DownloadsTab::mark_installed(const std::string &id,
   entry.state = DownloadState::Installed;
   replace_bar_with_label(target, tr("Installed"), QColor(), QColor());
 
+  // Which row absorbed the mark, and how it was found. "The archive" is the
+  // fallback MO2 also uses (downloadmanager.cpp:1556-1560) and it is the one
+  // that can silently land on a row the caller never named, so which of the two
+  // lookups answered is part of the answer.
+  engine::Logger::instance().debug(
+      "[Flow] downloads tab: row marked installed id='" + target + "' archive='" +
+      archive_filename + "' matched_by=" +
+      (target == id ? std::string("id")
+                    : (archive_filename == id
+                           ? std::string("archive")
+                           : std::string("archive (id '" + id + "' not a row)"))));
+
   // Show final archive size
   if (entry.total_size > 0) {
     entry.size_item->setText(format_size(entry.total_size));
   }
 
-  // The install is on screen now, so "Hide installed" must not take it away
-  // again in the same breath - see DownloadEntry::installed_notice.
-  entry.installed_notice = true;
+  // MO2 removes the row outright when "Hide downloads after installation" is
+  // on (organizercore.cpp:910-913 -> removeDownload(index, false), which
+  // writes removed=true into the meta, downloadmanager.cpp:907-909, and
+  // createFromMeta then skips the row on the next build, :101-104). Ours is a
+  // view filter over a state, not a destructive write, so the same call hides
+  // the row here and every pass after - no notice, no grace period.
   apply_installed_filter();
 }
 
@@ -845,7 +868,15 @@ void DownloadsTab::mark_uninstalled(const std::string &archive_filename) {
 
   const std::filesystem::path wanted(archive_filename);
   for (auto &[id, entry] : downloads_) {
-    if (entry.row < 0 || entry.state != DownloadState::Installed)
+    // MO2's markUninstalled(QString) writes the flag without consulting the
+    // row's current state (downloadmanager.cpp:1594-1611): the name it is
+    // handed IS the evidence that the archive was installed once, because it
+    // came out of that mod's meta.ini installationfile. So the guard here is
+    // only "is this row a finished download at all" - a transfer in flight or
+    // a partial was never installed by anything.
+    if (entry.row < 0 || entry.state == DownloadState::Downloading ||
+        entry.state == DownloadState::Paused || entry.state == DownloadState::Failed ||
+        entry.state == DownloadState::Cancelled)
       continue;
     // Match on the filename only: the old mod's meta.ini records the bare
     // archive name, while the row holds a full path that moves with the
@@ -853,15 +884,19 @@ void DownloadsTab::mark_uninstalled(const std::string &archive_filename) {
     if (entry.file_path.filename() != wanted)
       continue;
 
-    // The archive is still on disk and still re-installable, so the honest
-    // state is the one a finished download has - not a new state that would
-    // need a label, a manifest value and a filter rule of its own. MO2 marks
-    // the download "Uninstalled" here (downloadlist.cpp:198); saying "Complete"
-    // tells the same story about the only thing the row is claiming.
-    entry.state = DownloadState::Complete;
-    replace_bar_with_label(id, state_label(entry.state), QColor(), QColor("#4CAF50"));
+    entry.state = DownloadState::Uninstalled;
+    // MO2's status colour for STATE_UNINSTALLED is dark yellow
+    // (downloadlist.cpp:209-210), against READY's dark green. The archive is
+    // still on disk and still re-installable, so the colour has to say "there
+    // is something here" and not "there is an update".
+    replace_bar_with_label(id, state_label(entry.state), QColor(), QColor("#FFC107"));
     if (entry.total_size > 0)
       entry.size_item->setText(format_size(entry.total_size));
+    engine::Logger::instance().debug(
+        "[Flow] downloads tab: superseded download marked uninstalled id='" + id +
+        "' archive='" + archive_filename + "'");
+    // Re-apply: an Uninstalled row is no longer pending for this mod, so a
+    // ticked "Hide installed" takes it off the screen with the row it replaced.
     apply_installed_filter();
     return;
   }
@@ -955,6 +990,11 @@ bool DownloadsTab::blocks_refetch(const std::string &id) const {
   case DownloadState::Downloading:
   case DownloadState::Complete:
   case DownloadState::Installed:
+    return true;
+  // A superseded archive is finished and on disk exactly like any other, so a
+  // repeat link for it is still a duplicate rather than a fresh fetch. What
+  // changed is only which mod folder the bytes belong to now.
+  case DownloadState::Uninstalled:
     return true;
   case DownloadState::Paused:
   case DownloadState::Failed:
@@ -1053,16 +1093,29 @@ void DownloadsTab::scan_downloads_dir() {
                                      downloads_dir_.string() + ": " + ec.message());
     return;
   }
-  int scanned = 0;
+  int scanned = 0, non_archives = 0;
   for (const auto &entry : it) {
     if (!entry.is_regular_file(ec))
       continue;
     ++scanned;
+    // Counted here rather than inside add_downloads_dir_file so the tally is
+    // the scan's own, and reported as the ONE line below. This is what
+    // replaced 79 per-file "skip non-archive <name>" lines per scan: the
+    // number is what the user asked about, the names never were.
+    if (!is_archive_path(entry.path())) {
+      ++non_archives;
+      continue;
+    }
     add_downloads_dir_file(entry.path());
   }
   engine::Logger::instance().debug(
-      "downloads: scanned " + std::to_string(scanned) +
-      " files, tracked=" + std::to_string(downloads_.size()));
+      "downloads: scanned " + std::to_string(scanned) + " files, " +
+      std::to_string(non_archives) + " not archives, tracked=" +
+      std::to_string(downloads_.size()) + " dir=" + downloads_dir_.string());
+  engine::Logger::instance().debug(
+      "[Flow] downloads tab scan: dir=" + downloads_dir_.string() + " files_on_disk=" +
+      std::to_string(scanned) + " non_archives=" + std::to_string(non_archives) +
+      " rows=" + std::to_string(downloads_.size()));
 
   // Drop rows whose archive file is gone from the dir, so the tab mirrors
   // disk state (the watchdog can't see a file a file manager just deleted).
@@ -1098,17 +1151,19 @@ void DownloadsTab::scan_downloads_dir() {
 }
 
 bool DownloadsTab::add_downloads_dir_file(const std::filesystem::path &path) {
-  if (!is_archive_path(path)) {
-    engine::Logger::instance().debug("downloads: skip non-archive " +
-                                     path.filename().string());
+  // Deliberately silent. Every rejection below is a PER-FILE decision and the
+  // scan asks it of every file in the downloads dir: 77 archives and their 77
+  // ".meta" sidecars meant 79 identical "skip non-archive <name>" lines on
+  // EVERY scan, every panel show, every watcher tick, drowning the handful of
+  // lines that carry news. The count is what the scan reports instead (see
+  // scan_downloads_dir's summary line); the name of a file we deliberately do
+  // not track is not information the user acts on.
+  if (!is_archive_path(path))
     return false;
-  }
 
   std::error_code ec;
-  if (!std::filesystem::is_regular_file(path, ec)) {
-    engine::Logger::instance().debug("downloads: skip non-file " + path.string());
+  if (!std::filesystem::is_regular_file(path, ec))
     return false;
-  }
 
   const auto id = path.filename().string();
   if (downloads_.count(id)) {
@@ -1138,11 +1193,8 @@ bool DownloadsTab::add_downloads_dir_file(const std::filesystem::path &path) {
   // A 0-byte file is what a transfer that died before its first write leaves
   // behind; surfacing it as a Complete row would both show the user a
   // downloadable mod and make a repeat link refuse against nothing.
-  if (!archive_is_complete(path, 0)) {
-    engine::Logger::instance().debug("downloads: skip empty or unreadable " +
-                                     path.filename().string());
+  if (!archive_is_complete(path, 0))
     return false;
-  }
 
   add_download(id, path.stem().string(), tr("Manual").toStdString(), path);
   auto &added      = downloads_.at(id);
@@ -1150,6 +1202,11 @@ bool DownloadsTab::add_downloads_dir_file(const std::filesystem::path &path) {
   if (ec)
     added.total_size = 0;
   mark_complete(id, true);
+  engine::Logger::instance().debug(
+      "[Flow] downloads tab: adopted an untracked archive from disk as row '" + id +
+      "' archive='" + path.filename().string() + "' name='" + path.stem().string() +
+      "' source=Manual bytes=" +
+      std::to_string(static_cast<long long>(std::filesystem::file_size(path, ec))));
   engine::Logger::instance().debug("downloads: added Manual entry '" + id +
                                    "' (total=" + std::to_string(downloads_.size()) +
                                    ")");
@@ -1270,7 +1327,14 @@ void DownloadsTab::apply_installed_filter() {
     return;
   const bool hide    = hide_installed_->isChecked();
   const QString text = current_filter_text_;
+  // One line per pass, not per row: the pass is what has to be legible when a
+  // row is on screen that should not be. A ticked "Hide installed" that leaves
+  // an Installed row visible looks exactly like a filter that is not wired, so
+  // the counts - hidden, hidden by the text filter, shown - are the answer, and
+  // they are all a single line.
+  int hidden = 0, text_hidden = 0;
   for (const auto &[id, entry] : downloads_) {
+    (void)id;
     // A row the user hid through the batch actions stays hidden until
     // "Un-Hide All..." clears the flag OR the "Hidden files" box shows them
     // again (MO2's showHiddenBox, mainwindow.cpp:3818-3821 -> setShowHidden ->
@@ -1282,13 +1346,21 @@ void DownloadsTab::apply_installed_filter() {
     // next filter pass.
     if (entry.hidden && !show_hidden_) {
       table_->setRowHidden(entry.row, true);
+      ++hidden;
       continue;
     }
-    // "Hide installed" always wins over the text filter - except for a row an
-    // install has just marked, which stays on screen so the outcome is
-    // readable at all (DownloadEntry::installed_notice).
-    if (hide && entry.state == DownloadState::Installed && !entry.installed_notice) {
+    // MO2's "Hide downloads after installation" (settingsdialog.ui:157-168,
+    // "Automatically hide downloads after successful installation"). On the
+    // install path it removes the row that was just installed
+    // (organizercore.cpp:910-913); the row of the archive a Replace
+    // superseded is separately marked Uninstalled and is, by the same logic,
+    // no longer pending for that mod. Both are states in which the download
+    // will not be installed again by pressing Install, so a ticked box takes
+    // both off the screen, immediately - no grace period, no notice.
+    if (hide && (entry.state == DownloadState::Installed ||
+                 entry.state == DownloadState::Uninstalled)) {
       table_->setRowHidden(entry.row, true);
+      ++hidden;
       continue;
     }
     // A row hidden by the shared text filter (RightFilterBar::apply_to) is
@@ -1304,10 +1376,17 @@ void DownloadsTab::apply_installed_filter() {
         }
       }
       table_->setRowHidden(entry.row, !match);
+      if (!match)
+        ++text_hidden;
     } else {
       table_->setRowHidden(entry.row, false);
     }
   }
+  engine::Logger::instance().debug("[Flow] downloads tab filter: hide_installed=" +
+                                   std::string(hide ? "on" : "off") +
+                                   " rows=" + std::to_string(downloads_.size()) +
+                                   " hidden=" + std::to_string(hidden) +
+                                   " hidden_by_text=" + std::to_string(text_hidden));
 }
 
 void DownloadsTab::set_filter_text(const QString &text) {
@@ -1315,16 +1394,12 @@ void DownloadsTab::set_filter_text(const QString &text) {
 }
 
 void DownloadsTab::reapply_installed_filter() {
-  // A DELIBERATE re-application - the user typing in the filter bar, or the
-  // right panel re-composing - is where a spent install notice is dropped, so
-  // "Hide installed" is fully in force again. The background directory scan
-  // calls apply_installed_filter() directly and must not: it fires on its own
-  // a couple of hundred ms after an install, and dropping the notice there
-  // would yank the row away before anyone could read it.
-  for (auto &[id, entry] : downloads_) {
-    (void)id;
-    entry.installed_notice = false;
-  }
+  // Nothing is spent here any more. This used to clear the install notice that
+  // held a just-installed row on screen, which existed because the row used to
+  // be hidden by the filter in the same call that recorded the install. The
+  // filter no longer needs an escape hatch - "Hide installed" is MO2's "Hide
+  // downloads after installation" and it takes effect immediately - so a
+  // deliberate re-application is just the filter.
   apply_installed_filter();
 }
 
@@ -1803,7 +1878,18 @@ bool write_download_meta(const DownloadMeta &meta,
   // the same fact in the ".unfinished" file-name suffix
   // (downloadmanager.cpp:111-114) instead of a flag; ours is a flag, and the
   // outcome is the same.
-  s.setValue("installed", meta.state == DownloadState::Installed);
+  s.setValue("installed", meta.state == DownloadState::Installed ||
+                              meta.state == DownloadState::Uninstalled);
+  // MO2 writes this too (downloadmanager.cpp:1795), and its derivation reads
+  // it BEFORE "installed" (:118-126). Both flags land for a superseded archive,
+  // which is MO2's own shape and not an accident: its markInstalled sets
+  // installed=true and clears uninstalled (:1549-1552), its markUninstalled sets
+  // uninstalled=true and LEAVES installed alone (:1588-1591) - because the
+  // archive WAS installed once, and the derivation order, not a cleared flag, is
+  // what makes the row read Uninstalled. Writing installed=false here would be
+  // the one shape MO2 cannot produce, and it would make the order dead code
+  // here while the file itself stays readable by MO2 either way.
+  s.setValue("uninstalled", meta.state == DownloadState::Uninstalled);
   s.setValue("paused", meta.state == DownloadState::Failed ||
                            meta.state == DownloadState::Downloading ||
                            meta.state == DownloadState::Paused);
@@ -1848,11 +1934,20 @@ std::optional<DownloadMeta> read_download_meta(const std::filesystem::path &meta
   meta.total_size    = static_cast<int64_t>(s.value("totalSize").toLongLong());
   meta.hidden        = s.value("removed", false).toBool();
 
-  // MO2's derivation order (downloadmanager.cpp:118-126). "removed" is not
-  // part of it: it is visibility, not state, and folding it into the state
-  // would relabel every hidden row as Removed.
+// MO2's derivation order (downloadmanager.cpp:118-126), verbatim and in the
+  // same order: paused, then UNINSTALLED, then installed, then ready. "removed"
+  // is not part of it: it is visibility, not state, and folding it into the
+  // state would relabel every hidden row as Removed.
+  //
+  // "uninstalled" is read BEFORE "installed" because MO2's markUninstalled sets
+  // only that one flag (downloadmanager.cpp:1588-1591) and its markInstalled
+  // clears it (:1549-1552) - so a meta carrying both is MO2's own shape for a
+  // superseded archive, and reading them the other way round would put every one
+  // of those rows back on screen as "Installed".
   if (s.value("paused", false).toBool())
     meta.state = DownloadState::Failed;
+  else if (s.value("uninstalled", false).toBool())
+    meta.state = DownloadState::Uninstalled;
   else if (s.value("installed", false).toBool())
     meta.state = DownloadState::Installed;
   else
@@ -2193,10 +2288,6 @@ void DownloadsTab::deserialize(const std::string &json,
     entry.category      = obj["category"].toString().toStdString();
     entry.page_url      = page_url;
     entry.hidden        = obj["hidden"].toBool();
-    // A fresh load is a fresh look at the list: an install notice is something
-    // you witness once, not something that survives a restart and pins a row
-    // open forever.
-    entry.installed_notice = false;
 
     table_->insertRow(entry.row);
 
