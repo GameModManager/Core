@@ -49,8 +49,11 @@
 #include <archive_entry.h>
 
 #include <QApplication>
+#include <QBrush>
+#include <QColor>
 #include <QElapsedTimer>
 #include <QEventLoop>
+#include <QFont>
 #include <QMouseEvent>
 #include <QPushButton>
 #include <QSettings>
@@ -283,6 +286,28 @@ bool wears_update_badge(ui::ModList *model, const QString &id) {
       .contains(QStringLiteral("Newest version on Nexus"));
 }
 
+// Whether the Version cell is painted BOLD AND RED, the way MO2 paints a mod
+// that has a newer file waiting.
+//
+// Unlike the badge, this needs no icon pack and no GUI check: it reads the two
+// roles MO2's own delegate reads off the model, so it is the model's data
+// contract rather than a pixel. MO2 answers all three for COL_VERSION and the
+// icon is only one of them - ModList::data returns
+//   FontRole      setWeight(QFont::Bold) when updateAvailable() (modlist.cpp:335)
+//   ForegroundRole QBrush(Qt::red) on the same predicate (modlist.cpp:358)
+//   DecorationRole the update_available icon (modlist.cpp:346)
+// so replacing the icon alone dropped two thirds of what MO2 renders, and the
+// user saw the missing part. Dropping either branch below reds this out.
+bool wears_bold_red_version(ui::ModList *model, const QString &id) {
+  const int row = model->priority_of(id);
+  if (row < 0)
+    return false;
+  const QModelIndex cell = model->index(row, ui::ModList::Version);
+  const auto font        = cell.data(Qt::FontRole).value<QFont>();
+  const auto brush       = cell.data(Qt::ForegroundRole).value<QBrush>();
+  return font.weight() == QFont::Bold && brush.color() == QColor(Qt::red);
+}
+
 }  // namespace
 
 TEST_CASE(
@@ -494,6 +519,36 @@ TEST_CASE(
   REQUIRE_FALSE(sep_before.empty());
   INFO("Foo before the update: row=" << foo_row_before << " separator=" << sep_before);
 
+  // === the update symbol Foo must LOSE during that update ==================
+  // The user's second report from the same run: the flag was still there after
+  // installing the newest version. The sweep's verdict is seeded on the v1
+  // install exactly as UpdateCheck::run() writes it - the newest file is 2.0.0,
+  // which is the file the user is about to install over the top.
+  {
+    auto flagged = engine::ModMeta::load(mods_dir, "Foo");
+    flagged.set("General", "nexus_update", "true");
+    flagged.set("General", "newestversion", "2.0.0");
+    REQUIRE(flagged.save(mods_dir, "Foo"));
+  }
+  // Load the list so the ROW wears it, rather than trusting that the file on
+  // disk is enough. The assertions after the install are about the row changing.
+  ctl->load_mods_from_game();
+  REQUIRE(pump_until([&w] {
+    return !w.is_loading();
+  }));
+  REQUIRE(pump_until([&] {
+    return find_mod_row(view, QStringLiteral("Foo")) >= 0;
+  }));
+  // The precondition: the badge really is on the row before the install path
+  // runs, so a green assertion after it is measuring a change.
+  CHECK(wears_update_badge(model, QStringLiteral("Foo")));
+  CHECK(version_cell(model, QStringLiteral("Foo")) == "1.0.0");
+  // MO2 paints that same cell bold red, not just badged. The user's third
+  // report from this run was "we show an orange icon, MO2 shows bold red
+  // text", so the look is pinned where the update verdict genuinely exists -
+  // a row that really has a newer file waiting, not a synthesised one.
+  CHECK(wears_bold_red_version(model, QStringLiteral("Foo")));
+
   // === STEP 6: install the newer archive OVER the top =====================
   modals.overwrite_button = "Replace";
   double_click_cell(table, row_v2, ui::DownloadsTab::Name);
@@ -567,6 +622,43 @@ TEST_CASE(
   CHECK(after_meta.separator_id() == sep_before);
   CHECK(after_meta.get("Nexusmods", "fileid") == "17000");
   CHECK(after_meta.get("General", "installationFile") == "Foo-2.0.0.zip");
+
+  // === the update symbol, cleared by the REAL path ========================
+  // This is the leg that closes the uovb gap, so read it before trusting it.
+  // Nothing below calls reconcile_update_symbol, apply_installed_version or
+  // record_installed_version. The install above went through the user's own
+  // double-click, the real PipelineWorker emitted install_complete, and the
+  // real DownloadsController lambda ran - which is where
+  // record_installed_version lives. There is no Nexus API key on this box, and
+  // there does not have to be one: the reconcile compares two strings already
+  // in meta.ini and spends no request, so it runs BEFORE the key gate
+  // (downloads_controller.cpp). Gating it behind the key is what let the flag
+  // outlive the update in the first place.
+  //
+  // Two production call sites have to be live for this to pass, and each one
+  // alone leaves it red:
+  //   1. install_stage.cpp's carry of nexus_update / newestversion across the
+  //      Replace. Without it write_game_metadata's fresh five-key meta.ini has
+  //      no flag for the reconcile to read and it returns without acting.
+  //   2. the reconcile call in record_installed_version. Delete it and the row
+  //      keeps the badge.
+  // That is what makes this control different from the direct call it replaces,
+  // where both of those deletions left the suite green.
+  CHECK(after_meta.get("General", "version") == "2.0.0");
+  CHECK(after_meta.get("General", "nexus_update") == "false");
+  // CONSUMER-REACHES-CONTROL: the verdict on disk is not the claim - the row no
+  // longer wearing the symbol is.
+  CHECK_FALSE(wears_update_badge(model, QStringLiteral("Foo")));
+  // ...and the bold red goes with it. Clearing the flag has to take the
+  // painting with it, or a current mod sits there shouting about an update
+  // nobody has: set_update_state repaints FontRole and ForegroundRole for
+  // exactly this reason, and this is the assertion that the repaint list is
+  // not missing either of them.
+  CHECK_FALSE(wears_bold_red_version(model, QStringLiteral("Foo")));
+
+  // The version that made the verdict stale is still the newest the sweep named,
+  // so the row can still say what it is at. The clear is not a wipe.
+  CHECK(after_meta.get("General", "newestversion") == "2.0.0");
 
   // Reload from disk: the position and the band are read back from meta.ini,
   // which is the only place they can come from after a restart.
@@ -815,33 +907,11 @@ TEST_CASE("Mod pipeline: an MO2-game archive that ships no version takes it from
   REQUIRE(UC::parse_files(body, 16268, available, newest, from_nexus));
   REQUIRE(from_nexus == "v1.0");
 
-  // The one production step the HTTP reply's body would hand to.
-  ui::DownloadsController::apply_installed_version(&w, mods_dir, "CrashLogger",
-                                                   from_nexus);
-  QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
-
-  // === the claim ==========================================================
-  CHECK(engine::ModMeta::load(mods_dir, "CrashLogger").get("General", "version") ==
-        "v1.0");
-  CHECK(version_cell(model, QStringLiteral("CrashLogger")) == "v1.0");
-  // It is NOT the version the archive name would have suggested, and NOT the
-  // "1.0" an install used to fabricate, and it is no longer "?" either.
-  CHECK(version_cell(model, QStringLiteral("CrashLogger")) != "1.24.0");
-  CHECK(version_cell(model, QStringLiteral("CrashLogger")) != "1.0");
-  CHECK(version_cell(model, QStringLiteral("CrashLogger")) != "?");
-
-  // What is NOT proven here, stated rather than papered over: the HTTP GET
-  // itself. Everything from the parsed body onward is the real code, and
-  // everything before it is the real install, but no key is reachable on this
-  // box and the network answers 401, so `from_nexus` is handed to
-  // apply_installed_version directly rather than read out of a socket. The
-  // byte transfer is the one seam - the same gap step 7 already declares for
-  // the update check, and it is deliberately NOT closed by a second invented
-  // capture, which would only ever test this test.
-
-  // === the symbol, which has to agree with the version ====================
+  // The update symbol has to agree with the version, and it is seeded BEFORE
+  // the step below so the step below is what clears it.
+  //
   // The user's own report: the Version column reads 1.0.2 and the row is STILL
-  // wearing the orange update-available symbol. The sweep had recorded
+  // wearing the update-available symbol. The sweep had recorded
   // nexus_update=true with newestversion=1.0.2; the install then recorded
   // version=1.0.2 - the same string - and nothing re-read the verdict, so the
   // badge outlived the fact that produced it. The badge is not cleared by
@@ -867,35 +937,81 @@ TEST_CASE("Mod pipeline: an MO2-game archive that ships no version takes it from
     REQUIRE(pump_until([&] {
       return find_mod_row(view, QStringLiteral("CrashLogger")) >= 0;
     }));
-    // The badge really is worn before the install path touches anything, so the
-    // assertions after it are measuring a change and not a row that never had
-    // one.
+    // The badge really is worn before the version-recording step touches
+    // anything, so the assertions after it are measuring a change and not a row
+    // that never had one.
     CHECK(wears_update_badge(model, QStringLiteral("CrashLogger")));
-    CHECK(version_cell(model, QStringLiteral("CrashLogger")) == "v1.0");
+  }
 
-    // The real production step, on the real meta, on the real row.
-    auto meta = engine::ModMeta::load(mods_dir, "CrashLogger");
-    ui::DownloadsController::reconcile_update_symbol(&w, mods_dir, "CrashLogger", meta);
-    QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
+  // The one production step the HTTP reply's body would hand to. This is the
+  // seam this leg declares and no more: no key is reachable on this box and the
+  // network answers 401, so `from_nexus` is handed to the real function rather
+  // than read out of a socket. Everything else here - the write into meta.ini,
+  // the row repaint and the update symbol being re-read - runs inside it.
+  ui::DownloadsController::apply_installed_version(&w, mods_dir, "CrashLogger",
+                                                   from_nexus);
+  QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
 
-    CHECK(
-        engine::ModMeta::load(mods_dir, "CrashLogger").get("General", "nexus_update") ==
+  // === the claim ==========================================================
+  CHECK(engine::ModMeta::load(mods_dir, "CrashLogger").get("General", "version") ==
+        "v1.0");
+  CHECK(version_cell(model, QStringLiteral("CrashLogger")) == "v1.0");
+  // It is NOT the version the archive name would have suggested, and NOT the
+  // "1.0" an install used to fabricate, and it is no longer "?" either.
+  CHECK(version_cell(model, QStringLiteral("CrashLogger")) != "1.24.0");
+  CHECK(version_cell(model, QStringLiteral("CrashLogger")) != "1.0");
+  CHECK(version_cell(model, QStringLiteral("CrashLogger")) != "?");
+  // The flag itself, written by the reconcile at the end of that same call -
+  // remove it and this goes red, which is what the direct-call version of this
+  // check could not do.
+  CHECK(engine::ModMeta::load(mods_dir, "CrashLogger").get("General", "nexus_update") ==
         "false");
-    // CONSUMER-REACHES-CONTROL: the verdict on disk is not the claim, the row
-    // no longer wearing the badge is.
-    CHECK_FALSE(wears_update_badge(model, QStringLiteral("CrashLogger")));
+  // CONSUMER-REACHES-CONTROL: the verdict on disk is not the claim, the row no
+  // longer wearing the symbol is.
+  CHECK_FALSE(wears_update_badge(model, QStringLiteral("CrashLogger")));
 
-    // A version that is NOT the newest leaves the badge alone - the reconcile is
-    // not a blanket "the install cleared it".
+  // What is NOT proven here, stated rather than papered over: the HTTP GET
+  // itself. Everything from the parsed body onward is the real code, and
+  // everything before it is the real install, but no key is reachable on this
+  // box and the network answers 401, so `from_nexus` is handed to
+  // apply_installed_version directly rather than read out of a socket. The
+  // byte transfer is the one seam - the same gap step 7 already declares for
+  // the update check, and it is deliberately NOT closed by a second invented
+  // capture, which would only ever test this test.
+
+  // A version that is NOT the newest leaves the symbol alone - the reconcile is
+  // not a blanket "the install cleared it". Driven through the same production
+  // call site, so this is a claim about that function and not about the test.
+  //
+  // The reload is what puts the re-flagged verdict back ON THE ROW. Without it
+  // the row still holds the verdict the clear above wrote and this check would
+  // be measuring the test's own bookkeeping rather than the reconcile - the
+  // meta on disk would be the only honest thing to assert here, and that is not
+  // what the user sees.
+  {
+    auto *ctl = w.findChild<ui::ModListController *>();
+    REQUIRE(ctl != nullptr);
     auto older = engine::ModMeta::load(mods_dir, "CrashLogger");
     older.set("General", "nexus_update", "true");
-    older.set("General", "version", "0.9");
     REQUIRE(older.save(mods_dir, "CrashLogger"));
-    ui::DownloadsController::reconcile_update_symbol(&w, mods_dir, "CrashLogger",
-                                                     older);
+    ctl->load_mods_from_game();
+    REQUIRE(pump_until([&w] {
+      return !w.is_loading();
+    }));
+    REQUIRE(pump_until([&] {
+      return find_mod_row(view, QStringLiteral("CrashLogger")) >= 0;
+    }));
+    REQUIRE(wears_update_badge(model, QStringLiteral("CrashLogger")));
+
+    ui::DownloadsController::apply_installed_version(&w, mods_dir, "CrashLogger",
+                                                     "0.9");
+    QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
     CHECK(
         engine::ModMeta::load(mods_dir, "CrashLogger").get("General", "nexus_update") ==
         "true");
+    // 0.9 is not the newest the sweep named, so an update really IS still
+    // waiting and the row has to keep saying so.
+    CHECK(wears_update_badge(model, QStringLiteral("CrashLogger")));
   }
 
   fs::remove_all(root);

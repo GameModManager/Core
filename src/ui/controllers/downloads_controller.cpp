@@ -1355,17 +1355,26 @@ void DownloadsController::record_installed_version(const std::string &folder_nam
   if (game.empty())
     return;
 
-  const std::string api_key = engine::Source::Nexus::Auth::instance().get_api_key();
-  if (api_key.empty())
-    return;
-
   const std::filesystem::path mods_dir = w_->mods_dir_path();
   auto meta                            = engine::ModMeta::load(mods_dir, folder_name);
-  // Before the gate, not after it: this runs even when the lookup below is
-  // skipped because the archive already supplied a version, and that is the
-  // common case - the archive's own version is exactly what can make the badge
-  // stale.
+  // Before EVERY gate below, including the API key one. The reconcile compares
+  // two strings that are already in meta.ini - it spends no request and asks
+  // nobody - so gating it behind "we hold a Nexus key" made the one step that
+  // can take a stale badge off a mod a step that stops working the moment the
+  // user removes their key: the verdict the sweep had already written sits in
+  // the meta, the install supersedes it, and the row keeps the symbol forever.
+  // It also runs when the lookup below is skipped because the archive already
+  // supplied a version, which is the common case - the archive's own version is
+  // exactly what can make the badge stale.
   reconcile_update_symbol(w_, mods_dir, folder_name, meta);
+
+  const std::string api_key = engine::Source::Nexus::Auth::instance().get_api_key();
+  if (api_key.empty()) {
+    engine::Logger::instance().debug("[Flow] installed version: folder='" +
+                                     folder_name +
+                                     "' skipped, no Nexus API key is configured");
+    return;
+  }
 
   // Every gate below spends nothing and says nothing, so each one names
   // itself. "The version never arrived" and "we never asked" are the same

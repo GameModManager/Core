@@ -21,6 +21,7 @@
 #include "engine/mod/model/mod.h"
 #include "engine/pipeline/install_stage.h"
 #include "engine/pipeline/pipeline.h"
+#include "engine/source/nexus/update_check.h"
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -183,6 +184,249 @@ TEST_CASE("a merge still keeps the position, and an uninstalled mod invents none
   CHECK(ModMeta::load_file(fresh_mods / "BrandNew" / "meta.ini").priority() == -1);
   CHECK(
       ModMeta::load_file(fresh_mods / "BrandNew" / "meta.ini").separator_id().empty());
+}
+
+// ---------------------------------------------------------------------------
+// The disable sentinel. A Replace must not turn a disabled mod back on.
+//
+// The sentinel is a FILE inside the mod folder and it is the only record of a
+// mod being OFF that the deploy filter consults: deploy_impl skips a folder
+// whose sentinel exists and reads nothing else (deploy_utils.cpp:389), so the
+// per-profile modlist.txt cannot rescue it. OverwriteAction::Replace deletes
+// the folder and re-creates it empty, and nothing re-created the sentinel - so
+// "update the mod" silently enabled it, in the deploy set and therefore in the
+// load order, for a mod the user had deliberately turned off.
+//
+// MO2's Replace (installationmanager.cpp:417-447) saves meta.ini around the
+// delete and restores it but likewise does not save the disabled file, so MO2
+// leans on its profile's modlist.txt plus its own refresh. We have to carry
+// the sentinel ourselves, which is what these cases pin.
+//
+// Hermetic: throwaway temp root, real InstallStage, no UI, no network.
+TEST_CASE("an overwrite keeps a disabled mod disabled",
+          "[engine][install][overwrite][enabled]") {
+  // The engine's own default mechanism, resolved by the caller from
+  // disable_mechanism_for() and handed over in the context - named here so a
+  // hardcoded ".gmmdisabled" in the stage would fail rather than pass.
+  const std::string sentinel = "disable.it";
+
+  const auto run_replace = [&](const fs::path &mods_dir, const fs::path &root) {
+    Mod mod;
+    mod.id               = "59818-792670";
+    mod.name             = "MetaMod";
+    mod.state            = ModState::Extracted;
+    mod.archive_filename = "MetaMod 1.25.0 new.7z";
+    ModFile staged;
+    staged.relative_path = seed_staging(root).string();
+    mod.files.push_back(staged);
+
+    PipelineContext ctx;
+    ctx.mods_dir           = mods_dir.string();
+    ctx.disable_mechanism  = sentinel;
+    ctx.overwrite_query_cb = [](const std::string &) {
+      OverwriteDecision d;
+      d.action = OverwriteAction::Replace;
+      return d;
+    };
+    InstallStage stage;
+    REQUIRE(stage.execute(mod, ctx));
+    // The delete really happened, so this is not the Merge path where the
+    // sentinel survives untouched.
+    REQUIRE(ctx.replaced_archive == "MetaMod 1.24.0 old.7z");
+  };
+
+  SECTION("disabled before the update, still disabled after it") {
+    TempDir tmp("disabled");
+    const fs::path mods_dir = tmp.root / "mods";
+    fs::create_directories(mods_dir);
+    seed_installed(mods_dir, "MetaMod", "MetaMod 1.24.0 old.7z");
+    // Exactly what ModScanner::disable_mod writes: an empty file named by the
+    // game's disable_mechanism.
+    std::ofstream(mods_dir / "MetaMod" / sentinel);
+    REQUIRE(fs::exists(mods_dir / "MetaMod" / sentinel));
+
+    run_replace(mods_dir, tmp.root);
+
+    INFO("mods dir after the replace: ");
+    for (const auto &e : fs::directory_iterator(mods_dir / "MetaMod"))
+      INFO("  " << e.path().filename().string());
+    CHECK(fs::exists(mods_dir / "MetaMod" / sentinel));
+    // The content moved, so the folder is genuinely the new install and the
+    // sentinel is not surviving by the delete never having happened.
+    CHECK(fs::exists(mods_dir / "MetaMod" / "meshes" / "thing.nif"));
+  }
+
+  SECTION("enabled before the update, and no sentinel is invented") {
+    TempDir tmp("enabled");
+    const fs::path mods_dir = tmp.root / "mods";
+    fs::create_directories(mods_dir);
+    seed_installed(mods_dir, "MetaMod", "MetaMod 1.24.0 old.7z");
+    REQUIRE_FALSE(fs::exists(mods_dir / "MetaMod" / sentinel));
+
+    run_replace(mods_dir, tmp.root);
+
+    // The other half of the same assertion. A carry that wrote the sentinel
+    // unconditionally would disable every mod on its first update - which is
+    // the same class of wrong answer, in the opposite direction.
+    CHECK_FALSE(fs::exists(mods_dir / "MetaMod" / sentinel));
+  }
+
+  SECTION("merge keeps the sentinel without touching it") {
+    TempDir tmp("merge_disabled");
+    const fs::path mods_dir = tmp.root / "mods";
+    fs::create_directories(mods_dir);
+    seed_installed(mods_dir, "MetaMod", "MetaMod 1.24.0 old.7z");
+    std::ofstream(mods_dir / "MetaMod" / sentinel);
+
+    Mod mod;
+    mod.id               = "MetaMod";
+    mod.name             = "MetaMod";
+    mod.state            = ModState::Extracted;
+    mod.archive_filename = "MetaMod 1.25.0 new.7z";
+    ModFile staged;
+    staged.relative_path = seed_staging(tmp.root, "merged").string();
+    mod.files.push_back(staged);
+
+    PipelineContext ctx;
+    ctx.mods_dir           = mods_dir.string();
+    ctx.disable_mechanism  = sentinel;
+    ctx.overwrite_query_cb = [](const std::string &) {
+      OverwriteDecision d;
+      d.action = OverwriteAction::Merge;
+      return d;
+    };
+    InstallStage stage;
+    REQUIRE(stage.execute(mod, ctx));
+
+    // Merge never deletes the folder, so this survives by not having been
+    // touched. NAMED HONESTLY: this is a pin on "Merge keeps the folder", NOT
+    // on "the carry never grew a Merge branch". A carry that wrote the same
+    // sentinel a second time on the Merge path would leave this CHECK green -
+    // create_empty_file is idempotent, so writing it twice and writing it once
+    // are indistinguishable here. That mutation is genuinely unobservable
+    // without instrumentation nobody should add for it; the real risk it
+    // guards is a Merge that starts deleting, and it does catch that.
+    CHECK(fs::exists(mods_dir / "MetaMod" / sentinel));
+  }
+
+  SECTION("the headless silent replace carries it too") {
+    // No overwrite_query_cb = the CLI path, which removes the folder without
+    // asking. It used to carry NOTHING at all - priority, separator and
+    // sentinel alike - so the same mod came back enabled, at the bottom of the
+    // list, out of its separator, on a headless install.
+    TempDir tmp("headless");
+    const fs::path mods_dir = tmp.root / "mods";
+    fs::create_directories(mods_dir);
+    seed_installed(mods_dir, "MetaMod", "MetaMod 1.24.0 old.7z");
+    std::ofstream(mods_dir / "MetaMod" / sentinel);
+
+    Mod mod;
+    mod.id               = "MetaMod";
+    mod.name             = "MetaMod";
+    mod.state            = ModState::Extracted;
+    mod.archive_filename = "MetaMod 1.25.0 new.7z";
+    ModFile staged;
+    staged.relative_path = seed_staging(tmp.root, "headless").string();
+    mod.files.push_back(staged);
+
+    PipelineContext ctx;
+    ctx.mods_dir          = mods_dir.string();
+    ctx.disable_mechanism = sentinel;
+    InstallStage stage;
+    REQUIRE(stage.execute(mod, ctx));
+
+    CHECK(fs::exists(mods_dir / "MetaMod" / sentinel));
+    CHECK(ModMeta::load_file(mods_dir / "MetaMod" / "meta.ini").priority() == 17);
+  }
+}
+
+// The Nexus update verdict is per MOD, not per installed file, so a Replace
+// has to carry it too.
+//
+// write_game_metadata early-returns when meta.ini exists and otherwise creates
+// one holding five keys (mod_meta.cpp:804-838). On a Replace that means
+// nexus_update / newestversion are destroyed, and the step whose whole job is
+// to clear a stale update symbol gates on nexus_update == "true"
+// (downloads_controller.cpp). It therefore reads an ABSENT flag, decides
+// there is nothing to clear, and the row keeps wearing the symbol for a mod
+// that is now current - the user's "still flagged after updating to the newest".
+//
+// Hermetic: throwaway temp root, real InstallStage, no UI, no network.
+TEST_CASE("an overwrite carries the update verdict forward",
+          "[engine][install][overwrite][update]") {
+  TempDir tmp("verdict");
+  const fs::path mods_dir = tmp.root / "mods";
+  fs::create_directories(mods_dir);
+  seed_installed(mods_dir, "MetaMod", "MetaMod 1.24.0 old.7z");
+  {
+    auto meta = ModMeta::load_file(mods_dir / "MetaMod" / "meta.ini");
+    meta.set("General", "version", "1.24.0");
+    // The sweep's own spelling and its own verdict.
+    meta.set("General", "nexus_update", "true");
+    meta.set("General", "newestversion", "1.25.0");
+    meta.set("General", "ignoredVersion", "1.20.0");
+    REQUIRE(meta.save_file(mods_dir / "MetaMod" / "meta.ini"));
+  }
+
+  Mod mod;
+  mod.id               = "MetaMod";
+  mod.name             = "MetaMod";
+  mod.state            = ModState::Extracted;
+  mod.archive_filename = "MetaMod 1.25.0 new.7z";
+  mod.version          = "1.25.0";  // the user installed what Nexus offered
+  ModFile staged;
+  staged.relative_path = seed_staging(tmp.root, "v2 payload").string();
+  mod.files.push_back(staged);
+
+  PipelineContext ctx;
+  ctx.mods_dir           = mods_dir.string();
+  ctx.overwrite_query_cb = [](const std::string &) {
+    OverwriteDecision d;
+    d.action = OverwriteAction::Replace;
+    return d;
+  };
+  InstallStage stage;
+  REQUIRE(stage.execute(mod, ctx));
+
+  const auto after = ModMeta::load_file(mods_dir / "MetaMod" / "meta.ini");
+  INFO("surviving [General]:\n" << after.serialize());
+  // The two facts the reconcile compares. With these gone it cannot see a flag
+  // to clear; with them present it can, and 1.25.0 == 1.25.0 clears it.
+  CHECK(after.get("General", "version") == "1.25.0");
+  CHECK(after.get("General", "nexus_update") == "true");
+  CHECK(after.get("General", "newestversion") == "1.25.0");
+  // The user's own "stop telling me about this one" is per mod, so it rides
+  // along too.
+  CHECK(engine::Source::Nexus::UpdateCheck::read_ignored_version(after) == "1.20.0");
+}
+
+TEST_CASE("a fresh install invents no update verdict",
+          "[engine][install][overwrite][update]") {
+  // The carry must not write a verdict nobody asked Nexus for - "false" into
+  // every new mod would state as fact something no sweep checked, which is the
+  // same lie UpdateCheck::run() refuses to state for an unknown mod.
+  TempDir tmp("verdict_fresh");
+  const fs::path mods_dir = tmp.root / "mods";
+  fs::create_directories(mods_dir);
+  Mod mod;
+  mod.id               = "BrandNew";
+  mod.name             = "BrandNew";
+  mod.state            = ModState::Extracted;
+  mod.archive_filename = "BrandNew-1.25.0.7z";
+  mod.version          = "1.25.0";
+  ModFile staged;
+  staged.relative_path = seed_staging(tmp.root, "brand new").string();
+  mod.files.push_back(staged);
+
+  PipelineContext ctx;
+  ctx.mods_dir = mods_dir.string();
+  InstallStage stage;
+  REQUIRE(stage.execute(mod, ctx));
+
+  const auto after = ModMeta::load_file(mods_dir / "BrandNew" / "meta.ini");
+  CHECK(after.get("General", "nexus_update").empty());
+  CHECK(after.get("General", "newestversion").empty());
+  CHECK(engine::Source::Nexus::UpdateCheck::read_ignored_version(after).empty());
 }
 
 // A Merge install of an archive that carries NO version must not inherit the

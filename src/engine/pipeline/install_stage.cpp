@@ -5,7 +5,9 @@
 #include "engine/mod/model/mod.h"
 #include "engine/pipeline/pipeline.h"
 #include "engine/source/modpub/provider.h"
+#include "engine/source/nexus/update_check.h"
 #include "engine/source/update_policy.h"
+#include "engine/util/fs_utils.h"
 
 #include <algorithm>
 #include <fstream>
@@ -166,16 +168,75 @@ namespace Source {
     // Load-order state a Replace would otherwise destroy, carried out of the
     // folder before it is deleted and read back in when the new meta.ini is
     // stamped below. MO2 saves the whole of meta.ini around the delete and
-    // restores it (installationmanager.cpp:417-447); we only need the two keys
+    // restores it (installationmanager.cpp:417-447); we only need the keys
     // the install path below does not write itself.
     int replaced_priority = -1;
     std::string replaced_separator;
+    // The Nexus update verdict the sweep wrote, for the same reason and in the
+    // same set. write_game_metadata early-returns when meta.ini exists and
+    // otherwise CREATES one holding five keys (mod_meta.cpp:804-838), so on a
+    // Replace nexus_update / newestversion / ignoredversion die with the folder
+    // - and the update symbol then has nothing to be cleared FROM:
+    // reconcile_update_symbol's first gate is nexus_update != "true"
+    // (downloads_controller.cpp:1334), the row keeps wearing the badge it was
+    // built with at startup, and no later install can ever take it off. That
+    // is the user's "still flagged after updating to the newest" report.
+    std::string replaced_nexus_update;
+    std::string replaced_newest;
+    std::string replaced_ignored;
+    // Whether the folder carried the game's disable sentinel when the delete
+    // took it. The sentinel is what the DEPLOY filter consults and the only
+    // record of the mod being OFF that lives inside the folder
+    // (deploy_utils.cpp:389), and nothing re-creates it: the profile's
+    // modlist.txt holds the same verdict per profile, but deploy never reads
+    // it. Without this a mod the user deliberately disabled is re-enabled -
+    // in the row, in the deploy set, and therefore in the load order - by
+    // nothing more than updating it.
+    bool replaced_disabled = false;
 
     auto dest_dir = mods_dir / folder_name;
+    std::error_code ec_probe;
+    // Everything a delete below would take with it, read out ONCE and before
+    // either delete. Two deletes reach this point: the Replace decision, and the
+    // headless silent replace taken when no overwrite callback is wired (the
+    // CLI). MO2 only has the first, because it always asks
+    // (installationmanager.cpp:387-465) - so the headless path used to lose
+    // every key here too, which is a state-loss bug wearing a different hat.
+    auto capture_replaced_state = [&](const std::filesystem::path &folder) {
+      // Read the archive the old install came from before the delete takes
+      // meta.ini with it, so the UI can stop claiming that archive is still
+      // installed. MO2 reads the same field off ModInfo just before it
+      // removes the directory (installationmanager.cpp:418-424).
+      const auto old_meta           = ModMeta::load_file(folder / "meta.ini");
+      const std::string old_archive = old_meta.get("General", "installationfile");
+      if (!old_archive.empty())
+        ctx.replaced_archive = old_archive;
+      // The same read carries the mod's place in the list. meta.ini dies
+      // with the folder, and nothing below re-derives either key, so without
+      // this the reinstalled mod loses its load-order position and drops out
+      // of its separator (from_default never writes either key, and
+      // priority() reads -1 for an absent one).
+      replaced_priority  = old_meta.priority();
+      replaced_separator = old_meta.get("GameModManager", "separator_id");
+      // Both spellings of the version the sweep named newest, for the same
+      // reason reconcile_update_symbol reads both: kKeyNewest is the sweep's
+      // lowercase spelling and "newestVersion" the install-stage one.
+      replaced_nexus_update = old_meta.get("General", "nexus_update");
+      replaced_newest       = old_meta.get("General", "newestversion");
+      if (replaced_newest.empty())
+        replaced_newest = old_meta.get("General", "newestVersion");
+      replaced_ignored =
+          engine::Source::Nexus::UpdateCheck::read_ignored_version(old_meta);
+      if (!ctx.disable_mechanism.empty())
+        replaced_disabled =
+            std::filesystem::exists(folder / ctx.disable_mechanism, ec_probe);
+    };
+
     while (std::filesystem::exists(dest_dir)) {
       if (!ctx.overwrite_query_cb) {
         Logger::instance().warn("InstallStage: mod folder already exists, removing: " +
                                 dest_dir.string());
+        capture_replaced_state(dest_dir);
         std::error_code ec;
         std::filesystem::remove_all(dest_dir, ec);
         break;
@@ -222,27 +283,16 @@ namespace Source {
       if (decision.action == OverwriteAction::Replace) {
         Logger::instance().warn("InstallStage: replacing existing mod folder " +
                                 dest_dir.string());
-        // Read the archive the old install came from before the delete takes
-        // meta.ini with it, so the UI can stop claiming that archive is still
-        // installed. MO2 reads the same field off ModInfo just before it
-        // removes the directory (installationmanager.cpp:418-424).
-        const auto old_meta = ModMeta::load_file(dest_dir / "meta.ini");
-        const std::string old_archive = old_meta.get("General", "installationfile");
-        if (!old_archive.empty())
-          ctx.replaced_archive = old_archive;
-        // The same read carries the mod's place in the list. meta.ini dies
-        // with the folder, and nothing below re-derives either key, so without
-        // this the reinstalled mod loses its load-order position and drops out
-        // of its separator (from_default never writes either key, and
-        // priority() reads -1 for an absent one).
-        replaced_priority  = old_meta.priority();
-        replaced_separator = old_meta.get("GameModManager", "separator_id");
+        capture_replaced_state(dest_dir);
         std::error_code ec;
         std::filesystem::remove_all(dest_dir, ec);
       }
 
       // Merge (existing folder kept) or Replace (fresh empty folder) both
-      // fall through to the copy below.
+      // fall through to the copy below. Merge keeps the folder, so everything
+      // read out of it above stays where it is - the carry below is a no-op
+      // there and the sentinel, the priority and the update verdict all
+      // survive untouched by not having been touched.
       break;
     }
 
@@ -264,6 +314,26 @@ namespace Source {
                           " - the mod folder is incomplete; check the mods "
                           "directory is writable and has free space";
       return false;
+    }
+
+    // Put the disable sentinel back, if the folder we deleted had one. The
+    // user's deliberate "off" is not a property of the CONTENT being updated -
+    // it is a property of the mod, and updating a mod must not be a way to
+    // turn it back on. Written before the metadata block below so a failure
+    // here still leaves the mod disabled rather than half-restored.
+    if (replaced_disabled && !ctx.disable_mechanism.empty()) {
+      std::error_code ec;
+      if (create_empty_file(dest_dir / ctx.disable_mechanism, ec)) {
+        Logger::instance().debug(
+            "InstallStage: '" + folder_name +
+            "' was disabled before the update and stays disabled (" +
+            ctx.disable_mechanism + " carried across)");
+      } else {
+        Logger::instance().warn(
+            "InstallStage: could not restore " + ctx.disable_mechanism + " for '" +
+            folder_name + "': " + ec.message() +
+            " - the mod will be ENABLED until it is switched off again");
+      }
     }
 
     // Ensure the game's metadata file exists in the mod folder so ModScanner
@@ -395,6 +465,25 @@ namespace Source {
       // it is carried the same way. Empty means the mod was not in a separator.
       if (meta.separator_id().empty() && !replaced_separator.empty())
         meta.set_separator_id(replaced_separator);
+
+      // The Nexus update verdict, carried for the same reason and with the same
+      // "only when the new meta does not already hold one" rule. The verdict
+      // belongs to the MOD, not to the file that was installed: the sweep
+      // compared the newest Nexus file against what was installed, and only the
+      // caller that knows the new version can now say whether that still holds.
+      // Carrying it forward is what gives record_installed_version something to
+      // reconcile - without these keys its first gate reads an ABSENT flag and
+      // the row keeps wearing the update symbol for a mod that is now current.
+      // Re-stamped by the sweep and by "Ignore this update" like any other
+      // version-shaped key, so they follow the newest answer rather than
+      // freezing here.
+      if (!replaced_nexus_update.empty())
+        meta.set("General", "nexus_update", replaced_nexus_update);
+      if (meta.get("General", "newestversion").empty() && !replaced_newest.empty())
+        meta.set("General", "newestversion", replaced_newest);
+      if (!replaced_ignored.empty() &&
+          engine::Source::Nexus::UpdateCheck::read_ignored_version(meta).empty())
+        meta.set("General", "ignoredVersion", replaced_ignored);
 
       // For Nexus downloads, add [Nexusmods] section
       if (mod.download_source_type == "nexus" && mod.download_nxm.file_id > 0) {
