@@ -426,8 +426,25 @@ void ProfileManager::refresh_mod_status(const std::vector<std::string> &known_mo
   }
 
   // Mods not in the file: foreign mods get the lowest priorities (below all
-  // file mods), managed (new) mods the highest (above all file mods), both
-  // enabled by default - MO2's refreshModStatus behavior.
+  // file mods), managed (new) mods the highest (above all file mods) - MO2's
+  // refreshModStatus behavior.
+  //
+  // A managed mod the profile never listed stays DISABLED, and that is the
+  // whole of MO2's rule. Profile::ModStatus defaults to m_Enabled(false)
+  // (profile.h:379) and refreshModStatus hands an unlisted mod a priority
+  // without ever setting m_Enabled (profile.cpp:508-548), so getActiveMods()
+  // never returns it and it does not deploy. Pre-enabling it here was the
+  // divergence: the profile held no opinion about the mod and the mod's deploy
+  // state was inherited from whatever the installer happened to write, so two
+  // installs of the same mod could land in opposite deploy states with no user
+  // action and no visible difference. It is written to modlist.txt below as
+  // "-", which is what MO2 writes, so the file converges and the state is
+  // chosen rather than inherited.
+  //
+  // Foreign mods keep enabled=true, but that is in-memory only and deliberate:
+  // do_write_modlist() emits every foreign entry as '*', never '+' or '-', and
+  // ModList::set_mod_enabled returns early for a game-native row, so there is
+  // no persisted profile state for them to converge onto.
   std::unordered_set<std::string> foreign_set(foreign_mods.begin(), foreign_mods.end());
   int next_high = num_file;
   int next_low  = -1;
@@ -439,11 +456,11 @@ void ProfileManager::refresh_mod_status(const std::vector<std::string> &known_mo
     if (foreign_set.count(id) != 0) {
       priority[id] = next_low--;
       foreign[id]  = true;
+      enabled[id]  = true;
     } else {
       priority[id] = next_high++;
     }
-    enabled[id] = true;
-    modified    = true;
+    modified = true;
   }
 
   // Shift so the minimum priority is 0 (foreign mods may have gone negative).

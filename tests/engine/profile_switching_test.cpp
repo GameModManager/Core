@@ -118,7 +118,13 @@ TEST_CASE("save_current_profile flushes modlist and writes archives/settings",
   engine::profile::ProfileManager profile(created.directory,
                                           std::chrono::milliseconds(10s));
   profile.refresh_mod_status({"ModA", "ModB"});
+  // A fresh profile lists nothing, so MO2's rule starts BOTH disabled
+  // (refreshModStatus gives an unlisted mod a priority without setting
+  // m_Enabled). Each state under test is therefore stated explicitly - left to
+  // the default both would be "-Mod" and the flush assertion could not tell a
+  // written file from a preserved one.
   profile.set_mod_enabled("ModA", false);  // schedules a delayed write
+  profile.set_mod_enabled("ModB", true);
 
   engine::profile::ProfileSaveState state;
   state.known_mods  = {"ModA", "ModB"};
@@ -177,6 +183,9 @@ TEST_CASE("save_current_profile preserves an unloaded profile's modlist", "[engi
   {
     engine::profile::ProfileManager p(created.directory);
     p.refresh_mod_status({"ModA", "ModB"});
+    // Unlisted mods start disabled (MO2); state both so the file carries a
+    // "+ModA"/"-ModB" contrast the preserve assertion can actually read.
+    p.set_mod_enabled("ModA", true);
     p.set_mod_enabled("ModB", false);
     p.write_modlist_now();
   }
@@ -297,6 +306,9 @@ TEST_CASE("switch_profile saves current, restores mod state and refreshes",
     engine::profile::ProfileManager pa(a.directory);
     pa.refresh_mod_status({"ModA", "ModB"});
     pa.set_mod_enabled("ModB", false);
+    // Unlisted mods start disabled (MO2), so "ModA enabled" is stated here
+    // rather than inherited.
+    pa.set_mod_enabled("ModA", true);
     pa.write_modlist_now();
     pa.set_automatic_archive_invalidation(true);
     REQUIRE(pa.save_settings());
@@ -309,6 +321,7 @@ TEST_CASE("switch_profile saves current, restores mod state and refreshes",
     engine::profile::ProfileManager pb(b.directory);
     pb.refresh_mod_status({"ModA", "ModB"});
     pb.set_mod_enabled("ModA", false);
+    pb.set_mod_enabled("ModB", true);
     pb.write_modlist_now();
     pb.set_automatic_archive_invalidation(false);
     REQUIRE(pb.save_settings());
@@ -378,6 +391,9 @@ TEST_CASE("switch_profile preserves the current profile's modlist when "
     engine::profile::ProfileManager pa(a.directory);
     pa.refresh_mod_status({"ModA", "ModB"});
     pa.set_mod_enabled("ModB", false);
+    // Unlisted mods start disabled (MO2), so "ModA enabled" is stated here
+    // rather than inherited.
+    pa.set_mod_enabled("ModA", true);
     pa.write_modlist_now();
   }
   REQUIRE(read_text(a.directory / "modlist.txt").find("-ModB") != std::string::npos);
@@ -398,15 +414,19 @@ TEST_CASE("switch_profile preserves the current profile's modlist when "
   REQUIRE(alpha_modlist.find("-ModB") != std::string::npos);
   REQUIRE(alpha_modlist.find("+ModA") != std::string::npos);
 
-  // Beta's restored state: its own (empty) modlist.txt converged with the
-  // known mods — both enabled by default (MO2's refreshModStatus).
+  // Beta's restored state: its own modlist.txt is EMPTY, so neither mod is
+  // listed and both land at MO2's disabled default. This is the MO2 rule
+  // itself, on the plainest case there is - refreshModStatus gives an unlisted
+  // mod a priority without ever setting m_Enabled (profile.cpp:511-543), so
+  // ModStatus keeps m_Enabled(false) (profile.h:379) and getActiveMods() never
+  // returns it (profile.cpp:606).
   REQUIRE(result.profile != nullptr);
   const auto beta_mods = result.profile->mods();
   REQUIRE(beta_mods.size() == 2);
   REQUIRE(beta_mods[0].mod_id == "ModA");
-  REQUIRE(beta_mods[0].enabled);
+  REQUIRE_FALSE(beta_mods[0].enabled);
   REQUIRE(beta_mods[1].mod_id == "ModB");
-  REQUIRE(beta_mods[1].enabled);
+  REQUIRE_FALSE(beta_mods[1].enabled);
 }
 
 TEST_CASE("switch_profile emits profile_changed event", "[engine]") {

@@ -775,6 +775,16 @@ std::vector<ScannedMod> ModScanner::scan_folder(
   return {std::move(*mod)};
 }
 
+bool ModScanner::mod_enabled_on_disk(const GameKnowledge &knowledge,
+                                     const std::string &game_id,
+                                     const std::filesystem::path &mod_folder) {
+  const auto disable_file = disable_mechanism_for(knowledge, game_id);
+  if (disable_file.empty())
+    return true;
+  std::error_code ec;
+  return !std::filesystem::exists(mod_folder / disable_file, ec);
+}
+
 bool ModScanner::disable_mod(const GameKnowledge &knowledge, const std::string &game_id,
                              const std::filesystem::path &mod_folder,
                              std::string *error) {

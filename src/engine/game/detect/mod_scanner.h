@@ -103,6 +103,19 @@ public:
               const std::filesystem::path &mods_dir, const std::string &folder_name,
               const std::vector<std::filesystem::path> &ignore_symlink_targets = {});
 
+  // Read the disable sentinel for a mod: true when the sentinel is ABSENT,
+  // i.e. the mod is enabled. One stat, no write.
+  //
+  // This is the deploy's own test (deploy_utils.cpp:390), named, so a caller
+  // deciding whether a write is needed reads the same truth the deploy will
+  // read. enable_mod/disable_mod both write unconditionally - create_empty_file
+  // is O_CREAT|O_TRUNC, so it rewrites a sentinel that already says the right
+  // thing - and a caller converging a whole mod list has to pay that once per
+  // mod unless it asks this first.
+  [[nodiscard]] static bool
+  mod_enabled_on_disk(const GameKnowledge &knowledge, const std::string &game_id,
+                      const std::filesystem::path &mod_folder);
+
   // Create the disable sentinel file for a mod.
   //
   // `error`, when non-null, receives the reason the write failed - the OS

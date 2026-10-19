@@ -967,6 +967,11 @@ void ModListController::switch_profile(const QString &profile) {
         "Delayed disable: queued full profile state for '" +
         w_->active_profile_->name() + "' (" +
         std::to_string(w_->deferred_disable_queue_.size()) + " mods)");
+  } else {
+    // Every other game: the deploy reads only the on-disk sentinel, so the
+    // incoming profile's enabled state is written through to it NOW. Deferred
+    // games above instead reconcile the same full state at the next Run.
+    apply_profile_deploy_state();
   }
 
   // Use the canonical profile name (the actual directory name the switcher
@@ -983,6 +988,117 @@ void ModListController::switch_profile(const QString &profile) {
   if (w_->downloads_) {
     w_->downloads_->on_saves_refresh_requested();
   }
+}
+
+// Materialise the active profile's enabled state onto the on-disk disable
+// sentinel, which is the only thing the deploy reads (deploy_utils.cpp:389).
+//
+// MO2 has a single source of truth: there is no per-mod sentinel at all, and
+// the deploy is handed the profile's active mods directly -
+// `m_DirectoryRefresher->setMods(m_CurrentProfile->getActiveMods(), ...)`
+// (organizercore.cpp:1604 in refreshDirectoryStructure, :1468 on activation),
+// filtered to `m_ModStatus[index].m_Enabled` (profile.cpp:602-614). GMM keeps
+// the sentinel, so the profile has to be pushed onto it or the two disagree and
+// the profile switch is decorative: apply_profile_mod_states() applies the
+// profile to the model only (its model handlers early-return while loading_ is
+// set), then re-applies the stale sentinel over the top, so the sentinel always
+// wins.
+//
+// A mod the profile does not list is DISABLED, not left to whatever the disk
+// says. That is MO2's rule and only MO2's: Profile::ModStatus defaults to
+// m_Enabled(false) (profile.h:379) and refreshModStatus hands an unlisted mod a
+// priority without ever setting m_Enabled (profile.cpp:508-548), so
+// getActiveMods() never returns it and it never deploys. refresh_mod_status()
+// now reproduces that default, so every entry in the loop below carries an
+// opinion the profile can stand behind and there is nothing left to skip.
+//
+// Foreign (game-native) mods are excluded. Not for parity - MO2 has no foreign
+// mods to compare against - but because our own profile cannot hold their
+// state at all: do_write_modlist() emits every foreign entry as '*', never '+'
+// or '-', and ModList::set_mod_enabled() returns early for a game-native row,
+// so a user cannot express an enable/disable opinion about one from the row.
+// Writing a sentinel for it here would set state the profile cannot remember
+// and the user cannot undo from the row.
+//
+// Deliberately NOT scoped by "the outgoing profile already agreed": that state
+// came from modlist.txt, never from the sentinel this is meant to converge, and
+// the sentinel is written by paths that have nothing to do with the profile
+// (install, the user's own toggle). A mod left disabled on disk while two
+// profiles both list it enabled would then never converge, and the deploy would
+// keep omitting a mod the active profile says is on.
+//
+// Install and switch therefore do not fight: install carries the sentinel
+// across an overwrite and never recomputes it from anything else, so a
+// sentinel written here survives an install and still matches the profile.
+void ModListController::apply_profile_deploy_state() {
+  if (!w_->knowledge_ || w_->current_game_id_.empty() || w_->current_game_dir_.empty())
+    return;
+  const auto mods_subpath =
+      w_->knowledge_->get(w_->current_game_id_, "mods_subpath", "");
+  if (mods_subpath.empty())
+    return;
+
+  int applied = 0, converged = 0;
+  for (const auto &pm : w_->active_profile_->mods()) {
+    if (pm.foreign)
+      continue;
+    // Same content_dir lookup as the deferred queue: a row the scan has not
+    // rebuilt yet contributes an empty content_dir and resolve_mod_folder
+    // falls back to the instance folder.
+    QString content_dir;
+    for (const auto &m : w_->mod_model_->mods()) {
+      if (m.id == QString::fromStdString(pm.mod_id)) {
+        content_dir = m.content_dir;
+        break;
+      }
+    }
+    const auto mod_folder =
+        w_->resolve_mod_folder(pm.mod_id, mods_subpath, content_dir.toStdString());
+
+    // Cheap guard, read against the SENTINEL and not against the profile: one
+    // stat instead of one write per mod. enable_mod/disable_mod write
+    // unconditionally (create_empty_file is O_CREAT|O_TRUNC, so it rewrites a
+    // sentinel that already agrees), and on a full list that is hundreds of
+    // writes per switch spent converging state that was already right.
+    //
+    // Reading the sentinel rather than the outgoing profile is what makes the
+    // guard safe. Disagreement between the profile and the sentinel is exactly
+    // the condition that triggers the write, so a mod the profile turns on but
+    // the disk has off is written every single time - the case a guard keyed on
+    // the outgoing modlist.txt would silently skip.
+    if (engine::ModScanner::mod_enabled_on_disk(*w_->knowledge_, w_->current_game_id_,
+                                                mod_folder) == pm.enabled) {
+      ++converged;
+      continue;
+    }
+
+    std::string reason;
+    const bool ok =
+        pm.enabled
+            ? engine::ModScanner::enable_mod(*w_->knowledge_, w_->current_game_id_,
+                                             mod_folder, &reason)
+            : engine::ModScanner::disable_mod(*w_->knowledge_, w_->current_game_id_,
+                                              mod_folder, &reason);
+    if (ok || reason.empty()) {
+      ++applied;
+    } else {
+      // The row reads the sentinel back after apply_profile_mod_states(), so
+      // the mod deploys as the previous profile had it. Flag the row rather
+      // than let the switch read as having worked.
+      engine::Logger::instance().warn(
+          "Profile switch: " + reason + " for '" + pm.mod_id +
+          "' - the deploy set still holds the previous profile's state");
+      w_->mod_model_->set_toggle_error(
+          QString::fromStdString(pm.mod_id),
+          ui::toggle_badge_reason(
+              engine::game_native_disable_for(*w_->knowledge_, w_->current_game_id_),
+              reason));
+    }
+  }
+  engine::Logger::instance().debug("Profile switch: wrote " + std::to_string(applied) +
+                                   " sentinel(s), " + std::to_string(converged) +
+                                   " already matched, for '" +
+                                   w_->active_profile_->name() + "'");
 }
 
 void ModListController::update_status_bar_for_game() {
@@ -1901,8 +2017,9 @@ void ModListController::apply_profile_mod_states() {
   w_->active_profile_->write_modlist_now();
 
   // Converge the profile with the scanned mods dir: mods not yet in the
-  // profile (freshly installed) are appended enabled by default and
-  // persisted (delayed) - MO2's refreshModStatus behavior.
+  // profile (freshly installed) are appended DISABLED and persisted (delayed)
+  // - MO2's refreshModStatus behavior, where an unlisted mod keeps
+  // ModStatus's m_Enabled(false) default and never reaches getActiveMods().
   std::vector<std::string> known_mods;
   std::vector<std::string> foreign_mods;
   for (const auto &m : w_->mod_model_->mods()) {
