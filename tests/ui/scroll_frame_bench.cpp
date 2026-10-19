@@ -14,6 +14,7 @@
 #include <QAbstractItemView>
 #include <QApplication>
 #include <QElapsedTimer>
+#include <QStandardItemModel>
 #include <QTreeView>
 
 #include <cstdio>
@@ -132,7 +133,8 @@ dTry's Key Utils AE-NG|powerofthree's Papyrus Extender|powerofthree's Tweaks|sks
 // unreachable on this list as shipped - that is the finding, and `links=false`
 // is what proves it. `links=true` is the shape where those walks DO run, so
 // the guard covers the case that would regress if it ever were reachable.
-void populate(ui::ModList &model, bool nested, bool fold, bool version_links) {
+void populate(ui::ModList &model, bool nested, bool fold, bool version_links,
+              bool updates = false, bool max_badges = false) {
   model.set_nesting_enabled(nested);
   QVector<ui::ModEntry> entries;
   int n = 0;
@@ -153,6 +155,36 @@ void populate(ui::ModList &model, bool nested, bool fold, bool version_links) {
     m.conflict_losses  = (n % 11 == 0) ? 1 : 0;
     m.has_hidden_files = (n % 13 == 0);
     m.is_fomod         = (n % 17 == 0);
+    // Every mod row wears the update badge. This is the state PR #302/#305
+    // added and the one the benchmark NEVER set: without it shows_update() is
+    // false everywhere, the whole version-cell block (DecorationRole icon +
+    // a freshly built bold QFont + a QBrush) is never reached, and the
+    // benchmark reports a green frame for a list no user has after running an
+    // update check. A real library carries these badges on a large share of its
+    // rows for weeks afterwards.
+    if (updates && !sep) {
+      m.version                = QStringLiteral("1.%1").arg(n % 20);
+      m.newest_version         = QStringLiteral("2.%1").arg(n % 20);
+      m.nexus_update_available = true;
+    }
+    // Worst-case badge load: every flag the Flags column can draw a badge for,
+    // all at once. The set of flags grew over time (hidden files, FOMOD, root
+    // override, mirror, mirror-source-gone, toggle error, invalid, not-installed
+    // by manager), so the per-row badge count is the one mod-list-only,
+    // mod-count-independent quantity that plausibly moved. data() pushes up to
+    // eight QIcons here and FlagsDelegate paints each one per frame.
+    if (max_badges && !sep) {
+      m.has_hidden_files      = true;
+      m.is_empty              = true;
+      m.is_fomod              = true;
+      m.root_override         = true;
+      m.is_mirrored           = true;
+      m.mirror_source_missing = true;
+      m.toggle_error          = QStringLiteral("write failed");
+      m.invalid_data          = true;
+      m.conflict_wins         = 1;
+      m.conflict_losses       = 1;
+    }
     // Multi-version folder: versions 2 and 3 of each run hang off version 1.
     // Only the mod tail is versioned, and the head separators stay untouched
     // so the 125-empty-separator run is preserved exactly.
@@ -288,11 +320,34 @@ TEST_CASE("mod list scroll frame cost", "[perf]") {
         plain.show();
         QApplication::processEvents();
 
+        // Control: the SAME row and column count in an identically-sized bare
+        // QTreeView, over a model that answers DisplayRole and nothing else.
+        // QStandardItemModel holds no font, brush, alignment, decoration or
+        // checkbox role, so this is what Qt costs to paint this many cells with
+        // the stock delegate and none of our roles in the path. Whatever
+        // `plain_ms` costs ABOVE this is the price of what ModList::data
+        // answers, and that difference is the only per-cell cost in this file
+        // that belongs to us.
+        QStandardItemModel flat(rows, ui::ModList::ColumnCount);
+        for (int r = 0; r < rows; ++r)
+          for (int c = 0; c < ui::ModList::ColumnCount; ++c)
+            flat.setData(
+                flat.index(r, c),
+                QStringLiteral("cell %1").arg(r * ui::ModList::ColumnCount + c),
+                Qt::DisplayRole);
+        QTreeView flatview;
+        flatview.resize(1600, 1000);
+        flatview.setModel(&flat);
+        flatview.show();
+        QApplication::processEvents();
+
         (void)scroll_frame_ms(modview, 10, 20, true);
         (void)scroll_frame_ms(plain, 10, 20, false);
+        (void)scroll_frame_ms(flatview, 10, 20, false);
 
         const double ms       = scroll_frame_ms(modview, kSteps, 20, true);
         const double plain_ms = scroll_frame_ms(plain, kSteps, 20, false);
+        const double flat_ms  = scroll_frame_ms(flatview, kSteps, 20, false);
 
         // The model-side cost, measured without any rendering. This is the part
         // we own, and it is the only part a regression in this file can move.
@@ -318,10 +373,10 @@ TEST_CASE("mod list scroll frame cost", "[perf]") {
         const double ratio   = wide_ms / model_ms;
 
         printf("[scroll-e2e] rows=%3d nesting=%d folded=%d links=%d  ModView=%7.3f ms  "
-               "plain=%7.3f ms  ours=%6.3f ms  model=%6.3f ms  markbar=%6.3f ms  "
-               "scale=%.1fx (linear=%.1fx)\n",
-               rows, nested ? 1 : 0, fold ? 1 : 0, links ? 1 : 0, ms, plain_ms,
-               ms - plain_ms, model_ms, bar_ms, ratio, batches);
+               "plain=%7.3f ms  flat=%7.3f ms  roles=%6.3f ms  ours=%6.3f ms  "
+               "model=%6.3f ms  markbar=%6.3f ms  scale=%.1fx (linear=%.1fx)\n",
+               rows, nested ? 1 : 0, fold ? 1 : 0, links ? 1 : 0, ms, plain_ms, flat_ms,
+               plain_ms - flat_ms, ms - plain_ms, model_ms, bar_ms, ratio, batches);
 
         INFO("realistic frame at " << rows << " rows, nesting=" << nested
                                    << " folded=" << fold << " links=" << links
@@ -336,4 +391,44 @@ TEST_CASE("mod list scroll frame cost", "[perf]") {
       }
     }
   }
+
+  // --- Two list shapes the loop above never builds ---------------------------
+  // Both are directly comparable to the nesting=0 folded=0 links=0 line above,
+  // which is the identical list with neither. The delta is what the badge work
+  // costs per frame once the roles that carry it are live.
+  //
+  // UPDATE BADGE is the state PR #302/#305 added and the benchmark never set:
+  // without it shows_update() is false everywhere, so the version cell's
+  // DecorationRole + freshly built bold QFont + QBrush are never reached and the
+  // benchmark reports a green frame for a list no user has after an update check.
+  //
+  // MAX BADGES gives every row all eight Flags badges, which is what the badge
+  // set grew into and what the ~21% one-badge rows above understate.
+  const auto shaped = [&](const char *label, bool updates, bool max_badges) {
+    ui::ModList model;
+    populate(model, false, false, false, updates, max_badges);
+    REQUIRE(model.rowCount() == 222);
+
+    ui::ModView modview;
+    modview.resize(1600, 1000);
+    modview.setModel(&model);
+    modview.show();
+    QApplication::processEvents();
+
+    QTreeView plain;
+    plain.resize(1600, 1000);
+    plain.setModel(&model);
+    plain.show();
+    QApplication::processEvents();
+
+    (void)scroll_frame_ms(modview, 10, 20, true);
+    (void)scroll_frame_ms(plain, 10, 20, false);
+
+    const double ms       = scroll_frame_ms(modview, kSteps, 20, true);
+    const double plain_ms = scroll_frame_ms(plain, kSteps, 20, false);
+    printf("[scroll-e2e] %-12s ModView=%7.3f ms  plain=%7.3f ms  ours=%6.3f ms\n",
+           label, ms, plain_ms, ms - plain_ms);
+  };
+  shaped("UPDATE BADGE", true, false);
+  shaped("MAX BADGES", false, true);
 }
