@@ -614,8 +614,11 @@ ModInfoResult Provider::fetch_mod_info(const std::string &file_id_or_url) {
   if (result.page_url.empty())
     result.page_url = url;
   if (result.available) {
+    // Page URL, but user-pasteable and may carry query params - same redactor
+    // as every other URL log line.
     Logger::instance().debug(
-        "LoversLabProvider: fetched mod info for " + url + " (date_modified: " +
+        "LoversLabProvider: fetched mod info for " +
+        network::redaction::redact_url(url) + " (date_modified: " +
         (result.date_modified.empty() ? "<none>" : result.date_modified) + ")");
   }
   return result;

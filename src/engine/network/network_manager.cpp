@@ -69,7 +69,9 @@ namespace redaction {
         {"apikey", "authorization", "cookie", "set-cookie", "x-api-key", "x-auth-token",
          "x-csrf-token", "csrf-token", "proxy-authorization",
          // Generic secret keys (URL-encoded query params and JSON bodies).
-         "key", "token", "password", "secret", "session", "csrfkey"});
+         "key", "token", "password", "secret", "session", "csrfkey",
+         // Signed-URL signatures (modl direct URLs carry ?signature=).
+         "signature"});
   }
 
   std::string redact_header_line(const std::string &line) {
@@ -1078,14 +1080,17 @@ Response Manager::request(const Request &req) {
     return s;
   }();
   entry.response_body_preview = redaction::redact_body(resp.body, 4096);
-  entry.effective_url         = resp.effective_url;
-  entry.http_code             = resp.http_code;
-  entry.curl_error            = resp.error;
-  entry.total_time_ms         = resp.total_time_ms;
-  entry.bytes_downloaded      = dl_last;
-  entry.bytes_total           = cl_last;
-  entry.ok                    = succeeded && resp.http_code < 400;
-  entry.http_version          = resp.http_version;
+  // effective_url is CURLINFO_EFFECTIVE_URL - the final URL after redirects.
+  // A redirect Location can carry a token (Nexus signed URLs do), so it gets
+  // the same redaction pass as the request URL before it enters the ring.
+  entry.effective_url    = redaction::redact_url(resp.effective_url);
+  entry.http_code        = resp.http_code;
+  entry.curl_error       = resp.error;
+  entry.total_time_ms    = resp.total_time_ms;
+  entry.bytes_downloaded = dl_last;
+  entry.bytes_total      = cl_last;
+  entry.ok               = succeeded && resp.http_code < 400;
+  entry.http_version     = resp.http_version;
   // Capture fields needed by the post-move debug log before moving entry.
   const std::string method_for_log = entry.method;
   const std::string url_for_log    = entry.url_redacted;
@@ -1272,7 +1277,9 @@ DownloadResult Manager::download(DownloadRequest &req) {
     }
     return s;
   }();
-  entry.effective_url    = res.effective_url;
+  // Same redirect rule as request(): the final URL after redirects is
+  // redacted before it enters the log ring.
+  entry.effective_url    = redaction::redact_url(res.effective_url);
   entry.http_code        = res.http_code;
   entry.curl_error       = res.error;
   entry.total_time_ms    = tt * 1000.0;

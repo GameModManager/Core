@@ -172,9 +172,15 @@ bool Provider::fetch(const Mod &mod, PipelineContext &ctx,
     return false;
   }
 
-  Logger::instance().debug(
-      "LoversLabProvider: download complete -> " + dest_path.string() +
-      " (final URL: " + (effective_url.empty() ? "<unknown>" : effective_url) + ")");
+  // The final URL after redirects can carry the csrfKey= token (a redirect
+  // Location from the site keeps the signed query), so it goes through the
+  // redactor like every other log of a signed URL.
+  Logger::instance().debug("LoversLabProvider: download complete -> " +
+                           dest_path.string() + " (final URL: " +
+                           (effective_url.empty()
+                                ? "<unknown>"
+                                : network::redaction::redact_url(effective_url)) +
+                           ")");
   return true;
 }
 

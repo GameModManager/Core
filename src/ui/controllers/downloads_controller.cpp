@@ -833,17 +833,10 @@ void DownloadsController::handle_nxm_download(const engine::Uri::NxmLink &link) 
   }
 
   // Redact the signed download key in the log - it is a bearer token. The
-  // rest of the URL (expires, user_id, param names) stays visible so a
-  // session can verify whether the browser delivered the query string.
-  std::string log_url = link.full_url;
-  {
-    auto kp = log_url.find("key=");
-    if (kp != std::string::npos) {
-      auto ke = log_url.find_first_of("&", kp);
-      log_url = log_url.substr(0, kp + 4) +
-                (ke != std::string::npos ? log_url.substr(ke) : "");
-    }
-  }
+  // shared redactor keeps non-sensitive params (expires, user_id) visible so
+  // a session can verify whether the browser delivered the query string, and
+  // it covers more key names than the key=-only scrub this line used before.
+  const std::string log_url = engine::network::redaction::redact_url(link.full_url);
 
   engine::Logger::instance().debug(
       "[NXM-Download] Parsed link: domain=" + link.nexus_domain +
@@ -1071,15 +1064,10 @@ void DownloadsController::handle_modl_download(const engine::Uri::ModlLink &link
 
   // modl:// has no API or auth secrets in the URL itself - the host is the
   // MO2 GameShortName and the only payload is a percent-encoded https URL.
-  // We still redact the query string before logging: the direct URL may
-  // carry site-specific tokens (?token=, ?key=, ?signature=) that are
-  // session-bound and should not land in plain-text log files.
-  std::string log_url = link.direct_url;
-  {
-    const auto q = log_url.find('?');
-    if (q != std::string::npos)
-      log_url = log_url.substr(0, q) + "?<redacted>";
-  }
+  // The direct URL may still carry site-specific tokens (?token=, ?key=,
+  // ?signature=) that are session-bound, so it goes through the shared
+  // redactor like every other log of a signed URL.
+  const std::string log_url = engine::network::redaction::redact_url(link.direct_url);
   engine::Logger::instance().debug("modl download: game=" + link.game_id +
                                    " url=" + log_url);
 
@@ -1206,16 +1194,10 @@ void DownloadsController::start_loverslab_download(const std::string &url) {
     return;
   }
 
-  // Redact the CSRF token in logs - it is a session-bound secret.
-  std::string log_url = url;
-  {
-    auto kp = log_url.find("csrfKey=");
-    if (kp != std::string::npos) {
-      auto ke = log_url.find_first_of("&", kp);
-      log_url = log_url.substr(0, kp + 8) +
-                (ke != std::string::npos ? log_url.substr(ke) : "");
-    }
-  }
+  // Redact the CSRF token in logs - it is a session-bound secret. The shared
+  // redactor replaces the csrfKey=-only scrub this line used before and also
+  // covers any other sensitive parameter the URL may carry.
+  const std::string log_url = engine::network::redaction::redact_url(url);
   engine::Logger::instance().debug("LoversLab download: " + log_url);
 
   // Entry key is the file id when the URL carries one, else a stable hash

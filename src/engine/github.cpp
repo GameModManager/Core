@@ -143,9 +143,10 @@ std::optional<GitHub::Release> GitHub::latest_release(const std::string &owner,
   req.headers.push_back("User-Agent: GameModManager/0.1");
   auto resp = network::instance().request(req);
   if (!resp.error.empty() || resp.http_code >= 400) {
-    Logger::instance().error("GitHub API GET failed: " + url +
-                             " (http=" + std::to_string(resp.http_code) +
-                             (!resp.error.empty() ? ", curl=" + resp.error : "") + ")");
+    Logger::instance().error(
+        "GitHub API GET failed: " + network::redaction::redact_url(url) +
+        " (http=" + std::to_string(resp.http_code) +
+        (!resp.error.empty() ? ", curl=" + resp.error : "") + ")");
     return std::nullopt;
   }
 
@@ -225,9 +226,10 @@ bool GitHub::download(const std::string &url, const std::filesystem::path &dest,
 
   auto res = network::instance().download(req);
   if (!res.ok) {
-    Logger::instance().error("GitHub download failed: " + url +
-                             " (http=" + std::to_string(res.http_code) +
-                             (!res.error.empty() ? ", curl=" + res.error : "") + ")");
+    Logger::instance().error(
+        "GitHub download failed: " + network::redaction::redact_url(url) +
+        " (http=" + std::to_string(res.http_code) +
+        (!res.error.empty() ? ", curl=" + res.error : "") + ")");
     return false;
   }
   return true;
