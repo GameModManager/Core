@@ -478,6 +478,19 @@ gmm_catch2_test(disable_it_toggle_test ui/disable_it_toggle_test.cpp
     DEFINES GMM_ISAAC_PLUGIN_PATH="$<TARGET_FILE:TheBindingOfIsaacRebirth>")
 add_dependencies(disable_it_toggle_test TheBindingOfIsaacRebirth)
 
+# A profile switch has to move the DEPLOY SET, not just the checkbox column:
+# deploy_utils.cpp:389 reads only the on-disk sentinel, so a profile whose
+# enable/disable never reaches disk is decorative. Asserts on the real deploy
+# strategy's output over the real mods dir, driven through the real MainWindow
+# with the REAL Isaac plugin - a model-only assertion passes while the bug
+# stands. Also pins that a mod no profile lists keeps its sentinel, which is the
+# state an install leaves and install_stage.cpp carries across an overwrite.
+gmm_catch2_test(profile_deploy_state_test ui/profile_deploy_state_test.cpp
+    UI
+    LIBS gmm_ui Qt6::Test ${CMAKE_DL_LIBS}
+    DEFINES GMM_ISAAC_PLUGIN_PATH="$<TARGET_FILE:TheBindingOfIsaacRebirth>")
+add_dependencies(profile_deploy_state_test TheBindingOfIsaacRebirth)
+
 # Checkerboard transparency grid (PreviewWindow / ImageViewer): reference
 # tile colors, 2x2 menu icons, transparency gating, Settings persistence.
 # Offscreen; throwaway XDG_CONFIG_HOME so the Settings section is hermetic.

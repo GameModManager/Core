@@ -419,10 +419,12 @@ void ProfileManager::refresh_mod_status(const std::vector<std::string> &known_mo
   std::unordered_map<std::string, int> priority;
   std::unordered_map<std::string, bool> enabled;
   std::unordered_map<std::string, bool> foreign;
+  std::unordered_set<std::string> listed;
   for (int i = 0; i < num_file; ++i) {
     priority[file_entries[i].mod_id] = num_file - 1 - i;
     enabled[file_entries[i].mod_id]  = file_entries[i].enabled;
     foreign[file_entries[i].mod_id]  = file_entries[i].foreign;
+    listed.insert(file_entries[i].mod_id);
   }
 
   // Mods not in the file: foreign mods get the lowest priorities (below all
@@ -461,7 +463,8 @@ void ProfileManager::refresh_mod_status(const std::vector<std::string> &known_mo
   mods_.clear();
   mods_.reserve(priority.size());
   for (const auto &[id, p] : priority) {
-    mods_.push_back(ModListEntry{id, enabled[id], foreign[id], p});
+    mods_.push_back(
+        ModListEntry{id, enabled[id], foreign[id], p, listed.count(id) != 0});
   }
   std::sort(mods_.begin(), mods_.end(),
             [](const ModListEntry &a, const ModListEntry &b) {
