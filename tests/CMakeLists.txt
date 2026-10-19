@@ -674,6 +674,10 @@ gmm_catch2_test(scroll_frame_bench ui/scroll_frame_bench.cpp
     LIBS gmm_ui
     PROPERTIES TIMEOUT 120)
 
+gmm_catch2_test(scroll_step_test ui/scroll_step_test.cpp
+    UI
+    LIBS gmm_ui Qt6::Test)
+
 # Settings > Workarounds > Network: the custom browser actually receives the URL
 # (a real recorder program is started, not just a getter round-trip).
 gmm_catch2_test(web_link_test ui/web_link_test.cpp
