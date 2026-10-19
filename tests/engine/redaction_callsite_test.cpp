@@ -11,6 +11,7 @@
 // log, not that a redaction call was made. A redaction call that was later
 // dropped, or a URL field added to a new log line, would leave the secret
 // present and fail here.
+#include "engine/github.h"
 #include "engine/log/logger.h"
 #include "engine/network/network_manager.h"
 #include "engine/source/download/curl_download.h"
@@ -190,4 +191,114 @@ TEST_CASE("redact_url covers the signed-URL keys the sources use",
       "nxm://nexus.nexusmods.com/skyrimspecialedition/mods/1/files/2?key=cafebabe");
   CHECK(nxm.find("cafebabe") == std::string::npos);
   CHECK(nxm.find("skyrimspecialedition") != std::string::npos);
+
+  // The modl direct-URL call site used to truncate the whole query string,
+  // which covered ?signature= too. The shared redactor must keep that
+  // coverage or the swap loses a secret the old code protected.
+  const std::string modl = redact_url(
+      "https://mod.pub/files/1234/download?expires=1700000000&signature=SIGVALUE99");
+  CHECK(modl.find("SIGVALUE99") == std::string::npos);
+  CHECK(modl.find("signature=<redacted>") != std::string::npos);
+  CHECK(modl.find("expires=1700000000") != std::string::npos);
+}
+
+// The redirect half of the class: CURLINFO_EFFECTIVE_URL is the final URL
+// after redirects, and a redirect Location can carry a token just as well as
+// the request URL can. The LogEntry it lands in used to carry it raw.
+//
+// No socket is opened: the URL points at a port on localhost that refuses the
+// connection immediately, which still records a LogEntry whose effective_url
+// is the requested URL.
+TEST_CASE("Network::Manager::request redacts the effective URL in its LogEntry",
+          "[engine][redaction]") {
+  const std::string kKey = "SUPER-SECRET-REDIRECT-TOKEN-4b8a1d";
+  const std::string url  = "http://127.0.0.1:1/some/path?key=" + kKey + "&expires=1";
+
+  engine::network::Manager mgr;
+  engine::network::Request req;
+  req.url    = url;
+  req.caller = "redaction_callsite_test";
+
+  {
+    LogCapture cap;
+    const auto resp = mgr.request(req);
+    CHECK(resp.http_code == 0);  // connection refused, no HTTP response
+    const auto entries = mgr.log_snapshot(100);
+    CHECK(entries.size() > 0);
+    for (const auto &e : entries)
+      CHECK(e.effective_url.find(kKey) == std::string::npos);
+    // The redactor ran: the recorded effective URL carries the placeholder.
+    bool saw_placeholder = false;
+    for (const auto &e : entries)
+      if (e.effective_url.find("key=<redacted>") != std::string::npos)
+        saw_placeholder = true;
+    CHECK(saw_placeholder);
+    CHECK(cap.lacks(kKey));
+  }
+}
+
+TEST_CASE("Network::Manager::download redacts the effective URL in its LogEntry",
+          "[engine][redaction]") {
+  const std::string kKey = "SUPER-SECRET-REDIRECT-TOKEN-9c0e2f";
+  const std::string url  = "http://127.0.0.1:1/some/file?key=" + kKey + "&expires=1";
+
+  engine::network::Manager mgr;
+  engine::network::DownloadRequest req;
+  req.url    = url;
+  req.caller = "redaction_callsite_test";
+  req.dest   = fs::temp_directory_path() / "gmm_redact_eff_dest.bin";
+
+  {
+    LogCapture cap;
+    const auto res = mgr.download(req);
+    CHECK_FALSE(res.ok);
+    const auto entries = mgr.log_snapshot(100);
+    CHECK(entries.size() > 0);
+    for (const auto &e : entries)
+      CHECK(e.effective_url.find(kKey) == std::string::npos);
+    bool saw_placeholder = false;
+    for (const auto &e : entries)
+      if (e.effective_url.find("key=<redacted>") != std::string::npos)
+        saw_placeholder = true;
+    CHECK(saw_placeholder);
+    CHECK(cap.lacks(kKey));
+  }
+
+  std::error_code ec;
+  fs::remove(req.dest, ec);
+}
+
+// The GitHub error lines log the request URL next to the curl error string.
+// The URL comes from server-provided asset data, so it goes through the
+// redactor like every other URL log line. The fake manager fails the request
+// without touching the network, which is what drives both error paths.
+TEST_CASE("GitHub error lines never log the URL raw", "[engine][redaction]") {
+  const std::string kToken = "SUPER-SECRET-GITHUB-TOKEN-5d7f3a";
+  const std::string url =
+      "https://github.com/owner/repo/releases/download/v1.0/file.7z?token=" + kToken;
+
+  auto fake = std::make_unique<engine::network::FakeNetworkManager>();
+  fake->set_offline(true);
+  engine::network::set_instance(std::move(fake));
+
+  {
+    LogCapture cap;
+    const auto rel = engine::GitHub::latest_release("owner", "repo", false);
+    CHECK_FALSE(rel.has_value());
+    CHECK(cap.contains("GitHub API GET failed:"));
+    // latest_release builds its own api.github.com URL (no token in it); the
+    // token-bearing URL below is what exercises the redactor.
+    CHECK(cap.lacks(kToken));
+
+    const fs::path dest = fs::temp_directory_path() / "gmm_redact_gh_dest.bin";
+    const bool ok       = engine::GitHub::download(url, dest, {});
+    CHECK_FALSE(ok);
+    CHECK(cap.contains("GitHub download failed:"));
+    CHECK(cap.lacks(kToken));
+    CHECK(cap.contains("token=<redacted>"));
+    std::error_code ec;
+    fs::remove(dest, ec);
+  }
+
+  engine::network::set_instance(nullptr);
 }
