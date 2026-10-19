@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QAbstractItemView>
+#include <QApplication>
 #include <QEasingCurve>
 #include <QEvent>
 #include <QObject>
@@ -42,8 +43,14 @@ private:
     bool active     = false;
   };
 
-  static constexpr int kLinesPerNotch = 3;
-  static constexpr qreal kDurationMs  = 180.0;
+  // Lines per notch, taken from the SAME Qt setting every other scrollable in
+  // the app honours (the console included). This used to be hardcoded to 3,
+  // which is merely Qt's default: on a desktop configured for a different
+  // lines-per-scroll the mod list ignored the preference and travelled less
+  // per notch than the panels beside it, while still looking like it scrolled.
+  static int lines_per_notch() { return qMax(1, QApplication::wheelScrollLines()); }
+
+  static constexpr qreal kDurationMs = 180.0;
 
   void handle_wheel(QWheelEvent *we) {
     const QPoint angle = we->angleDelta();
@@ -64,10 +71,10 @@ private:
       }
     } else if (angle.y() != 0) {
       bar   = view_->verticalScrollBar();
-      delta = -qRound(angle.y() / 120.0 * bar->singleStep() * kLinesPerNotch);
+      delta = -qRound(angle.y() / 120.0 * bar->singleStep() * lines_per_notch());
     } else if (angle.x() != 0) {
       bar   = view_->horizontalScrollBar();
-      delta = -qRound(angle.x() / 120.0 * bar->singleStep() * kLinesPerNotch);
+      delta = -qRound(angle.x() / 120.0 * bar->singleStep() * lines_per_notch());
     }
     if (!bar || delta == 0)
       return;
