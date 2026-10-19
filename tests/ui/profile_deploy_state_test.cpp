@@ -12,18 +12,32 @@
 // bug stands - the checkbox and the game disagree exactly in that case - which
 // is why nothing here looks at the model.
 //
-// Three mods, three starting states on disk, one switch:
+// Four mods, four starting states on disk, one switch:
 //
-//   ModA  profile says +   sentinel PRESENT   -> switch must REMOVE it, deploys
-//   ModB  profile says -   sentinel ABSENT    -> switch must CREATE it, no deploy
-//   ModC  profile does not list it, sentinel PRESENT
-//                                    -> switch must not touch it (decision 1)
+//   ModA  both profiles say +   sentinel PRESENT  -> switch must REMOVE it
+//   ModB  outgoing - / incoming +, sentinel ABSENT -> already right, no write
+//   ModC  no profile lists it    sentinel ABSENT   -> switch must CREATE it
+//   ModD  incoming says -        sentinel PRESENT  -> already right, no write
 //
-// ModC is also the shape an install leaves behind: a mod installed disabled and
-// never yet written into any profile's modlist.txt is unlisted everywhere, and
-// install_stage.cpp carries its sentinel across an overwrite. A switch that
-// materialised MO2's literal "unlisted = disabled" would flip ModC the other
-// way and silently re-enable it.
+// ModA is the case that killed the previous guard: it compared the incoming
+// profile against the OUTGOING profile's modlist.txt, so two profiles agreeing
+// that ModA is on meant "no change" - while the sentinel, which is the only
+// thing the deploy reads, still said off. ModA stayed out of the deploy set
+// forever. The guard now reads the sentinel, so disagreeing with it is exactly
+// what makes a mod get written.
+//
+// ModC is MO2's rule: Profile::ModStatus defaults to m_Enabled(false)
+// (profile.h:379) and refreshModStatus hands an unlisted mod a priority without
+// setting m_Enabled, so it never reaches getActiveMods(). It starts on disk
+// with NO sentinel, i.e. deploying - so if the switch inherits the disk instead
+// of disabling it, ModC lands in the deploy set and the assertion goes red.
+//
+// ModD carries a sentinel that is already in the state the profile asks for.
+// It is a DIRECTORY, so a write cannot succeed: create_empty_file on a path
+// whose parent is a directory fails with EISDIR whatever the caller runs as.
+// The only way ModD's row can pick up a toggle error is if the switch actually
+// tried to rewrite it. That is the cheapness assertion - it proves the write
+// did not happen rather than inferring it from the result being right.
 //
 // Driven through the real MainWindow against the REAL Isaac plugin, so the
 // modlist.txt parse, the sentinel name and the mods_subpath resolution are the
@@ -36,6 +50,7 @@
 #include "test_platform.h"
 #include "ui/main_window/main_window.h"
 #include "ui/settings/settings.h"
+#include "ui/widgets/mod_list_model.h"
 
 #include <QApplication>
 #include <QElapsedTimer>
@@ -176,6 +191,19 @@ struct IsaacWorld {
     return fs::exists(mods_dir / id / kSentinel, ec);
   }
 
+  // The toggle-error badge a row carries, empty when the last write to its
+  // sentinel succeeded or was never attempted. Read off the model because
+  // that is where a failed sentinel write surfaces.
+  [[nodiscard]] QString toggle_error_for(const std::string &id) const {
+    auto *model = w.findChild<ui::ModList *>();
+    REQUIRE(model != nullptr);
+    for (const auto &m : model->mods()) {
+      if (m.id == QString::fromStdString(id))
+        return m.toggle_error;
+    }
+    return QStringLiteral("<no such row>");
+  }
+
   // What the deploy would actually do, computed the way the deploy computes
   // it: walk the mods dir, skip the folder carrying the sentinel, and record
   // what it deployed. Read back out of the deploy's OWN ledger rather than a
@@ -233,25 +261,37 @@ TEST_CASE("profile switch: the deploy set follows the new profile",
   IsaacWorld world("gmm_profile_deploy_state");
   world.setup_dirs();
 
-  for (const char *id : {"ModA", "ModB", "ModC"})
+  for (const char *id : {"ModA", "ModB", "ModC", "ModD"})
     world.lay_mod(id);
 
-  // The incoming profile's opinion. ModC is deliberately absent from it.
+  // The outgoing profile (Default) and the incoming one (Combat). They AGREE
+  // about ModA: both list it enabled. That is what makes ModA the case the
+  // previous guard got wrong - keyed on the outgoing modlist, agreement read as
+  // "nothing to do" while the sentinel still said off.
+  // ModC is deliberately absent from both.
+  write_file(world.profiles_dir / "Default" / "modlist.txt",
+             "# GameModManager\n+ModA\n-ModB\n");
   fs::create_directories(world.profiles_dir / "Combat");
   write_file(world.profiles_dir / "Combat" / "modlist.txt",
-             "# GameModManager\n+ModA\n-ModB\n");
+             "# GameModManager\n+ModA\n+ModB\n-ModD\n");
 
   // Starting state on disk, which is what the deploy has been following all
-  // along: ModA and ModC off, ModB on.
+  // along: ModA off, ModB on, ModC on, ModD off.
   write_file(world.mods_dir / "ModA" / kSentinel, "");
-  write_file(world.mods_dir / "ModC" / kSentinel, "");
+  // ModD's sentinel is a directory on purpose: it is already in the state the
+  // incoming profile asks for, and a write over it cannot succeed (EISDIR on
+  // open(O_WRONLY) whatever the process runs as). So the row picking up a
+  // toggle error is proof the switch tried to rewrite it, and the row staying
+  // clean is proof it did not.
+  fs::create_directories(world.mods_dir / "ModD" / kSentinel);
   REQUIRE(world.sentinel_present("ModA"));
   REQUIRE_FALSE(world.sentinel_present("ModB"));
-  REQUIRE(world.sentinel_present("ModC"));
+  REQUIRE_FALSE(world.sentinel_present("ModC"));
+  REQUIRE(world.sentinel_present("ModD"));
 
   world.open_window();
 
-  CHECK(world.deploy_set() == std::set<std::string>{"ModB"});
+  CHECK(world.deploy_set() == std::set<std::string>{"ModB", "ModC"});
 
   // Synchronous: the engine switcher restores the new profile's modlist and the
   // write-through runs on this thread before switch_profile returns. The scan it
@@ -259,16 +299,26 @@ TEST_CASE("profile switch: the deploy set follows the new profile",
   // sentinel, which is what the assertions below are about.
   world.w.switch_profile(QStringLiteral("Combat"));
 
-  // The decisive assertion: what deploys is not the checkbox column.
-  CHECK(world.deploy_set() == std::set<std::string>{"ModA"});
+  // The decisive assertion: what deploys is not the checkbox column. ModC is
+  // in no modlist.txt, so MO2's rule disables it and it leaves the deploy set
+  // rather than inheriting "no sentinel, so on" from the disk.
+  CHECK(world.deploy_set() == std::set<std::string>{"ModA", "ModB"});
 
   // ModA the profile enables reaches disk (the sentinel it shipped with is
-  // gone), ModB the profile disables reaches disk (the sentinel is there).
+  // gone). Both profiles already said enabled, so only a guard that reads the
+  // SENTINEL rather than the outgoing modlist gets here.
   CHECK_FALSE(world.sentinel_present("ModA"));
-  CHECK(world.sentinel_present("ModB"));
+  // ModB was already on disk without a sentinel and the profile keeps it on, so
+  // there is nothing to write.
+  CHECK_FALSE(world.sentinel_present("ModB"));
 
-  // ModC is in no modlist.txt, so the profile holds no opinion to materialise
-  // and the sentinel stays: the state an install left, not one a switch may
-  // overwrite.
+  // ModC is in no modlist.txt: MO2's ModStatus default is disabled, so the
+  // switch writes the sentinel the disk was missing.
   CHECK(world.sentinel_present("ModC"));
+
+  // ModD already matches the profile. Its sentinel cannot be written, so a
+  // clean row is the only way to know the switch left it alone - this is the
+  // cheapness claim, asserted as "the write did not happen" rather than
+  // inferred from the state being right.
+  CHECK(world.toggle_error_for("ModD").isEmpty());
 }

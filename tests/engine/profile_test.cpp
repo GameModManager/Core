@@ -249,10 +249,15 @@ TEST_CASE("modlist.txt writes in priority order (highest first)", "[engine]") {
   profile.refresh_mod_status({"Low", "Mid", "High"});
   profile.write_modlist_now();
 
+  // All three are new to this profile, so all three land at MO2's disabled
+  // default and are written "-". This case is about the ORDER, not the sign.
+  // (Above the `content` line on purpose: a comment between these declarations
+  // splits the AlignConsecutiveAssignments run and the padding below stops
+  // matching clang-format.)
   const std::string content = read_text(dir / "modlist.txt");
-  const auto pos_low        = content.find("+Low");
-  const auto pos_mid        = content.find("+Mid");
-  const auto pos_high       = content.find("+High");
+  const auto pos_low        = content.find("-Low");
+  const auto pos_mid        = content.find("-Mid");
+  const auto pos_high       = content.find("-High");
   REQUIRE(pos_low != std::string::npos);
   REQUIRE(pos_mid != std::string::npos);
   REQUIRE(pos_high != std::string::npos);
@@ -279,7 +284,7 @@ TEST_CASE("refresh_mod_status handles mods not in file", "[engine]") {
   profile.refresh_mod_status({"ModA", "ModB", "NewMod", "DLC1"}, {"DLC1"});
 
   // File mods: ModB=1, ModA=0 (inverted). Not in file: DLC1 (foreign) gets
-  // the lowest priority, NewMod (managed) the highest; both enabled.
+  // the lowest priority, NewMod (managed) the highest.
   REQUIRE(profile.priority_of("DLC1") == 0);
   REQUIRE(profile.priority_of("ModA") == 1);
   REQUIRE(profile.priority_of("ModB") == 2);
@@ -289,10 +294,17 @@ TEST_CASE("refresh_mod_status handles mods not in file", "[engine]") {
   REQUIRE(mods.size() == 4);
   REQUIRE(mods[0].mod_id == "DLC1");
   REQUIRE(mods[0].foreign);
+  // A foreign mod has no persisted profile state - do_write_modlist emits it
+  // as '*' - so it stays enabled in memory.
   REQUIRE(mods[0].enabled);
   REQUIRE(mods[3].mod_id == "NewMod");
-  REQUIRE(mods[3].enabled);
   REQUIRE_FALSE(mods[3].foreign);
+  // MO2's rule, and the only one: ModStatus defaults to m_Enabled(false)
+  // (profile.h:379) and refreshModStatus gives an unlisted mod a priority
+  // without ever setting m_Enabled, so it never reaches getActiveMods().
+  // Pre-enabling it here meant its deploy state was inherited from the disk
+  // rather than chosen by the profile.
+  REQUIRE_FALSE(mods[3].enabled);
 }
 
 TEST_CASE("refresh_mod_status persists newly added mods", "[engine]") {
@@ -301,9 +313,11 @@ TEST_CASE("refresh_mod_status persists newly added mods", "[engine]") {
   {
     engine::profile::ProfileManager profile(dir, 30ms);
     profile.refresh_mod_status({"ModA", "NewMod"});
+    // Written as "-", not "+": the unlisted mod lands in the file at the
+    // disabled default it keeps, which is what MO2 writes.
     REQUIRE(wait_until(
         [&] {
-          return read_text(dir / "modlist.txt").find("+NewMod") != std::string::npos;
+          return read_text(dir / "modlist.txt").find("-NewMod") != std::string::npos;
         },
         500ms));
   }
@@ -627,5 +641,5 @@ TEST_CASE("gzbs: same-name profiles stay isolated across instances", "[engine]")
   REQUIRE(read_text(dir_a / "modlist.txt").find("SkyrimMod") == std::string::npos);
   const std::string content_b = read_text(dir_b / "modlist.txt");
   REQUIRE(content_b.find("IsaacMod") == std::string::npos);
-  REQUIRE(content_b.find("+SkyrimModC") != std::string::npos);
+  REQUIRE(content_b.find("-SkyrimModC") != std::string::npos);
 }

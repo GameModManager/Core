@@ -157,9 +157,9 @@ public slots:
   void apply_profile_mod_states();
   // Write the active profile's enabled state through to the on-disk disable
   // sentinel, which is the deploy's only input (deploy_utils.cpp:389). Runs on
-  // a profile switch for every game that does not defer the write. Only mods
-  // the profile's modlist.txt actually lists are touched - see the definition
-  // for why that guard is load-bearing.
+  // a profile switch for every game that does not defer the write. A mod the
+  // profile does not list is disabled, per MO2; the sentinel is read first and
+  // only a mod whose state actually moved is written. See the definition.
   void apply_profile_deploy_state();
   // Plugin-DB preload (THREADING.md §3.5, P8.5/T6).
   void launch_plugin_db_preload();

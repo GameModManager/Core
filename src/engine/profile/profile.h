@@ -22,14 +22,6 @@ struct ModListEntry {
   bool enabled = true;   // '+' enabled / '-' disabled
   bool foreign = false;  // '*' unmanaged (DLC etc.), never written as +/- toggle
   int priority = 0;
-  // True when modlist.txt carried a line for this mod, false when
-  // refresh_mod_status() synthesised it for a mod the profile had never
-  // listed. Only a listed entry is an opinion the profile actually holds -
-  // MO2 makes the same distinction (Profile::refreshModStatus leaves an
-  // unlisted mod at ModStatus's disabled default), and a caller that
-  // materialises the profile onto disk must not overwrite what the mods dir
-  // says about a mod the profile never spoke about.
-  bool listed = true;
 };
 
 // One locked plugin priority entry (lockedorder.txt, "name|priority").

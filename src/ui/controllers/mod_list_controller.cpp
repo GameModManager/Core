@@ -1004,22 +1004,28 @@ void ModListController::switch_profile(const QString &profile) {
 // set), then re-applies the stale sentinel over the top, so the sentinel always
 // wins.
 //
-// The `listed` guard is load-bearing: a mod the profile's modlist.txt never
-// carried a line for has no opinion to materialise, and the sentinel is
-// install-time state that a switch has no standing to overwrite. This is a
-// deliberate divergence from MO2, which leaves such a mod at ModStatus's
-// disabled default (profile.h:379, and refreshModStatus assigns it a priority
-// without ever setting m_Enabled) so it does not deploy. Copying that
-// literally would silently kill a just-installed mod on the next switch and
-// would undo the sentinel carry-across that install_stage.cpp performs on an
-// overwrite. Tracked separately as the install-time-default question.
+// A mod the profile does not list is DISABLED, not left to whatever the disk
+// says. That is MO2's rule and only MO2's: Profile::ModStatus defaults to
+// m_Enabled(false) (profile.h:379) and refreshModStatus hands an unlisted mod a
+// priority without ever setting m_Enabled (profile.cpp:508-548), so
+// getActiveMods() never returns it and it never deploys. refresh_mod_status()
+// now reproduces that default, so every entry in the loop below carries an
+// opinion the profile can stand behind and there is nothing left to skip.
+//
+// Foreign (game-native) mods are excluded. Not for parity - MO2 has no foreign
+// mods to compare against - but because our own profile cannot hold their
+// state at all: do_write_modlist() emits every foreign entry as '*', never '+'
+// or '-', and ModList::set_mod_enabled() returns early for a game-native row,
+// so a user cannot express an enable/disable opinion about one from the row.
+// Writing a sentinel for it here would set state the profile cannot remember
+// and the user cannot undo from the row.
 //
 // Deliberately NOT scoped by "the outgoing profile already agreed": that state
-// was read from modlist.txt, not from disk, and the sentinel is written by
-// paths that have nothing to do with the profile (install, the user's own
-// toggle). A mod left disabled on disk while two profiles both list it enabled
-// would then never converge, and the deploy would keep omitting a mod the
-// active profile says is on.
+// came from modlist.txt, never from the sentinel this is meant to converge, and
+// the sentinel is written by paths that have nothing to do with the profile
+// (install, the user's own toggle). A mod left disabled on disk while two
+// profiles both list it enabled would then never converge, and the deploy would
+// keep omitting a mod the active profile says is on.
 //
 // Install and switch therefore do not fight: install carries the sentinel
 // across an overwrite and never recomputes it from anything else, so a
@@ -1032,9 +1038,9 @@ void ModListController::apply_profile_deploy_state() {
   if (mods_subpath.empty())
     return;
 
-  int applied = 0;
+  int applied = 0, converged = 0;
   for (const auto &pm : w_->active_profile_->mods()) {
-    if (!pm.listed)
+    if (pm.foreign)
       continue;
     // Same content_dir lookup as the deferred queue: a row the scan has not
     // rebuilt yet contributes an empty content_dir and resolve_mod_folder
@@ -1048,6 +1054,24 @@ void ModListController::apply_profile_deploy_state() {
     }
     const auto mod_folder =
         w_->resolve_mod_folder(pm.mod_id, mods_subpath, content_dir.toStdString());
+
+    // Cheap guard, read against the SENTINEL and not against the profile: one
+    // stat instead of one write per mod. enable_mod/disable_mod write
+    // unconditionally (create_empty_file is O_CREAT|O_TRUNC, so it rewrites a
+    // sentinel that already agrees), and on a full list that is hundreds of
+    // writes per switch spent converging state that was already right.
+    //
+    // Reading the sentinel rather than the outgoing profile is what makes the
+    // guard safe. Disagreement between the profile and the sentinel is exactly
+    // the condition that triggers the write, so a mod the profile turns on but
+    // the disk has off is written every single time - the case a guard keyed on
+    // the outgoing modlist.txt would silently skip.
+    if (engine::ModScanner::mod_enabled_on_disk(*w_->knowledge_, w_->current_game_id_,
+                                                mod_folder) == pm.enabled) {
+      ++converged;
+      continue;
+    }
+
     std::string reason;
     const bool ok =
         pm.enabled
@@ -1056,12 +1080,6 @@ void ModListController::apply_profile_deploy_state() {
             : engine::ModScanner::disable_mod(*w_->knowledge_, w_->current_game_id_,
                                               mod_folder, &reason);
     if (ok || reason.empty()) {
-      // ok, or the sentinel was already in the requested state (false return,
-      // empty reason) - not worth a warning.
-      if (!ok)
-        engine::Logger::instance().debug("Profile switch: '" + pm.mod_id +
-                                         "' had no sentinel to remove in " +
-                                         mod_folder.string());
       ++applied;
     } else {
       // The row reads the sentinel back after apply_profile_mod_states(), so
@@ -1077,9 +1095,10 @@ void ModListController::apply_profile_deploy_state() {
               reason));
     }
   }
-  engine::Logger::instance().debug(
-      "Profile switch: applied " + std::to_string(applied) +
-      " disable sentinel(s) for '" + w_->active_profile_->name() + "'");
+  engine::Logger::instance().debug("Profile switch: wrote " + std::to_string(applied) +
+                                   " sentinel(s), " + std::to_string(converged) +
+                                   " already matched, for '" +
+                                   w_->active_profile_->name() + "'");
 }
 
 void ModListController::update_status_bar_for_game() {
@@ -1998,8 +2017,9 @@ void ModListController::apply_profile_mod_states() {
   w_->active_profile_->write_modlist_now();
 
   // Converge the profile with the scanned mods dir: mods not yet in the
-  // profile (freshly installed) are appended enabled by default and
-  // persisted (delayed) - MO2's refreshModStatus behavior.
+  // profile (freshly installed) are appended DISABLED and persisted (delayed)
+  // - MO2's refreshModStatus behavior, where an unlisted mod keeps
+  // ModStatus's m_Enabled(false) default and never reaches getActiveMods().
   std::vector<std::string> known_mods;
   std::vector<std::string> foreign_mods;
   for (const auto &m : w_->mod_model_->mods()) {
