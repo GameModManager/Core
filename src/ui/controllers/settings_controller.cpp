@@ -144,6 +144,20 @@ void SettingsController::set_game_info(const std::string &game_id,
   w_->right_panel_->exec_controls()->clear_executables();
   w_->nxm_links_.clear();  // NXM links are instance-scoped
 
+  // The Data tab is the one right-panel tab that survives a switch (the
+  // lazy tabs are deleted and rebuilt by set_game below): drop the previous
+  // instance's rows here. Otherwise they stay visible until the new
+  // instance's first conflict scan lands - and forever for a game-less
+  // instance, whose recompute_conflicts() early-return never refreshes the
+  // tab. clear_content() bumps the tab's build generation, so an in-flight
+  // row build for the old instance is discarded when it lands. The conflict
+  // registry belongs to the previous instance too: a refresh that runs
+  // before the new scan lands would otherwise resolve the old game's paths
+  // against the new instance's dirs.
+  w_->last_conflict_registry_.clear();
+  if (auto *data_tab = w_->right_panel_->data_tab())
+    data_tab->clear_content();
+
   w_->current_game_id_       = game_id;
   w_->current_game_name_     = game_display_name;
   w_->current_profile_name_  = profile_name;

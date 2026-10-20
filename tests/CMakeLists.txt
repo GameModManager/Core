@@ -615,6 +615,19 @@ gmm_catch2_test(data_tab_file_recognition_test
     UI
     LIBS gmm_ui)
 
+# Data tab vs instance switch (Workspace-0sp3): the tab is the one
+# right-panel tab that survives a switch, and nothing used to clear it -
+# the previous instance's rows stayed visible until the new instance's
+# first conflict scan landed (forever for a game-less instance). Drives the
+# real MainWindow + set_game_info switch path; offscreen, throwaway /tmp
+# root, no network.
+gmm_catch2_test(data_tab_instance_switch_test
+    ui/data_tab_instance_switch_test.cpp
+    UI
+    LIBS gmm_ui PkgConfig::ZLIB
+    # Real window + worker threads: a ceiling rather than hanging forever.
+    PROPERTIES TIMEOUT 300)
+
 # BBCode adapter + entity/BR normalization (ui/modinfo/bbcode.cpp). Pure
 # logic - no QApplication, no panel, no event loop. Reaches gmm_ui for
 # the bbcode_to_html symbol but does not need the QT_QPA_PLATFORM=offscreen
