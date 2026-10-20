@@ -596,6 +596,20 @@ bool path_is_executable(const std::filesystem::path &path) {
   return ::_waccess(path.wstring().c_str(), 0) == 0;
 }
 
+bool open_with_default_handler(const std::filesystem::path &path) {
+  // ShellExecuteW "open" is the OS default-handler hand-off: the shell
+  // association table decides what can open the file, not GMM. The working
+  // directory is the file's folder so relative-document handlers resolve.
+  // BUILD-ONLY (Windows): compiled by the mingw syntax check, never executed
+  // here; the return contract is "a value > 32 is a successful hand-off".
+  if (path.empty())
+    return false;
+  const HINSTANCE result =
+      ::ShellExecuteW(nullptr, L"open", path.wstring().c_str(), nullptr,
+                      path.parent_path().wstring().c_str(), SW_SHOWNORMAL);
+  return reinterpret_cast<intptr_t>(result) > 32;
+}
+
 bool set_process_env_var(const std::string &key, const std::string &value) {
   // SetEnvironmentVariableW, not _wputenv_s: this changes the process
   // environment BLOCK, and that block is what both CreateProcessW sites here

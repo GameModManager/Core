@@ -469,6 +469,20 @@ bool path_is_executable(const std::filesystem::path &path) {
   return ::access(path.c_str(), X_OK) == 0;
 }
 
+bool open_with_default_handler(const std::filesystem::path &path) {
+  std::error_code ec;
+  if (!std::filesystem::exists(path, ec))
+    return false;
+  // `open` delegates to LaunchServices' default handler for the file type and
+  // returns once the handler is started, so the detached spawn never waits on
+  // the opened application. /usr/bin/open ships with the OS, so no PATH
+  // resolution is needed.
+  // REVIEW-ONLY (macOS): compiles on this tree but cannot be run-verified
+  // without an SDK; the shape mirrors the Linux adaptor.
+  return spawn_detached_process("/usr/bin/open", {"open", path.string()}, {}, false) >
+         0;
+}
+
 bool filesystem_is_case_insensitive() {
   // APFS (and HFS+) fold case by default. A case-SENSITIVE APFS volume exists,
   // and this build cannot tell one from the other without probing the mount, so

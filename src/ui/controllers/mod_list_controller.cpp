@@ -1,7 +1,9 @@
 #include "ui/controllers/mod_list_controller.h"
+#include "engine/deploy/deploy_utils.h"
 #include "engine/plugin_host/plugin_loader.h"
 #include "engine/profile/profile_creation.h"
 #include "engine/source/nexus/auth.h"
+#include "platform/platform.h"
 #include "ui/main_window/source_update_worker.h"
 #include "ui/controllers/downloads_controller.h"
 #include "ui/controllers/launch_controller.h"
@@ -3042,7 +3044,11 @@ void ModListController::wire_data_tab() {
 }
 
 void ModListController::on_data_open(const QString &file_path) {
-  if (!QDesktopServices::openUrl(QUrl::fromLocalFile(file_path))) {
+  // The OS decides what can be opened (xdg-open / open / ShellExecuteW);
+  // GMM does not pre-judge by extension. False is the hand-off's own report
+  // (file gone, handler not startable) - surface it, never fake success.
+  if (!engine::open_with_default_handler(
+          std::filesystem::path(file_path.toStdString()))) {
     QMessageBox::warning(w_, tr("Open"), tr("Failed to open:\n%1").arg(file_path));
   }
 }
@@ -4065,15 +4071,19 @@ void ModListController::on_image_diff_requested(const QString &relative_path) {
                      : std::filesystem::path{};
 
   for (const auto &[mod_name, _] : owners) {
-    // Check instance mods dir first, then game native mods dir
-    std::filesystem::path abs_path = mods_dir / mod_name / relative_path.toStdString();
-    if (std::filesystem::exists(abs_path)) {
+    // Check instance mods dir first, then game native mods dir. The registry
+    // key is CI-normalized (filename lowercased), so resolve through
+    // resolve_registry_file - an exact exists() misses mixed-case names.
+    auto abs_path =
+        engine::resolve_registry_file(mods_dir, mod_name, relative_path.toStdString());
+    if (!abs_path.empty()) {
       source_paths.push_back(abs_path.string());
       continue;
     }
     if (!game_mods_dir.empty()) {
-      abs_path = game_mods_dir / mod_name / relative_path.toStdString();
-      if (std::filesystem::exists(abs_path)) {
+      abs_path = engine::resolve_registry_file(game_mods_dir, mod_name,
+                                               relative_path.toStdString());
+      if (!abs_path.empty()) {
         source_paths.push_back(abs_path.string());
         continue;
       }
@@ -4133,19 +4143,21 @@ void ModListController::on_conflict_file_reveal(const QString &mod_id,
 QString ModListController::conflict_file_abs_path(const QString &mod_id,
                                                   const QString &relative_path) const {
   // Resolve the owning mod's on-disk copy: instance mods dir first, then
-  // the game-native mods dir (same order as on_image_diff_requested).
-  const std::filesystem::path rel = relative_path.toStdString();
-  std::filesystem::path abs_path  = w_->mods_dir_path() / mod_id.toStdString() / rel;
-  std::error_code ec;
-  if (std::filesystem::exists(abs_path, ec))
+  // the game-native mods dir (same order as on_image_diff_requested). The
+  // registry key is CI-normalized (filename lowercased), so resolve through
+  // resolve_registry_file - an exact exists() misses mixed-case names.
+  const std::string rel = relative_path.toStdString();
+  auto abs_path =
+      engine::resolve_registry_file(w_->mods_dir_path(), mod_id.toStdString(), rel);
+  if (!abs_path.empty())
     return QString::fromStdString(abs_path.string());
   const std::filesystem::path game_mods_dir =
       w_->knowledge_ ? engine::resolve_game_mods_dir(
                            w_->current_game_id_, w_->current_game_dir_, *w_->knowledge_)
                      : std::filesystem::path{};
   if (!game_mods_dir.empty()) {
-    abs_path = game_mods_dir / mod_id.toStdString() / rel;
-    if (std::filesystem::exists(abs_path, ec))
+    abs_path = engine::resolve_registry_file(game_mods_dir, mod_id.toStdString(), rel);
+    if (!abs_path.empty())
       return QString::fromStdString(abs_path.string());
   }
   return {};

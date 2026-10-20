@@ -74,6 +74,31 @@ resolve_deploy_target_ci(const std::filesystem::path &target) {
   return cur / comps.back();
 }
 
+// Resolve a conflict-registry key back to its on-disk file under
+// <mods_dir>/<mod_id>/. Registry keys are CI-normalized (PathResolver::
+// normalize lowercases every component, the filename included, so a Windows
+// game's dual-case mod trees register as one path), but
+// resolve_deploy_target_ci deliberately leaves the final filename component
+// unmatched - its contract folds the filename in the deploy winner map. A key
+// whose on-disk file name carries uppercase therefore missed both the exact
+// and the dir-CI lookups and resolved to nothing: the Data tab row lost its
+// size, real path and open/preview actions with it. This is the read-side
+// counterpart: exact path, then dir-CI, then the file name matched CI against
+// the resolved parent directory. Empty when no on-disk file matches.
+[[nodiscard]] inline std::filesystem::path
+resolve_registry_file(const std::filesystem::path &mods_dir, const std::string &mod_id,
+                      const std::string &key_path) {
+  const auto base = mods_dir / mod_id / key_path;
+  std::error_code ec;
+  if (std::filesystem::exists(base, ec))
+    return base;
+  const auto candidate = resolve_deploy_target_ci(base);
+  if (std::filesystem::exists(candidate, ec))
+    return candidate;
+  return resolve_regular_file_ci(candidate.parent_path(),
+                                 candidate.filename().string());
+}
+
 // True when a mod file must be a REAL file (copied) in the staging tree rather
 // than a symlink. Executables and scripts resolve sibling files relative to
 // their own location; a symlinked lowerdir inode resolves through to the mod

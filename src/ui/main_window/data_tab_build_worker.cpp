@@ -28,21 +28,13 @@ static std::filesystem::path
 resolve_mod_file(const std::string &mod_id, const std::string &rel_path,
                  const std::filesystem::path &mods_dir,
                  const std::filesystem::path &game_mods_dir) {
-  std::error_code ec;
-  auto candidate = mods_dir / mod_id / rel_path;
-  if (std::filesystem::exists(candidate, ec))
-    return candidate;
-  candidate = engine::resolve_deploy_target_ci(mods_dir / mod_id / rel_path);
-  if (std::filesystem::exists(candidate, ec))
-    return candidate;
+  auto found = engine::resolve_registry_file(mods_dir, mod_id, rel_path);
+  if (!found.empty())
+    return found;
   if (!game_mods_dir.empty()) {
-    ec.clear();
-    candidate = game_mods_dir / mod_id / rel_path;
-    if (std::filesystem::exists(candidate, ec))
-      return candidate;
-    candidate = engine::resolve_deploy_target_ci(game_mods_dir / mod_id / rel_path);
-    if (std::filesystem::exists(candidate, ec))
-      return candidate;
+    found = engine::resolve_registry_file(game_mods_dir, mod_id, rel_path);
+    if (!found.empty())
+      return found;
   }
   return {};
 }

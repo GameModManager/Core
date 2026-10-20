@@ -605,6 +605,16 @@ gmm_catch2_test(double_click_previews_test ui/double_click_previews_test.cpp
     UI
     LIBS gmm_ui)
 
+# Data tab file recognition: every real file row carries a size and the open
+# action hands a .txt to the OS handler, whatever the file name's casing (the
+# registry keys are CI-normalized, so mixed-case names used to resolve to
+# nothing - no size, and open/preview silently did nothing). Offscreen;
+# throwaway /tmp/opencode tree; pumps the worker build + chunked apply.
+gmm_catch2_test(data_tab_file_recognition_test
+    ui/data_tab_file_recognition_test.cpp
+    UI
+    LIBS gmm_ui)
+
 # BBCode adapter + entity/BR normalization (ui/modinfo/bbcode.cpp). Pure
 # logic - no QApplication, no panel, no event loop. Reaches gmm_ui for
 # the bbcode_to_html symbol but does not need the QT_QPA_PLATFORM=offscreen
