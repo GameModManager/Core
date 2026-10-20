@@ -52,9 +52,11 @@ public:
   void priority_move_selected(int step);
   void toggle_selected_mods(bool enabled);
   // MO2 ModListGlobalContextMenu "Enable all"/"Disable all"
-  // (modlistcontextmenu.cpp:73-87): every mod the mod list currently shows.
-  // With no filter that is every mod; with one it is the filtered set, read
-  // off the view's row visibility so there is no second copy of the filter.
+  // (modlistcontextmenu.cpp:80-92): every mod the filter matches, walked on
+  // the MODEL (modlistviewactions.cpp:214 via flatIndex) so mods inside
+  // folded separators are reached even though the view hides them. The
+  // verdict comes from ModList::is_row_filter_visible, recorded by
+  // apply_mod_filter before the fold override.
   void toggle_all_mods(bool enabled);
   // MO2's global "Refresh" (modlistcontextmenu.cpp:96): re-read the mods dir.
   void reload_mod_list();

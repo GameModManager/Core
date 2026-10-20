@@ -389,12 +389,17 @@ void ModActions::toggle_selected_mods(bool enabled) {
 }
 
 void ModActions::toggle_all_mods(bool enabled) {
-  // isRowHidden is apply_mod_filter's own output, so "the mods the list is
-  // showing" needs no second copy of the filter state. Pseudo-rows never
-  // toggle, the same guard toggle_selected_mods applies.
+  // The filter verdict decides inclusion, read off the model
+  // (ModList::is_row_filter_visible, recorded by apply_mod_filter before the
+  // fold override): MO2's setAllMatchingModsEnabled walks the model via
+  // flatIndex (modlistviewactions.cpp:214, modelutils.cpp:8-17), so mods
+  // inside folded separators are toggled even though the view hides them -
+  // the view's isRowHidden conflates the filter with folding and silently
+  // skipped those mods. Pseudo-rows never toggle, the same guard
+  // toggle_selected_mods applies.
   const int rows = w_->mod_model_->rowCount();
   for (int r = 0; r < rows; ++r) {
-    if (w_->mod_view_->isRowHidden(r, QModelIndex()))
+    if (!w_->mod_model_->is_row_filter_visible(r))
       continue;
     const auto &entry = w_->mod_model_->mods()[r];
     if (entry.is_separator || entry.is_overwrite || entry.is_game_native ||

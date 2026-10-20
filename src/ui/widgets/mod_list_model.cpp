@@ -2224,6 +2224,16 @@ bool ModList::is_row_fold_hidden(int row) const {
   return compute_fold_hidden()[row];
 }
 
+void ModList::set_filter_visible(const QVector<bool> &visible) {
+  filter_visible_ = visible;
+}
+
+bool ModList::is_row_filter_visible(int row) const {
+  if (row < 0 || row >= filter_visible_.size())
+    return true;
+  return filter_visible_[row];
+}
+
 void ModList::sanitize_parent_links() {
   bool changed = false;
   for (int i = 0; i < mods_.size(); ++i) {

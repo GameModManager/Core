@@ -5029,6 +5029,12 @@ void ModListController::apply_mod_filter() {
 
   // First pass: compute visibility for each mod row
   QVector<bool> visible(mods.size(), false);
+  // The pure filter verdict, captured before the fold override below folds
+  // it away: the bulk Enable/Disable All (ModActions::toggle_all_mods) must
+  // reach mods inside folded separators, so it reads this instead of the
+  // view's isRowHidden, which conflates the filter with folding (MO2
+  // setAllMatchingModsEnabled walks the model, modlistviewactions.cpp:214).
+  QVector<bool> filter_visible(mods.size(), false);
   for (int row = 0; row < mods.size(); ++row) {
     const auto &m = mods[row];
 
@@ -5105,6 +5111,7 @@ void ModListController::apply_mod_filter() {
     };
     visible[row] =
         foreign_match && engine::filter::matches(mode, criteria, std::size(criteria));
+    filter_visible[row] = visible[row];
 
     // If an active fold scope (folded separator band or folded mod subtree)
     // hides w_ row, hide it too - fold overrides search.
@@ -5173,6 +5180,9 @@ void ModListController::apply_mod_filter() {
       continue;
     w_->mod_view_->setRowHidden(row, QModelIndex(), !visible[row]);
   }
+
+  // Publish the verdicts for the bulk toggle (see filter_visible above).
+  w_->mod_model_->set_filter_visible(filter_visible);
 }
 
 }  // namespace ui
