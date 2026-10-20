@@ -87,12 +87,15 @@ TEST_CASE("a manifest row restored as in-flight comes back failed and does not w
   out.close();
 
   ui::DownloadsTab tab;
-  // State 1 = Downloading, 3 = Paused, per the DownloadState enum order.
+  // State 0 = Downloading (in flight when the process died), per the
+  // DownloadState enum order. A Paused row with a rebuildable identity is a
+  // deliberate pause and comes back resumable instead - that is covered by
+  // download_meta_test's pause-survival case.
   const std::string manifest = std::string("[{\"id\":\"stale-1\",\"name\":\"Stale\","
                                            "\"source\":\"Nexus Mods\",\"size\":\"\","
                                            "\"file_path\":\"") +
                                zip.string() +
-                               "\",\"state\":1,\"total_size\":7,"
+                               "\",\"state\":0,\"total_size\":7,"
                                "\"parent_mod_id\":\"10\",\"file_id\":20,\"domain\":"
                                "\"skyrimspecialedition\",\"category\":\"\",\"page_url\":"
                                "\"\"}]";

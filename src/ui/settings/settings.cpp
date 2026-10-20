@@ -215,6 +215,14 @@ void Settings::set_show_change_game_confirmation(bool on) {
   settings_.setValue("interface/show_change_game_confirmation", on);
 }
 
+bool Settings::restart_on_instance_switch() const {
+  return settings_.value("interface/restart_on_instance_switch", true).toBool();
+}
+
+void Settings::set_restart_on_instance_switch(bool on) {
+  settings_.setValue("interface/restart_on_instance_switch", on);
+}
+
 bool Settings::full_ui_mode() const {
   return settings_.value("interface/full_ui_mode", false).toBool();
 }

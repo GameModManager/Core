@@ -1129,6 +1129,27 @@ bool DownloadsTab::has_active_download() const {
   return false;
 }
 
+std::vector<std::string> DownloadsTab::downloading_ids() const {
+  std::vector<std::string> ids;
+  for (const auto &[id, entry] : downloads_) {
+    if (entry.state == DownloadState::Downloading)
+      ids.push_back(id);
+  }
+  return ids;
+}
+
+void DownloadsTab::pause_downloading() {
+  for (const auto &id : downloading_ids())
+    emit pause_requested(id);
+}
+
+void DownloadsTab::note_direct_url(const std::string &id, const std::string &url) {
+  auto it = downloads_.find(id);
+  if (it == downloads_.end())
+    return;
+  it->second.direct_url = url;
+}
+
 void DownloadsTab::scan_downloads_dir() {
   if (downloads_dir_.empty()) {
     engine::Logger::instance().debug("downloads: scan skipped (dir empty)");
@@ -2010,6 +2031,15 @@ bool write_download_meta(const DownloadMeta &meta,
   s.setValue("id", QString::fromStdString(meta.id));
   s.setValue("totalSize", static_cast<qlonglong>(meta.total_size));
   s.setValue("partialFile", QString::fromStdString(meta.partial_file));
+  s.setValue("directUrl", QString::fromStdString(meta.direct_url));
+  // MO2's "paused" flag covers Failed, Downloading and Paused alike, so the
+  // read side cannot tell a deliberate pause from a failure. resumeState
+  // records the deliberate one: only a row that was actually Paused (by the
+  // user, or by an instance-switch restart) writes it, and only so the row
+  // comes back Paused - resumable - instead of Failed.
+  s.setValue("resumeState", meta.state == DownloadState::Paused
+                                ? QStringLiteral("paused")
+                                : QString());
 
   s.sync();
   return s.status() == QSettings::NoError;
@@ -2044,8 +2074,9 @@ std::optional<DownloadMeta> read_download_meta(const std::filesystem::path &meta
   meta.category      = s.value("category").toString().toStdString();
   meta.total_size    = static_cast<int64_t>(s.value("totalSize").toLongLong());
   meta.hidden        = s.value("removed", false).toBool();
+  meta.direct_url    = s.value("directUrl").toString().toStdString();
 
-// MO2's derivation order (downloadmanager.cpp:118-126), verbatim and in the
+  // MO2's derivation order (downloadmanager.cpp:118-126), verbatim and in the
   // same order: paused, then UNINSTALLED, then installed, then ready. "removed"
   // is not part of it: it is visibility, not state, and folding it into the
   // state would relabel every hidden row as Removed.
@@ -2056,7 +2087,14 @@ std::optional<DownloadMeta> read_download_meta(const std::filesystem::path &meta
   // superseded archive, and reading them the other way round would put every one
   // of those rows back on screen as "Installed".
   if (s.value("paused", false).toBool())
-    meta.state = DownloadState::Failed;
+    // A deliberate pause (the user, or an instance-switch restart) wrote
+    // resumeState=paused: the row comes back Paused, resumable, instead of
+    // Failed. Everything else under the paused flag - a failed transfer, a
+    // crash mid-download - stays Failed, the one state that admits the bytes
+    // are not known good.
+    meta.state = s.value("resumeState").toString() == QStringLiteral("paused")
+                     ? DownloadState::Paused
+                     : DownloadState::Failed;
   else if (s.value("uninstalled", false).toBool())
     meta.state = DownloadState::Uninstalled;
   else if (s.value("installed", false).toBool())
@@ -2093,21 +2131,26 @@ std::optional<DownloadMeta> read_download_meta(const std::filesystem::path &meta
 // only record of an in-progress download. So the meta is asked before anything
 // is deleted:
 //
-//   swept - no archive on disk AND no partial on disk AND not "paused".
-//           A finished download whose archive the user deleted from outside
-//           the app. The meta is the only thing left of it and it describes
-//           nothing, which is the pile-up the user asked us to stop keeping.
+//   swept - no archive on disk AND no partial on disk AND neither Failed
+//           nor Paused. A finished download whose archive the user deleted
+//           from outside the app. The meta is the only thing left of it and
+//           it describes nothing, which is the pile-up the user asked us to
+//           stop keeping.
 //   kept  - no archive, but a partial IS on disk (the row was written beside
-//           its partial, download_meta_path below), or state is Failed.
-//           Failed is how "paused" comes back (read_download_meta: "paused" ->
-//           Failed) and it also covers Downloading and Paused, all of which we
-//           write as paused. Those rows have no completed archive yet, and their
-//           meta is the only record of what was being fetched - deleting it
-//           permanently forgets an in-progress download. A SHORT archive is
-//           kept for the same reason and by a different route: it exists, so
-//           it is not an orphan at all, and deserialize()'s
-//           archive_is_complete() check (downloads_tab.cpp:2115) restores
-//           it Failed so a fresh link can act on it.
+//           its partial, download_meta_path below), or state is Failed or
+//           Paused. Failed is how a crash mid-download comes back
+//           (read_download_meta: the "paused" flag without resumeState), and
+//           it also covers Downloading, all of which we write as paused.
+//           Paused is how a DELIBERATE pause comes back (resumeState) - an
+//           instance-switch restart pauses rows exactly so they survive, and
+//           the meta is the only record of the identity a resume after the
+//           relaunch rebuilds the link from; deleting it permanently
+//           forgets the download. Those rows have no completed archive yet.
+//           A SHORT archive is kept for the same reason and by a different
+//           route: it exists, so it is not an orphan at all, and
+//           deserialize()'s archive_is_complete() check
+//           (downloads_tab.cpp:2115) restores it Failed so a fresh link can
+//           act on it.
 static bool meta_is_orphan(const DownloadMeta &meta,
                            const std::filesystem::path &downloads_dir) {
   std::error_code ec;
@@ -2116,7 +2159,7 @@ static bool meta_is_orphan(const DownloadMeta &meta,
   if (!meta.partial_file.empty() &&
       std::filesystem::is_regular_file(downloads_dir / meta.partial_file, ec))
     return false;
-  return meta.state != DownloadState::Failed;
+  return meta.state != DownloadState::Failed && meta.state != DownloadState::Paused;
 }
 
 std::vector<DownloadMeta>
@@ -2216,6 +2259,7 @@ std::string metas_to_manifest_json(const std::vector<DownloadMeta> &metas,
     obj["category"]      = QString::fromStdString(meta.category);
     obj["version"]       = QString::fromStdString(meta.version);
     obj["page_url"]      = QString::fromStdString(meta.page_url);
+    obj["direct_url"]    = QString::fromStdString(meta.direct_url);
     obj["hidden"]        = meta.hidden;
     arr.append(obj);
   }
@@ -2237,6 +2281,7 @@ std::vector<DownloadMeta> DownloadsTab::to_metas() const {
     meta.source =
         entry.source_item ? entry.source_item->text().toStdString() : std::string{};
     meta.page_url      = entry.page_url;
+    meta.direct_url    = entry.direct_url;
     meta.parent_mod_id = entry.parent_mod_id;
     meta.file_id       = entry.file_id;
     meta.nexus_domain  = entry.nexus_domain;
@@ -2304,6 +2349,7 @@ void DownloadsTab::deserialize(const std::string &json,
     const auto parent_mod_id = obj["parent_mod_id"].toString().toStdString();
     const auto nexus_domain  = obj["domain"].toString().toStdString();
     const auto page_url      = obj["page_url"].toString().toStdString();
+    const auto direct_url    = obj["direct_url"].toString().toStdString();
 
     // Manifest repair for Workspace-rvld: older builds persisted
     // "Nexus Mods" as the source string even for LoversLab / Steam /
@@ -2349,20 +2395,37 @@ void DownloadsTab::deserialize(const std::string &json,
     if (downloads_.count(id))
       continue;
 
-    // A persisted Downloading/Paused state describes a transfer that lived in
-    // the previous process. Nothing is fetching it now, and the link maps that
-    // resume needs are in-memory only, so the row cannot be continued - worse,
-    // has_active_download() counts both states, so leaving one in place wedges
-    // scan_downloads_dir() and the folder watcher stop auto-detecting archives
-    // for the rest of the session. Failed is the one state that tells the truth
-    // ("this did not finish") and that the row can still act on.
-    if (state == DownloadState::Downloading || state == DownloadState::Paused) {
+    // A persisted Downloading state describes a transfer that lived in the
+    // previous process and died with it (a crash, not a deliberate pause -
+    // pause_active_for_restart writes Paused): nothing is fetching it now.
+    // Failed is the one state that tells the truth ("this did not finish")
+    // and that the row can still act on.
+    //
+    // A persisted Paused state survives ONLY when its link is rebuildable
+    // from the persisted identity: a Nexus row with domain + mod id + file
+    // id, or any row carrying its direct URL. The controller rebuilds the
+    // link map from exactly the same identity (restore_resume_links), so the
+    // row comes back resumable. Anything else cannot be continued - the link
+    // maps that resume needs are gone - and worse, has_active_download()
+    // counts Paused, so leaving one in place wedges scan_downloads_dir() and
+    // the folder watcher stops auto-detecting archives for the session.
+    // Failed is the honest state for that row.
+    if (state == DownloadState::Downloading) {
       engine::Logger::instance().warn(
-          "downloads: '" + id + "' was " + (state == DownloadState::Downloading
-                                                 ? "downloading"
-                                                 : "paused") +
-          " at shutdown and did not survive the restart; marked failed");
+          "downloads: '" + id +
+          "' was downloading at shutdown and did not survive the restart; "
+          "marked failed");
       state = DownloadState::Failed;
+    } else if (state == DownloadState::Paused) {
+      const bool nexus_rebuildable =
+          !parent_mod_id.empty() && file_id > 0 && !nexus_domain.empty();
+      if (!nexus_rebuildable && direct_url.empty()) {
+        engine::Logger::instance().warn(
+            "downloads: '" + id +
+            "' was paused at shutdown but its download link is not known any "
+            "more; marked failed");
+        state = DownloadState::Failed;
+      }
     }
 
     // Verify the archive still describes a finished download. "Exists" is not
@@ -2402,6 +2465,7 @@ void DownloadsTab::deserialize(const std::string &json,
     entry.category      = obj["category"].toString().toStdString();
     entry.version       = obj["version"].toString().toStdString();
     entry.page_url      = page_url;
+    entry.direct_url    = direct_url;
     entry.hidden        = obj["hidden"].toBool();
 
     table_->insertRow(entry.row);

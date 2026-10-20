@@ -177,6 +177,17 @@ void set_instance_plugin_setting(const std::filesystem::path &instance_root,
 
 InstanceSwitch instance_switch_plan(const std::filesystem::path &from_root,
                                     const std::filesystem::path &to_root) {
+  // Restart-only switch (Workspace-gb0b): with the setting on, every switch
+  // restarts - a live switch reuses every controller, model and in-flight
+  // worker, which is the root of the cross-instance stale-state bug class.
+  // The confirmation setting decides whether that restart asks first.
+  if (Settings::instance().restart_on_instance_switch())
+    return Settings::instance().show_change_game_confirmation()
+               ? InstanceSwitch::Ask
+               : InstanceSwitch::Restart;
+  // OFF fallback: today's rules - live unless the effective appearance/plugin
+  // settings differ, because a live switch would leave the already-loaded
+  // plugin set behind.
   if (!instance_effective_settings_differ(from_root, to_root))
     return InstanceSwitch::Live;
   return Settings::instance().show_change_game_confirmation() ? InstanceSwitch::Ask

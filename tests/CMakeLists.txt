@@ -724,6 +724,16 @@ gmm_catch2_test(instance_switch_plan_test ui/instance_switch_plan_test.cpp
     UI
     LIBS gmm_ui)
 
+# The restart-only instance switch wiring (Workspace-gb0b phase 2): the real
+# switch_to_instance driven through the injected restart seam - relaunch
+# requested, no live mutation, last instance written; the OFF fallback stays
+# live. Real window + worker threads: a ceiling rather than hanging forever.
+gmm_catch2_test(instance_switch_restart_test
+    ui/instance_switch_restart_test.cpp
+    UI
+    LIBS gmm_ui
+    PROPERTIES TIMEOUT 300)
+
 # Last-used directory per named file dialog (MO2 FileDialogMemory).
 gmm_catch2_test(file_dialog_memory_test ui/file_dialog_memory_test.cpp
     UI

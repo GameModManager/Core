@@ -3,7 +3,9 @@
 #include <QJsonObject>
 #include <QObject>
 #include <QString>
+#include <QStringList>
 #include <filesystem>
+#include <functional>
 #include <optional>
 #include <string>
 
@@ -22,10 +24,13 @@ class TaskDialog;
 // Testable seam for the instance-switch restart confirmation
 // (Workspace-nef3, MO2 U044 parity): fills a TaskDialog with the restart
 // title, the must-restart main/content text, a Question icon, and
-// Restart(Yes) / Continue(No, "Some things might be weird.") command links.
-// No remember row - MO2 asks every time here. Shared between the controller
-// and the dialog tests.
-void configure_instance_restart_dialog(TaskDialog &dlg);
+// Restart(Yes) plus either Continue(No, "Some things might be weird.") or
+// Cancel command links. allow_continue is only true when the
+// restart-on-instance-switch setting is OFF - with it on, a live switch is
+// exactly what the setting exists to avoid, so the only alternative to
+// restarting is cancelling. No remember row - MO2 asks every time here.
+// Shared between the controller and the dialog tests.
+void configure_instance_restart_dialog(TaskDialog &dlg, bool allow_continue = true);
 
 // App/instance shell: loading a game instance (set_game_info), app-state
 // persistence, the settings dialog, instance switcher/statistics, pipeline
@@ -35,6 +40,14 @@ class SettingsController : public QObject {
   Q_OBJECT
 public:
   explicit SettingsController(MainWindow *w, QObject *parent = nullptr);
+
+  // Test seam for the relaunch: replaces ui::restart_application() on the
+  // switch path, so a test can drive the real switch_to_instance() and assert
+  // the relaunch arguments without a process ever being started. Empty by
+  // default - production always relaunches for real.
+  void set_restart_hook(std::function<void(const QStringList &)> hook) {
+    restart_hook_ = std::move(hook);
+  }
 
   // Builds the menu bar and connects its actions to the controllers. Called
   // from the MainWindow ctor (the composer owns the toolbar; the wiring
@@ -123,6 +136,8 @@ private:
                          bool create_new);
 
   MainWindow *w_ = nullptr;
+  // Test-injected relaunch target; empty means the real restart_application.
+  std::function<void(const QStringList &)> restart_hook_;
 };
 
 }  // namespace ui

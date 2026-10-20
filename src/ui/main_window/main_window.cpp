@@ -668,8 +668,14 @@ void MainWindow::closeEvent(QCloseEvent *event) {
   }
 
   // Ask before closing with active downloads (downloads_->confirm_close);
-  // Cancel aborts the close, everything else falls through.
-  if (!downloads_->confirm_close()) {
+  // Cancel aborts the close, everything else falls through. A restart close
+  // (instance switch) is exempt: it has already paused its in-flight
+  // downloads deliberately and they survive the relaunch, so the "closing
+  // will cancel them" confirm would be a lie. The flag is consumed here so
+  // it applies to exactly one close.
+  const bool restarting = restarting_;
+  restarting_           = false;
+  if (!restarting && !downloads_->confirm_close()) {
     event->ignore();
     // A tray Quit the user then declined must not latch: the next window close
     // has to ask again rather than sail straight through.

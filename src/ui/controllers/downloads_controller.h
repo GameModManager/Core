@@ -13,6 +13,7 @@ class ModMeta;
 }  // namespace engine
 
 namespace ui {
+struct DownloadMeta;
 
 // Downloads & saves: NXM/LoversLab download routing, the Downloads and Saves
 // tabs, the download manifest, install-progress popup, and the pipeline
@@ -33,6 +34,13 @@ public:
   // Ask" preference). Returns true when the close may proceed; the caller
   // (MainWindow::closeEvent) ignores the event otherwise.
   bool confirm_close();
+
+  // Pause every in-flight download ahead of a process restart (instance
+  // switch): the partial is kept and the link is persisted, so the row comes
+  // back resumable after the relaunch. Returns false when a transfer cannot
+  // be paused cleanly - the caller must then refuse the restart rather than
+  // silently cancelling the user's progress.
+  bool pause_active_for_restart();
 
   // Ask the mod update database about the current game, gated on the
   // "check for mods for updates after install" setting. Called after a mod
@@ -112,6 +120,16 @@ public slots:
   void start_loverslab_download(const std::string &url);
 
 private:
+  // Rebuild the in-memory resume links (nxm/modl/URL) from the restored
+  // rows' persisted identity, so a download paused before a restart can
+  // actually be resumed after it. Called from wire_downloads_tab() after the
+  // manifest has been loaded.
+  void restore_resume_links();
+  // True when a restored row's identity is enough to rebuild its download
+  // link: a Nexus row with domain + mod id + file id, or any row carrying a
+  // persisted direct URL.
+  static bool resume_link_rebuildable(const ui::DownloadMeta &meta);
+
   MainWindow *w_ = nullptr;
 };
 

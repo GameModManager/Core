@@ -189,6 +189,12 @@ struct DownloadMeta {
   int file_id = 0;
   std::string nexus_domain;
   std::string category;
+  // The direct download URL the row was queued with (modl:// and LoversLab
+  // rows). Ours alone - MO2 has no slot for it - and the key that makes a
+  // paused row resumable after a restart: the in-memory link maps do not
+  // survive one. Empty for Nexus rows, which rebuild their link from
+  // nexus_domain + parent_mod_id + file_id.
+  std::string direct_url;
   // Our keys. MO2 derives size from the file on disk, but archive_is_complete()
   // (downloads_tab.cpp) compares the bytes present against the RECORDED
   // total_size - the P0 fix - so it has to survive the restart.
@@ -438,6 +444,23 @@ public:
   // (and the tab can guard rescanning) while a fetch is in flight.
   bool has_active_download() const;
 
+  // The row keys of every entry whose transfer is actually in flight
+  // (Downloading). Paused rows are deliberately excluded: they have nothing
+  // running to pause.
+  [[nodiscard]] std::vector<std::string> downloading_ids() const;
+
+  // Ask the worker to pause every in-flight transfer (pause_requested per
+  // row). The cooperative abort keeps each partial, so every row comes back
+  // resumable. Emissions only - the caller waits for the rows to land in
+  // Paused before proceeding.
+  void pause_downloading();
+
+  // Record the direct download URL a row was queued with (modl:// and
+  // LoversLab rows), so the next manifest save persists it and a resume
+  // after a restart can rebuild the link. Nexus rows rebuild theirs from the
+  // persisted domain/mod/file identity instead.
+  void note_direct_url(const std::string &id, const std::string &url);
+
   // Remember the shared filter bar's current text so "hide installed"
   // re-applications never unhide rows the text filter hid. Called by
   // RightPanel::apply_filter on every filter change/tab switch.
@@ -537,6 +560,10 @@ private:
     // ?do=download query). Persisted in the manifest so the "Open on ..."
     // context action and install provenance survive restarts.
     std::string page_url;
+    // The direct download URL the row was queued with (modl:// and
+    // LoversLab rows). Persisted so a resume after a restart can rebuild the
+    // link; Nexus rows rebuild theirs from domain/mod id/file id instead.
+    std::string direct_url;
     // Hidden from the table without being deleted (MO2 DownloadInfo::m_Hidden
     // / DownloadManager::isHidden, downloadmanager.cpp:1523-1529). Persisted
     // in the manifest, so a row the user hid stays hidden across restarts and

@@ -37,6 +37,7 @@
 #include <QPushButton>
 #include <QSpinBox>
 #include <QSplitter>
+#include <QStyle>
 #include <QStyleFactory>
 #include <QTabWidget>
 #include <QTableWidget>
@@ -244,21 +245,51 @@ QWidget *SettingsContentWidget::build_general_tab() {
       tr("Asks before the app restarts to move to another instance, which it "
          "has to do when the two instances use different theme, style, icon or "
          "plugin settings. Turn it off and the switch always restarts."));
+  auto *restart_switch_box =
+      new QCheckBox(tr("Restart when switching game instance"), gen_group);
+  restart_switch_box->setChecked(s.restart_on_instance_switch());
+  restart_switch_box->setToolTip(
+      tr("Restarts the app on every instance switch, so each instance opens "
+         "with fresh state - the same reset MO2 does. Turn it off to switch "
+         "in place without a restart; the warning symbol next to this box "
+         "lists what that can leave behind."));
+  // The warning is only honest while the risky path is the live one: visible
+  // when the setting is OFF, gone when every switch restarts. The problems
+  // listed are the ones the live switch actually has (the cross-instance
+  // stale-state bug class), not hypothetical ones.
+  auto *restart_warning = new QLabel(gen_group);
+  restart_warning->setPixmap(
+      style()->standardIcon(QStyle::SP_MessageBoxWarning).pixmap(16, 16));
+  restart_warning->setToolTip(
+      tr("Switching without a restart reuses the running window, and some of "
+         "its state carries across instances:\n"
+         "- Tabs can show stale data after switching (the stale Data tab bug "
+         "this setting fixes)\n"
+         "- The mod list can keep the previous instance's rows until the new "
+         "scan lands\n"
+         "- Pending changes queued for one game can be applied to the other\n"
+         "- In-flight downloads are orphaned: the tab is rebuilt but the "
+         "transfer keeps running and its completion is lost"));
+  restart_warning->setVisible(!s.restart_on_instance_switch());
   // Push the persisted toggle value into the engine so the next scan uses it.
   engine::parallel::set_enabled(s.performance_multi_core());
   update_cadence_label_ = new QLabel(gen_group);
   update_cadence_label_->setWordWrap(true);
   gen_grid->addWidget(update_cadence_label_, 1, 0, 1, 2);
   refresh_update_cadence();
-  // Ten toggles in two columns, filled row-major: read left to right, then
+  // Eleven toggles in two columns, filled row-major: read left to right, then
   // down. Qt's focus chain follows child order rather than layout order, and
   // the children are constructed in the same order they are added here, so
   // Tab walks them left to right and top to bottom - no setTabOrder needed.
   const QList<QCheckBox *> gen_boxes{
-      update_box,  prerelease_box,   smooth_box,    dl_notify_box, tray_box,
-      full_ui_box, extract_prio_box, multicore_box, previews_box,  confirm_change_box};
+      update_box,   prerelease_box,     smooth_box,        dl_notify_box,
+      tray_box,     full_ui_box,        extract_prio_box,  multicore_box,
+      previews_box, confirm_change_box, restart_switch_box};
   for (int i = 0; i < gen_boxes.size(); ++i)
     gen_grid->addWidget(gen_boxes.at(i), 2 + i / 2, i % 2);
+  // The warning sits beside its checkbox (the 11th box leaves this cell free)
+  // and follows it in the focus chain, since it is constructed after it.
+  gen_grid->addWidget(restart_warning, 2 + gen_boxes.size() / 2, 1);
   layout->addWidget(gen_group);
 
   connect(update_box, &QCheckBox::toggled, this, [&s, this](bool on) {
@@ -294,6 +325,11 @@ QWidget *SettingsContentWidget::build_general_tab() {
   connect(confirm_change_box, &QCheckBox::toggled, this, [&s](bool on) {
     s.set_show_change_game_confirmation(on);
   });
+  connect(restart_switch_box, &QCheckBox::toggled, this,
+          [&s, restart_warning](bool on) {
+            s.set_restart_on_instance_switch(on);
+            restart_warning->setVisible(!on);
+          });
 
   // Profile defaults ---------------------------------------------------------
   auto *profile_group  = new QGroupBox(tr("Profile Defaults"), page);
