@@ -964,3 +964,93 @@ TEST_CASE("nexus update sweep: the legacy lowercase ignore still suppresses") {
   both.set("General", "ignoredversion", "9.9");
   REQUIRE(read_ignored_version(both) == "2.0");
 }
+
+// ---------------------------------------------------------------------------
+// Query Info: the no-guess-match rule.
+//
+// MO2's "Query Info" on a download with no metadata asks Nexus's md5_search
+// which mod and file the archive's CONTENTS belong to
+// (downloadmanager.cpp:1171-1240, :2203-2296). The dangerous case is the one
+// where the answer names several files: a wrong match writes wrong metadata
+// permanently, which is worse than no match. MO2 separates candidates with
+// two tie-breakers (exact file name, then the single still-served file) and
+// this app refuses past them - ambiguous means NOTHING is written.
+//
+// Genuinely red first: with the chooser stubbed to "take the first result"
+// (the guess), the first REQUIRE below fails.
+TEST_CASE("nexus query info: an ambiguous md5 answer matches nothing",
+          "[engine][nexus]") {
+  using engine::network::FakeNetworkManager;
+  using engine::Source::Nexus::UpdateCheck::Md5Candidate;
+  using engine::Source::Nexus::UpdateCheck::Md5QueryOutcome;
+  using engine::Source::Nexus::UpdateCheck::query_file_by_md5;
+
+  // Two results for one hash (the same file uploaded to two mods), neither
+  // file_name matching the local archive name, both still served: none of
+  // MO2's tie-breakers separates them.
+  const char *kAmbiguousBody = R"([
+    {"mod": {"mod_id": 111},
+     "file_details": {"file_id": 11, "name": "First File",
+                      "file_name": "First File-111-1-0.zip",
+                      "version": "1.0", "category_id": 1}},
+    {"mod": {"mod_id": 222},
+     "file_details": {"file_id": 22, "name": "Second File",
+                      "file_name": "Second File-222-1-0.zip",
+                      "version": "2.0", "category_id": 1}}
+  ])";
+
+  auto fake     = std::make_unique<FakeNetworkManager>();
+  auto *fakeptr = fake.get();
+  engine::network::set_instance(std::move(fake));
+  engine::network::Response resp;
+  resp.http_code = 200;
+  resp.body      = kAmbiguousBody;
+  fakeptr->enqueue_response(resp);
+
+  Md5Candidate match;  // stays default-constructed unless a match is written
+  const auto outcome =
+      query_file_by_md5("skyrimspecialedition", "test-key", "abc123",
+                        "Local Name-999-1-0.zip", match);
+  // The request went to the md5_search endpoint - the same API the update
+  // sweep uses, and the URL the feature's contract names.
+  REQUIRE(fakeptr->seen_requests().size() == 1);
+  REQUIRE(fakeptr->seen_requests()[0].url ==
+          "https://api.nexusmods.com/v1/games/skyrimspecialedition/mods/"
+          "md5_search/abc123.json");
+  engine::network::set_instance(nullptr);
+
+  REQUIRE(outcome == Md5QueryOutcome::Ambiguous);
+  // "Nothing written": the out param is untouched, so the caller has no
+  // metadata to write anywhere.
+  REQUIRE(match.mod_id == 0);
+  REQUIRE(match.file_id == 0);
+  REQUIRE(match.name.empty());
+  REQUIRE(match.version.empty());
+
+  // Positive control: the SAME pipeline resolves a confident answer, so the
+  // refusal above is the ambiguity rule and not a resolver that matches
+  // nothing at all.
+  auto fake2     = std::make_unique<FakeNetworkManager>();
+  auto *fake2ptr = fake2.get();
+  engine::network::set_instance(std::move(fake2));
+  engine::network::Response one;
+  one.http_code = 200;
+  one.body      = R"([
+    {"mod": {"mod_id": 111},
+     "file_details": {"file_id": 11, "name": "QASmoke2 - Special Edition",
+                      "file_name": "QASmoke2 - Special Edition-6832-v1-0.rar",
+                      "version": "v1.0", "category_id": 1}}
+  ])";
+  fake2ptr->enqueue_response(one);
+
+  Md5Candidate hit;
+  const auto hit_outcome =
+      query_file_by_md5("skyrimspecialedition", "test-key", "abc123",
+                        "QASmoke2 - Special Edition-6832-v1-0.rar", hit);
+  engine::network::set_instance(nullptr);
+
+  REQUIRE(hit_outcome == Md5QueryOutcome::Matched);
+  REQUIRE(hit.mod_id == 111);
+  REQUIRE(hit.file_id == 11);
+  REQUIRE(hit.version == "v1.0");
+}

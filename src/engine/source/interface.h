@@ -34,6 +34,38 @@ struct SourceRateLimit {
   std::string readout;
 };
 
+// What a downloads-panel row can tell a source about itself when the row's
+// own identity never resolved, and what the source made of it. The Query
+// Info action (MO2 downloadlistview.cpp:235) is offered per row only when
+// the row's source answers can_query_info() for what the row carries, and
+// the lookup itself runs through query_info() - the panel never talks to a
+// source's own client directly.
+struct DownloadInfoQuery {
+  std::string page_url;      // stored source page URL (LoversLab / ModPub)
+  std::string md5_hex;       // archive contents hash (Nexus md5_search)
+  std::string archive_name;  // local archive filename (Nexus tie-breaker)
+  std::string domain;        // game-domain hint (Nexus; empty for a Manual row
+                             // the controller fills from the current game)
+};
+
+struct DownloadInfoResult {
+  // Unsupported means "this source cannot answer for what this row carries"
+  // - a result, not a failure; the panel says so and writes nothing.
+  enum class Outcome {
+    Unsupported,
+    Matched,
+    NotFound,
+    Ambiguous,    // several candidates, no tie-breaker: write NOTHING
+    Unreachable,  // the question could not be asked (transport, budget)
+  };
+  Outcome outcome = Outcome::Unsupported;
+  std::string name;       // display name the source answered
+  std::string version;    // version string the source answered
+  long long mod_id  = 0;  // Nexus mod id to write back (0 = none)
+  long long file_id = 0;  // Nexus file id to write back (0 = none)
+  std::string domain;     // Nexus domain to write back
+};
+
 class Interface {
 public:
   virtual ~Interface()                    = default;
@@ -55,6 +87,22 @@ public:
 
   // Optional request-budget meter for the status bar. Default: not metered.
   virtual SourceRateLimit rate_limit_readout() const { return {}; }
+
+  // Can this source identify a download row whose identity never resolved?
+  // `query` carries what the row knows (page URL, game domain). A source
+  // with no reliable match path for what the row carries returns false and
+  // the panel hides the action - it never guesses.
+  virtual bool can_query_info(const DownloadInfoQuery &query) const {
+    (void)query;
+    return false;
+  }
+
+  // Identify a download row. An ambiguous answer writes nothing - the same
+  // no-guess rule every source obeys. The default cannot answer at all.
+  virtual DownloadInfoResult query_info(const DownloadInfoQuery &query) const {
+    (void)query;
+    return {};
+  }
 };
 
 }  // namespace engine::Source

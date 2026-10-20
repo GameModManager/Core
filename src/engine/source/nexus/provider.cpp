@@ -7,6 +7,7 @@
 #include "engine/source/nexus/account.h"
 #include "engine/source/nexus/http.h"
 #include "engine/source/nexus/servers.h"
+#include "engine/source/nexus/update_check.h"
 #include "engine/network/network_manager.h"
 
 #include <curl/curl.h>
@@ -550,9 +551,59 @@ SourceRateLimit Provider::rate_limit_readout() const {
     out.readout = "--";
     return out;
   }
-  out.readout = std::to_string(rl.hourly_remaining) + "/" +
-                std::to_string(rl.daily_remaining);
+  out.readout =
+      std::to_string(rl.hourly_remaining) + "/" + std::to_string(rl.daily_remaining);
   return out;
+}
+
+// ---------------------------------------------------------------------------
+// Provider::query_info (Query Info, MO2 downloadlistview.cpp:235)
+// ---------------------------------------------------------------------------
+
+bool Provider::can_query_info(const DownloadInfoQuery &query) const {
+  (void)query;
+  // md5_search answers for any archive on disk - the row needs nothing but
+  // the archive itself. The API key is the one prerequisite: without it the
+  // request cannot be made at all, so the action hides until Settings >
+  // Sources has a key, rather than advertising a query that would be
+  // refused.
+  return !Auth::instance().get_api_key().empty();
+}
+
+DownloadInfoResult Provider::query_info(const DownloadInfoQuery &query) const {
+  DownloadInfoResult result;
+  // Defensive re-check of the same prerequisites the menu gate tested (the
+  // key could have been cleared between the right-click and the click, and
+  // the domain fallback is filled by the caller): an unaskable question is
+  // Unsupported, never a guess.
+  if (query.domain.empty() || query.md5_hex.empty() ||
+      Auth::instance().get_api_key().empty())
+    return result;
+
+  UpdateCheck::Md5Candidate match;
+  const auto outcome =
+      UpdateCheck::query_file_by_md5(query.domain, Auth::instance().get_api_key(),
+                                     query.md5_hex, query.archive_name, match);
+  switch (outcome) {
+  case UpdateCheck::Md5QueryOutcome::Matched:
+    result.outcome = DownloadInfoResult::Outcome::Matched;
+    result.mod_id  = match.mod_id;
+    result.file_id = match.file_id;
+    result.name    = match.name;
+    result.version = match.version;
+    result.domain  = query.domain;
+    break;
+  case UpdateCheck::Md5QueryOutcome::NotFound:
+    result.outcome = DownloadInfoResult::Outcome::NotFound;
+    break;
+  case UpdateCheck::Md5QueryOutcome::Ambiguous:
+    result.outcome = DownloadInfoResult::Outcome::Ambiguous;
+    break;
+  case UpdateCheck::Md5QueryOutcome::Unreachable:
+    result.outcome = DownloadInfoResult::Outcome::Unreachable;
+    break;
+  }
+  return result;
 }
 
 // ---------------------------------------------------------------------------

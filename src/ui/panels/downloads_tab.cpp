@@ -5,6 +5,7 @@
 #include "engine/log/logger.h"
 #include "engine/util/fs_utils.h"
 #include "engine/source/loverslab/provider.h"
+#include "engine/source/registry.h"
 #include "ui/theme/icon_manager.h"
 #include "ui/widgets/task_dialog.h"
 #include "ui/widgets/web_link.h"
@@ -1030,6 +1031,60 @@ void DownloadsTab::note_partial_archive(const std::string &id,
   entry.partial_path = downloads_dir_ / (archive_name + kUnfinishedSuffix);
 }
 
+// MO2 nxmFileInfoFromMd5Available (downloadmanager.cpp:2269-2296) fills the
+// same slots on its DownloadInfo and createMetaFile (:1771-1799) persists
+// them; here the row IS the state, so filling it and letting the next
+// save_download_manifest() write the meta is the same two steps.
+void DownloadsTab::apply_query_info(const std::string &id,
+                                    const std::string &source_type,
+                                    const engine::Source::DownloadInfoResult &result) {
+  auto &entry = entry_for(id);
+  if (entry.row < 0)
+    return;
+  // Nexus identity - the only source whose answer carries ids to write back.
+  if (result.mod_id > 0)
+    entry.parent_mod_id = std::to_string(result.mod_id);
+  if (result.file_id > 0)
+    entry.file_id = static_cast<int>(result.file_id);
+  if (!result.domain.empty())
+    entry.nexus_domain = result.domain;
+  entry.version = result.version;
+  // The Source cell is what source_info_for() dispatches on: a row still
+  // labelled "Manual" would install as a local archive and the fetched
+  // identity would never reach meta.ini. Relabel to the answering source
+  // (literal strings, serialized, so it survives restarts - the same
+  // contract add_download() fills the cell with). A row that already
+  // carries its own source label keeps it.
+  const QString label = [&] {
+    if (source_type == "nexus")
+      return QStringLiteral("Nexus Mods");
+    if (source_type == "loverslab")
+      return QStringLiteral("LoversLab");
+    if (source_type == "modpub")
+      return QStringLiteral("ModPub");
+    return QString();
+  }();
+  const QString source_text = entry.source_item ? entry.source_item->text() : QString();
+  if (entry.source_item && !label.isEmpty() &&
+      (source_text.isEmpty() || source_text == tr("Manual"))) {
+    entry.source_item->setText(label);
+    // Same icon add_download() puts on that source's rows, so the
+    // relabelled cell does not keep the icon-less Manual look.
+    entry.source_item->setIcon(engine::IconManager::instance().resolve_icon(
+        QString::fromStdString(engine::vendor_icon_key(label.toStdString()))));
+  }
+  if (!result.name.empty() && entry.name_item)
+    entry.name_item->setText(QString::fromStdString(result.name));
+  if (result.mod_id > 0) {
+    if (auto *nexus_id_item = table_->item(entry.row, NexusId))
+      nexus_id_item->setText(QString::number(result.mod_id));
+  }
+  // rename_download-style refresh: the tooltip re-derives the incomplete
+  // warning (now gone) and the warning icon clears with it.
+  update_tooltip(entry);
+  table_->setRowHeight(entry.row, row_height());
+}
+
 void DownloadsTab::set_downloads_dir(const std::filesystem::path &dir) {
   if (downloads_dir_ != dir) {
     // Re-point the watcher (a switched instance gets a new downloads dir).
@@ -1601,6 +1656,60 @@ void DownloadsTab::add_context_menu_actions(QMenu &menu, const std::string &id) 
       });
   install_action->setEnabled(can_install);
 
+  // Query Info (MO2 downloadlistview.cpp:235): offered exactly where MO2 puts
+  // it - on a finished row whose identity never resolved, in place of the
+  // "Visit on <source>" action such a row cannot have. The archive must be
+  // on disk (its contents get hashed) and the row must actually be missing
+  // the ids; a row that has them gets no action, matching MO2's
+  // isInfoIncomplete branch. Whether the row's source can answer at all is
+  // the source's own call (can_query_info): the panel dispatches on the
+  // Source cell and hides the action when the source has no reliable match
+  // path for what the row carries.
+  const bool can_query_state =
+      !entry.file_path.empty() && std::filesystem::exists(entry.file_path) &&
+      (entry.state == DownloadState::Complete ||
+       entry.state == DownloadState::Installed ||
+       entry.state == DownloadState::Uninstalled);
+  std::string query_source;
+  if (can_query_state) {
+    const QString source_text =
+        entry.source_item ? entry.source_item->text() : QString();
+    // Which source would answer? A row that already resolved its own source
+    // asks that source (a Nexus row only when its identity is still missing,
+    // the isInfoIncomplete branch); a Manual row asks Nexus - content match
+    // needs no provenance, and MO2 queries the managed game for it
+    // (downloadmanager.cpp:1159-1167). Sources with no match path (Steam
+    // rows never reach this table; git mods are out of scope) get no action.
+    if (source_text == QStringLiteral("Nexus Mods")) {
+      if (entry.parent_mod_id.empty() && entry.file_id <= 0)
+        query_source = "nexus";
+    } else if (source_text == QStringLiteral("Manual") || source_text.isEmpty()) {
+      query_source = "nexus";
+    } else if (source_text == QStringLiteral("LoversLab")) {
+      query_source = "loverslab";
+    } else if (source_text == QStringLiteral("ModPub")) {
+      query_source = "modpub";
+    }
+    if (!query_source.empty()) {
+      engine::Source::DownloadInfoQuery probe;
+      probe.page_url = entry.page_url;
+      probe.domain   = entry.nexus_domain;
+      if (const auto *provider =
+              engine::Source::Registry::instance().provider_for(query_source);
+          !provider || !provider->can_query_info(probe))
+        query_source.clear();
+    }
+  }
+  if (!query_source.empty()) {
+    auto *query_action = menu.addAction(
+        icon_for("view-refresh", QStyle::SP_BrowserReload), tr("Query Info"), this,
+        [this, id, entry, source = query_source]() {
+          emit query_info_requested(id, entry.file_path, source, entry.page_url,
+                                    entry.nexus_domain);
+        });
+    query_action->setData(QString::fromStdString(id));  // test handle
+  }
+
   if (entry.state == DownloadState::Downloading) {
     // MO2's order for a running row (downloadlistview.cpp:262-272) is Cancel,
     // Pause, Reveal in Explorer. Cancel and Pause stop the same transfer; what
@@ -1865,6 +1974,7 @@ bool write_download_meta(const DownloadMeta &meta,
   s.setValue("modID", QString::fromStdString(meta.parent_mod_id));
   s.setValue("fileID", meta.file_id);
   s.setValue("name", QString::fromStdString(meta.name));
+  s.setValue("version", QString::fromStdString(meta.version));
   s.setValue("url", QString::fromStdString(meta.page_url));
   s.setValue("repository", QString::fromStdString(meta.source));
   s.setValue("category", QString::fromStdString(meta.category));
@@ -1925,6 +2035,7 @@ std::optional<DownloadMeta> read_download_meta(const std::filesystem::path &meta
     meta.archive.clear();
   meta.id            = s.value("id").toString().toStdString();
   meta.name          = s.value("name").toString().toStdString();
+  meta.version       = s.value("version").toString().toStdString();
   meta.source        = s.value("repository").toString().toStdString();
   meta.page_url      = s.value("url").toString().toStdString();
   meta.parent_mod_id = s.value("modID").toString().toStdString();
@@ -2103,6 +2214,7 @@ std::string metas_to_manifest_json(const std::vector<DownloadMeta> &metas,
     obj["file_id"]       = meta.file_id;
     obj["domain"]        = QString::fromStdString(meta.nexus_domain);
     obj["category"]      = QString::fromStdString(meta.category);
+    obj["version"]       = QString::fromStdString(meta.version);
     obj["page_url"]      = QString::fromStdString(meta.page_url);
     obj["hidden"]        = meta.hidden;
     arr.append(obj);
@@ -2121,6 +2233,7 @@ std::vector<DownloadMeta> DownloadsTab::to_metas() const {
     meta.archive = entry.file_path;
     meta.id      = id;
     meta.name = entry.name_item ? entry.name_item->text().toStdString() : std::string{};
+    meta.version       = entry.version;
     meta.source =
         entry.source_item ? entry.source_item->text().toStdString() : std::string{};
     meta.page_url      = entry.page_url;
@@ -2162,6 +2275,7 @@ std::string DownloadsTab::serialize() const {
     obj["file_id"]       = entry.file_id;
     obj["domain"]        = QString::fromStdString(entry.nexus_domain);
     obj["category"]      = QString::fromStdString(entry.category);
+    obj["version"]       = QString::fromStdString(entry.version);
     obj["page_url"]      = QString::fromStdString(entry.page_url);
     obj["hidden"]        = entry.hidden;
     arr.append(obj);
@@ -2286,6 +2400,7 @@ void DownloadsTab::deserialize(const std::string &json,
     entry.file_id       = file_id;
     entry.nexus_domain  = nexus_domain;
     entry.category      = obj["category"].toString().toStdString();
+    entry.version       = obj["version"].toString().toStdString();
     entry.page_url      = page_url;
     entry.hidden        = obj["hidden"].toBool();
 

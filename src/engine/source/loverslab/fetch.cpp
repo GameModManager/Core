@@ -229,4 +229,32 @@ std::string Provider::display_name() const {
   return "LoversLab";
 }
 
+// ---------------------------------------------------------------------------
+// Provider::query_info (Query Info, MO2 downloadlistview.cpp:235)
+// ---------------------------------------------------------------------------
+
+bool Provider::can_query_info(const DownloadInfoQuery &query) const {
+  // The stored page URL is the match path: it names the exact file the
+  // download came from, so the answer is provenance, not a guess. A row
+  // without one (a legacy manifest entry) has nothing to match against -
+  // hide rather than guess.
+  return !query.page_url.empty();
+}
+
+DownloadInfoResult Provider::query_info(const DownloadInfoQuery &query) const {
+  DownloadInfoResult result;
+  const ModInfoResult info = fetch_mod_info(query.page_url);
+  if (!info.available) {
+    // A failed scrape (network error, HTTP != 200, login/NSFW gate, parse
+    // failure) and a dead file id look the same here, so the honest answer
+    // is "the question could not be asked" - never "no such mod".
+    result.outcome = DownloadInfoResult::Outcome::Unreachable;
+    return result;
+  }
+  result.outcome = DownloadInfoResult::Outcome::Matched;
+  result.name    = info.name;
+  result.version = info.version;
+  return result;
+}
+
 }  // namespace engine::Source::LoversLab

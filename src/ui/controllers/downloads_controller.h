@@ -91,6 +91,19 @@ public slots:
   // happened between scan and click are reflected.
   void on_save_information_requested(int row);
   void on_save_fix_missing_requested(int row);
+  // "Query Info" on a download whose identity never resolved (MO2
+  // DownloadManager::queryInfoMd5): hash the archive's contents, ask the
+  // row's source - through the source layer's query_info(), never a source
+  // client directly - which mod/file they belong to, and write what came
+  // back into the row (and, through the next manifest save, its per-file
+  // meta). Runs the hash + request off the GUI thread; the row is updated
+  // when the answer lands. A source that cannot identify the download
+  // confidently is reported and left untouched - a guessed match would
+  // write wrong metadata permanently.
+  void query_download_info(const std::string &id,
+                           const std::filesystem::path &file_path,
+                           const std::string &source_type, const std::string &page_url,
+                           const std::string &domain);
   void update_install_progress(const std::string &mod_id, int percent,
                                const std::string &status);
   void hide_install_progress();

@@ -67,6 +67,11 @@
 #include "engine/log/logger.h"
 #include "engine/game/registry/game_capabilities.h"
 #include "engine/game/registry/game_knowledge.h"
+#include "engine/source/nexus/auth.h"
+#include "engine/source/loverslab/provider.h"
+#include "engine/source/modpub/provider.h"
+#include "engine/source/nexus/provider.h"
+#include "engine/source/registry.h"
 #include "ui/controllers/settings_controller.h"
 #include "ui/main_window/main_window.h"
 #include "ui/widgets/column_toggle_header.h"
@@ -1057,6 +1062,105 @@ TEST_CASE("downloads source attribution", "[ui]") {
             "manifest repair: stale LoversLab label coerced to Manual");
     }
   }
+}
+
+// Query Info is source-abstracted (MO2 downloadlistview.cpp:235): the menu
+// offers the action per row only when the row's own source answers
+// can_query_info() for what the row carries. Each gate here is a control
+// that must genuinely appear or hide:
+//   - a LoversLab row with its stored page URL offers the action (the page
+//     is the match path); a LoversLab row without one hides it (nothing to
+//     match against),
+//   - a ModPub row with a real mod.pub page offers it; a row still carrying
+//     its modl:// transport link hides it (that URL is not a mod page),
+//   - a Manual row asks Nexus (content match needs no provenance), which
+//     needs an API key: hidden without one, offered once a key is stored,
+//   - a Nexus row whose identity resolved gets no action (the
+//     isInfoIncomplete branch).
+TEST_CASE("downloads query info follows the row's source", "[ui]") {
+  qputenv("QT_QPA_PLATFORM", "offscreen");
+  const std::filesystem::path cfg = "/tmp/gmm_query_info/config";
+  std::filesystem::remove_all("/tmp/gmm_query_info");
+  std::filesystem::create_directories(cfg);
+  qputenv("XDG_CONFIG_HOME", cfg.c_str());
+  int test_argc     = 1;
+  char test_argv0[] = "test";
+  char *test_argv[] = {test_argv0, nullptr};
+  QApplication app(test_argc, test_argv);
+  QCoreApplication::setOrganizationName("GameModManager");
+  QCoreApplication::setApplicationName("GameModManager");
+
+  const std::filesystem::path dl_dir = "/tmp/gmm_query_info/dl";
+  std::filesystem::create_directories(dl_dir);
+  const auto archive = dl_dir / "Some Mod.zip";
+  write_file(archive, 512);
+
+  auto &auth = engine::Source::Nexus::Auth::instance();
+  auth.clear_api_key();
+
+  // The menu gate asks the source layer's registry which source answers for
+  // the row; the app registers its providers in
+  // DownloadsController::setup_pipeline, so the test registers the ones
+  // under test here (idempotent - the registry is a process-wide singleton).
+  auto &registry = engine::Source::Registry::instance();
+  if (!registry.provider_for("nexus"))
+    registry.register_provider(std::make_unique<engine::Source::Nexus::Provider>());
+  if (!registry.provider_for("loverslab"))
+    registry.register_provider(std::make_unique<engine::Source::LoversLab::Provider>());
+  if (!registry.provider_for("modpub"))
+    registry.register_provider(std::make_unique<engine::Source::ModPub::Provider>());
+
+  TestDownloadsTab tab;
+  tab.add_download("4242", "Skooma Whore SE", "LoversLab", archive, {}, 0, {},
+                   "https://www.loverslab.com/files/file/4242-skooma-whore-se/");
+  tab.mark_complete("4242", true);
+  tab.add_download("legacy-ll", "Legacy LL", "LoversLab", archive);
+  tab.mark_complete("legacy-ll", true);
+  tab.add_download("modpub-1", "ModPub Mod", "ModPub", archive, {}, 0, {},
+                   "https://mod.pub/skyrim-se/22-some-mod/");
+  tab.mark_complete("modpub-1", true);
+  tab.add_download("modl-1", "ModPub download", "ModPub", archive, {}, 0, {},
+                   "modl://skyrim-se/https%3A%2F%2Fmod.pub%2Fskyrim-se%2F22");
+  tab.mark_complete("modl-1", true);
+  tab.add_download("manual-1", "My Mod", "Manual", archive);
+  tab.mark_complete("manual-1", true);
+  tab.add_download("32444-1234", "Tracked File", "Nexus Mods", archive,
+                   "skyrimspecialedition", 1234, "32444");
+  tab.mark_complete("32444-1234", true);
+
+  auto find_query = [&](QMenu &menu) -> QAction * {
+    for (auto *act : menu.actions())
+      if (act->text() == QLatin1String("Query Info"))
+        return act;
+    return nullptr;
+  };
+  auto has_query = [&](const std::string &id) {
+    QMenu menu;
+    tab.add_context_menu_actions(menu, id);
+    return find_query(menu) != nullptr;
+  };
+
+  check(has_query("4242"),
+        "LoversLab row with a page URL offers Query Info (the page is the match path)");
+  check(!has_query("legacy-ll"),
+        "LoversLab row without a page URL hides Query Info (nothing to match against)");
+  check(has_query("modpub-1"), "ModPub row with a real mod.pub page offers Query Info");
+  check(!has_query("modl-1"),
+        "ModPub row still carrying its modl:// transport link hides Query Info");
+  check(!has_query("manual-1"),
+        "Manual row hides Query Info while no Nexus API key is stored");
+  check(!has_query("32444-1234"),
+        "Nexus row whose identity resolved gets no Query Info action");
+
+  // The Manual row's identification path is Nexus's md5 search, which needs
+  // an API key: storing one makes the action appear, clearing it hides it
+  // again (the negative control re-proves the gate is the key, not the row).
+  auth.set_api_key("query-info-test-key");
+  check(has_query("manual-1"),
+        "Manual row offers Query Info once an API key is stored");
+  auth.clear_api_key();
+  check(!has_query("manual-1"),
+        "Manual row hides Query Info again once the key is cleared");
 }
 
 // MO2 parity for the downloads-tab double-click (Workspace-o03). MO2's
