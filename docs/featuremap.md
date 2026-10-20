@@ -1123,7 +1123,7 @@ port - their cited GMM symbol names were invented, the features are not.
 | Menu bar (File/Edit/View/Tools/Help) | ✅ | ✅ `AppMenuBar` (dynamic per-game tools) - `menu_bar.h:24` | ✅ · |
 | MO2's eight keyboard binds (Ctrl+M, Ctrl+P, Ctrl+E, Ctrl+I, Ctrl+S, Ctrl+N, Ctrl+H, F5) | ✅ `mainwindow.ui` | ✅ all eight bound - `menu_bar.cpp:47`, `:193` | ✅ ✔ |
 | What's This / context help on the main-window surfaces | ✅ 26 `whatsThis` properties in `mainwindow.ui`; MO2 never calls the Qt setter from C++ | ⚠️ 19 call sites, 17 files, all on containers so children inherit - `main_window.cpp` | ⚠️ ✔ |
-| Data tab (virtual data browser) | ✅ `DataTab` | ✅ `data_tab` (dual view, build worker, menu) - `data_tab.h:25` | ✅ · |
+| Data tab (virtual data browser) | ✅ `DataTab` | ✅ `data_tab` (dual view, build worker, menu); Open hands the file to the OS default handler through the platform layer (xdg-open / open / ShellExecuteW), no extension pre-judging, and every real file row resolves its size whatever its name's casing - `data_tab.h:25`, `platform.h` | ✅ · |
 | File-tree modifier swap (Alt swaps preview/open, Ctrl reveals) | ✅ `filetree.cpp:249`, `modinfodialogconflicts.cpp:203` | ✅ pure `resolve_double_click(setting, alt, ctrl)` on all 3 trees - `data_tab.h:77` | ✅ ✔ |
 | Downloads tab | ✅ `DownloadsTab` | ✅ `downloads_tab` (drag-drop, watcher, compact, per-file meta state) - `downloads_tab.h:234` | ✅ · |
 | Saves tab | ✅ `SavesTab` | ✅ `saves_tab` (background scan, hover info) - `saves_tab.h:27` | ✅ · |

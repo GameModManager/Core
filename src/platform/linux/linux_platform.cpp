@@ -1339,6 +1339,40 @@ bool path_is_executable(const std::filesystem::path &path) {
   return ::access(path.c_str(), X_OK) == 0;
 }
 
+// xdg-open resolved through PATH, or empty. The detached spawn cannot report
+// an exec failure back to the parent, so a missing handler would report as
+// success - resolve it first instead.
+static std::filesystem::path find_in_path(const std::string &name) {
+  const char *path_env = std::getenv("PATH");
+  if (!path_env)
+    return {};
+  std::istringstream ss(path_env);
+  std::string dir;
+  while (std::getline(ss, dir, ':')) {
+    if (dir.empty())
+      continue;
+    const auto candidate = std::filesystem::path(dir) / name;
+    std::error_code ec;
+    if (std::filesystem::exists(candidate, ec) &&
+        ::access(candidate.c_str(), X_OK) == 0)
+      return candidate;
+  }
+  return {};
+}
+
+bool open_with_default_handler(const std::filesystem::path &path) {
+  std::error_code ec;
+  if (!std::filesystem::exists(path, ec))
+    return false;
+  // xdg-open delegates to the desktop environment's default handler for the
+  // file type and returns once the handler is started, so the detached spawn
+  // never waits on the opened application.
+  const auto xdg_open = find_in_path("xdg-open");
+  if (xdg_open.empty())
+    return false;
+  return spawn_detached_process(xdg_open, {"xdg-open", path.string()}, {}, false) > 0;
+}
+
 std::filesystem::path current_executable_path() {
   std::error_code ec;
   auto p = std::filesystem::read_symlink("/proc/self/exe", ec);

@@ -254,6 +254,15 @@ public:
 // the OS refused, in which case nothing was removed.
 [[nodiscard]] bool move_to_recycle_bin(const std::filesystem::path &path);
 
+// Open `path` with the OS default handler for its file type: xdg-open on
+// Linux, `open` (LaunchServices) on macOS, ShellExecuteW "open" on Windows.
+// Pure hand-off: whether a file can be opened is the OS's decision, so GMM
+// does not pre-judge it by extension. Returns false only when the hand-off
+// itself could not be performed (the file does not exist, or the OS handler
+// could not be started); the handler's own report (no association, ...) is
+// the OS's to give, not ours to pre-empt.
+[[nodiscard]] bool open_with_default_handler(const std::filesystem::path &path);
+
 // True when `path` exists and the current user may execute it.
 [[nodiscard]] bool path_is_executable(const std::filesystem::path &path);
 
