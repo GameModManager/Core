@@ -1,16 +1,20 @@
 #include "engine/source/loverslab/provider.h"
 #include "engine/source/download/curl_download.h"
 #include "engine/source/loverslab/auth.h"
+#include "engine/mod/meta/mod_meta.h"
 #include "engine/mod/model/mod.h"
 #include "engine/network/network_manager.h"
 #include "engine/pipeline/pipeline.h"
 #include "engine/log/logger.h"
 #include "engine/source/http_util.h"
+#include "engine/source/nexus/update_check.h"
+#include "engine/source/page_update.h"
 
 #include <chrono>
 #include <cctype>
 #include <filesystem>
 #include <string>
+#include <thread>
 
 namespace engine::Source::LoversLab {
 
@@ -255,6 +259,120 @@ DownloadInfoResult Provider::query_info(const DownloadInfoQuery &query) const {
   result.name    = info.name;
   result.version = info.version;
   return result;
+}
+
+// ---------------------------------------------------------------------------
+// Provider::check_updates (the mod-update sweep)
+// ---------------------------------------------------------------------------
+
+bool Provider::can_check_updates() const { return true; }
+
+SourceUpdateReport Provider::check_updates(const UpdateSweepContext &ctx) const {
+  SourceUpdateReport report;
+  std::error_code ec;
+  if (!std::filesystem::is_directory(ctx.mods_dir, ec))
+    return report;  // no mods dir: nothing to check, and the caller says so
+
+  // The page state each verdict compares against, as the mod's meta.ini
+  // holds it. Both newestversion spellings are read the way the Nexus sweep
+  // reads them: the install stage writes newestVersion, the checks write
+  // newestversion, and a badge that disagreed with the row's own version
+  // column would be worse than no badge.
+  const auto known_newest = [](const engine::ModMeta &meta) {
+    std::string v = meta.get("General", "newestversion");
+    if (v.empty())
+      v = meta.get("General", "newestVersion");
+    return v;
+  };
+
+  int unreachable = 0;
+  std::string first_unreachable;  // "<folder> (<reason>)", for the report
+  bool first_entry                = true;
+
+  for (const auto &dir : std::filesystem::directory_iterator(ctx.mods_dir, ec)) {
+    if (ec)
+      break;
+    if (!dir.is_directory())
+      continue;
+    const std::string folder = dir.path().filename().string();
+    auto meta                = engine::ModMeta::load(ctx.mods_dir, folder);
+    if (meta.source_type() != "loverslab")
+      continue;
+
+    // The page URL is the mod's provenance - the same match path Query Info
+    // uses. A mod without one has nothing to scrape and gets no verdict at
+    // all, the way Query Info hides; it is not counted as checked either.
+    std::string page_url = meta.get("LoversLab", "page_url");
+    if (page_url.empty()) {
+      const std::string file_id = meta.get("LoversLab", "fileid");
+      if (!file_id.empty())
+        page_url = "https://www.loverslab.com/files/file/" + file_id + "/";
+    }
+    if (page_url.empty())
+      continue;
+
+    ++report.total;
+    // LoversLab rate limits aggressively and has no API budget to read, so
+    // the only pacing is ours: space the scrapes out rather than firing one
+    // GET per mod back to back. The first scrape is immediate.
+    if (!first_entry)
+      std::this_thread::sleep_for(std::chrono::milliseconds(1200));
+    first_entry = false;
+
+    const ModInfoResult info = fetch_mod_info(page_url);
+    if (!info.available) {
+      // A failed scrape writes NOTHING - the same rule the Nexus sweep
+      // obeys: "could not check" must never be recorded as "up to date".
+      ++unreachable;
+      if (first_unreachable.empty())
+        first_unreachable = folder + " (the page could not be fetched)";
+      Logger::instance().warn(
+          "[LoversLabUpdateCheck] could not check mod " + folder + ": the page " +
+          network::redaction::redact_url(page_url) + " could not be fetched");
+      continue;
+    }
+
+    const auto verdict =
+        compare_page_update(info.version, info.date_modified, known_newest(meta),
+                            meta.get("LoversLab", "date_modified"),
+                            meta.get("General", "version"));
+
+    // Record the page state so the NEXT check has a basis, whatever the
+    // verdict. NoBasis writes no verdict flag: the mod shows no badge, and
+    // nothing in meta.ini claims it was checked.
+    if (!info.version.empty())
+      meta.set("General", "newestversion", info.version);
+    if (!info.date_modified.empty())
+      meta.set("LoversLab", "date_modified", info.date_modified);
+    if (verdict.outcome != PageUpdateOutcome::NoBasis) {
+      meta.set("General", "update_available",
+               verdict.outcome == PageUpdateOutcome::Update ? "true" : "false");
+      // The report counts what the user will SEE: an update the user has
+      // already ignored is stamped but not announced, exactly as the Nexus
+      // sweep counts.
+      const bool visible = Nexus::UpdateCheck::update_visible(
+          verdict.outcome == PageUpdateOutcome::Update, verdict.newest_version,
+          Nexus::UpdateCheck::read_ignored_version(meta));
+      if (verdict.outcome == PageUpdateOutcome::Update && visible)
+        ++report.updates;
+    }
+    if (!meta.save(ctx.mods_dir, folder)) {
+      ++unreachable;
+      if (first_unreachable.empty())
+        first_unreachable = folder + " (the verdict could not be written to its meta.ini)";
+    }
+  }
+
+  if (unreachable > 0) {
+    report.message = std::to_string(unreachable) +
+                     (unreachable == 1 ? " mod could not be reached on LoversLab"
+                                       : " mods could not be reached on LoversLab") +
+                     " and will be retried: " + first_unreachable;
+    if (unreachable > 1)
+      report.message += ", and " + std::to_string(unreachable - 1) + " more";
+  }
+  report.ok = true;
+  return report;
 }
 
 }  // namespace engine::Source::LoversLab

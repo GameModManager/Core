@@ -182,6 +182,13 @@ gmm_catch2_test(nexus_categories_test engine/nexus_categories_test.cpp
 # 30s DNS timeout rather than failing fast.
 gmm_catch2_test(nexus_update_check_test engine/nexus_update_check_test.cpp
     PROPERTIES TIMEOUT 120)
+# The page-update verdict ladder (pure) and the LoversLab/ModPub sweep over the
+# injected FakeNetworkManager: a readable page becomes a verdict, a failed
+# scrape writes NOTHING, a page that states nothing gets no verdict. TIMEOUT
+# for the same reason as the sweep test above.
+gmm_catch2_test(page_update_test engine/page_update_test.cpp)
+gmm_catch2_test(page_source_sweep_test engine/page_source_sweep_test.cpp
+    PROPERTIES TIMEOUT 120)
 # A digest mismatch must discard the bad bytes, not leave a resumable orphan
 # (Workspace-wrx7). TIMEOUT for the same reason as the three above.
 gmm_catch2_test(fetch_stage_digest_test engine/fetch_stage_digest_test.cpp

@@ -17,7 +17,7 @@ set(UI_SOURCES
     main_window/loot_sort_worker.cpp
     main_window/conflict_scan_worker.cpp
     main_window/mod_scan_worker.cpp
-    main_window/nexus_update_worker.cpp
+    main_window/source_update_worker.cpp
     main_window/plugin_db_load_worker.cpp
     main_window/saves_scan_worker.cpp
     main_window/data_tab_build_worker.cpp

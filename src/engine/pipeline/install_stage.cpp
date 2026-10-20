@@ -107,8 +107,11 @@ namespace Source {
       // The update verdict, both spellings of each. Carried explicitly below,
       // with the rules that go with them (reconcile_update_symbol reads the
       // lowercase spelling first, so a blanket copy could leave the two
-      // casings disagreeing).
+      // casings disagreeing). nexus_update is Nexus's key, update_available
+      // the page-scrape sources'; each source only ever writes its own, so
+      // carrying both is a no-op for the other source.
       {"General", "nexus_update"},
+      {"General", "update_available"},
       {"General", "newestversion"},
       {"General", "newestVersion"},
       {"General", "ignoredVersion"},
@@ -581,19 +584,26 @@ namespace Source {
       if (meta.separator_id().empty() && !replaced_separator.empty())
         meta.set_separator_id(replaced_separator);
 
-      // The Nexus update verdict, carried for the same reason and with the same
+      // The update verdict, carried for the same reason and with the same
       // "only when the new meta does not already hold one" rule. The verdict
       // belongs to the MOD, not to the file that was installed: the sweep
-      // compared the newest Nexus file against what was installed, and only the
-      // caller that knows the new version can now say whether that still holds.
-      // Carrying it forward is what gives record_installed_version something to
-      // reconcile - without these keys its first gate reads an ABSENT flag and
-      // the row keeps wearing the update symbol for a mod that is now current.
-      // Re-stamped by the sweep and by "Ignore this update" like any other
-      // version-shaped key, so they follow the newest answer rather than
-      // freezing here.
+      // compared the newest file at the source against what was installed,
+      // and only the caller that knows the new version can now say whether
+      // that still holds. Carrying it forward is what gives
+      // record_installed_version something to reconcile - without these keys
+      // its first gate reads an ABSENT flag and the row keeps wearing the
+      // update symbol for a mod that is now current. Re-stamped by the sweep
+      // and by "Ignore this update" like any other version-shaped key, so
+      // they follow the newest answer rather than freezing here.
+      // nexus_update is Nexus's key, update_available the page-scrape
+      // sources'; each source only ever writes its own, so carrying both is
+      // a no-op for the other source.
       if (!replaced_nexus_update.empty())
         meta.set("General", "nexus_update", replaced_nexus_update);
+      const std::string replaced_available =
+          replaced_meta.get("General", "update_available");
+      if (!replaced_available.empty())
+        meta.set("General", "update_available", replaced_available);
       if (meta.get("General", "newestversion").empty() && !replaced_newest.empty())
         meta.set("General", "newestversion", replaced_newest);
       if (!replaced_ignored.empty() &&

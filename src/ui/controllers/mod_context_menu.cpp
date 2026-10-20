@@ -119,13 +119,14 @@ void ModContextMenu::add_global_actions(QMenu &menu) {
   // Check for Nexus mod updates (MO2 ModListViewActions::checkModsForUpdates,
   // modlistviewactions.cpp:223-228, reached from the same global menu). This
   // is the ONLY caller of the sweep and the only thing that spends a request:
-  // deliberately an action, not a timer. Nexus meters the API hard (a key that
-  // keeps exceeding it is banned), a settled library already costs one request
-  // a check, and the verdict persists in each mod's meta.ini - so the badge
-  // the user needs is on screen without ever polling for it. Clicking this
-  // always reports something: a reason it did not run, a count, or a warning.
+  // deliberately an action, not a timer. The sources meter their requests hard
+  // (a client that keeps exceeding their limits is banned), a settled library
+  // already costs one request a check, and the verdict persists in each mod's
+  // meta.ini - so the badge the user needs is on screen without ever polling
+  // for it. Clicking this always reports something: a reason it did not run, a
+  // count, or a warning.
   menu.addAction(engine::IconManager::instance().resolve_icon("update-available"),
-                 QObject::tr("Check for Nexus Mod Updates"), w_, [this]() {
+                 QObject::tr("Check for Mod Updates"), w_, [this]() {
                    w_->mod_list_->check_mod_updates();
                  });
 }
@@ -501,7 +502,7 @@ void ModContextMenu::setup_mod_list_context_menu() {
         // and is never a visible-but-inert control.
         {
           const bool shows_update = engine::Source::Nexus::UpdateCheck::update_visible(
-              entry.nexus_update_available, entry.newest_version.toStdString(),
+              entry.update_available, entry.newest_version.toStdString(),
               entry.ignored_version.toStdString());
           if (shows_update || !entry.ignored_version.isEmpty()) {
             const bool ignoring = shows_update;

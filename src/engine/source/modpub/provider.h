@@ -79,6 +79,14 @@ public:
   // never ambiguous; a failed scrape is Unreachable, not "no such mod".
   DownloadInfoResult query_info(const DownloadInfoQuery &query) const override;
 
+  // The update sweep: scrape each ModPub mod's page and compare it against
+  // the page state the mod's meta.ini last recorded. Verdicts are written
+  // into each mod's own meta.ini ([General] update_available /
+  // newestversion), the same shape the Nexus sweep writes. Scrapes are
+  // spaced out - there is no API budget readout to lean on.
+  bool can_check_updates() const override;
+  SourceUpdateReport check_updates(const UpdateSweepContext &ctx) const override;
+
   // URL helpers (pure, unit-tested). mod.pub canonical URL shape:
   //   https://mod.pub/<game-slug>/<id>-<slug-suffix>
   // Optional trailing slash; the host is always "mod.pub" (no www).

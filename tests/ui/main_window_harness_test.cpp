@@ -1793,12 +1793,12 @@ TEST_CASE("MainWindow: All Mods menu enables only the filter-matching mods",
 // produce.
 //
 // The notice text asserted here is reached only through
-// on_nexus_update_finished()'s "ok && message empty && total == 0" branch, and
-// this instance deliberately holds NO Nexus-sourced mod - which is also what
-// keeps the sweep at zero requests. Nothing in this case reaches
+// on_source_update_finished()'s "ok && message empty && total == 0" branch, and
+// this instance deliberately holds NO mod from a checkable source - which is
+// also what keeps the sweep at zero requests. Nothing in this case reaches
 // api.nexusmods.com.
 // ---------------------------------------------------------------------------
-TEST_CASE("MainWindow: Check for Nexus Mod Updates runs the sweep and reports",
+TEST_CASE("MainWindow: Check for Mod Updates runs the sweep and reports",
           "[ui][harness]") {
   const fs::path root     = make_case_root("gmm_qs50_nexusupd");
   const fs::path inst_dir = root / "instances";
@@ -1834,7 +1834,8 @@ TEST_CASE("MainWindow: Check for Nexus Mod Updates runs the sweep and reports",
   knowledge.set("testgame", "mods_subpath", "Mods");
 
   // The game must declare a Nexus domain: current_nexus_domain() reads it off
-  // the registered plugin identity, and the driver refuses without one.
+  // the registered plugin identity, and without one the Nexus part of the
+  // sweep is skipped with a note rather than run.
   engine::PluginLoader loader;
   engine::PluginInfo info;
   info.game_id      = "testgame";
@@ -1881,7 +1882,7 @@ TEST_CASE("MainWindow: Check for Nexus Mod Updates runs the sweep and reports",
       }
     if (all_mods) {
       for (auto *a : all_mods->actions())
-        if (a->text() == QStringLiteral("Check for Nexus Mod Updates")) {
+        if (a->text() == QStringLiteral("Check for Mod Updates")) {
           a->trigger();
           break;
         }
@@ -1900,11 +1901,12 @@ TEST_CASE("MainWindow: Check for Nexus Mod Updates runs the sweep and reports",
     return !bar->update_notice().isEmpty();
   }));
 
-  // A sweep that completed and had nothing of ours on Nexus: an answer, not a
-  // warning. The wording matters - if the driver had reported a failure here
-  // the user would see a warning over an instance with no Nexus mods in it.
+  // A sweep that completed and had nothing of ours at any source: an answer,
+  // not a warning. The wording matters - if the driver had reported a failure
+  // here the user would see a warning over an instance with no checkable mods
+  // in it.
   CHECK_FALSE(bar->update_notice_is_warning());
-  CHECK(bar->update_notice().contains(QStringLiteral("No Nexus mods")));
+  CHECK(bar->update_notice().contains(QStringLiteral("No mods from a source")));
 
   fs::remove_all(root);
 }
@@ -1918,18 +1920,17 @@ TEST_CASE("MainWindow: Check for Nexus Mod Updates runs the sweep and reports",
 // clicks the real toolbar button and requires the PERSISTENT update notice.
 //
 // The button is the FORCED entry point (the context menu entry keeps the cheap
-// cached sweep). Forcing only changes how many mods the sweep asks Nexus
-// about, and this instance has no Nexus-sourced mod at all, so both entries
-// reach the same proven path here - which is what this test is about.
+// cached sweep). Forcing only changes how many mods the sweep asks the sources
+// about, and this instance has no mod from a checkable source at all, so both
+// entries reach the same proven path here - which is what this test is about.
 //
 // update_notice() is the assertion that carries the weight. It is set only by
 // set_update_notice(), which on this path is called from
-// ModListController::on_nexus_update_finished() with a Report that came back off
-// the NexusUpdateThread. The transient StatusBar::set_status() text a guard
-// writes cannot produce it, so every early return in check_mod_updates() - no
-// domain, no API key, no instance, already running - leaves the notice empty
-// and fails here. A decorative button, or one whose connect was dropped, fails
-// the same way.
+// ModListController::on_source_update_finished() with a result that came back
+// off the SourceUpdateThread. The transient StatusBar::set_status() text a
+// guard writes cannot produce it, so every early return in check_mod_updates()
+// - no instance, already running - leaves the notice empty and fails here. A
+// decorative button, or one whose connect was dropped, fails the same way.
 // ---------------------------------------------------------------------------
 TEST_CASE("MainWindow: the toolbar update button runs the same proven sweep",
           "[ui][harness]") {
@@ -1945,8 +1946,9 @@ TEST_CASE("MainWindow: the toolbar update button runs the same proven sweep",
   QCoreApplication::setApplicationName("GameModManager");
 
   // Same reasoning as the menu case above: a key that is not a real key, in a
-  // throwaway XDG_CONFIG_HOME, and an instance with no Nexus-sourced mod, so
-  // the sweep answers from its own logic and never reaches api.nexusmods.com.
+  // throwaway XDG_CONFIG_HOME, and an instance with no mod from a checkable
+  // source, so the sweep answers from its own logic and never reaches
+  // api.nexusmods.com.
   engine::Source::Nexus::Auth::instance().set_api_key("harness-not-a-real-key");
   REQUIRE(engine::Source::Nexus::Auth::instance().has_api_key());
 
@@ -1991,7 +1993,7 @@ TEST_CASE("MainWindow: the toolbar update button runs the same proven sweep",
   // the FORCED sweep, which ignores the per-mod lastnexusquery cache.
   QToolButton *check_updates_btn = nullptr;
   for (auto *b : toolbar->findChildren<QToolButton *>())
-    if (b->toolTip() == QStringLiteral("Check every mod on Nexus for updates")) {
+    if (b->toolTip() == QStringLiteral("Check every mod for updates")) {
       check_updates_btn = b;
       break;
     }
@@ -2007,7 +2009,7 @@ TEST_CASE("MainWindow: the toolbar update button runs the same proven sweep",
   // Same verdict the menu entry produces, from the same Report: an answer, not
   // a warning.
   CHECK_FALSE(bar->update_notice_is_warning());
-  CHECK(bar->update_notice().contains(QStringLiteral("No Nexus mods")));
+  CHECK(bar->update_notice().contains(QStringLiteral("No mods from a source")));
 
   fs::remove_all(root);
 }
@@ -2100,7 +2102,7 @@ TEST_CASE("MainWindow: Ignore This Update clears the Version badge", "[ui][harne
   // pixmap decodes to nothing even when the badge is correctly switched on.
   // Whether the artwork actually paints is the user's GUI check.
   REQUIRE(cell.data(Qt::ToolTipRole).toString() ==
-          QStringLiteral("Newest version on Nexus: 2.0"));
+          QStringLiteral("Newest version: 2.0"));
   REQUIRE(cell.data(Qt::DecorationRole).isValid());
 
   // The real gesture: the row context menu.
@@ -2134,7 +2136,7 @@ TEST_CASE("MainWindow: Ignore This Update clears the Version badge", "[ui][harne
   REQUIRE(pump_until([&] {
     return !cell.data(Qt::ToolTipRole)
                 .toString()
-                .contains(QStringLiteral("Newest version on Nexus"));
+                .contains(QStringLiteral("Newest version"));
   }));
   CHECK_FALSE(cell.data(Qt::DecorationRole).isValid());
 
@@ -2153,34 +2155,38 @@ TEST_CASE("MainWindow: Ignore This Update clears the Version badge", "[ui][harne
 }
 
 // ---------------------------------------------------------------------------
-// The branch ORDER in on_nexus_update_finished().
+// The branch ORDER in on_source_update_finished().
 //
 // Three branches, and the order between them IS the feature:
 //
-//   !report.ok         the API refused or the body was unreadable
-//   !report.message    ok, but some mods were unreachable - a partial answer
-//   report.updates > 0 a count, which is the only non-warning we may print
+//   any outcome !ok    a source refused or its answer was unreadable
+//   skip notes         sources that could not be asked at all - a partial
+//                      answer, and the checked sources' counts ride along
+//   updates > 0        a count, which is the only non-warning we may print
 //   otherwise         "all up to date"
 //
 // A sweep that could not answer must never be rendered in the shape of a sweep
 // that found nothing, and a sweep that found nothing must never borrow the
 // count's voice. Hoisting `updates > 0` above the two guards is the mutation
 // that breaks exactly that: a refusal that also counted 3 updates prints "3
-// mod(s) have an update available on Nexus" as a quiet, non-warning line.
+// mod(s) have an update available" as a quiet, non-warning line.
 //
 // It had no test, and hoisting it left every case in this file green - the
-// cases that existed only ever produced one branch at a time. The two Reports
-// below are the ones run() cannot currently emit (a refusal cannot arrive with
-// updates>0, because the early returns happen before the counting loop), so
-// they are handed to the slot directly with the generation it expects.
+// cases that existed only ever produced one branch at a time. The two results
+// below are the ones the sweeps cannot currently emit (a refusal cannot arrive
+// with updates>0, because the early returns happen before the counting loop),
+// so they are handed to the slot directly with the generation it expects.
 //
 // Each case is asserted as a WARNING whose text is neither the count form nor
 // the up-to-date form, because "is it a warning" alone does not catch a
 // reordering that still reached a warning by a different route.
 // ---------------------------------------------------------------------------
-TEST_CASE("MainWindow: a refusing or partial Nexus sweep never wears the count's voice",
-          "[ui][harness]") {
-  using engine::Source::Nexus::UpdateCheck::Report;
+TEST_CASE(
+    "MainWindow: a refusing or partial source sweep never wears the count's voice",
+    "[ui][harness]") {
+  using engine::Source::SourceUpdateReport;
+  using ui::SourceUpdateOutcome;
+  using ui::SourceUpdateResult;
 
   const fs::path root     = make_case_root("gmm_nexus_order");
   const fs::path inst_dir = root / "instances";
@@ -2229,39 +2235,44 @@ TEST_CASE("MainWindow: a refusing or partial Nexus sweep never wears the count's
   auto *controller = w.findChild<ui::ModListController *>();
   REQUIRE(controller != nullptr);
 
-  const auto finish = [&w, controller](Report report) {
-    controller->on_nexus_update_finished(std::move(report),
-                                         w.nexus_update_generation());
+  const auto finish = [&w, controller](SourceUpdateResult result) {
+    controller->on_source_update_finished(std::move(result),
+                                          w.source_update_generation());
+  };
+
+  // One source's outcome, in the shape the worker emits.
+  const auto one_outcome = [](const char *source, SourceUpdateReport report) {
+    SourceUpdateResult result;
+    SourceUpdateOutcome outcome;
+    outcome.source_type = source;
+    outcome.report      = std::move(report);
+    result.outcomes.push_back(std::move(outcome));
+    return result;
   };
 
   // Neither of these two may read as a count or as "up to date".
-  const auto refuse_but_counted = [] {
-    Report r;
-    r.ok           = false;
-    r.rate_limited = true;
-    r.updates      = 3;
-    r.checked      = 4;
-    r.total        = 64;
+  const auto refuse_but_counted = [&] {
+    SourceUpdateReport r;
+    r.ok      = false;
+    r.updates = 3;
+    r.total   = 64;
     r.message = "Nexus refused the update check: API request limit reached. Whether "
                 "updates exist is unknown.";
-    return r;
+    return one_outcome("nexus", std::move(r));
   };
-  const auto partial_but_counted = [] {
-    Report r;
+  const auto partial_but_counted = [&] {
+    SourceUpdateReport r;
     r.ok      = true;
     r.updates = 2;
-    r.checked = 5;
     r.total   = 64;
-    r.unreachable.push_back({"BodySlide", "201", "the request never reached Nexus"});
     r.message = "1 mod could not be reached on Nexus and will be retried: "
                 "BodySlide (the request never reached Nexus)";
-    return r;
+    return one_outcome("nexus", std::move(r));
   };
 
   // The refusal first: ok=false, a message, AND three updates counted. Hoisting
   // the count branch above the guards turns this into a quiet "3 mod(s) have an
-  // update available on Nexus" - asserting the text is the message is what
-  // fails then.
+  // update available" - asserting the text is the message is what fails then.
   finish(refuse_but_counted());
   CHECK(bar->update_notice_is_warning());
   CHECK(bar->update_notice() ==
@@ -2285,12 +2296,11 @@ TEST_CASE("MainWindow: a refusing or partial Nexus sweep never wears the count's
   // count is the only correct notice, so the guards must not be swallowing the
   // happy path either.
   {
-    Report r;
+    SourceUpdateReport r;
     r.ok      = true;
     r.updates = 2;
-    r.checked = 5;
     r.total   = 64;
-    finish(std::move(r));
+    finish(one_outcome("nexus", std::move(r)));
   }
   CHECK_FALSE(bar->update_notice_is_warning());
   CHECK(bar->update_notice().contains(QStringLiteral("2 mod")));
@@ -2299,11 +2309,10 @@ TEST_CASE("MainWindow: a refusing or partial Nexus sweep never wears the count's
   // And a complete answer with nothing found, which is the only thing allowed
   // to say "up to date".
   {
-    Report r;
-    r.ok      = true;
-    r.checked = 64;
-    r.total   = 64;
-    finish(std::move(r));
+    SourceUpdateReport r;
+    r.ok    = true;
+    r.total = 64;
+    finish(one_outcome("nexus", std::move(r)));
   }
   CHECK_FALSE(bar->update_notice_is_warning());
   CHECK(bar->update_notice().contains(QStringLiteral("up to date")));

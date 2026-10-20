@@ -33,10 +33,11 @@ MainToolbar::MainToolbar(QWidget *parent) : QWidget(parent) {
   // (mainwindow.cpp:2473) - both of which we already have. This button is our
   // own fix for our own discoverability gap, not a parity row.
   //
-  // It stays a button and not a timer, for the reason the sweep has: Nexus
-  // meters the API hard and bans keys that keep exceeding it.
+  // It stays a button and not a timer, for the reason the sweep has: the
+  // sources meter their requests hard and ban clients that keep exceeding
+  // their limits.
   auto *check_updates_btn =
-      add_gmm_button("Check every mod on Nexus for updates", "update-available");
+      add_gmm_button("Check every mod for updates", "update-available");
 
   connect(settings_btn, &QToolButton::clicked, this, &MainToolbar::settings_clicked);
   connect(instances_btn, &QToolButton::clicked, this, &MainToolbar::instances_clicked);

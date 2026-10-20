@@ -116,15 +116,15 @@ struct ModEntry {
   // tracks the current failure rather than every failure the mod ever had.
   QString toggle_error;
   QVector<int> category_ids;
-  // Nexus update state, owned by engine::Source::Nexus::UpdateCheck and read
-  // straight out of the mod's meta.ini. `nexus_update_available` is the
-  // ENGINE's verdict (a newer file id exists on Nexus); `newest_version` is
-  // that file's version string; `ignored_version` is the version the user
-  // asked not to be told about again. The row shows a badge only when
-  // update_visible(nexus_update_available, newest_version, ignored_version)
-  // says so - one call into the engine, so the badge and the engine can
-  // never disagree about what is being suppressed.
-  bool nexus_update_available = false;
+  // Source update state, owned by the engine's update sweeps and read
+  // straight out of the mod's meta.ini. `update_available` is the ENGINE's
+  // verdict (a newer file exists at the source); `newest_version` is that
+  // file's version string; `ignored_version` is the version the user asked
+  // not to be told about again. The row shows a badge only when
+  // update_visible(update_available, newest_version, ignored_version) says
+  // so - one call into the engine, so the badge and the engine can never
+  // disagree about what is being suppressed.
+  bool update_available = false;
   QString newest_version;
   QString ignored_version;
   // Installation (folder birth time) and Changed (folder last-write time).
@@ -370,7 +370,7 @@ public:
   // working copy keeps its Nexus badge AND gains the git one. Only the Source
   // column is affected, so only Source is notified.
   void set_git_info(const QString &id, bool is_git, const QString &remote_url = {});
-  // Nexus update state (ModEntry::nexus_update_available / ::newest_version /
+  // Source update state (ModEntry::update_available / ::newest_version /
   // ::ignored_version), read from the mod's meta.ini by the window layer. The
   // model stores the three verbatim and asks
   // engine::Source::Nexus::UpdateCheck::update_visible() whether the row

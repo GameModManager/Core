@@ -45,6 +45,14 @@ public:
   // Outcome::Ambiguous and the caller writes nothing.
   DownloadInfoResult query_info(const DownloadInfoQuery &query) const override;
 
+  // The update sweep (MO2 ModInfo::checkAllForUpdate): pure delegation to
+  // UpdateCheck::run - the bulk updated.json request, the per-mod
+  // files.json follow-ups and the meta.ini verdict writes are all that
+  // function's, unchanged. This only translates the report into the generic
+  // shape the UI aggregates across sources.
+  bool can_check_updates() const override;
+  SourceUpdateReport check_updates(const UpdateSweepContext &ctx) const override;
+
   // Live mod-info lookup for the Mod Info Nexus tab ("Refresh" button).
   // Requires a configured API key; fills ModInfoResult::available=false on
   // any failure. Never throws.
