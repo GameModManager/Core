@@ -715,6 +715,13 @@ gmm_catch2_test(rename_profiles_warning_test ui/rename_profiles_warning_test.cpp
     UI
     LIBS gmm_ui)
 
+# All Mods > Enable/Disable must reach mods inside a folded separator, not
+# silently skip them (the view's row visibility conflates filter and fold).
+gmm_catch2_test(folded_separator_bulk_toggle_test
+    ui/folded_separator_bulk_toggle_test.cpp
+    UI
+    LIBS gmm_ui)
+
 gmm_catch2_test(categories_tab_test ui/categories_tab_test.cpp
     UI
     LIBS gmm_ui)

@@ -439,6 +439,17 @@ public:
   // Pure (view-free) version of apply_fold_state's decision: whether this row
   // is hidden by an active fold scope. Testable without a QTreeView.
   [[nodiscard]] bool is_row_fold_hidden(int row) const;
+  // The pure filter verdict per row, recorded by
+  // ModListController::apply_mod_filter BEFORE the fold override folds it
+  // away: the bulk Enable/Disable All must reach mods inside folded
+  // separators (MO2 setAllMatchingModsEnabled walks the model,
+  // modlistviewactions.cpp:214), so it needs "does the filter match" without
+  // "is the row folded shut" - the view's isRowHidden conflates the two.
+  // Meaningful for mod rows; separator slots are unread (the toggle skips
+  // them). No verdict recorded (empty or short array) counts every row as
+  // matching, which is the no-filter semantics.
+  void set_filter_visible(const QVector<bool> &visible);
+  [[nodiscard]] bool is_row_filter_visible(int row) const;
   // Drop parent_id links that are dangling (parent id not present), point at
   // Overwrite/MERGED/game-native rows, link a mod under a separator or a
   // separator under a mod, or form a cycle. Runs at load time.
@@ -565,6 +576,10 @@ private:
   [[nodiscard]] QVector<bool> compute_fold_hidden() const;
 
   QVector<ModEntry> mods_;
+  // Per-row filter verdict (see set_filter_visible). Refreshed by
+  // apply_mod_filter, which runs on every mod_list_changed, so it never goes
+  // stale across model mutations.
+  QVector<bool> filter_visible_;
   QIcon overwrite_icon_;
   QIcon overwritten_icon_;
   QIcon mixed_icon_;
