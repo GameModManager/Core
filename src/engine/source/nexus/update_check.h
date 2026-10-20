@@ -148,6 +148,51 @@ std::string lookup_installed_version(const std::string &nexus_domain,
                                      const std::string &mod_id,
                                      const std::string &api_key, long long file_id);
 
+// ---------------------------------------------------------------------------
+// Query Info (MO2 DownloadManager::queryInfoMd5 -> nxmFileInfoFromMd5Available)
+// ---------------------------------------------------------------------------
+
+// One row of an md5_search answer: the mod and file a download's contents
+// belong to. MO2 reads the same two sub-objects ("mod", "file_details") at
+// downloadmanager.cpp:2269-2292.
+struct Md5Candidate {
+  long long mod_id   = 0;  // mod.mod_id
+  long long file_id  = 0;  // file_details.file_id
+  std::string name;        // file_details.name - the file's display name
+  std::string file_name;   // file_details.file_name - archive name, extension included
+  std::string version;     // file_details.version, falling back to mod_version
+  int category_id = 0;     // file_details.category_id (6 = REMOVED, 7 = ARCHIVED)
+};
+
+// The outcome of one Query Info lookup. NotFound and Ambiguous are RESULTS
+// ("Nexus has no such file", "the answer names several and none of the
+// tie-breakers separates them") - never fold either into Unreachable, which
+// means the question could not be asked.
+enum class Md5QueryOutcome {
+  Matched,     // exactly one confident answer, written to `out`
+  NotFound,    // Nexus has no file with this hash (HTTP 404 / empty answer)
+  Ambiguous,   // candidates exist but MO2's tie-breakers cannot separate them
+  Unreachable  // the request failed (transport, budget exhausted, server error)
+};
+
+// Ask Nexus which mod and file an archive's MD5 hash belongs to - MO2's
+// "Query Info" for a download whose metadata never resolved
+// (downloadmanager.cpp:1171-1240 hashes the file, :2203-2296 reads the
+// answer). The match is by file CONTENT, so a hit is confident by
+// construction; the only ambiguity is the same file uploaded to several
+// mods, which MO2 separates with two tie-breakers (exact file_name match,
+// then the single still-served file) and refuses to guess past.
+//
+// `md5_hex` is the lowercase hex digest of the archive; `local_filename` is
+// the archive's file name (extension included), the second tie-breaker's
+// comparison key. `out` is left UNTOUCHED unless the outcome is Matched, so
+// a caller can write it straight through without a second guard.
+Md5QueryOutcome query_file_by_md5(const std::string &nexus_domain,
+                                  const std::string &api_key,
+                                  const std::string &md5_hex,
+                                  const std::string &local_filename,
+                                  Md5Candidate &out);
+
 // MO2 ModInfoRegular::ignoreUpdate / ::updateAvailable (modinforegular.cpp:
 // 330-338, :665-672): the ignore records the version the user turned away
 // from, and suppresses the notice only while the newest version is STILL that

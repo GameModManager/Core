@@ -161,6 +161,8 @@ enum class DownloadBatch {
 //                                   value("modID",0).toInt() parses it back)
 //   fileID         file_id
 //   name           name
+//   version        version          (the file's version string; filled by
+//                                   Query Info, MO2 downloadmanager.cpp:1789)
 //   url            page_url
 //   repository     source label ("Nexus Mods" / "LoversLab" / "Manual")
 //   category       category
@@ -178,6 +180,7 @@ struct DownloadMeta {
   std::filesystem::path archive;
   std::string id;        // row key: "<modID>-<fileID>", or the archive stem
   std::string name;      // display name
+  std::string version;   // the file's version string (MO2's "version" key)
   std::string source;    // repository label
   std::string page_url;  // "url"
   std::string parent_mod_id;
@@ -406,6 +409,17 @@ public:
   // Delete on a paused row take its partial with it.
   void note_partial_archive(const std::string &id, const std::string &archive_name);
 
+  // Apply the metadata a Query Info lookup fetched (MO2
+  // nxmFileInfoFromMd5Available -> createMetaFile): fills the row's Nexus
+  // identity (mod id, file id, domain), renames the row to the file's display
+  // name, relabels the Source cell to "Nexus Mods" so a later install routes
+  // through the Nexus provenance, and clears the incomplete-info warning.
+  // The next save_download_manifest() persists it into the per-file meta.
+  // An empty `name` leaves the row's name alone.
+  void apply_query_info(const std::string &id, const std::string &mod_id,
+                        int file_id, const std::string &nexus_domain,
+                        const std::string &name, const std::string &version);
+
   // Trash the entry's archive AND its ".unfinished" partial, then drop the
   // row. The workhorse behind every removal path (context menu, Delete key,
   // batch Delete); the MO2 "Move to the Recycle Bin" question lives in
@@ -470,6 +484,14 @@ signals:
   // actions), so the manifest is rewritten without any link bookkeeping or a
   // kDownloadRemoved event - no row left the table.
   void entries_changed();
+  // The user picked "Query Info" on a row whose Nexus identity never resolved
+  // (MO2 issueQueryInfoMd5, downloadlistview.cpp:235). Carries the row key,
+  // the archive on disk (the file whose contents get hashed) and the row's
+  // nexus_domain hint (empty for a Manual row - the caller falls back to the
+  // current game's domain).
+  void query_info_requested(const std::string &id,
+                            const std::filesystem::path &file_path,
+                            const std::string &nexus_domain);
 
 private slots:
   // The downloads dir changed on disk (watcher fired): (re)arm the debounce
@@ -503,6 +525,9 @@ private:
     int file_id = 0;
     std::string nexus_domain;
     std::string category;
+    // The file's version string, filled by Query Info (MO2's meta "version"
+    // key). Persisted so save_download_manifest() does not clobber it.
+    std::string version;
     // Source page URL (LoversLab: the download link minus the
     // ?do=download query). Persisted in the manifest so the "Open on ..."
     // context action and install provenance survive restarts.

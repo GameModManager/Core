@@ -9,6 +9,8 @@
 #include "ui/widgets/mod_list_model.h"
 
 #include <QAbstractButton>
+#include <QCryptographicHash>
+#include <QFile>
 #include <QMessageBox>
 #include <QPushButton>
 #include <QThread>
@@ -586,6 +588,8 @@ void DownloadsController::wire_downloads_tab() {
           Qt::QueuedConnection);
     }
   });
+  connect(dt, &DownloadsTab::query_info_requested, this,
+          &DownloadsController::query_download_info);
   connect(dt, &DownloadsTab::entry_removed, this, [this](const std::string &id) {
     w_->nxm_links_.erase(id);
     w_->modl_links_.erase(id);
@@ -779,6 +783,114 @@ void DownloadsController::on_save_fix_missing_requested(int row) {
   // order this action just changed. A re-scan is what makes the column and
   // the menu gate tell the truth again.
   on_saves_refresh_requested();
+}
+
+void DownloadsController::query_download_info(const std::string &id,
+                                              const std::filesystem::path &file_path,
+                                              const std::string &nexus_domain) {
+  auto *dt = w_->right_panel_->downloads_tab();
+  if (!dt || id.empty() || file_path.empty() ||
+      !std::filesystem::exists(file_path))
+    return;
+
+  const std::string api_key = engine::Source::Nexus::Auth::instance().get_api_key();
+  if (api_key.empty()) {
+    engine::Logger::instance().warn(
+        "[Downloads] Query Info refused for '" + id +
+        "': no Nexus API key is configured");
+    w_->on_notification(tr("Cannot query info"),
+                        tr("Querying Nexus needs an API key. Add one under "
+                           "Settings > Sources, then try again."));
+    return;
+  }
+
+  // A Manual row carries no domain: fall back to the current game's Nexus
+  // slug, the same game the row sits in (MO2 queries m_ManagedGame,
+  // downloadmanager.cpp:1159-1167).
+  std::string domain = nexus_domain;
+  if (domain.empty() && w_->mod_list_)
+    domain = w_->mod_list_->current_nexus_domain().toStdString();
+  if (domain.empty()) {
+    engine::Logger::instance().warn(
+        "[Downloads] Query Info refused for '" + id + "': no Nexus domain known");
+    w_->on_notification(tr("Cannot query info"),
+                        tr("No Nexus game domain is known for this download."));
+    return;
+  }
+
+  // Hashing a multi-gigabyte archive and waiting on Nexus both take seconds:
+  // off the GUI thread, exactly like the installed-version lookup above. The
+  // row is updated on the GUI thread when the answer lands.
+  QThread::create([this, id, file_path, domain, api_key] {
+    // MO2 hashes in 10 MiB steps behind a progress dialog
+    // (downloadmanager.cpp:1206-1230); the step size only matters for its
+    // progress bar, so a plain chunked read does the same job without one.
+    QCryptographicHash hash(QCryptographicHash::Md5);
+    QFile file(QString::fromStdString(file_path.string()));
+    if (!file.open(QIODevice::ReadOnly)) {
+      engine::Logger::instance().warn("[Downloads] Query Info: cannot open '" +
+                                      file_path.string() + "'");
+      return;
+    }
+    constexpr qint64 kChunk = 10 * 1024 * 1024;
+    while (!file.atEnd())
+      hash.addData(file.read(kChunk));
+    file.close();
+    const std::string md5_hex = hash.result().toHex().toStdString();
+
+    engine::Source::Nexus::UpdateCheck::Md5Candidate match;
+    const auto outcome = engine::Source::Nexus::UpdateCheck::query_file_by_md5(
+        domain, api_key, md5_hex, file_path.filename().string(), match);
+    engine::Logger::instance().debug(
+        "[Downloads] Query Info for '" + id + "': outcome=" +
+        std::to_string(static_cast<int>(outcome)) +
+        (outcome == engine::Source::Nexus::UpdateCheck::Md5QueryOutcome::Matched
+             ? " mod_id=" + std::to_string(match.mod_id) +
+                   " file_id=" + std::to_string(match.file_id)
+             : ""));
+    QMetaObject::invokeMethod(
+        w_,
+        [this, id, domain, outcome, match] {
+          auto *tab = w_->right_panel_->downloads_tab();
+          if (!tab)
+            return;
+          using Outcome = engine::Source::Nexus::UpdateCheck::Md5QueryOutcome;
+          switch (outcome) {
+          case Outcome::Matched: {
+            tab->apply_query_info(id, std::to_string(match.mod_id),
+                                  static_cast<int>(match.file_id), domain,
+                                  match.name, match.version);
+            save_download_manifest();
+            const std::string label = match.name.empty() ? id : match.name;
+            w_->on_notification(tr("Metadata updated"),
+                                tr("%1 is now identified on Nexus.")
+                                    .arg(QString::fromStdString(label)));
+            break;
+          }
+          case Outcome::NotFound:
+            w_->on_notification(
+                tr("No match found"),
+                tr("No file on Nexus matches this download's contents. It may "
+                   "have been renamed or removed."));
+            break;
+          case Outcome::Ambiguous:
+            // The no-guess rule: several files match and none of the
+            // tie-breakers separates them. Writing a guess would put wrong
+            // metadata on the row permanently, so nothing is written.
+            w_->on_notification(
+                tr("Match is ambiguous"),
+                tr("This download matches several files on Nexus and no "
+                   "single one could be identified. Nothing was changed."));
+            break;
+          case Outcome::Unreachable:
+            w_->on_notification(tr("Nexus unreachable"),
+                                tr("The request failed (the API budget may be "
+                                   "exhausted). Try again later."));
+            break;
+          }
+        },
+        Qt::QueuedConnection);
+  })->start();
 }
 
 void DownloadsController::update_install_progress(const std::string &mod_id,

@@ -9,6 +9,7 @@
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
+#include <cctype>
 #include <cstdio>
 #include <ctime>
 #include <set>
@@ -214,6 +215,106 @@ namespace {
     return true;
   }
 
+  // ---------------------------------------------------------------------------
+  // Query Info: md5_search parsing and MO2's tie-breakers
+  // ---------------------------------------------------------------------------
+
+  // Nexus file statuses that mean "no longer served" (MO2
+  // NexusInterface::FileStatus, nexusinterface.h:181-193). Note this is a
+  // DIFFERENT question from is_archived() above: the sweep asks "is this the
+  // newest file" (OLD_VERSION 4 counts out), the md5 tie-breaker asks "is
+  // this file still listed at all" (OLD_VERSION counts in, exactly as MO2's
+  // nxmFileInfoFromMd5Available decides it, downloadmanager.cpp:2246-2248).
+  bool md5_status_active(int category_id) {
+    return category_id != 6 && category_id != 7;
+  }
+
+  // Parse an md5_search body: a bare top-level array of
+  // { "mod": {...}, "file_details": {...} } rows (MO2 reads it as
+  // resultData.toList() of maps, downloadmanager.cpp:2213-2216). Defensive
+  // throughout - a row missing either sub-object is skipped, not fatal.
+  bool parse_md5_search(const std::string &body, std::vector<Md5Candidate> &out) {
+    try {
+      auto j = nlohmann::json::parse(body);
+      if (!j.is_array())
+        return false;
+      for (const auto &row : j) {
+        if (!row.is_object())
+          continue;
+        const auto mod  = row.find("mod");
+        const auto file = row.find("file_details");
+        if (mod == row.end() || file == row.end() || !mod->is_object() ||
+            !file->is_object())
+          continue;
+        Md5Candidate c;
+        c.mod_id  = mod->value("mod_id", 0LL);
+        c.file_id = file->value("file_id", 0LL);
+        if (c.mod_id <= 0 || c.file_id <= 0)
+          continue;
+        c.name      = string_field(*file, "name");
+        c.file_name = string_field(*file, "file_name");
+        c.version   = string_field(*file, "version");
+        if (c.version.empty())
+          c.version = string_field(*file, "mod_version");
+        c.category_id = file->value("category_id", 0);
+        out.push_back(std::move(c));
+      }
+    } catch (const std::exception &e) {
+      Logger::instance().error(
+          std::string("[NexusUpdateCheck] md5_search parse failed: ") + e.what());
+      return false;
+    }
+    return true;
+  }
+
+  // MO2's disambiguation, verbatim in shape (downloadmanager.cpp:2218-2266):
+  // a single result wins outright; otherwise the one result whose file_name
+  // equals the local archive name (case-insensitive); otherwise the single
+  // still-served file. Two candidates surviving every tie-breaker is
+  // AMBIGUOUS - MO2 falls back to guessing the mod id out of the filename
+  // there (:2268-2272), and this app does not guess: a wrong match writes
+  // wrong metadata permanently, which is worse than no match. Returns -1 for
+  // "no confident answer".
+  int choose_md5_candidate(const std::vector<Md5Candidate> &candidates,
+                           const std::string &local_filename) {
+    if (candidates.empty())
+      return -1;
+    if (candidates.size() == 1)
+      return 0;
+
+    int chosen = -1;
+    // Tie-breaker 1: exact file name (case-insensitive, MO2's
+    // QString::compare(..., Qt::CaseInsensitive)).
+    const auto iequals = [](const std::string &a, const std::string &b) {
+      return a.size() == b.size() &&
+             std::equal(a.begin(), a.end(), b.begin(), [](char x, char y) {
+               return std::tolower(static_cast<unsigned char>(x)) ==
+                      std::tolower(static_cast<unsigned char>(y));
+             });
+    };
+    for (std::size_t i = 0; i < candidates.size(); ++i) {
+      if (!iequals(candidates[i].file_name, local_filename))
+        continue;
+      if (chosen < 0)
+        chosen = static_cast<int>(i);  // keep scanning: a second match is ambiguity
+      else
+        return -1;
+    }
+    if (chosen >= 0)
+      return chosen;
+
+    // Tie-breaker 2: the only candidate Nexus still serves.
+    for (std::size_t i = 0; i < candidates.size(); ++i) {
+      if (!md5_status_active(candidates[i].category_id))
+        continue;
+      if (chosen < 0)
+        chosen = static_cast<int>(i);
+      else
+        return -1;
+    }
+    return chosen;
+  }
+
 }  // namespace
 
 std::string read_ignored_version(const ModMeta &meta) {
@@ -332,6 +433,41 @@ std::string lookup_installed_version(const std::string &nexus_domain,
   if (!parse_files(reply.body, file_id, available, newest, installed))
     return {};
   return installed;
+}
+
+Md5QueryOutcome query_file_by_md5(const std::string &nexus_domain,
+                                  const std::string &api_key,
+                                  const std::string &md5_hex,
+                                  const std::string &local_filename,
+                                  Md5Candidate &out) {
+  if (nexus_domain.empty() || api_key.empty() || md5_hex.empty())
+    return Md5QueryOutcome::Unreachable;
+
+  const std::string url = "https://api.nexusmods.com/v1/games/" + nexus_domain +
+                          "/mods/md5_search/" + md5_hex + ".json";
+  const auto reply      = nexus_get(url, api_key);
+  if (!reply.ok) {
+    // 404 is an ANSWER ("no file with this hash"), not a failure - MO2 allows
+    // exactly this error on the request (nexusinterface.cpp:783-785).
+    if (reply.http_code == 404)
+      return Md5QueryOutcome::NotFound;
+    Logger::instance().warn("[NexusUpdateCheck] md5_search failed (HTTP " +
+                            std::to_string(reply.http_code) + ")");
+    return Md5QueryOutcome::Unreachable;
+  }
+
+  std::vector<Md5Candidate> candidates;
+  if (!parse_md5_search(reply.body, candidates))
+    return Md5QueryOutcome::Unreachable;
+  if (candidates.empty())
+    return Md5QueryOutcome::NotFound;
+
+  const int chosen = choose_md5_candidate(candidates, local_filename);
+  if (chosen < 0)
+    return Md5QueryOutcome::Ambiguous;
+
+  out = candidates[static_cast<std::size_t>(chosen)];
+  return Md5QueryOutcome::Matched;
 }
 
 const char *period_query_value(Period p) {

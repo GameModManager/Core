@@ -1030,6 +1030,42 @@ void DownloadsTab::note_partial_archive(const std::string &id,
   entry.partial_path = downloads_dir_ / (archive_name + kUnfinishedSuffix);
 }
 
+// MO2 nxmFileInfoFromMd5Available (downloadmanager.cpp:2269-2296) fills the
+// same slots on its DownloadInfo and createMetaFile (:1771-1799) persists
+// them; here the row IS the state, so filling it and letting the next
+// save_download_manifest() write the meta is the same two steps.
+void DownloadsTab::apply_query_info(const std::string &id, const std::string &mod_id,
+                                    int file_id, const std::string &nexus_domain,
+                                    const std::string &name,
+                                    const std::string &version) {
+  auto &entry = entry_for(id);
+  if (entry.row < 0)
+    return;
+  entry.parent_mod_id = mod_id;
+  entry.file_id       = file_id;
+  entry.nexus_domain  = nexus_domain;
+  entry.version       = version;
+  // The Source cell is what source_info_for() dispatches on: a row still
+  // labelled "Manual" would install as a local archive and the fetched ids
+  // would never reach meta.ini. "Nexus Mods" is the literal string the
+  // Nexus branch matches (and what to_metas writes as "repository").
+  if (entry.source_item) {
+    entry.source_item->setText(tr("Nexus Mods"));
+    // Same icon add_download() puts on a Nexus row, so the relabelled cell
+    // does not keep the icon-less Manual look.
+    entry.source_item->setIcon(engine::IconManager::instance().resolve_icon(
+        QString::fromStdString(engine::vendor_icon_key("Nexus Mods"))));
+  }
+  if (!name.empty() && entry.name_item)
+    entry.name_item->setText(QString::fromStdString(name));
+  if (auto *nexus_id_item = table_->item(entry.row, NexusId))
+    nexus_id_item->setText(QString::fromStdString(mod_id));
+  // rename_download-style refresh: the tooltip re-derives the incomplete
+  // warning (now gone) and the warning icon clears with it.
+  update_tooltip(entry);
+  table_->setRowHeight(entry.row, row_height());
+}
+
 void DownloadsTab::set_downloads_dir(const std::filesystem::path &dir) {
   if (downloads_dir_ != dir) {
     // Re-point the watcher (a switched instance gets a new downloads dir).
@@ -1601,6 +1637,27 @@ void DownloadsTab::add_context_menu_actions(QMenu &menu, const std::string &id) 
       });
   install_action->setEnabled(can_install);
 
+  // Query Info (MO2 downloadlistview.cpp:235): offered exactly where MO2 puts
+  // it - on a finished row whose Nexus identity never resolved, in place of
+  // the "Visit on Nexus" action such a row cannot have. The archive must be
+  // on disk (its contents get hashed) and the row must actually be missing
+  // the ids; a row that has them gets no action, matching MO2's
+  // isInfoIncomplete branch.
+  const bool can_query =
+      !entry.file_path.empty() && std::filesystem::exists(entry.file_path) &&
+      entry.parent_mod_id.empty() && entry.file_id <= 0 &&
+      (entry.state == DownloadState::Complete ||
+       entry.state == DownloadState::Installed ||
+       entry.state == DownloadState::Uninstalled);
+  if (can_query) {
+    auto *query_action = menu.addAction(
+        icon_for("view-refresh", QStyle::SP_BrowserReload), tr("Query Info"), this,
+        [this, id, entry]() {
+          emit query_info_requested(id, entry.file_path, entry.nexus_domain);
+        });
+    query_action->setData(QString::fromStdString(id));  // test handle
+  }
+
   if (entry.state == DownloadState::Downloading) {
     // MO2's order for a running row (downloadlistview.cpp:262-272) is Cancel,
     // Pause, Reveal in Explorer. Cancel and Pause stop the same transfer; what
@@ -1865,6 +1922,7 @@ bool write_download_meta(const DownloadMeta &meta,
   s.setValue("modID", QString::fromStdString(meta.parent_mod_id));
   s.setValue("fileID", meta.file_id);
   s.setValue("name", QString::fromStdString(meta.name));
+  s.setValue("version", QString::fromStdString(meta.version));
   s.setValue("url", QString::fromStdString(meta.page_url));
   s.setValue("repository", QString::fromStdString(meta.source));
   s.setValue("category", QString::fromStdString(meta.category));
@@ -1925,6 +1983,7 @@ std::optional<DownloadMeta> read_download_meta(const std::filesystem::path &meta
     meta.archive.clear();
   meta.id            = s.value("id").toString().toStdString();
   meta.name          = s.value("name").toString().toStdString();
+  meta.version       = s.value("version").toString().toStdString();
   meta.source        = s.value("repository").toString().toStdString();
   meta.page_url      = s.value("url").toString().toStdString();
   meta.parent_mod_id = s.value("modID").toString().toStdString();
@@ -2103,6 +2162,7 @@ std::string metas_to_manifest_json(const std::vector<DownloadMeta> &metas,
     obj["file_id"]       = meta.file_id;
     obj["domain"]        = QString::fromStdString(meta.nexus_domain);
     obj["category"]      = QString::fromStdString(meta.category);
+    obj["version"]       = QString::fromStdString(meta.version);
     obj["page_url"]      = QString::fromStdString(meta.page_url);
     obj["hidden"]        = meta.hidden;
     arr.append(obj);
@@ -2121,6 +2181,7 @@ std::vector<DownloadMeta> DownloadsTab::to_metas() const {
     meta.archive = entry.file_path;
     meta.id      = id;
     meta.name = entry.name_item ? entry.name_item->text().toStdString() : std::string{};
+    meta.version       = entry.version;
     meta.source =
         entry.source_item ? entry.source_item->text().toStdString() : std::string{};
     meta.page_url      = entry.page_url;
@@ -2162,6 +2223,7 @@ std::string DownloadsTab::serialize() const {
     obj["file_id"]       = entry.file_id;
     obj["domain"]        = QString::fromStdString(entry.nexus_domain);
     obj["category"]      = QString::fromStdString(entry.category);
+    obj["version"]       = QString::fromStdString(entry.version);
     obj["page_url"]      = QString::fromStdString(entry.page_url);
     obj["hidden"]        = entry.hidden;
     arr.append(obj);
@@ -2286,6 +2348,7 @@ void DownloadsTab::deserialize(const std::string &json,
     entry.file_id       = file_id;
     entry.nexus_domain  = nexus_domain;
     entry.category      = obj["category"].toString().toStdString();
+    entry.version       = obj["version"].toString().toStdString();
     entry.page_url      = page_url;
     entry.hidden        = obj["hidden"].toBool();
 
