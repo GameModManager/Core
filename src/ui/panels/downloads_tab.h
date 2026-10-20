@@ -12,6 +12,8 @@
 #include <unordered_map>
 #include <vector>
 
+#include "engine/source/interface.h"
+
 class QCheckBox;
 class QDragEnterEvent;
 class QDragMoveEvent;
@@ -410,15 +412,15 @@ public:
   void note_partial_archive(const std::string &id, const std::string &archive_name);
 
   // Apply the metadata a Query Info lookup fetched (MO2
-  // nxmFileInfoFromMd5Available -> createMetaFile): fills the row's Nexus
-  // identity (mod id, file id, domain), renames the row to the file's display
-  // name, relabels the Source cell to "Nexus Mods" so a later install routes
-  // through the Nexus provenance, and clears the incomplete-info warning.
-  // The next save_download_manifest() persists it into the per-file meta.
-  // An empty `name` leaves the row's name alone.
-  void apply_query_info(const std::string &id, const std::string &mod_id,
-                        int file_id, const std::string &nexus_domain,
-                        const std::string &name, const std::string &version);
+  // nxmFileInfoFromMd5Available -> createMetaFile): fills the row's identity
+  // (Nexus mod id, file id, domain when the answer carries them), renames the
+  // row to the display name, relabels a Manual row's Source cell to the
+  // answering source so a later install routes through its provenance, and
+  // clears the incomplete-info warning. The next save_download_manifest()
+  // persists it into the per-file meta. An empty `name` leaves the row's
+  // name alone.
+  void apply_query_info(const std::string &id, const std::string &source_type,
+                        const engine::Source::DownloadInfoResult &result);
 
   // Trash the entry's archive AND its ".unfinished" partial, then drop the
   // row. The workhorse behind every removal path (context menu, Delete key,
@@ -484,14 +486,17 @@ signals:
   // actions), so the manifest is rewritten without any link bookkeeping or a
   // kDownloadRemoved event - no row left the table.
   void entries_changed();
-  // The user picked "Query Info" on a row whose Nexus identity never resolved
+  // The user picked "Query Info" on a row whose identity never resolved
   // (MO2 issueQueryInfoMd5, downloadlistview.cpp:235). Carries the row key,
-  // the archive on disk (the file whose contents get hashed) and the row's
-  // nexus_domain hint (empty for a Manual row - the caller falls back to the
-  // current game's domain).
+  // the archive on disk (the file whose contents get hashed) and the origin
+  // the answer is asked for: the source_type the menu gate resolved, the
+  // row's page URL and its game-domain hint (empty for a Manual row - the
+  // controller falls back to the current game's domain).
   void query_info_requested(const std::string &id,
                             const std::filesystem::path &file_path,
-                            const std::string &nexus_domain);
+                            const std::string &source_type,
+                            const std::string &page_url,
+                            const std::string &domain);
 
 private slots:
   // The downloads dir changed on disk (watcher fired): (re)arm the debounce
@@ -558,7 +563,8 @@ private:
   // MO2 DownloadManager::isInfoIncomplete (downloadmanager.cpp:1480-1492): a
   // Nexus download whose mod or file id never resolved is missing the identity
   // every other row carries and cannot be re-queried later. Other sources are
-  // never incomplete - none of them support re-querying, so a warning would
+  // never incomplete - their identity is the page URL they were downloaded
+  // from (LoversLab / ModPub) or nothing at all (Manual), so a warning would
   // name a fix that does not exist. A queued row has not been given an id yet,
   // which is why MO2 gates the same branch on state >= STATE_READY.
   static bool info_is_incomplete(const DownloadEntry &entry);

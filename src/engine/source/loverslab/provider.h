@@ -40,6 +40,17 @@ public:
   SourceDownloadInfo resolve_download_info(const ::engine::Mod &mod) const override;
   std::string display_name() const override;
 
+  // Query Info (MO2 downloadlistview.cpp:235): LoversLab has no API and no
+  // content hash to match against, so the only reliable match path is the
+  // row's own stored page URL - the provenance of the download itself. A
+  // row without one has nothing to match against and hides the action.
+  bool can_query_info(const DownloadInfoQuery &query) const override;
+  // Scrapes the stored page (guest fetch, the same path the Mod Info
+  // LoversLab tab uses) and answers name + version. One page is one file,
+  // so the answer is never ambiguous; a failed scrape is Unreachable, not
+  // "no such mod" - the two are indistinguishable here.
+  DownloadInfoResult query_info(const DownloadInfoQuery &query) const override;
+
   // URL helpers (pure, unit-tested, reused by the future browser-extension
   // flow that will hand GMM a bare file-page link).
   static bool is_loverslab_url(const std::string &url);

@@ -793,4 +793,32 @@ std::string Provider::display_name() const {
   return "ModPub";
 }
 
+// ---------------------------------------------------------------------------
+// Provider::query_info (Query Info, MO2 downloadlistview.cpp:235)
+// ---------------------------------------------------------------------------
+
+bool Provider::can_query_info(const DownloadInfoQuery &query) const {
+  // The stored page URL is the match path - but only a real mod.pub page
+  // names the mod. A row still carrying its modl:// transport link (the
+  // page URL it is created with, before the mod.pub page is visited) has
+  // nothing to scrape: hide rather than guess.
+  return is_modpub_url(query.page_url);
+}
+
+DownloadInfoResult Provider::query_info(const DownloadInfoQuery &query) const {
+  DownloadInfoResult result;
+  const ModInfoResult info = fetch_mod_info(query.page_url);
+  if (!info.available) {
+    // A failed scrape (network error, NSFW/Cloudflare gate, parse failure)
+    // and a dead mod id look the same here, so the honest answer is "the
+    // question could not be asked" - never "no such mod".
+    result.outcome = DownloadInfoResult::Outcome::Unreachable;
+    return result;
+  }
+  result.outcome = DownloadInfoResult::Outcome::Matched;
+  result.name    = info.name;
+  result.version = info.version;
+  return result;
+}
+
 }  // namespace engine::Source::ModPub

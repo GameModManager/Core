@@ -46,6 +46,7 @@
 #include "engine/source/nexus/provider.h"
 #include "engine/source/nexus/update_check.h"
 #include "engine/source/managed_games.h"
+#include "engine/source/interface.h"
 #include "engine/source/registry.h"
 #include "engine/uri/router.h"
 #include "engine/source/steam/provider.h"
@@ -787,41 +788,32 @@ void DownloadsController::on_save_fix_missing_requested(int row) {
 
 void DownloadsController::query_download_info(const std::string &id,
                                               const std::filesystem::path &file_path,
-                                              const std::string &nexus_domain) {
-  auto *dt = w_->right_panel_->downloads_tab();
-  if (!dt || id.empty() || file_path.empty() ||
+                                              const std::string &source_type,
+                                              const std::string &page_url,
+                                              const std::string &domain) {
+  // The panel only names the source; the answer comes from the source
+  // layer's query_info() - which source client runs, what it matches on
+  // (content hash, stored page URL) and what it refuses to guess about is
+  // the provider's business, not this panel's.
+  auto *provider = engine::Source::Registry::instance().provider_for(source_type);
+  if (!provider || id.empty() || file_path.empty() ||
       !std::filesystem::exists(file_path))
     return;
 
-  const std::string api_key = engine::Source::Nexus::Auth::instance().get_api_key();
-  if (api_key.empty()) {
-    engine::Logger::instance().warn(
-        "[Downloads] Query Info refused for '" + id +
-        "': no Nexus API key is configured");
-    w_->on_notification(tr("Cannot query info"),
-                        tr("Querying Nexus needs an API key. Add one under "
-                           "Settings > Sources, then try again."));
-    return;
-  }
-
-  // A Manual row carries no domain: fall back to the current game's Nexus
-  // slug, the same game the row sits in (MO2 queries m_ManagedGame,
+  // Game context the row itself may not carry: a Manual row is identified
+  // within the game it sits in (MO2 queries m_ManagedGame,
   // downloadmanager.cpp:1159-1167).
-  std::string domain = nexus_domain;
-  if (domain.empty() && w_->mod_list_)
-    domain = w_->mod_list_->current_nexus_domain().toStdString();
-  if (domain.empty()) {
-    engine::Logger::instance().warn(
-        "[Downloads] Query Info refused for '" + id + "': no Nexus domain known");
-    w_->on_notification(tr("Cannot query info"),
-                        tr("No Nexus game domain is known for this download."));
-    return;
-  }
+  std::string game_domain = domain;
+  if (game_domain.empty() && w_->mod_list_)
+    game_domain = w_->mod_list_->current_nexus_domain().toStdString();
 
-  // Hashing a multi-gigabyte archive and waiting on Nexus both take seconds:
-  // off the GUI thread, exactly like the installed-version lookup above. The
-  // row is updated on the GUI thread when the answer lands.
-  QThread::create([this, id, file_path, domain, api_key] {
+  // Hashing a multi-gigabyte archive and waiting on the source both take
+  // seconds: off the GUI thread, exactly like the installed-version lookup
+  // above. The row is updated on the GUI thread when the answer lands.
+  // The provider pointer is stable: the registry owns its providers for the
+  // process lifetime and nothing unregisters them.
+  QThread::create([this, id, file_path, provider, source_type, page_url,
+                   game_domain] {
     // MO2 hashes in 10 MiB steps behind a progress dialog
     // (downloadmanager.cpp:1206-1230); the step size only matters for its
     // progress bar, so a plain chunked read does the same job without one.
@@ -836,42 +828,45 @@ void DownloadsController::query_download_info(const std::string &id,
     while (!file.atEnd())
       hash.addData(file.read(kChunk));
     file.close();
-    const std::string md5_hex = hash.result().toHex().toStdString();
 
-    engine::Source::Nexus::UpdateCheck::Md5Candidate match;
-    const auto outcome = engine::Source::Nexus::UpdateCheck::query_file_by_md5(
-        domain, api_key, md5_hex, file_path.filename().string(), match);
+    engine::Source::DownloadInfoQuery query;
+    query.page_url     = page_url;
+    query.md5_hex      = hash.result().toHex().toStdString();
+    query.archive_name = file_path.filename().string();
+    query.domain       = game_domain;
+    const auto result  = provider->query_info(query);
     engine::Logger::instance().debug(
-        "[Downloads] Query Info for '" + id + "': outcome=" +
-        std::to_string(static_cast<int>(outcome)) +
-        (outcome == engine::Source::Nexus::UpdateCheck::Md5QueryOutcome::Matched
-             ? " mod_id=" + std::to_string(match.mod_id) +
-                   " file_id=" + std::to_string(match.file_id)
+        "[Downloads] Query Info for '" + id + "' via " + source_type +
+        ": outcome=" + std::to_string(static_cast<int>(result.outcome)) +
+        (result.outcome == engine::Source::DownloadInfoResult::Outcome::Matched
+             ? " mod_id=" + std::to_string(result.mod_id) +
+                   " file_id=" + std::to_string(result.file_id)
              : ""));
+    const std::string source_display = provider->display_name();
     QMetaObject::invokeMethod(
         w_,
-        [this, id, domain, outcome, match] {
+        [this, id, source_type, source_display, result] {
           auto *tab = w_->right_panel_->downloads_tab();
           if (!tab)
             return;
-          using Outcome = engine::Source::Nexus::UpdateCheck::Md5QueryOutcome;
-          switch (outcome) {
+          using Outcome = engine::Source::DownloadInfoResult::Outcome;
+          switch (result.outcome) {
           case Outcome::Matched: {
-            tab->apply_query_info(id, std::to_string(match.mod_id),
-                                  static_cast<int>(match.file_id), domain,
-                                  match.name, match.version);
+            tab->apply_query_info(id, source_type, result);
             save_download_manifest();
-            const std::string label = match.name.empty() ? id : match.name;
-            w_->on_notification(tr("Metadata updated"),
-                                tr("%1 is now identified on Nexus.")
-                                    .arg(QString::fromStdString(label)));
+            const std::string label = result.name.empty() ? id : result.name;
+            w_->on_notification(
+                tr("Metadata updated"),
+                tr("%1 is now identified on %2.")
+                    .arg(QString::fromStdString(label),
+                         QString::fromStdString(source_display)));
             break;
           }
           case Outcome::NotFound:
             w_->on_notification(
                 tr("No match found"),
-                tr("No file on Nexus matches this download's contents. It may "
-                   "have been renamed or removed."));
+                tr("No file on the source matches this download's contents. "
+                   "It may have been renamed or removed."));
             break;
           case Outcome::Ambiguous:
             // The no-guess rule: several files match and none of the
@@ -879,13 +874,20 @@ void DownloadsController::query_download_info(const std::string &id,
             // metadata on the row permanently, so nothing is written.
             w_->on_notification(
                 tr("Match is ambiguous"),
-                tr("This download matches several files on Nexus and no "
-                   "single one could be identified. Nothing was changed."));
+                tr("This download matches several files on the source and "
+                   "no single one could be identified. Nothing was changed."));
             break;
           case Outcome::Unreachable:
-            w_->on_notification(tr("Nexus unreachable"),
-                                tr("The request failed (the API budget may be "
-                                   "exhausted). Try again later."));
+            w_->on_notification(tr("Source unreachable"),
+                                tr("The request failed. Try again later."));
+            break;
+          case Outcome::Unsupported:
+            // The source cannot answer for what this row carries (e.g. no
+            // game domain is known to ask in). Nothing is written.
+            w_->on_notification(
+                tr("Cannot query info"),
+                tr("This download's source cannot identify it from what the "
+                   "row carries."));
             break;
           }
         },

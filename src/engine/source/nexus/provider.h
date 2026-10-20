@@ -34,6 +34,17 @@ public:
   // there is no budget to report.
   SourceRateLimit rate_limit_readout() const override;
 
+  // Query Info (MO2 downloadlistview.cpp:235): Nexus identifies an archive
+  // by CONTENT - md5_search answers for any file on disk, so the capability
+  // does not depend on what the row carries. It does depend on the API key:
+  // without one there is no request to make, so the action hides until a key
+  // is configured rather than advertising a query that would be refused.
+  bool can_query_info(const DownloadInfoQuery &query) const override;
+  // Delegates to UpdateCheck::query_file_by_md5 (the #312 path): hash in,
+  // mod/file identity out. An ambiguous answer comes back as
+  // Outcome::Ambiguous and the caller writes nothing.
+  DownloadInfoResult query_info(const DownloadInfoQuery &query) const override;
+
   // Live mod-info lookup for the Mod Info Nexus tab ("Refresh" button).
   // Requires a configured API key; fills ModInfoResult::available=false on
   // any failure. Never throws.

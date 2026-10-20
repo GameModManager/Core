@@ -69,6 +69,16 @@ public:
   SourceDownloadInfo resolve_download_info(const ::engine::Mod &mod) const override;
   std::string display_name() const override;
 
+  // Query Info (MO2 downloadlistview.cpp:235): like LoversLab, the only
+  // reliable match path is the row's own stored page URL. A row still
+  // carrying its modl:// transport link has no page to scrape (the signed
+  // download URL inside it is not the mod page), so the action hides.
+  bool can_query_info(const DownloadInfoQuery &query) const override;
+  // Scrapes the stored mod.pub page (the same path the Mod Info ModPub tab
+  // uses) and answers name + version. One page is one mod, so the answer is
+  // never ambiguous; a failed scrape is Unreachable, not "no such mod".
+  DownloadInfoResult query_info(const DownloadInfoQuery &query) const override;
+
   // URL helpers (pure, unit-tested). mod.pub canonical URL shape:
   //   https://mod.pub/<game-slug>/<id>-<slug-suffix>
   // Optional trailing slash; the host is always "mod.pub" (no www).
