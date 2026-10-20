@@ -208,7 +208,7 @@ void Settings::set_hide_api_counter(bool on) {
 }
 
 bool Settings::show_change_game_confirmation() const {
-  return settings_.value("interface/show_change_game_confirmation", true).toBool();
+  return settings_.value("interface/show_change_game_confirmation", false).toBool();
 }
 
 void Settings::set_show_change_game_confirmation(bool on) {

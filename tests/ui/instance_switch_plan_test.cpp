@@ -43,7 +43,7 @@ TEST_CASE("instance switch plan follows the confirmation setting", "[ui][setting
   CHECK(ui::instance_switch_plan(a, b) == ui::InstanceSwitch::Restart);
   CHECK(ui::instance_switch_plan(a, a) == ui::InstanceSwitch::Restart);
 
-  // Confirmation on (the stored default): the restart asks first.
+  // Confirmation on: the restart asks first.
   s.set_show_change_game_confirmation(true);
   CHECK(s.show_change_game_confirmation());
   CHECK(ui::instance_switch_plan(a, b) == ui::InstanceSwitch::Ask);
