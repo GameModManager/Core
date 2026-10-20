@@ -34,10 +34,9 @@ void check(bool cond, const char *what) {
   REQUIRE(cond);
 }
 
-// The nine toggles in the General group box, in the order build_general_tab
-// constructs them. The grid fills row-major, so construction order is also
-// left-to-right, top-to-bottom order - which is what makes Tab order read the
-// same way the boxes are laid out.
+// The General toggles in the order build_general_tab constructs them. The grid fills
+// row-major, so construction order is also left-to-right, top-to-bottom order - which
+// is what makes Tab order read the same way the boxes are laid out.
 const char *const kGeneralToggles[] = {
     "Check for app updates every 24 hours",
     "Use prerelease updates",
@@ -49,6 +48,7 @@ const char *const kGeneralToggles[] = {
     "Enable multi-core processing",
     "Double-click opens previews",
     "Confirm before switching game instance",
+    "Restart when switching game instance",
 };
 constexpr int kGeneralToggleCount =
     static_cast<int>(sizeof(kGeneralToggles) / sizeof(kGeneralToggles[0]));
@@ -68,6 +68,7 @@ const QHash<QString, SettingGetter> kGeneralDefaults{
     {"Double-click opens previews", &Settings::double_clicks_open_previews},
     {"Confirm before switching game instance",
      &Settings::show_change_game_confirmation},
+    {"Restart when switching game instance", &Settings::restart_on_instance_switch},
 };
 
 // The panel's ctor probes the update route and the General tab keys off the
@@ -214,7 +215,7 @@ TEST_CASE("general tab toggles survive the two-column grid", "[ui]") {
   for (auto *cb : gen_group->findChildren<QCheckBox *>())
     by_text.insert(cb->text(), cb);
   check(by_text.size() == kGeneralToggleCount,
-        "nine distinct toggles, none dropped or duplicated");
+        "every General toggle distinct, none dropped or duplicated");
   REQUIRE(by_text.size() == kGeneralToggleCount);
 
   auto &s = Settings::instance();

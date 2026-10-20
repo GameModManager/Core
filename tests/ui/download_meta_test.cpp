@@ -113,6 +113,7 @@ std::string meta_diff(const ui::DownloadMeta &a, const ui::DownloadMeta &b) {
       {"parent_mod_id", a.parent_mod_id, b.parent_mod_id},
       {"file_id", std::to_string(a.file_id), std::to_string(b.file_id)},
       {"nexus_domain", a.nexus_domain, b.nexus_domain},
+      {"direct_url", a.direct_url, b.direct_url},
       {"category", a.category, b.category},
       {"total_size", std::to_string(a.total_size), std::to_string(b.total_size)},
       {"partial_file", a.partial_file, b.partial_file},
@@ -448,12 +449,17 @@ TEST_CASE("orphan meta files are swept, in-progress ones are kept", "[ui]") {
   }
 
   // The kept identity fields are intact: the paused row is still the row it
-  // was, so a fresh link can act on it instead of the list losing it.
+  // was, so a fresh link can act on it instead of the list losing it. Its
+  // state reads back Paused now, not Failed: the meta carries resumeState
+  // ("paused" was written by a deliberate pause), and this row's identity
+  // (domain + mod id + file id) is enough to rebuild the download link after
+  // a restart - which is exactly what makes the row resumable instead of
+  // dead. A crash mid-download writes no resumeState and still reads Failed.
   const ui::DownloadMeta *kept_paused = find_meta(metas, "999-5");
   REQUIRE(kept_paused != nullptr);
   CHECK(kept_paused->parent_mod_id == "999");
   CHECK(kept_paused->total_size == 999999);
-  CHECK(kept_paused->state == ui::DownloadState::Failed);
+  CHECK(kept_paused->state == ui::DownloadState::Paused);
   CHECK(kept_paused->archive == paused);
   // The in-flight row keeps its partial, which is what it resumes from.
   const ui::DownloadMeta *kept_partial = find_meta(metas, "1212-6");
@@ -614,4 +620,90 @@ TEST_CASE("removing a row removes its meta", "[ui]") {
   // take it too - otherwise the row comes straight back on the next launch.
   CHECK_FALSE(std::filesystem::exists(meta_path));
   CHECK_FALSE(std::filesystem::exists(archive));
+}
+
+// The instance-switch restart pauses in-flight downloads instead of
+// cancelling them (Workspace-gb0b). The pause is only honest if the row
+// actually comes back resumable: the tab records the direct URL a row was
+// queued with, the meta persists it plus a resumeState marker that
+// distinguishes a deliberate pause from a crash, and a FRESH tab (the
+// process after the relaunch) restores the row Paused when its identity can
+// rebuild the link, Failed when it cannot.
+TEST_CASE("a download paused for a restart survives it resumable", "[ui]") {
+  Sandbox sandbox;
+  int test_argc     = 1;
+  char test_argv0[] = "download_meta_test";
+  char *test_argv[] = {test_argv0, nullptr};
+  QApplication app(test_argc, test_argv);
+  sandbox.app(test_argc, test_argv);
+  const std::filesystem::path dl = sandbox.dl;
+
+  ui::DownloadsTab tab;
+
+  // The pause mechanics themselves: only rows whose transfer is actually in
+  // flight are paused, and the request carries the row key.
+  std::vector<std::string> pause_requests;
+  QObject::connect(&tab, &ui::DownloadsTab::pause_requested,
+                   [&pause_requests](const std::string &id) {
+                     pause_requests.push_back(id);
+                   });
+  tab.add_download("32444-1234", "Nexus Mod", "Nexus Mods", {}, "skyrimspecialedition",
+                   1234, "32444");
+  // A real archive behind the finished row: the restore path verifies that a
+  // Complete row's bytes are actually there.
+  const auto ll_zip = dl / "LoversLab Mod-1.zip";
+  write_file(ll_zip, 4096);
+  tab.add_download("ll-1", "LoversLab Mod", "LoversLab", ll_zip, {}, 0, {},
+                   "https://loverslab.com/files/file/1/");
+  tab.note_direct_url("ll-1", "https://loverslab.com/files/file/1/?do=download");
+  tab.mark_complete("ll-1", true);  // finished: nothing in flight to pause
+
+  REQUIRE(tab.downloading_ids() == std::vector<std::string>{"32444-1234"});
+  tab.pause_downloading();
+  CHECK(pause_requests == std::vector<std::string>{"32444-1234"});
+
+  // The row lands Paused (the worker's paused(id) -> mark_paused in
+  // production; the state flip is what the restart waits for), and a paused
+  // row is no longer "downloading".
+  tab.mark_paused("32444-1234");
+  CHECK(tab.downloading_ids().empty());
+
+  // A paused row with no rebuildable identity and no direct URL cannot be
+  // resumed after a restart - the link maps are in-memory only. It must come
+  // back Failed, never wedged in Paused (has_active_download() counts
+  // Paused, so a wedged row would stop the downloads-dir scan for the
+  // whole session).
+  tab.add_download("manual-1", "Manual Mod", "Manual", {}, {}, 0, {});
+  tab.mark_paused("manual-1");
+
+  // Persist through the real write path, then restore into a FRESH tab -
+  // the process after the relaunch.
+  tab.set_downloads_dir(dl);
+  REQUIRE(ui::write_download_metas(tab.to_metas(), dl));
+
+  ui::DownloadsTab restored;
+  restored.deserialize(ui::metas_to_manifest_json(ui::read_download_metas(dl), dl), dl);
+  const auto round_tripped = restored.to_metas();
+  REQUIRE(round_tripped.size() == 3);
+
+  // The Nexus row: identity (domain + mod id + file id) rebuilds the link,
+  // so the deliberate pause survives as Paused - resumable.
+  const ui::DownloadMeta *nexus = find_meta(round_tripped, "32444-1234");
+  REQUIRE(nexus != nullptr);
+  CHECK(nexus->state == ui::DownloadState::Paused);
+  CHECK(nexus->nexus_domain == "skyrimspecialedition");
+  CHECK(nexus->parent_mod_id == "32444");
+  CHECK(nexus->file_id == 1234);
+
+  // The LoversLab row: the direct URL was persisted, so it too is
+  // resumable - and it is still Complete, because it was never paused.
+  const ui::DownloadMeta *ll = find_meta(round_tripped, "ll-1");
+  REQUIRE(ll != nullptr);
+  CHECK(ll->state == ui::DownloadState::Complete);
+  CHECK(ll->direct_url == "https://loverslab.com/files/file/1/?do=download");
+
+  // The identity-less paused row: no link can be rebuilt, so Failed.
+  const ui::DownloadMeta *manual = find_meta(round_tripped, "manual-1");
+  REQUIRE(manual != nullptr);
+  CHECK(manual->state == ui::DownloadState::Failed);
 }

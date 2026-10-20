@@ -53,6 +53,29 @@ TEST_CASE("quitting is never turned into a hide", "[ui][tray]") {
   CHECK(decide_tray_action(facts, TrayIntent::CloseWindow) == TrayAction::QuitWindow);
 }
 
+// The instance-switch restart closes the window with the restart flag set
+// (MainWindow::begin_restart). These are the exact facts that close carries:
+// tray available, minimize-to-tray on, restarting. The decision must be a
+// quit - a hide here silently swallows the switch (the app disappears into
+// the tray and nothing restarts), which is the defect that made the flag
+// necessary.
+TEST_CASE("a restart close is a quit, never a hide", "[ui][tray]") {
+  TrayFacts facts;
+  facts.tray_available   = true;
+  facts.minimize_to_tray = true;
+  facts.quitting         = true;  // begin_restart() sets this before close()
+
+  CHECK(decide_tray_action(facts, TrayIntent::CloseWindow) == TrayAction::QuitWindow);
+
+  // Same answer without a tray or without the setting: the restart must not
+  // depend on either.
+  facts.tray_available = false;
+  CHECK(decide_tray_action(facts, TrayIntent::CloseWindow) == TrayAction::QuitWindow);
+  facts.tray_available   = true;
+  facts.minimize_to_tray = false;
+  CHECK(decide_tray_action(facts, TrayIntent::CloseWindow) == TrayAction::QuitWindow);
+}
+
 TEST_CASE("a show request is honoured whatever the tray is doing", "[ui][tray]") {
   // Second launch over IPC, tray probed long ago and now gone: dropping this
   // would make the launcher relaunch look like it did nothing at all.

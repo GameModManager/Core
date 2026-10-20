@@ -418,7 +418,15 @@ int Application::run() {
   const bool needs_url_forwarding =
       args.handle_nxm || args.handle_gmm || args.handle_modl;
   if (!args.headless && !args.multiple && !needs_url_forwarding) {
-    if (!instance_guard.tryAcquire(0)) {
+    // A relaunch (instance switch) races the parent's teardown: the parent
+    // still holds the lock while it exits, so a plain probe loses, the child
+    // requests focus and exits, and the switch lands nowhere. When --instance
+    // names a target, this process IS the switch - wait for the parent's lock
+    // instead of treating it as a second plain launch. The wait is bounded:
+    // a parent that never releases within it (hung teardown) still falls
+    // through to the focus request below.
+    const bool relaunched = !args.instance_name.isEmpty();
+    if (!instance_guard.tryAcquire(relaunched ? 10000 : 0)) {
       instance_guard.requestFocus();
       engine::Logger::instance().info("Another instance running - requesting focus");
       return 0;

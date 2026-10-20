@@ -113,15 +113,23 @@ QString columns_touched_key(const QString &tab_text) {
 }
 }  // namespace
 
-void configure_instance_restart_dialog(TaskDialog &dlg) {
+void configure_instance_restart_dialog(TaskDialog &dlg, bool allow_continue) {
   dlg.title(QObject::tr("Restart GameModManager"))
       .main(QObject::tr("Restart GameModManager"))
       .content(
           QObject::tr("GameModManager must restart to finish configuration changes"))
       .icon(QMessageBox::Question)
-      .add_button({QObject::tr("Restart"), "", QMessageBox::Yes})
-      .add_button({QObject::tr("Continue"), QObject::tr("Some things might be weird."),
-                   QMessageBox::No});
+      .add_button({QObject::tr("Restart"), "", QMessageBox::Yes});
+  if (allow_continue) {
+    // Only offered when the restart-on-switch setting is OFF: there a live
+    // switch is the user's documented fallback. With the setting on, a live
+    // switch is exactly what it exists to avoid, so the only alternative is
+    // cancelling.
+    dlg.add_button({QObject::tr("Continue"), QObject::tr("Some things might be weird."),
+                    QMessageBox::No});
+  } else {
+    dlg.add_button({QObject::tr("Cancel"), "", QMessageBox::Cancel});
+  }
 }
 
 SettingsController::SettingsController(MainWindow *w, QObject *parent)
@@ -1731,6 +1739,10 @@ bool SettingsController::switch_to_instance(const QString &name) {
       instances_dir / selected == w_->current_instance_root_)
     return true;
 
+  // Validate the target BEFORE touching the current window: a broken target
+  // must show an error and leave the current instance running, not close the
+  // window and then fail to relaunch (the old window is already gone at that
+  // point, so the app would exit entirely).
   auto inst = engine::Instance::installed(selected, instances_dir);
   if (!inst.read_toml()) {
     QMessageBox::warning(w_, tr("Error"),
@@ -1738,8 +1750,25 @@ bool SettingsController::switch_to_instance(const QString &name) {
     return false;
   }
 
-  auto &info          = inst.info();
-  std::string game_id = info.game_id;
+  auto &info = inst.info();
+  if (info.game_id.empty()) {
+    QMessageBox::warning(w_, tr("Error"),
+                         tr("Instance %1 has no game set in instance.toml").arg(name));
+    return false;
+  }
+
+  // A switch while a game is running must be refused, like the game-lock
+  // overlay itself: the running game's files belong to the current instance,
+  // and a restart (or a live switch) underneath it would pull the ground out
+  // from under the process. MO2 refuses the same way (canExit).
+  if (w_->locked_pid_ >= 0) {
+    QMessageBox::warning(w_, tr("Game Running"),
+                         tr("A game is running. Stop it before switching "
+                            "instance."));
+    return false;
+  }
+
+  const std::string game_id = info.game_id;
   std::string display_name;
   if (w_->plugin_loader_) {
     display_name = w_->plugin_loader_->display_name_for(game_id);
@@ -1747,26 +1776,34 @@ bool SettingsController::switch_to_instance(const QString &name) {
   if (display_name.empty())
     display_name = game_id;
 
-  // Per-instance settings (Workspace-jagw): when the effective
-  // theme/style/icons/plugins of the target differ from the current ones, a
-  // live switch would leave stale state behind (notably the already-loaded
-  // plugin set), so restart into the target instance like MO2 does. w_->close()
-  // persists app state first and lets the user veto (active downloads).
-  if (ui::instance_effective_settings_differ(w_->current_instance_root_,
-                                             inst.info().root)) {
-    // MO2 U044 parity (Workspace-nef3): confirm the restart instead of
-    // restarting silently. Restart relaunches into the target instance;
-    // Continue live-switches and accepts possibly stale state (notably the
-    // already-loaded plugin set - "some things might be weird"); closing the
-    // dialog aborts the switch and stays on the current instance.
-    //
-    // With Settings > General > "Confirm before switching game instance" off
-    // there is no dialog at all and the switch always restarts.
-    if (ui::instance_switch_plan(w_->current_instance_root_, inst.info().root) ==
-        ui::InstanceSwitch::Ask) {
-      TaskDialog dlg(w_);
-      configure_instance_restart_dialog(dlg);
-      const auto reply = dlg.exec();
+  // What the switch has to do (Workspace-gb0b): with "Restart when switching
+  // game instance" on (the default) every switch restarts into the target
+  // instance like MO2 does - a live switch reuses every controller, model and
+  // in-flight worker, which is the root of the cross-instance stale-state bug
+  // class. With it off, only a differing effective theme/style/icons/plugin
+  // set forces a restart (the already-loaded plugin set cannot hot-swap).
+  const auto plan =
+      ui::instance_switch_plan(w_->current_instance_root_, inst.info().root);
+  if (plan == ui::InstanceSwitch::Live) {
+    engine::write_last_instance(selected);
+    set_game_info(game_id, display_name, "Default", info.game_dir, inst.info().root);
+    engine::Logger::instance().debug("Switched to instance: " + selected);
+    return true;
+  }
+
+  // MO2 U044 parity (Workspace-nef3): confirm the restart instead of
+  // restarting silently. With the restart setting on there is no honest
+  // "continue without reset" - the live path is exactly what the setting
+  // exists to avoid - so the dialog offers Restart / Cancel only. With the
+  // setting off, Continue live-switches and accepts possibly stale state
+  // (notably the already-loaded plugin set - "some things might be weird").
+  // Closing the dialog aborts the switch and stays on the current instance.
+  if (plan == ui::InstanceSwitch::Ask) {
+    const bool allow_continue = !Settings::instance().restart_on_instance_switch();
+    TaskDialog dlg(w_);
+    configure_instance_restart_dialog(dlg, allow_continue);
+    const auto reply = dlg.exec();
+    if (allow_continue) {
       if (reply != QMessageBox::Yes && reply != QMessageBox::No)
         return false;
       if (reply == QMessageBox::No) {
@@ -1778,18 +1815,34 @@ bool SettingsController::switch_to_instance(const QString &name) {
         engine::Logger::instance().debug("Switched to instance: " + selected);
         return true;
       }
+    } else if (reply != QMessageBox::Yes) {
+      return false;  // Cancel or closed: stay on the current instance
     }
-    engine::Logger::instance().info("Per-instance settings differ for " + selected +
-                                    " - restarting to apply");
-    if (!w_->close())
-      return false;  // vetoed: stay on the current instance
-    engine::write_last_instance(selected);
-    ui::restart_application({"--instance", QString::fromStdString(selected)});
+  }
+  engine::Logger::instance().info("Switching to instance " + selected +
+                                  " - restarting to apply");
+
+  // In-flight downloads must survive the restart, not be cancelled: pause
+  // them (the partial is kept and the link is persisted, so the row comes
+  // back resumable). If they cannot be paused cleanly, refuse the switch -
+  // silently cancelling them would lose the user's progress.
+  if (!w_->downloads_->pause_active_for_restart())
+    return false;
+
+  // Mark the close as a restart so minimize-to-tray cannot swallow it
+  // (closeEvent would otherwise hide the window and nothing would switch),
+  // then close: it persists app state and the download manifest, and lets
+  // the user veto (active downloads). A vetoed close aborts the switch and
+  // stays on the current instance.
+  w_->begin_restart();
+  if (!w_->close())
+    return false;  // vetoed: stay on the current instance
+  engine::write_last_instance(selected);
+  if (restart_hook_) {
+    restart_hook_({"--instance", QString::fromStdString(selected)});
     return true;
   }
-  engine::write_last_instance(selected);
-  set_game_info(game_id, display_name, "Default", info.game_dir, inst.info().root);
-  engine::Logger::instance().debug("Switched to instance: " + selected);
+  ui::restart_application({"--instance", QString::fromStdString(selected)});
   return true;
 }
 

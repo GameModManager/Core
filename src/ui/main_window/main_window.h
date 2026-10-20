@@ -223,6 +223,28 @@ public:
   // Installed - lives in that lambda, not in anything the panel exposes.
   [[nodiscard]] ui::PipelineWorker *pipeline_worker() const;
 
+  // The instance/app shell controller, so a test can drive the real
+  // switch_to_instance() through its restart seam (set_restart_hook) without
+  // going through the menu. Same pattern as pipeline_worker() above.
+  [[nodiscard]] ui::SettingsController *settings_controller() const {
+    return settings_.get();
+  }
+
+  // Marks the next close() as a process restart (instance switch): closeEvent
+  // must quit, never hide to the tray, and must not ask about cancelling
+  // downloads - the switch has already paused them deliberately and they
+  // survive the relaunch. Without this, minimize-to-tray turns the switch's
+  // close() into a hide - the app disappears and nothing switches. The flag
+  // is the same one the tray Quit uses, so a vetoed close un-latches it
+  // exactly as for a tray quit.
+  void begin_restart() {
+    quitting_   = true;
+    restarting_ = true;
+  }
+  // True between begin_restart() and the close it describes (consumed by
+  // closeEvent, so it applies to exactly one close).
+  [[nodiscard]] bool is_restarting() const { return restarting_; }
+
   // Lock or unlock the whole mod manager interface. Locking blocks user
   // interaction (mouse + keyboard) across the main window and greys it out,
   // so long-running operations like archive installs can't race the user.
@@ -674,7 +696,8 @@ private:
   // closeEvent from treating the shutdown as a close-to-tray request, and
   // still routes it through the normal close path so the manifest, settings
   // and mod order are saved.
-  bool quitting_ = false;
+  bool quitting_   = false;
+  bool restarting_ = false;
 };
 
 }  // namespace ui

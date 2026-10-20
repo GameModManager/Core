@@ -257,6 +257,7 @@ port - their cited GMM symbol names were invented, the features are not.
 | Lock GUI during executables | ✅ `InterfaceSettings::lockGUI()` | ⚠️ setting gates the Locker and a gated site now exists (the LOOT sort runs gmm_lootcli), but installs still pass OutputRequired and the launch trigger is the game-lock overlay, not this lock - `settings.cpp:20`, `ui_locker.cpp:15`, `mod_list_controller.cpp:3347` | ⚠️ ✔ |
 | Center dialogs on parent | ✅ `GeometrySettings::centerDialogs()` | ✅ read by the shared placement helper, used by 4 dialogs - `dialog_placement.cpp:11` | ✅ ✔ |
 | Show change game confirmation | ✅ `InterfaceSettings::showChangeGameConfirmation()` | ✅ the checkbox builds and writes the key, and `InstanceSwitch::Ask` is read on every instance switch - `settings_content_widget.cpp:240`, `instance_settings.cpp:182` | ✅ ✔ |
+| Restart on instance switch (default on) | ✅ InstanceManagerDialog restart-on-select, default on - `instancemanagerdialog.cpp:149-151` | ✅ "Restart when switching game instance" setting, default on: every switch goes plan -> Restart -> relaunch with `--instance`, the confirmation setting decides whether it asks, and disabling the setting shows a hover warning listing the live path's real risks; OFF keeps the live fallback - `settings_content_widget.cpp:248`, `instance_settings.cpp:184`, `settings_controller.cpp:1785` | ✅ ✔ |
 | Close to system tray instead of quitting | ❌ per-executable flag only, no global toggle | 🚀 checkbox, default off, ignored without a tray - `settings.cpp:221` | 🚀 ✔ |
 | Show menubar on Alt | ✅ `InterfaceSettings::showMenubarOnAlt()` | ⏳ MO2 gates Alt on `UILocker`, GMM has no Alt reveal | ⏳ ✔ |
 | Double-clicks open previews | ✅ `InterfaceSettings::doubleClicksOpenPreviews()` | ✅ three file trees - `filetree_tab.cpp:111` | ✅ ✔ |
@@ -302,7 +303,7 @@ port - their cited GMM symbol names were invented, the features are not.
 | Center on main window monitor | ✅ `GeometrySettings::centerOnMainWindowMonitor()` | ⏳ blocked behind the dead `center_dialogs` | ⏳ ✔ |
 | U006 Ctrl+S = Settings shortcut | ✅ `mainwindow.ui:1736-1756` | ✅ Preferences + explicit Ctrl+S - `menu_bar.cpp:75` | ✅ ✔ |
 | U040 Alt key reveals hidden menubar (showMenubarOnAlt, suppressed while UILocker locked) | ✅ `mainwindow.cpp:4052-4070` | ⏳ no menubar visibility state to reveal | ⏳ ✔ |
-| U044 Restart-after-settings dialog (Restart / Continue variants) | ✅ `mainwindow.cpp:2768-2780` | ✅ Restart / Continue dialog - `settings_controller.cpp:110` | ✅ ✔ |
+| U044 Restart-after-settings dialog (Restart / Continue variants) | ✅ `mainwindow.cpp:2768-2780` | ✅ Restart / Continue dialog when the restart-on-switch setting is off (Continue is the documented live fallback), Restart / Cancel when it is on (a live switch is what the setting exists to avoid) - `settings_controller.cpp:116` | ✅ ✔ |
 | U046 Network proxy activation progress dialog | ✅ `mainwindow.cpp:2115-2140` | ⏳ bridge applies options instantly, no wait | ⏳ ✔ |
 | U047 Downgrade notice after version drop | ✅ `mainwindow.cpp:2219` | ⏳ no last-version value to compare | ⏳ ✔ |
 | U061 dataTabShowFromArchives gated on archiveParsing setting | ✅ `mainwindow.cpp:532-542` | ⏳ data tab has no archives sub-filter | ⏳ ✔ |
@@ -660,7 +661,7 @@ port - their cited GMM symbol names were invented, the features are not.
 
 | Feature | MO2 | GMM | Status |
 |---------|-----|-----|--------|
-| Download state machine | ✅ `DownloadState` (14 states) | ⚠️ 7 states, 6 of them assigned; `Removed` is still reserved and never assigned - `downloads_tab.h:37`; an in-flight state cannot survive a restart, so the meta writes it as MO2's `paused` flag and it restores as Failed - `write_download_meta` `downloads_tab.cpp:1725` | ⚠️ ✔ |
+| Download state machine | ✅ `DownloadState` (14 states) | ⚠️ 7 states, 6 of them assigned; `Removed` is still reserved and never assigned - `downloads_tab.h:37`; a deliberate pause survives a restart (the meta writes MO2's `paused` flag plus a `resumeState` marker, and the row restores Paused - resumable - when its link is rebuildable from the persisted identity, Failed when it is not), while a crash mid-download restores Failed - `write_download_meta` `downloads_tab.cpp:1983` | ⚠️ ✔ |
 | Pause/resume downloads | ✅ `pauseDownload`, `resumeDownload` | ✅ pause = menu only; resume also row double-click - `downloads_controller.cpp:402` | ✅ ✔ |
 | Cancel downloads | ✅ `cancelDownload` | ✅ Cancel on a running row's context menu and on the Delete key, the `Cancelled` state (below READY, so neither Delete batch sweeps it up) and a dropped `.unfinished` partial - `downloads_tab.h:51`, `pipeline_worker.cpp:444`, `downloads_tab.cpp:814` | ✅ ✔ |
 | Download speed tracking | ✅ `downloadSpeed` rolling average | ✅ average over the transfer's own elapsed time with MO2's five-second floor and a per-run resume base, off a steady clock - `average_download_speed()` `downloads_tab.cpp:223`; the row bar renders `%p% - speed - ~remaining` like MO2 (downloadmanager.cpp:1747-1750) and drops the estimate when it cannot be made - `downloads_tab.cpp:667`. No per-server history, which rows below carry | ✅ ✔ |
@@ -1085,7 +1086,7 @@ port - their cited GMM symbol names were invented, the features are not.
 | Microsoft Store game handling | ✅ `InstanceManager` | ❌ | ❌ · |
 | U025 Manage Instances action hidden when change not allowed | ✅ `mainwindow.cpp:741-743` | ❌ | ❌ · |
 | U168 Instance manager dialog controls (create/explore/rename/delete/switch, filter, wiki link) | ✅ `instancemanagerdialog.ui` | ⚠️ switcher dialog only, full set unproven - `instance_switcher_dialog.h:19` | ⚠️ · |
-| U169 Instance manager flows (validation errors, switching TaskDialog, delete guards) | ✅ `instancemanagerdialog.cpp:112-563` | ❌ | ❌ · |
+| U169 Instance manager flows (validation errors, switching TaskDialog, delete guards) | ✅ `instancemanagerdialog.cpp:112-563` | ⚠️ validation (a broken target is refused before the window closes) and the switching TaskDialog are real - `settings_controller.cpp:1746`, `:1801`; delete guards unproven | ⚠️ · |
 | U179 CreateInstanceDialog page copy (intro/type/game/edition/name/profile/paths) | ✅ `createinstancedialog.ui` | ❌ | ❌ · |
 | U286 createinstancedialogpages per-page validation logic | ✅ `createinstancedialogpages.cpp` | ❌ | ❌ · |
 

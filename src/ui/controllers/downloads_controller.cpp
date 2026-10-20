@@ -9,7 +9,10 @@
 #include "ui/widgets/mod_list_model.h"
 
 #include <QAbstractButton>
+#include <QCoreApplication>
 #include <QCryptographicHash>
+#include <QElapsedTimer>
+#include <QEventLoop>
 #include <QFile>
 #include <QMessageBox>
 #include <QPushButton>
@@ -399,6 +402,76 @@ bool DownloadsController::confirm_close() {
   return true;
 }
 
+bool DownloadsController::pause_active_for_restart() {
+  auto *dt = w_->right_panel_ ? w_->right_panel_->downloads_tab() : nullptr;
+  if (!dt || dt->downloading_ids().empty())
+    return true;
+  dt->pause_downloading();
+  // The pauses are cooperative: pause_requested hops to the pipeline worker
+  // (QueuedConnection), the transfer loop notices and emits paused(id), and
+  // mark_paused flips the row. Pump the event loop until every row has landed
+  // in Paused, bounded - a worker that never answers means the switch is
+  // refused, never that the downloads are silently cancelled.
+  QElapsedTimer deadline;
+  deadline.start();
+  while (!dt->downloading_ids().empty() && deadline.elapsed() < 10000)
+    QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
+  if (!dt->downloading_ids().empty()) {
+    engine::Logger::instance().warn(
+        "[Downloads] Instance switch refused: a download did not pause in "
+        "time");
+    return false;
+  }
+  // Persist the paused rows now: the meta carries the identity a resume
+  // after the relaunch rebuilds the link from.
+  save_download_manifest();
+  return true;
+}
+
+bool DownloadsController::resume_link_rebuildable(const ui::DownloadMeta &meta) {
+  // Same rule the restore path applies (DownloadsTab::deserialize): a Nexus
+  // row with domain + mod id + file id, or any row carrying its direct URL.
+  const bool nexus =
+      !meta.parent_mod_id.empty() && meta.file_id > 0 && !meta.nexus_domain.empty();
+  return nexus || !meta.direct_url.empty();
+}
+
+void DownloadsController::restore_resume_links() {
+  auto *dt = w_->right_panel_->downloads_tab();
+  if (!dt)
+    return;
+  // Only Paused rows act on a link (Resume is their action), so only they
+  // need one rebuilt. deserialize() kept a Paused row exactly when its
+  // identity is rebuildable, so the two sides agree by construction.
+  for (const auto &meta : dt->to_metas()) {
+    if (meta.state != ui::DownloadState::Paused)
+      continue;
+    if (!resume_link_rebuildable(meta))
+      continue;
+    if (!meta.parent_mod_id.empty() && meta.file_id > 0 && !meta.nexus_domain.empty() &&
+        meta.parent_mod_id.find_first_not_of("0123456789") == std::string::npos) {
+      // A rebuilt Nexus link carries no download key: resuming it needs the
+      // API key, and the resume path below says so when there is none.
+      engine::Uri::NxmLink link;
+      link.nexus_domain       = meta.nexus_domain;
+      link.mod_id             = std::stoll(meta.parent_mod_id);
+      link.file_id            = meta.file_id;
+      w_->nxm_links_[meta.id] = link;
+      continue;
+    }
+    if (meta.source == "LoversLab") {
+      w_->url_downloads_[meta.id] = meta.direct_url;
+    } else {
+      // modl:// rows (ModPub and Manual): the direct URL is the transport,
+      // and the worker is handed the current game id at resume time anyway.
+      engine::Uri::ModlLink link;
+      link.game_id             = w_->current_game_id_;
+      link.direct_url          = meta.direct_url;
+      w_->modl_links_[meta.id] = link;
+    }
+  }
+}
+
 void DownloadsController::save_download_manifest() {
   auto *dt = w_->right_panel_->downloads_tab();
   if (!dt)
@@ -457,6 +530,10 @@ void DownloadsController::wire_downloads_tab() {
   // archives are recognized as already-tracked instead of duplicated as
   // "Manual" rows.
   load_download_manifest();
+  // Rebuild the resume links for the rows the manifest restored as Paused:
+  // the link maps are in-memory only, so without this a download paused
+  // before a restart could never be resumed after it.
+  restore_resume_links();
   dt->set_downloads_dir(w_->downloads_dir_path());
 
   connect(dt, &DownloadsTab::install_requested, this,
@@ -1263,6 +1340,10 @@ void DownloadsController::handle_modl_download(const engine::Uri::ModlLink &link
 
   // Keep the modl link so a paused download can be resumed later.
   w_->modl_links_[key] = link;
+  // Persist the direct URL on the row: the in-memory link map does not
+  // survive a restart, and this is what makes the row resumable after one.
+  if (dt)
+    dt->note_direct_url(key, link.direct_url);
 
   // Same repeat-link guard as the NXM path: an entry that is already fetching
   // or already on disk must not be fetched a second time. A row this call just
@@ -1345,6 +1426,10 @@ void DownloadsController::start_loverslab_download(const std::string &url) {
 
   // Keep the URL so a paused download can be resumed later.
   w_->url_downloads_[key] = url;
+  // Persist it on the row too: the in-memory map does not survive a restart,
+  // and this is what makes the row resumable after one.
+  if (dt)
+    dt->note_direct_url(key, url);
 
   // Same repeat-link guard as the NXM path: an entry that is already fetching
   // or already on disk must not be fetched a second time. A row this call just

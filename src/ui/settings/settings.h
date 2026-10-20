@@ -318,6 +318,13 @@ public:
   void set_hide_api_counter(bool on);
   bool show_change_game_confirmation() const;
   void set_show_change_game_confirmation(bool on);
+  // Restart the app on every instance switch instead of live-switching the
+  // running window. Defaults to ON: a live switch reuses every controller,
+  // model and in-flight worker, which is the root of the cross-instance
+  // stale-state bug class (stale mod lists, plugins DB, pending changes and
+  // orphaned downloads). A restart gives each instance a fresh window.
+  bool restart_on_instance_switch() const;  // key: interface/restart_on_instance_switch
+  void set_restart_on_instance_switch(bool on);
   // Full UI tab mode: Settings/Pipeline open as in-window tabs instead of
   // popup dialogs. Defaults to OFF (popup behavior, identical to the
   // pre-tab layout).

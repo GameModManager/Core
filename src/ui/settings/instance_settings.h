@@ -72,13 +72,20 @@ void set_instance_plugin_setting(const std::filesystem::path &instance_root,
 bool instance_effective_settings_differ(const std::filesystem::path &from,
                                         const std::filesystem::path &to);
 
-// What a switch from one instance root to another has to do. The app has to
-// restart whenever the two instances resolve a different theme, style, icon
-// pack or plugin set, because a live switch would leave the already-loaded
-// plugin set behind. Settings > General > "Confirm before switching game
-// instance" decides whether that restart asks first; with it off the restart
-// is the only possible outcome, never a live switch, so an unanswered switch
-// can never land in a half-applied state.
+// What a switch from one instance root to another has to do.
+//
+// Settings > General > "Restart when switching game instance" (default on)
+// makes every switch a restart: a live switch reuses every controller, model
+// and in-flight worker, which is the root of the cross-instance stale-state
+// bug class. With it on, "Confirm before switching game instance" decides
+// whether the restart asks first.
+//
+// With the restart setting off, the app has to restart only when the two
+// instances resolve a different theme, style, icon pack or plugin set,
+// because a live switch would leave the already-loaded plugin set behind.
+// The confirmation setting decides whether that restart asks first; with it
+// off the restart is the only possible outcome, never a live switch, so an
+// unanswered switch can never land in a half-applied state.
 enum class InstanceSwitch {
   Live,     // same effective settings - switch in place
   Ask,      // restart, confirming first
