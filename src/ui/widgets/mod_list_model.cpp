@@ -506,11 +506,11 @@ QVariant ModList::data(const QModelIndex &index, int role) const {
   }
   // Version cell: MO2 has no tooltip here beyond the installed version, but
   // it does draw an update badge in this column (modlistversiondelegate.cpp
-  // :44), so a mod with a newer Nexus file says which one is waiting.
+  // :44), so a mod with a newer file at its source says which one is waiting.
   if (role == Qt::ToolTipRole && index.column() == Version && shows_update(mod))
     return mod.newest_version.isEmpty()
-               ? tr("An update is available on Nexus")
-               : tr("Newest version on Nexus: %1").arg(mod.newest_version);
+               ? tr("An update is available")
+               : tr("Newest version: %1").arg(mod.newest_version);
   if (role == Qt::ToolTipRole && index.column() == Flags &&
       (!mod.tags.isEmpty() || mod.is_fomod || mod.root_override || mod.invalid_data ||
        mod.no_metadata || mod.is_empty || mod.has_hidden_files || mod.is_mirrored ||
@@ -1787,10 +1787,10 @@ void ModList::set_update_state(const QString &id, bool available, const QString 
   for (int i = 0; i < mods_.size(); ++i) {
     if (mods_[i].id != id)
       continue;
-    if (mods_[i].nexus_update_available == available &&
+    if (mods_[i].update_available == available &&
         mods_[i].newest_version == newest && mods_[i].ignored_version == ignored)
       return;
-    mods_[i].nexus_update_available = available;
+    mods_[i].update_available = available;
     mods_[i].newest_version         = newest;
     mods_[i].ignored_version        = ignored;
     // The Version cell wears the badge (DecorationRole), goes bold red
@@ -1808,7 +1808,7 @@ bool ModList::shows_update(const ModEntry &mod) const {
   // The engine owns the ignore rule: it records the version the user turned
   // away from and suppresses only while the newest version is STILL that one.
   return engine::Source::Nexus::UpdateCheck::update_visible(
-      mod.nexus_update_available, mod.newest_version.toStdString(),
+      mod.update_available, mod.newest_version.toStdString(),
       mod.ignored_version.toStdString());
 }
 

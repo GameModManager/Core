@@ -283,7 +283,7 @@ bool wears_update_badge(ui::ModList *model, const QString &id) {
   return model->index(row, ui::ModList::Version)
       .data(Qt::ToolTipRole)
       .toString()
-      .contains(QStringLiteral("Newest version on Nexus"));
+      .contains(QStringLiteral("Newest version"));
 }
 
 // Whether the Version cell is painted BOLD AND RED, the way MO2 paints a mod
@@ -1013,6 +1013,180 @@ TEST_CASE("Mod pipeline: an MO2-game archive that ships no version takes it from
     // waiting and the row has to keep saying so.
     CHECK(wears_update_badge(model, QStringLiteral("CrashLogger")));
   }
+
+  fs::remove_all(root);
+}
+
+// The LoversLab verdict, end to end through the REAL load path and the REAL
+// install path. The sweep itself is covered engine-side
+// (page_source_sweep_test.cpp); what only a UI test can prove is that a
+// verdict written under [General] update_available - the page-scrape sources'
+// key, not Nexus's - reaches the row: the load path must read it for a
+// loverslab-sourced mod, and the install's reconcile must clear it through the
+// same gate. Both used to be Nexus-only, so a green engine test would have
+// proven nothing about what the user sees.
+TEST_CASE("Mod pipeline: a LoversLab verdict badges the row and the install clears it",
+          "[ui][harness][pipeline][e2e][loverslab]") {
+  const fs::path root = fs::path("/tmp/opencode") / "gmm_pipeline_e2e_loverslab";
+  fs::remove_all(root);
+  fs::create_directories(root / "config");
+  fs::create_directories(root / "data");
+  fs::create_directories(root / "instances");
+  qputenv("XDG_CONFIG_HOME", QByteArray((root / "config").string().c_str()));
+  qputenv("XDG_DATA_HOME", QByteArray((root / "data").string().c_str()));
+  qputenv("HOME", QByteArray(root.string().c_str()));
+
+  qputenv("QT_QPA_PLATFORM", "offscreen");
+  int app_argc     = 1;
+  char app_argv0[] = "mod_pipeline_e2e_loverslab_test";
+  char *app_argv[] = {app_argv0, nullptr};
+  QApplication app(app_argc, app_argv);
+  QCoreApplication::setOrganizationName("GameModManager");
+  QCoreApplication::setApplicationName("GameModManager");
+
+  auto &settings = Settings::instance();
+  settings.set_nxm_handler_check("dont_ask");
+  settings.set_check_update_after_mod_install(false);
+  settings.set_hide_installed_downloads(true);
+
+  auto inst           = engine::Instance::installed("TestGame", root / "instances");
+  inst.info().game_id = "testgame";
+  REQUIRE(inst.create_directories());
+  REQUIRE(inst.write_toml());
+  const fs::path inst_root = inst.info().root;
+  const auto instance      = engine::Instance::from_root(inst_root);
+  const fs::path mods_dir  = instance.path_for(engine::InstanceKind::Mods);
+  const fs::path dl_dir    = instance.path_for(engine::InstanceKind::Downloads);
+  fs::create_directories(dl_dir);
+
+  // The LoversLab mod, seeded exactly as the sweep leaves it after finding an
+  // update: the verdict under [General] update_available, the newest version
+  // beside it, the page provenance in [LoversLab].
+  write_file(mods_dir / "LlpMod" / "LlpMod.esp", "plugin v1");
+  write_file(mods_dir / "LlpMod" / "meta.ini",
+             "[General]\n"
+             "version=1.0.0\n"
+             "update_available=true\n"
+             "newestversion=2.0.0\n"
+             "[GameModManager]\n"
+             "folder=LlpMod\n"
+             "source_type=loverslab\n"
+             "[LoversLab]\n"
+             "fileid=6832\n"
+             "page_url=https://www.loverslab.com/files/file/6832-example/\n");
+
+  // The newer archive the user is about to install over it. Its own meta.ini
+  // carries the LoversLab provenance, so the installed folder stays
+  // loverslab-sourced and the reconcile reads the right verdict key.
+  const std::string meta_v2 =
+      "[General]\nversion=2.0.0\ninstallationFile=LlpMod-2.0.0.zip\n"
+      "[GameModManager]\nfolder=LlpMod\nsource_type=loverslab\n"
+      "[LoversLab]\nfileid=6832\n"
+      "page_url=https://www.loverslab.com/files/file/6832-example/\n";
+  REQUIRE(make_zip(dl_dir / "LlpMod-2.0.0.zip",
+                   {{"Data/LlpMod.esp", "plugin v2"}, {"meta.ini", meta_v2}}));
+
+  ui::DownloadMeta meta;
+  meta.archive    = dl_dir / "LlpMod-2.0.0.zip";
+  meta.id         = "ll-6832";
+  meta.name       = "LlpMod";
+  meta.source     = "LoversLab";
+  meta.total_size = static_cast<int64_t>(fs::file_size(dl_dir / "LlpMod-2.0.0.zip"));
+  meta.state      = ui::DownloadState::Complete;
+  REQUIRE(ui::write_download_meta(meta, ui::download_meta_path(meta, dl_dir)));
+
+  engine::GameKnowledge knowledge;
+  knowledge.set("testgame", "mods_subpath", "Mods");
+
+  ui::MainWindow w;
+  w.set_game_knowledge(&knowledge);
+  w.show();
+  w.set_game_info("testgame", "Test Game", "Default", {}, inst_root);
+  REQUIRE(pump_until([&w] {
+    return !w.is_loading();
+  }));
+
+  auto *panel = w.findChild<ui::RightPanel *>();
+  REQUIRE(panel != nullptr);
+  auto *tab = panel->ensure_downloads_tab();
+  REQUIRE(tab != nullptr);
+  auto *table = tab->table();
+  REQUIRE(table != nullptr);
+  click_tab(panel->tab_widget(), QStringLiteral("Downloads"));
+
+  auto *model = w.findChild<ui::ModList *>();
+  auto *ctl   = w.findChild<ui::ModListController *>();
+  auto *view  = w.mod_view();
+  REQUIRE(model != nullptr);
+  REQUIRE(ctl != nullptr);
+  REQUIRE(view != nullptr);
+  REQUIRE(pump_until([&] {
+    return find_mod_row(view, QStringLiteral("LlpMod")) >= 0;
+  }));
+
+  // === the verdict reaches the row ========================================
+  // The load path read [General] update_available for a loverslab-sourced mod
+  // and the row is wearing it - bold red, the same rendering the Nexus verdict
+  // gets, because the user has one idea of "an update is waiting".
+  CHECK(wears_update_badge(model, QStringLiteral("LlpMod")));
+  CHECK(version_cell(model, QStringLiteral("LlpMod")) == "1.0.0");
+  CHECK(wears_bold_red_version(model, QStringLiteral("LlpMod")));
+
+  // NEGATIVE CONTROL: flip the verdict off on disk, reload, and the row must
+  // stop wearing it. Without this a green check above could be the load path
+  // badgeing everything.
+  {
+    auto cleared = engine::ModMeta::load(mods_dir, "LlpMod");
+    cleared.set("General", "update_available", "false");
+    REQUIRE(cleared.save(mods_dir, "LlpMod"));
+    ctl->load_mods_from_game();
+    REQUIRE(pump_until([&w] {
+      return !w.is_loading();
+    }));
+    REQUIRE(pump_until([&] {
+      return find_mod_row(view, QStringLiteral("LlpMod")) >= 0;
+    }));
+    CHECK_FALSE(wears_update_badge(model, QStringLiteral("LlpMod")));
+
+    // And back on, for the install below to clear.
+    auto flagged = engine::ModMeta::load(mods_dir, "LlpMod");
+    flagged.set("General", "update_available", "true");
+    REQUIRE(flagged.save(mods_dir, "LlpMod"));
+    ctl->load_mods_from_game();
+    REQUIRE(pump_until([&w] {
+      return !w.is_loading();
+    }));
+    REQUIRE(pump_until([&] {
+      return find_mod_row(view, QStringLiteral("LlpMod")) >= 0;
+    }));
+    REQUIRE(wears_update_badge(model, QStringLiteral("LlpMod")));
+  }
+
+  // === the real install clears it =========================================
+  const int row = find_download_row_for_archive(table, QStringLiteral("LlpMod-2.0.0"));
+  REQUIRE(row >= 0);
+  ModalAnswerer modals;
+  modals.arm();
+  double_click_cell(table, row, ui::DownloadsTab::Name);
+
+  REQUIRE(pump_until([&] {
+    return fs::exists(mods_dir / "LlpMod" / "Data" / "LlpMod.esp");
+  }));
+  REQUIRE(pump_until([&] {
+    return cell_text(table, row, ui::DownloadsTab::Status) == "Installed";
+  }));
+  REQUIRE(modals.refused_modal.isEmpty());
+  modals.disarm();
+
+  // The install recorded the archive's own version, which IS the newest the
+  // verdict named - so the reconcile's gate (installed == newest) fires and
+  // the verdict is cleared on disk...
+  CHECK(engine::ModMeta::load(mods_dir, "LlpMod").get("General", "version") == "2.0.0");
+  CHECK(engine::ModMeta::load(mods_dir, "LlpMod").get("General", "update_available") ==
+        "false");
+  // ...and CONSUMER-REACHES-CONTROL: the row stops wearing it. This is the
+  // stale-badge bug the reconcile exists for, on the page-scrape sources' key.
+  CHECK_FALSE(wears_update_badge(model, QStringLiteral("LlpMod")));
 
   fs::remove_all(root);
 }

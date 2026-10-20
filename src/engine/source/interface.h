@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <filesystem>
 #include <memory>
 #include <string>
@@ -66,6 +67,33 @@ struct DownloadInfoResult {
   std::string domain;     // Nexus domain to write back
 };
 
+// Everything one source's update sweep needs, copied off the UI thread at
+// request time - the same snapshot rule the Nexus sweep's request obeys: the
+// worker must not reach the keyring, and the game's provider domain is
+// UI-layer knowledge. Fields a source does not use stay empty.
+struct UpdateSweepContext {
+  std::filesystem::path mods_dir;  // instance mods_dir_path()
+  std::string game_domain;         // game-domain hint (the game's Nexus slug);
+                                   // empty for a game with no Nexus identity
+  std::string credential;          // the source's stored credential, read on
+                                   // the GUI thread (Nexus API key); never
+                                   // logged
+  int64_t now = 0;                 // Unix seconds
+  bool force = false;              // ignore the cached check stamps
+};
+
+// The outcome of one source's update sweep, in the terms the UI has to report
+// it in. `ok` and `message` travel together on purpose: a refused check must
+// never be renderable as "no updates available". Per-mod verdicts do NOT
+// travel here - each source writes them into its mods' own meta.ini, the way
+// the Nexus sweep already does, and the UI re-reads the metas once.
+struct SourceUpdateReport {
+  bool ok = false;
+  std::string message = {};  // empty only on a sweep that fully succeeded
+  int updates = 0;           // mods an update is being shown for
+  int total = 0;             // this source's mods in the instance
+};
+
 class Interface {
 public:
   virtual ~Interface()                    = default;
@@ -101,6 +129,21 @@ public:
   // no-guess rule every source obeys. The default cannot answer at all.
   virtual DownloadInfoResult query_info(const DownloadInfoQuery &query) const {
     (void)query;
+    return {};
+  }
+
+  // Can this source check the installed mods under `ctx.mods_dir` for
+  // updates? A source with no reliable update path for what it installed
+  // returns false and the sweep skips it - it never guesses, and a mod of
+  // that source simply gets no verdict and no decoration.
+  virtual bool can_check_updates() const { return false; }
+
+  // Sweep this source's installed mods and write each verdict into the mod's
+  // own meta.ini, the way the Nexus sweep already does. Synchronous and
+  // blocking - callers in the UI run it off the GUI thread. The default
+  // cannot answer at all.
+  virtual SourceUpdateReport check_updates(const UpdateSweepContext &ctx) const {
+    (void)ctx;
     return {};
   }
 };

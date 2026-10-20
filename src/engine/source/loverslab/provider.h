@@ -51,6 +51,15 @@ public:
   // "no such mod" - the two are indistinguishable here.
   DownloadInfoResult query_info(const DownloadInfoQuery &query) const override;
 
+  // The update sweep: scrape each LoversLab mod's page and compare it
+  // against the page state the mod's meta.ini last recorded. Verdicts are
+  // written into each mod's own meta.ini ([General] update_available /
+  // newestversion), the same shape the Nexus sweep writes. Scrapes are
+  // spaced out - LoversLab rate limits aggressively and there is no API
+  // budget readout to lean on.
+  bool can_check_updates() const override;
+  SourceUpdateReport check_updates(const UpdateSweepContext &ctx) const override;
+
   // URL helpers (pure, unit-tested, reused by the future browser-extension
   // flow that will hand GMM a bare file-page link).
   static bool is_loverslab_url(const std::string &url);

@@ -16,6 +16,7 @@
 #include "ui/controllers/backup_actions.h"
 #include "ui/controllers/mod_context_menu.h"
 #include "ui/main_window/main_window.h"
+#include "ui/main_window/source_update_worker.h"
 
 class QMenu;
 class QVBoxLayout;
@@ -106,23 +107,23 @@ public slots:
   void launch_conflict_scan_batch(std::vector<std::function<void()>> follow_ups);
   ui::ConflictScanRequest build_conflict_scan_request();
   void reload_open_modinfo_dialog();
-  // Nexus mod-update sweep (Workspace-sc4z). The DRIVER for
-  // engine::Source::Nexus::UpdateCheck::run(): resolves the game's Nexus
-  // domain + the stored API key on the main thread, runs the sweep on
-  // NexusUpdateThread, and reports the outcome into the status bar's
-  // persistent update notice. Manual by design - see the MainWindow comment.
+  // Source mod-update sweep (Workspace-sc4z, generalized to every provider).
+  // The DRIVER for every registered provider's check_updates(): resolves the
+  // game's Nexus domain + the stored API key on the main thread, runs the
+  // sweep on SourceUpdateThread, and reports the outcome into the status
+  // bar's persistent update notice. Manual by design - see the MainWindow
+  // comment.
   //
-  // `force` asks Nexus about every mod instead of trusting the per-mod
-  // lastnexusquery cache, at one request per mod. The toolbar button passes
+  // `force` asks every source about every mod instead of trusting the
+  // persisted page state, at one request per mod. The toolbar button passes
   // true because a stamp left behind by a sweep that never got an answer is
   // indistinguishable from a real one on disk, and would otherwise suppress
   // that mod's update forever with no way for the user to clear it.
   void check_mod_updates(bool force = false);
-  void on_nexus_update_finished(engine::Source::Nexus::UpdateCheck::Report report,
-                                quint64 generation);
-  // Silence (or un-silence) the newest Nexus version for ONE mod. The write is
-  // the engine's (per-mod meta.ini, never per-profile); this only routes it
-  // and re-reads the metas so the row's badge follows what was just written.
+  void on_source_update_finished(ui::SourceUpdateResult result, quint64 generation);
+  // Silence (or un-silence) the newest version for ONE mod. The write is the
+  // engine's (per-mod meta.ini, never per-profile); this only routes it and
+  // re-reads the metas so the row's badge follows what was just written.
   void set_mod_update_ignored(const QString &mod_id, bool ignore);
   // LOOT advisory-tool sort (PLAN.md §7.1).
   void run_loot_sort();

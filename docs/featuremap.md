@@ -514,7 +514,7 @@ port - their cited GMM symbol names were invented, the features are not.
 | Newest version tracking | ✅ `ModInfo::newestVersion()` | ✅ `ModInfoResult::newest_version` + meta key - `provider.h:16` | ✅ · |
 | Ignored version | ✅ `ModInfo::ignoredVersion()` | ✅ MO2-spelled `[General] ignoredVersion`, lowercase still read, row-menu Ignore/Stop Ignoring - `engine/source/nexus/update_check.cpp` | ✅ · |
 | Downgrade detection | ✅ `ModInfo::downgradeAvailable()` | ❌ | ❌ · |
-| Batch update check | ✅ `checkAllForUpdate` | ✅ one bulk updated.json + per-mod follow-ups, driver on the All Mods menu - `engine/source/nexus/update_check.cpp:326` | ✅ · |
+| Batch update check | ✅ `checkAllForUpdate` | ✅ every registered provider sweeps its own mods: Nexus via one bulk updated.json + per-mod follow-ups, LoversLab/ModPub via paced page scrapes against recorded page state - `engine/source/nexus/update_check.cpp:326`, `engine/source/page_update.cpp` | ✅ · |
 | Check update after install | ✅ `Settings::checkUpdateAfterInstallation` | ❌ | ❌ · |
 | ModUpdateDbClient (per-game DB poll, ETag/304, offline cache) | ❌ | 🚀 ISO 8601 compare, `by_game` index - `mod_update_db_client.h:124` | 🚀 · |
 | Per-game index pipeline (by_game directory, manifest) | ❌ | 🚀 per-game index + shard lookup - `mod_update_db_client.h:164` | 🚀 · |

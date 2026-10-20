@@ -145,6 +145,7 @@ install/conflict_resolver.cpp
     modpack/collection/sync.cpp
     source/registry.cpp
     source/update_policy.cpp
+    source/page_update.cpp
     source/http_util.cpp
     source/nexus/provider.cpp
     source/nexus/categories.cpp

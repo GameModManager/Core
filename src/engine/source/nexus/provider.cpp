@@ -607,6 +607,29 @@ DownloadInfoResult Provider::query_info(const DownloadInfoQuery &query) const {
 }
 
 // ---------------------------------------------------------------------------
+// Provider::check_updates (the mod-update sweep, MO2 ModInfo::checkAllForUpdate)
+// ---------------------------------------------------------------------------
+
+bool Provider::can_check_updates() const { return true; }
+
+SourceUpdateReport Provider::check_updates(const UpdateSweepContext &ctx) const {
+  // Pure delegation: the bulk updated.json request, the per-mod files.json
+  // follow-ups and the meta.ini verdict writes are all UpdateCheck::run()'s,
+  // unchanged. This only translates the report into the generic shape the UI
+  // aggregates across sources - the per-source detail the generic report
+  // drops (rate_limited, requests, checked, the per-mod unreachable list)
+  // already travels inside `message`.
+  const auto report =
+      UpdateCheck::run(ctx.game_domain, ctx.credential, ctx.mods_dir, ctx.now, ctx.force);
+  SourceUpdateReport out;
+  out.ok      = report.ok;
+  out.message = report.message;
+  out.updates = report.updates;
+  out.total   = report.total;
+  return out;
+}
+
+// ---------------------------------------------------------------------------
 // Provider::fetch_mod_info
 // ---------------------------------------------------------------------------
 
