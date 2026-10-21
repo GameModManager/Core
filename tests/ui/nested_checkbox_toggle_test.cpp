@@ -1,0 +1,155 @@
+// A mod nested under a separator must toggle from its checkbox click.
+//
+// User report (P0): a child mod under a separator ignores checkbox clicks -
+// the state never changes. Top-level mods toggle fine. The cause is in the
+// Name column's IndentDelegate: paint() draws the checkbox shifted right by
+// depth * kIndentStep, but the inherited QStyledItemDelegate::editorEvent
+// hit-tests the check rect at the UNSHIFTED cell edge, so the click on the
+// visible checkbox of a nested row lands in empty gutter and the toggle
+// never reaches the model.
+//
+// Nesting is same-kind only (mods never parent-link under separators), so
+// the reported child is a mod nested under a mod inside the separator's
+// band - depth 1, checkbox drawn 20px right of the cell edge.
+//
+// Drives a REAL ModView + REAL ModList (no proxy, no shims) and clicks the
+// viewport where the checkbox is VISIBLY drawn - the shifted indicator rect,
+// computed through the same style query the delegate's paint uses. The
+// top-level row is the in-case control: same click, same view, known good.
+#include "ui/settings/settings.h"
+#include "ui/widgets/mod_list_model.h"
+#include "ui/widgets/mod_table_view.h"
+
+#include <QApplication>
+#include <QCoreApplication>
+#include <QStyle>
+#include <QStyleOptionViewItem>
+#include <QTest>
+
+#include <catch2/catch_test_macros.hpp>
+
+#include <filesystem>
+
+namespace fs = std::filesystem;
+
+namespace {
+
+constexpr int kIndentStep = 20;  // px per nesting level (IndentDelegate)
+
+int row_of_id(const ui::ModList *model, const QString &id) {
+  for (int r = 0; r < model->rowCount(); ++r) {
+    if (model->mods().at(r).id == id)
+      return r;
+  }
+  return -1;
+}
+
+// Center of the checkbox as it is VISIBLY drawn: the style-queried indicator
+// rect for the cell, translated right by the row's indent shift. Clicking
+// anywhere else would not exercise the reported path.
+QPoint visible_checkbox_center(const QTreeView *view, const QModelIndex &idx,
+                               int depth) {
+  QStyleOptionViewItem opt;
+  opt.initFrom(view);
+  opt.rect = view->visualRect(idx);
+  opt.features |= QStyleOptionViewItem::HasCheckIndicator;
+  const QRect indicator =
+      view->style()
+          ->subElementRect(QStyle::SE_ItemViewItemCheckIndicator, &opt, view)
+          .translated(depth * kIndentStep, 0);
+  return indicator.center();
+}
+
+}  // namespace
+
+TEST_CASE("nested mod checkbox click toggles the mod", "[ui][modlist][nesting]") {
+  qputenv("QT_QPA_PLATFORM", "offscreen");
+  // Throwaway config root: ModList reads Settings (separator icon keys).
+  const fs::path root = "/tmp/gmm_nested_checkbox_toggle";
+  std::error_code ec;
+  fs::remove_all(root, ec);
+  fs::create_directories(root / "config");
+  qputenv("XDG_CONFIG_HOME", QByteArray((root / "config").string().c_str()));
+
+  int test_argc     = 1;
+  char test_argv0[] = "nested_checkbox_toggle_test";
+  char *test_argv[] = {test_argv0, nullptr};
+  QApplication app(test_argc, test_argv);
+  QCoreApplication::setOrganizationName("GameModManager");
+  QCoreApplication::setApplicationName("GameModManager");
+  Settings::instance().set_nxm_handler_check("dont_ask");
+
+  ui::ModList model;
+  model.set_nesting_enabled(true);
+
+  // Rows: a top-level mod, a separator, a mod in its band, and that mod's
+  // nested child (the reported row).
+  QVector<ui::ModEntry> entries;
+  ui::ModEntry top;
+  top.id      = QStringLiteral("TopMod");
+  top.name    = top.id;
+  top.enabled = true;
+  entries.append(top);
+  ui::ModEntry sep;
+  sep.id           = QStringLiteral("Pack");
+  sep.name         = sep.id;
+  sep.enabled      = true;
+  sep.is_separator = true;
+  entries.append(sep);
+  ui::ModEntry parent;
+  parent.id      = QStringLiteral("CrashLogger");
+  parent.name    = parent.id;
+  parent.enabled = true;
+  entries.append(parent);
+  ui::ModEntry child;
+  child.id        = QStringLiteral("CrashLogger SSE PDB");
+  child.name      = child.id;
+  child.enabled   = true;
+  child.parent_id = parent.id;
+  entries.append(child);
+  model.reset_with_order(entries);
+
+  ui::ModView view;
+  view.setModel(&model);
+  view.resize(600, 300);
+  view.show();
+  QApplication::processEvents();
+
+  const int top_row   = row_of_id(&model, QStringLiteral("TopMod"));
+  const int child_row = row_of_id(&model, QStringLiteral("CrashLogger SSE PDB"));
+  REQUIRE(top_row >= 0);
+  REQUIRE(child_row >= 0);
+  REQUIRE(model.mods()[child_row].parent_id == QStringLiteral("CrashLogger"));
+  REQUIRE(model.nesting_depth(child_row) == 1);
+  REQUIRE(model.mods()[child_row].enabled);
+
+  const QModelIndex child_idx = model.index(child_row, ui::ModList::Name);
+  const QPoint child_click =
+      visible_checkbox_center(&view, child_idx, model.nesting_depth(child_row));
+  // The click must land on the drawn checkbox, not somewhere else.
+  REQUIRE(view.visualRect(child_idx).contains(child_click));
+
+  // THE POINT: clicking the nested row's visible checkbox flips the state.
+  QTest::mouseClick(view.viewport(), Qt::LeftButton, Qt::NoModifier, child_click);
+  QApplication::processEvents();
+  CHECK_FALSE(model.mods()[child_row].enabled);
+
+  // Control: the same click on the top-level row (depth 0, unshifted) still
+  // toggles - the fix must not break the working path.
+  const QModelIndex top_idx = model.index(top_row, ui::ModList::Name);
+  QTest::mouseClick(view.viewport(), Qt::LeftButton, Qt::NoModifier,
+                    visible_checkbox_center(&view, top_idx, 0));
+  QApplication::processEvents();
+  CHECK_FALSE(model.mods()[top_row].enabled);
+
+  // And both toggle back on.
+  QTest::mouseClick(view.viewport(), Qt::LeftButton, Qt::NoModifier, child_click);
+  QApplication::processEvents();
+  CHECK(model.mods()[child_row].enabled);
+  QTest::mouseClick(view.viewport(), Qt::LeftButton, Qt::NoModifier,
+                    visible_checkbox_center(&view, top_idx, 0));
+  QApplication::processEvents();
+  CHECK(model.mods()[top_row].enabled);
+
+  fs::remove_all(root, ec);
+}

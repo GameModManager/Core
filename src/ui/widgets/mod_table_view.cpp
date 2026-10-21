@@ -239,6 +239,46 @@ void IndentDelegate::paint(QPainter *painter, const QStyleOptionViewItem &option
   }
 }
 
+bool IndentDelegate::editorEvent(QEvent *event, QAbstractItemModel *model,
+                                 const QStyleOptionViewItem &option,
+                                 const QModelIndex &index) {
+  const int depth = index.data(indent_depth_role_).toInt();
+  if (depth <= 0)
+    return QStyledItemDelegate::editorEvent(event, model, option, index);
+
+  // Mirror the paint-side shift: paint() draws the checkbox indentShift px
+  // right of the cell edge, but the inherited hit-test computes the check
+  // rect from the UNSHIFTED option rect, so a click on the visible checkbox
+  // of a nested row landed in empty gutter and never reached the model (the
+  // state did not change). Remap the click position back by the same shift
+  // and let the base class hit-test the unshifted rect.
+  switch (event->type()) {
+  case QEvent::MouseButtonPress:
+  case QEvent::MouseButtonRelease:
+  case QEvent::MouseButtonDblClick: {
+    auto *me                 = static_cast<QMouseEvent *>(event);
+    const int indentShift    = depth * kIndentStep;
+    QStyleOptionViewItem opt = option;
+    initStyleOption(&opt, index);
+    const QWidget *widget = opt.widget ? opt.widget : nullptr;
+    QStyle *style         = widget ? widget->style() : QApplication::style();
+    const QRect checkRect =
+        style->subElementRect(QStyle::SE_ItemViewItemCheckIndicator, &opt, widget)
+            .translated(indentShift, 0);
+    // Only clicks on the drawn checkbox are remapped; clicks elsewhere keep
+    // the base behavior (selection, editing, the unshifted ghost rect).
+    if (!checkRect.contains(me->position().toPoint()))
+      return QStyledItemDelegate::editorEvent(event, model, option, index);
+    QMouseEvent remapped(me->type(), me->position() - QPointF(indentShift, 0),
+                         me->globalPosition(), me->button(), me->buttons(),
+                         me->modifiers(), me->pointingDevice());
+    return QStyledItemDelegate::editorEvent(&remapped, model, option, index);
+  }
+  default:
+    return QStyledItemDelegate::editorEvent(event, model, option, index);
+  }
+}
+
 ModMarkingScrollBar::ModMarkingScrollBar(QTreeView *view)
     : QScrollBar(view), view_(view) {}
 
