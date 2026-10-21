@@ -151,12 +151,13 @@ private:
 // Delegate for the Name column: shifts the checkbox, text, and vendor glyph
 // right by the nesting depth (kIndentDepthRole) so nested mods read as
 // indented under their parent. Purely visual - load order / priorities are
-// untouched. The full-row background (selection / alternate tint) is drawn
-// first on the unshifted rect, so the indentation gutter is never a gap in
-// the row highlight; the checkbox and text are then drawn shifted right
-// together. When the row has a nesting depth > 0, KDE-style tree connector
-// lines are painted in the indent gutter: the horizontal connector runs from
-// the fold arrow area (left edge) to the shifted checkbox.
+// untouched. The row background (selection / alternate / model tint) is
+// painted exactly once - the indent gutter first, then the content pass - so
+// alpha-blended tints are never washed twice. The checkbox is the theme's
+// native PE_IndicatorCheckBox drawn at the shifted indicator rect, the same
+// rect editorEvent hit-tests. When the row has a nesting depth > 0, KDE-style
+// tree connector lines are painted in the indent gutter: the horizontal
+// connector runs from the fold arrow area (left edge) to the shifted checkbox.
 class IndentDelegate : public QStyledItemDelegate {
   Q_OBJECT
 public:

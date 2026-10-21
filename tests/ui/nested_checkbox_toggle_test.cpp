@@ -22,6 +22,9 @@
 
 #include <QApplication>
 #include <QCoreApplication>
+#include <QImage>
+#include <QPainter>
+#include <QProxyStyle>
 #include <QStyle>
 #include <QStyleOptionViewItem>
 #include <QTest>
@@ -59,6 +62,54 @@ QPoint visible_checkbox_center(const QTreeView *view, const QModelIndex &idx,
           .translated(depth * kIndentStep, 0);
   return indicator.center();
 }
+
+// Records the panel fills and checkbox indicator draws issued through the
+// view's style, forwarding everything else unchanged. Only DIRECT draws are
+// recorded: QCommonStyle forwards PE_IndicatorItemViewItemCheck to
+// PE_IndicatorCheckBox internally, and a forwarded call must not count as the
+// delegate drawing the native indicator (the reported bug is exactly the
+// delegate asking for the item-view variant, which several themes override
+// into a bare square instead of forwarding). Lets the paint test count
+// background washes over the nested row's cell (double-paint guard) and check
+// which primitive carries the check state, without depending on any specific
+// theme's rendering.
+class PaintSpyStyle : public QProxyStyle {
+public:
+  struct PanelFill {
+    QRect rect;
+    QBrush brush;
+  };
+  struct CheckDraw {
+    QRect rect;
+    QStyle::State state;
+  };
+
+  mutable QVector<PanelFill> panel_fills;
+  mutable QVector<CheckDraw> check_draws;
+
+  void reset() const {
+    panel_fills.clear();
+    check_draws.clear();
+  }
+
+  void drawPrimitive(PrimitiveElement element, const QStyleOption *option,
+                     QPainter *painter, const QWidget *widget) const override {
+    if (depth_ == 0) {
+      if (element == QStyle::PE_PanelItemViewItem) {
+        if (const auto *vopt = qstyleoption_cast<const QStyleOptionViewItem *>(option))
+          panel_fills.append({option->rect, vopt->backgroundBrush});
+      } else if (element == QStyle::PE_IndicatorCheckBox) {
+        check_draws.append({option->rect, option->state});
+      }
+    }
+    depth_++;
+    QProxyStyle::drawPrimitive(element, option, painter, widget);
+    depth_--;
+  }
+
+private:
+  mutable int depth_ = 0;
+};
 
 }  // namespace
 
@@ -150,6 +201,125 @@ TEST_CASE("nested mod checkbox click toggles the mod", "[ui][modlist][nesting]")
                     visible_checkbox_center(&view, top_idx, 0));
   QApplication::processEvents();
   CHECK(model.mods()[top_row].enabled);
+
+  fs::remove_all(root, ec);
+}
+
+// Follow-up user report on the same nested rows: the Name cell painted the
+// checkbox as a custom square (the item-view check primitive, which several
+// themes render as a bare box - empty on enabled rows) and washed the cell
+// background twice (full-width pass + content pass over alpha-blended
+// conflict/highlight tints = the doubled band). The checkbox must be the
+// theme's native PE_IndicatorCheckBox carrying the real CheckStateRole state,
+// and the background must be painted exactly once.
+TEST_CASE("nested row paints the native checkbox once", "[ui][modlist][nesting]") {
+  qputenv("QT_QPA_PLATFORM", "offscreen");
+  const fs::path root = "/tmp/gmm_nested_checkbox_paint";
+  std::error_code ec;
+  fs::remove_all(root, ec);
+  fs::create_directories(root / "config");
+  qputenv("XDG_CONFIG_HOME", QByteArray((root / "config").string().c_str()));
+
+  int test_argc     = 1;
+  char test_argv0[] = "nested_checkbox_toggle_test";
+  char *test_argv[] = {test_argv0, nullptr};
+  QApplication app(test_argc, test_argv);
+  QCoreApplication::setOrganizationName("GameModManager");
+  QCoreApplication::setApplicationName("GameModManager");
+  Settings::instance().set_nxm_handler_check("dont_ask");
+
+  ui::ModList model;
+  model.set_nesting_enabled(true);
+
+  // Top-level rows DISABLED, nested child ENABLED: the only State_On checkbox
+  // draw in the render must be the child's.
+  QVector<ui::ModEntry> entries;
+  ui::ModEntry top;
+  top.id      = QStringLiteral("TopMod");
+  top.name    = top.id;
+  top.enabled = false;
+  entries.append(top);
+  ui::ModEntry sep;
+  sep.id           = QStringLiteral("Pack");
+  sep.name         = sep.id;
+  sep.enabled      = false;
+  sep.is_separator = true;
+  entries.append(sep);
+  ui::ModEntry parent;
+  parent.id      = QStringLiteral("CrashLogger");
+  parent.name    = parent.id;
+  parent.enabled = false;
+  entries.append(parent);
+  ui::ModEntry child;
+  child.id        = QStringLiteral("CrashLogger SSE PDB");
+  child.name      = child.id;
+  child.enabled   = true;
+  child.parent_id = parent.id;
+  entries.append(child);
+  model.reset_with_order(entries);
+
+  ui::ModView view;
+  view.setModel(&model);
+  PaintSpyStyle spy;
+  view.setStyle(&spy);
+  view.resize(600, 300);
+  view.show();
+  QApplication::processEvents();
+
+  const int child_row = row_of_id(&model, QStringLiteral("CrashLogger SSE PDB"));
+  REQUIRE(child_row >= 0);
+  const QModelIndex child_idx = model.index(child_row, ui::ModList::Name);
+  const QRect child_cell      = view.visualRect(child_idx);
+  REQUIRE(child_cell.isValid());
+
+  // Semi-transparent row tint on the nested row (the plugin-selected
+  // highlight, alpha 64 by default): a background painted twice doubles the
+  // wash visibly - the reported doubled band.
+  model.set_highlighted_mods({QStringLiteral("CrashLogger SSE PDB")});
+
+  QImage image(view.viewport()->size(), QImage::Format_ARGB32_Premultiplied);
+  const auto render = [&view, &image, &spy] {
+    spy.reset();
+    image.fill(Qt::transparent);
+    view.viewport()->render(&image);
+  };
+
+  render();
+
+  // Tinted panel fills over the nested cell: the gutter pass and the content
+  // pass must be disjoint, so every pixel of the cell is washed exactly once.
+  QVector<QRect> tinted;
+  for (const auto &fill : spy.panel_fills)
+    if (fill.brush.style() != Qt::NoBrush && fill.brush.color().alpha() > 0 &&
+        fill.rect.intersects(child_cell))
+      tinted.append(fill.rect);
+  REQUIRE(tinted.size() >= 1);
+  for (int i = 0; i < tinted.size(); ++i)
+    for (int j = i + 1; j < tinted.size(); ++j)
+      CHECK_FALSE(tinted[i].intersects(tinted[j]));
+
+  // The nested row's checkbox is the theme's native indicator carrying the
+  // real state: the enabled row draws PE_IndicatorCheckBox with State_On.
+  bool on_in_child = false;
+  for (const auto &draw : spy.check_draws)
+    if (draw.state.testFlag(QStyle::State_On) &&
+        child_cell.contains(draw.rect.center()))
+      on_in_child = true;
+  CHECK(on_in_child);
+
+  // And the indicator follows the state when the row is disabled.
+  REQUIRE(model.setData(child_idx, Qt::Unchecked, Qt::CheckStateRole));
+  QApplication::processEvents();
+  render();
+  bool off_in_child = false;
+  for (const auto &draw : spy.check_draws) {
+    if (!child_cell.contains(draw.rect.center()))
+      continue;
+    CHECK_FALSE(draw.state.testFlag(QStyle::State_On));
+    if (draw.state.testFlag(QStyle::State_Off))
+      off_in_child = true;
+  }
+  CHECK(off_in_child);
 
   fs::remove_all(root, ec);
 }

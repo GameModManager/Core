@@ -15,6 +15,7 @@
 #include <QPainter>
 #include <QPen>
 #include <QStyle>
+#include <QStyleOptionButton>
 #include <QStyleOptionSlider>
 #include <QToolTip>
 #include <QUrl>
@@ -158,41 +159,55 @@ void IndentDelegate::paint(QPainter *painter, const QStyleOptionViewItem &option
     checkboxWidth = check.right() - opt.rect.left() + 1;
   }
 
-  // Pass 1: full-width background only (no checkbox, no text, no focus).
-  // The selection/alternate tint fills the entire cell so the indent gutter
-  // is never a gap in the row highlight.
+  // Pass 1: background only (no checkbox, no text, no focus) in the indent
+  // gutter. The content pass below paints the panel for its own rect, so the
+  // full cell must NOT be washed here: the model's conflict/highlight tints
+  // and the selection color are alpha-blended, and a second panel fill over
+  // the content area doubles them (the doubled band on nested rows).
   QStyleOptionViewItem bg = opt;
   bg.text.clear();
   bg.icon = QIcon();
   bg.features &= ~QStyleOptionViewItem::HasDisplay;
   bg.features &= ~QStyleOptionViewItem::HasCheckIndicator;
   bg.state &= ~QStyle::State_HasFocus;
+  bg.rect.setWidth(std::min(shift + checkboxWidth, opt.rect.width()));
   style->drawControl(QStyle::CE_ItemViewItem, &bg, painter, widget);
 
-  // Pass 2: checkbox shifted right by the indent gutter width. The checkbox
-  // moves WITH the name text so nested rows look properly indented under
-  // their parent.
+  // Pass 2: the theme's native checkbox indicator, shifted right by the indent
+  // gutter width. The checkbox moves WITH the name text so nested rows look
+  // properly indented under their parent. PE_IndicatorCheckBox is the same
+  // primitive a QCheckBox draws, so every theme renders the real check mark;
+  // the item-view variant (PE_IndicatorItemViewItemCheck) is a bare square on
+  // several themes, which read as an empty box on enabled rows.
   if (checkboxWidth > 0) {
-    QStyleOptionViewItem checkOpt = opt;
-    QRect checkRect =
-        style->subElementRect(QStyle::SE_ItemViewItemCheckIndicator, &opt, widget);
-    checkRect.moveLeft(opt.rect.left() + indentShift);
-    checkOpt.rect = checkRect;
-    // PE_IndicatorItemViewItemCheck reads State_On/State_Off from state,
-    // not from checkState - initStyleOption only sets checkState.
+    // Same expression as the editorEvent hit-test below, so the drawn
+    // checkbox and the clickable area are the same rect by construction.
+    const QRect checkRect =
+        style->subElementRect(QStyle::SE_ItemViewItemCheckIndicator, &opt, widget)
+            .translated(indentShift, 0);
+    QStyleOptionButton checkOpt;
+    checkOpt.rect        = checkRect;
+    checkOpt.state       = opt.state & ~QStyle::State_HasFocus;
+    checkOpt.palette     = opt.palette;
+    checkOpt.direction   = opt.direction;
+    checkOpt.fontMetrics = opt.fontMetrics;
+    checkOpt.styleObject = opt.styleObject;
+    // The indicator reads State_On/State_Off/State_NoChange from state, not
+    // from checkState - initStyleOption only sets checkState.
     checkOpt.state &= ~(QStyle::State_On | QStyle::State_Off | QStyle::State_NoChange);
-    if (checkOpt.checkState == Qt::Checked)
+    if (opt.checkState == Qt::Checked)
       checkOpt.state |= QStyle::State_On;
-    else if (checkOpt.checkState == Qt::PartiallyChecked)
+    else if (opt.checkState == Qt::PartiallyChecked)
       checkOpt.state |= QStyle::State_NoChange;
     else
       checkOpt.state |= QStyle::State_Off;
-    style->drawPrimitive(QStyle::PE_IndicatorItemViewItemCheck, &checkOpt, painter,
-                         widget);
+    style->drawPrimitive(QStyle::PE_IndicatorCheckBox, &checkOpt, painter, widget);
   }
 
-  // Pass 3: text + icon shifted right past the shifted checkbox (right edge
-  // stays put, so nothing bleeds into the next column). Checkbox suppressed -
+  // Pass 3: panel + text + icon shifted right past the shifted checkbox (right
+  // edge stays put, so nothing bleeds into the next column). This pass paints
+  // the background for the content area - pass 1 covered only the gutter, so
+  // every pixel of the cell is washed exactly once. Checkbox suppressed -
   // Pass 2 already drew it at the shifted position.
   QStyleOptionViewItem content = opt;
   content.rect.setLeft(content.rect.left() + shift + checkboxWidth);
