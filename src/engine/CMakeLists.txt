@@ -106,6 +106,7 @@ instance/mod_state.cpp
     pipeline/registry/hook_registry.cpp
     game/registry/game_capabilities.cpp
     game/registry/game_knowledge.cpp
+    game/registry/game_registration_sink.cpp
     modpack/pack/source_detector.cpp
     uri/router.cpp
     source/managed_games.cpp
