@@ -762,6 +762,13 @@ gmm_catch2_test(folded_separator_bulk_toggle_test
     UI
     LIBS gmm_ui)
 
+# A nested mod's checkbox click must toggle it: the IndentDelegate draws the
+# checkbox shifted right by the nesting depth, so the click hit-test has to
+# follow the shift (a real mouse click on the drawn checkbox, no shims).
+gmm_catch2_test(nested_checkbox_toggle_test ui/nested_checkbox_toggle_test.cpp
+    UI
+    LIBS gmm_ui Qt6::Test)
+
 gmm_catch2_test(categories_tab_test ui/categories_tab_test.cpp
     UI
     LIBS gmm_ui)
