@@ -408,6 +408,18 @@ gmm_catch2_test(game_feature_registry_test engine/game_feature_registry_test.cpp
 )
 add_dependencies(game_feature_registry_test SkyrimSpecialEdition gmm_override_mod_data_checker)
 
+# v3 P0 RegistrationSink parity - the real Skyrim plugin through the ABI
+# bridge (route A) must produce the same engine state as a direct
+# GameDescriptor + RegistrationSink replay (route B). GMM_SKYRIM_PLUGIN_VERSION
+# mirrors the VERSION define the plugin target compiles with (plugin-local, so
+# it does not propagate to tests).
+gmm_catch2_test(game_registration_sink_test engine/game_registration_sink_test.cpp
+    DEFINES
+        GMM_SKYRIM_PLUGIN_PATH="$<TARGET_FILE:SkyrimSpecialEdition>"
+        GMM_SKYRIM_PLUGIN_VERSION="${GMM_VERSION}"
+)
+add_dependencies(game_registration_sink_test SkyrimSpecialEdition)
+
 # P1.4 host UI bridge test — a plugin claims the Fomod stage and runs the
 # install through GmmHostUi::fomod_wizard. The fixture plugin resolves the
 # gmm_* accessors through dlopen — same export requirement as the app.
