@@ -20,6 +20,7 @@
 class QAbstractItemModel;
 class QAbstractItemView;
 class QMouseEvent;
+class QStyle;
 
 namespace ui {
 
@@ -154,8 +155,8 @@ private:
 // untouched. The row background (selection / alternate / model tint) is
 // painted exactly once - the indent gutter first, then the content pass - so
 // alpha-blended tints are never washed twice. The checkbox is the theme's
-// native PE_IndicatorCheckBox drawn at the shifted indicator rect, the same
-// rect editorEvent hit-tests. When the row has a nesting depth > 0, KDE-style
+// native PE_IndicatorCheckBox drawn at check_indicator_rect(), the same rect
+// editorEvent hit-tests. When the row has a nesting depth > 0, KDE-style
 // tree connector lines are painted in the indent gutter: the horizontal
 // connector runs from the fold arrow area (left edge) to the shifted checkbox.
 class IndentDelegate : public QStyledItemDelegate {
@@ -163,6 +164,17 @@ class IndentDelegate : public QStyledItemDelegate {
 public:
   explicit IndentDelegate(int indent_depth_role, int is_last_child_role,
                           int is_separator_role, QWidget *parent = nullptr);
+
+  // The nested row's checkbox rect: sized from the style's own indicator
+  // metrics (PM_IndicatorWidth / PM_IndicatorHeight), placed at the cell's
+  // left edge plus the indent shift, vertically centered. Shared by paint()
+  // and editorEvent() so the drawn checkbox and the clickable area are the
+  // same rect by construction - and by the tests. Never derived from
+  // SE_ItemViewItemCheckIndicator: several themes (KDE especially) answer
+  // that probe with a tiny/empty rect, which drew the nested checkbox as a
+  // dot.
+  static QRect check_indicator_rect(const QStyle *style, const QRect &cell,
+                                    const QWidget *widget, int indent_shift);
 
 protected:
   void paint(QPainter *painter, const QStyleOptionViewItem &option,

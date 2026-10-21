@@ -122,6 +122,13 @@ IndentDelegate::IndentDelegate(int indent_depth_role, int is_last_child_role,
     : QStyledItemDelegate(parent), indent_depth_role_(indent_depth_role),
       is_last_child_role_(is_last_child_role), is_separator_role_(is_separator_role) {}
 
+QRect IndentDelegate::check_indicator_rect(const QStyle *style, const QRect &cell,
+                                           const QWidget *widget, int indent_shift) {
+  const int w = style->pixelMetric(QStyle::PM_IndicatorWidth, nullptr, widget);
+  const int h = style->pixelMetric(QStyle::PM_IndicatorHeight, nullptr, widget);
+  return QRect(cell.left() + indent_shift, cell.top() + (cell.height() - h) / 2, w, h);
+}
+
 void IndentDelegate::paint(QPainter *painter, const QStyleOptionViewItem &option,
                            const QModelIndex &index) const {
   const int depth = index.data(indent_depth_role_).toInt();
@@ -151,12 +158,14 @@ void IndentDelegate::paint(QPainter *painter, const QStyleOptionViewItem &option
     shift *= 2;
 
   // Measure checkbox width if present (needed for text offset past the
-  // shifted checkbox).
+  // shifted checkbox): the indicator's own width plus the label spacing a
+  // real checkbox row leaves between indicator and text - the same layout
+  // the parent rows get from the style's item layout.
   int checkboxWidth = 0;
   if (opt.features & QStyleOptionViewItem::HasCheckIndicator) {
-    const QRect check =
-        style->subElementRect(QStyle::SE_ItemViewItemCheckIndicator, &opt, widget);
-    checkboxWidth = check.right() - opt.rect.left() + 1;
+    checkboxWidth =
+        style->pixelMetric(QStyle::PM_IndicatorWidth, nullptr, widget) +
+        style->pixelMetric(QStyle::PM_CheckBoxLabelSpacing, nullptr, widget);
   }
 
   // Pass 1: background only (no checkbox, no text, no focus) in the indent
@@ -176,17 +185,13 @@ void IndentDelegate::paint(QPainter *painter, const QStyleOptionViewItem &option
   // Pass 2: the theme's native checkbox indicator, shifted right by the indent
   // gutter width. The checkbox moves WITH the name text so nested rows look
   // properly indented under their parent. PE_IndicatorCheckBox is the same
-  // primitive a QCheckBox draws, so every theme renders the real check mark;
-  // the item-view variant (PE_IndicatorItemViewItemCheck) is a bare square on
-  // several themes, which read as an empty box on enabled rows.
+  // primitive a QCheckBox draws, and the rect is sized from the style's own
+  // indicator metrics - never from a subElementRect probe, which several
+  // themes (KDE especially) answer with a tiny/empty rect and which drew the
+  // nested checkbox as a dot.
   if (checkboxWidth > 0) {
-    // Same expression as the editorEvent hit-test below, so the drawn
-    // checkbox and the clickable area are the same rect by construction.
-    const QRect checkRect =
-        style->subElementRect(QStyle::SE_ItemViewItemCheckIndicator, &opt, widget)
-            .translated(indentShift, 0);
     QStyleOptionButton checkOpt;
-    checkOpt.rect        = checkRect;
+    checkOpt.rect        = check_indicator_rect(style, opt.rect, widget, indentShift);
     checkOpt.state       = opt.state & ~QStyle::State_HasFocus;
     checkOpt.palette     = opt.palette;
     checkOpt.direction   = opt.direction;
@@ -261,33 +266,47 @@ bool IndentDelegate::editorEvent(QEvent *event, QAbstractItemModel *model,
   if (depth <= 0)
     return QStyledItemDelegate::editorEvent(event, model, option, index);
 
-  // Mirror the paint-side shift: paint() draws the checkbox indentShift px
-  // right of the cell edge, but the inherited hit-test computes the check
-  // rect from the UNSHIFTED option rect, so a click on the visible checkbox
-  // of a nested row landed in empty gutter and never reached the model (the
-  // state did not change). Remap the click position back by the same shift
-  // and let the base class hit-test the unshifted rect.
   switch (event->type()) {
   case QEvent::MouseButtonPress:
   case QEvent::MouseButtonRelease:
   case QEvent::MouseButtonDblClick: {
-    auto *me                 = static_cast<QMouseEvent *>(event);
-    const int indentShift    = depth * kIndentStep;
-    QStyleOptionViewItem opt = option;
-    initStyleOption(&opt, index);
-    const QWidget *widget = opt.widget ? opt.widget : nullptr;
+    auto *me = static_cast<QMouseEvent *>(event);
+    if (me->button() != Qt::LeftButton)
+      return QStyledItemDelegate::editorEvent(event, model, option, index);
+
+    // Mirror the paint-side rect exactly (shared helper), so the drawn
+    // checkbox and the clickable area are the same rect by construction on
+    // every theme. No subElementRect probe: several themes (KDE especially)
+    // answer it with a tiny/empty rect, which drew the checkbox as a dot and
+    // would miss clicks on it.
+    const int indentShift = depth * kIndentStep;
+    const QWidget *widget = option.widget;
     QStyle *style         = widget ? widget->style() : QApplication::style();
     const QRect checkRect =
-        style->subElementRect(QStyle::SE_ItemViewItemCheckIndicator, &opt, widget)
-            .translated(indentShift, 0);
-    // Only clicks on the drawn checkbox are remapped; clicks elsewhere keep
-    // the base behavior (selection, editing, the unshifted ghost rect).
+        check_indicator_rect(style, option.rect, widget, indentShift);
     if (!checkRect.contains(me->position().toPoint()))
       return QStyledItemDelegate::editorEvent(event, model, option, index);
-    QMouseEvent remapped(me->type(), me->position() - QPointF(indentShift, 0),
-                         me->globalPosition(), me->button(), me->buttons(),
-                         me->modifiers(), me->pointingDevice());
-    return QStyledItemDelegate::editorEvent(&remapped, model, option, index);
+
+    // Same guards and toggle semantics as QStyledItemDelegate::editorEvent,
+    // which is bypassed here: it would hit-test the UNSHIFTED rect through
+    // the same fragile subElementRect probe.
+    const Qt::ItemFlags flags = model->flags(index);
+    const QVariant value      = index.data(Qt::CheckStateRole);
+    if (!(flags & Qt::ItemIsUserCheckable) || !(option.state & QStyle::State_Enabled) ||
+        !(flags & Qt::ItemIsEnabled) || !value.isValid())
+      return QStyledItemDelegate::editorEvent(event, model, option, index);
+
+    // Press/double-click on the checkbox: consumed, no toggle (the base
+    // class does the same); only the release flips the state.
+    if (event->type() != QEvent::MouseButtonRelease)
+      return true;
+
+    Qt::CheckState state = static_cast<Qt::CheckState>(value.toInt());
+    if (flags & Qt::ItemIsUserTristate)
+      state = static_cast<Qt::CheckState>((state + 1) % 3);
+    else
+      state = (state == Qt::Checked) ? Qt::Unchecked : Qt::Checked;
+    return model->setData(index, state, Qt::CheckStateRole);
   }
   default:
     return QStyledItemDelegate::editorEvent(event, model, option, index);

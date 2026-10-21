@@ -47,19 +47,14 @@ int row_of_id(const ui::ModList *model, const QString &id) {
   return -1;
 }
 
-// Center of the checkbox as it is VISIBLY drawn: the style-queried indicator
-// rect for the cell, translated right by the row's indent shift. Clicking
+// Center of the checkbox as it is VISIBLY drawn: the delegate's shared
+// indicator rect (style metrics at the cell's content start plus the row's
+// indent shift) - the same function paint() and editorEvent() use. Clicking
 // anywhere else would not exercise the reported path.
 QPoint visible_checkbox_center(const QTreeView *view, const QModelIndex &idx,
                                int depth) {
-  QStyleOptionViewItem opt;
-  opt.initFrom(view);
-  opt.rect = view->visualRect(idx);
-  opt.features |= QStyleOptionViewItem::HasCheckIndicator;
-  const QRect indicator =
-      view->style()
-          ->subElementRect(QStyle::SE_ItemViewItemCheckIndicator, &opt, view)
-          .translated(depth * kIndentStep, 0);
+  const QRect indicator = ui::IndentDelegate::check_indicator_rect(
+      view->style(), view->visualRect(idx), view, depth * kIndentStep);
   return indicator.center();
 }
 
@@ -109,6 +104,21 @@ public:
 
 private:
   mutable int depth_ = 0;
+};
+
+// Mimics the reported theme (non-Oxygen KDE): the item-view check-indicator
+// probe answers with a tiny 1x1 rect instead of the real indicator metrics,
+// which drew the nested checkbox as a dot at the elbow of the fold line.
+class DegenerateProbeStyle : public PaintSpyStyle {
+public:
+  QRect subElementRect(SubElement element, const QStyleOption *option,
+                       const QWidget *widget) const override {
+    if (element == QStyle::SE_ItemViewItemCheckIndicator) {
+      const QRect cell = option->rect;
+      return QRect(cell.left(), cell.top() + cell.height() / 2, 1, 1);
+    }
+    return PaintSpyStyle::subElementRect(element, option, widget);
+  }
 };
 
 }  // namespace
@@ -320,6 +330,125 @@ TEST_CASE("nested row paints the native checkbox once", "[ui][modlist][nesting]"
       off_in_child = true;
   }
   CHECK(off_in_child);
+
+  fs::remove_all(root, ec);
+}
+
+// Follow-up user report on the same nested rows, after the native-checkbox
+// fix: on the user's theme (non-Oxygen KDE) the nested rows show NO checkbox
+// at all, just a tiny dot at the elbow of the fold line. The parent (depth 0)
+// checkbox is fine. Cause: paint() and editorEvent() both positioned the
+// indicator through subElementRect(SE_ItemViewItemCheckIndicator), and that
+// probe answers a tiny/empty rect on several themes (KDE especially) - the
+// drawn checkbox shrank to a dot. The fix sizes the indicator from the
+// style's own metrics (PM_IndicatorWidth / PM_IndicatorHeight) at the cell's
+// content start plus the indent shift, one shared rect for paint and
+// hit-test, and never consults the probe. This test simulates the reported
+// theme with a degenerate probe and requires both the drawn checkbox and the
+// click on its painted pixels to survive it.
+TEST_CASE("nested checkbox survives a degenerate indicator probe",
+          "[ui][modlist][nesting]") {
+  qputenv("QT_QPA_PLATFORM", "offscreen");
+  const fs::path root = "/tmp/gmm_nested_checkbox_degenerate";
+  std::error_code ec;
+  fs::remove_all(root, ec);
+  fs::create_directories(root / "config");
+  qputenv("XDG_CONFIG_HOME", QByteArray((root / "config").string().c_str()));
+
+  int test_argc     = 1;
+  char test_argv0[] = "nested_checkbox_toggle_test";
+  char *test_argv[] = {test_argv0, nullptr};
+  QApplication app(test_argc, test_argv);
+  QCoreApplication::setOrganizationName("GameModManager");
+  QCoreApplication::setApplicationName("GameModManager");
+  Settings::instance().set_nxm_handler_check("dont_ask");
+
+  ui::ModList model;
+  model.set_nesting_enabled(true);
+
+  // Top-level rows DISABLED, nested child ENABLED: the only State_On checkbox
+  // draw in the render must be the child's.
+  QVector<ui::ModEntry> entries;
+  ui::ModEntry top;
+  top.id      = QStringLiteral("TopMod");
+  top.name    = top.id;
+  top.enabled = false;
+  entries.append(top);
+  ui::ModEntry sep;
+  sep.id           = QStringLiteral("Pack");
+  sep.name         = sep.id;
+  sep.enabled      = false;
+  sep.is_separator = true;
+  entries.append(sep);
+  ui::ModEntry parent;
+  parent.id      = QStringLiteral("CrashLogger");
+  parent.name    = parent.id;
+  parent.enabled = false;
+  entries.append(parent);
+  ui::ModEntry child;
+  child.id        = QStringLiteral("CrashLogger SSE PDB");
+  child.name      = child.id;
+  child.enabled   = true;
+  child.parent_id = parent.id;
+  entries.append(child);
+  model.reset_with_order(entries);
+
+  ui::ModView view;
+  view.setModel(&model);
+  DegenerateProbeStyle spy;
+  view.setStyle(&spy);
+  view.resize(600, 300);
+  view.show();
+  QApplication::processEvents();
+
+  const int child_row = row_of_id(&model, QStringLiteral("CrashLogger SSE PDB"));
+  REQUIRE(child_row >= 0);
+  REQUIRE(model.nesting_depth(child_row) == 1);
+  const QModelIndex child_idx = model.index(child_row, ui::ModList::Name);
+  const QRect child_cell      = view.visualRect(child_idx);
+  REQUIRE(child_cell.isValid());
+
+  QImage image(view.viewport()->size(), QImage::Format_ARGB32_Premultiplied);
+  spy.reset();
+  image.fill(Qt::transparent);
+  view.viewport()->render(&image);
+
+  // The drawn indicator must be non-degenerate: at least the style's own
+  // indicator metrics. The dot regression drew it from the subElementRect
+  // probe, which the simulated theme answers with a 1x1 rect.
+  const int min_w =
+      view.style()->pixelMetric(QStyle::PM_IndicatorWidth, nullptr, &view);
+  const int min_h =
+      view.style()->pixelMetric(QStyle::PM_IndicatorHeight, nullptr, &view);
+  REQUIRE(min_w > 1);
+  bool on_in_child = false;
+  for (const auto &draw : spy.check_draws) {
+    if (!child_cell.contains(draw.rect.center()))
+      continue;
+    if (draw.state.testFlag(QStyle::State_On)) {
+      on_in_child = true;
+      CHECK(draw.rect.width() >= min_w);
+      CHECK(draw.rect.height() >= min_h);
+    }
+  }
+  REQUIRE(on_in_child);
+
+  // And the click path must hit the painted pixels: clicking the center of
+  // the recorded State_On indicator rect toggles the mod, so the drawn
+  // checkbox and the clickable area can never diverge.
+  QPoint drawn_center;
+  bool have_drawn = false;
+  for (const auto &draw : spy.check_draws) {
+    if (child_cell.contains(draw.rect.center()) &&
+        draw.state.testFlag(QStyle::State_On)) {
+      drawn_center = draw.rect.center();
+      have_drawn   = true;
+    }
+  }
+  REQUIRE(have_drawn);
+  QTest::mouseClick(view.viewport(), Qt::LeftButton, Qt::NoModifier, drawn_center);
+  QApplication::processEvents();
+  CHECK_FALSE(model.mods()[child_row].enabled);
 
   fs::remove_all(root, ec);
 }
