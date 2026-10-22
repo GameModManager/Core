@@ -38,6 +38,7 @@
 // QWidget*.
 #include "ui/preview/preview_registry.h"
 
+#include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -1443,12 +1444,19 @@ bool PluginLoader::load_directory(const std::string &dir_path) {
   }
 
   int loaded = 0;
-  for (const auto &entry : fs::directory_iterator(dir_path)) {
-    if (!entry.is_regular_file())
-      continue;
 
-    const auto &path = entry.path();
-    auto ext         = path.extension().string();
+  // Deterministic load order (v3 P1): directory_iterator order is
+  // filesystem-dependent, so colliding game_ids would resolve differently
+  // across machines. Sort by filename; "first registrant wins" becomes
+  // first in filename order and the whole registry state is reproducible.
+  std::vector<fs::path> entries;
+  for (const auto &entry : fs::directory_iterator(dir_path))
+    if (entry.is_regular_file())
+      entries.push_back(entry.path());
+  std::sort(entries.begin(), entries.end());
+
+  for (const auto &path : entries) {
+    auto ext = path.extension().string();
 
     // Platform-appropriate shared library extensions. CMake MODULE
     // libraries keep the ".so" suffix even on macOS, so Apple accepts

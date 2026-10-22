@@ -47,43 +47,69 @@ static std::string tool_id_to_display_name(const std::string &id) {
 
 void RegistrationSink::add_entity(const GameDescriptor &desc,
                                   const std::string &dup_check_game_id) {
-  if (!desc.id.empty())
-    plugin_->game_id = desc.id;
-  if (!desc.display_name.empty())
-    plugin_->game_display_name = desc.display_name;
-  plugin_->steam_appid = desc.steam_appid.value_or(0u);
-  if (desc.nexus_domain)
-    plugin_->nexus_domain = *desc.nexus_domain;
-  if (desc.gog_id)
-    plugin_->gog_id = *desc.gog_id;
-  if (desc.epic_namespace)
-    plugin_->epic_namespace = *desc.epic_namespace;
-  if (desc.exe_windows)
-    plugin_->exe_windows = *desc.exe_windows;
-  if (desc.exe_linux)
-    plugin_->exe_linux = *desc.exe_linux;
-  if (desc.exe_macos)
-    plugin_->exe_macos = *desc.exe_macos;
+  // Per-record identity (v3 P1): every register_game / register_identity
+  // call appends one record. An unset id falls back to the plugin's
+  // current game_id (the .so stem seed), matching the old flat behavior
+  // for a null game_id; an unset display_name falls back to the record's
+  // own id.
+  PluginInfo::GameRecord rec;
+  rec.game_id           = !desc.id.empty() ? desc.id : plugin_->game_id;
+  rec.game_display_name = !desc.display_name.empty() ? desc.display_name : rec.game_id;
+  rec.steam_appid       = desc.steam_appid.value_or(0u);
+  rec.nexus_domain      = desc.nexus_domain.value_or(std::string());
+  rec.gog_id            = desc.gog_id.value_or(std::string());
+  rec.epic_namespace    = desc.epic_namespace.value_or(std::string());
+  rec.exe_windows       = desc.exe_windows.value_or(std::string());
+  rec.exe_linux         = desc.exe_linux.value_or(std::string());
+  rec.exe_macos         = desc.exe_macos.value_or(std::string());
+
+  // Duplicate game_id within one plugin's registration is a programming
+  // error: refuse the record loudly, keep the earlier registration.
+  for (const auto &existing : plugin_->games) {
+    if (existing.game_id == rec.game_id) {
+      Logger::instance().error("Plugin " + plugin_->path + " registered game_id '" +
+                               rec.game_id + "' twice; duplicate registration refused");
+      return;
+    }
+  }
 
   // register_game / register_identity is THE game-support marker: only the
   // first plugin to register a given game_id gets game_support = true;
   // secondary registrants (e.g. a Tool plugin that also registers the game to
-  // scope its sort provider) still get their game_id set but don't appear in
-  // the "Create New Instance" game list.
+  // scope its sort provider) still get their record but don't appear in
+  // the "Create New Instance" game list. Directory load is sorted (v3 P1),
+  // so "first" is deterministic: filename order.
   bool duplicate = false;
   if (loader_) {
     for (const auto &other : loader_->plugins()) {
       if (&other == plugin_)
         continue;
-      if (other.game_support && other.game_id == dup_check_game_id) {
-        duplicate = true;
-        break;
+      for (const auto &other_rec : other.games) {
+        if (other_rec.game_support && other_rec.game_id == dup_check_game_id) {
+          duplicate = true;
+          break;
+        }
       }
+      if (duplicate)
+        break;
     }
   }
-  if (!duplicate) {
-    plugin_->game_support = true;
+  rec.game_support = !duplicate;
+  if (duplicate) {
+    Logger::instance().warn("Plugin " + plugin_->path + " registered game_id '" +
+                            dup_check_game_id +
+                            "' already owned by another plugin; game support refused");
   }
+
+  plugin_->games.push_back(std::move(rec));
+  // The flat identity fields mirror games[0] for compatibility with every
+  // existing single-game reader.
+  plugin_->apply_game_record(plugin_->games.front());
+
+  const auto &stored = plugin_->games.back();
+  Logger::instance().debug("Plugin registered game: id=" + stored.game_id +
+                           " name=" + stored.game_display_name + " nexus=" +
+                           (desc.nexus_domain ? *desc.nexus_domain : "none"));
 }
 
 void RegistrationSink::plugin_meta(const char *name, const char *author,

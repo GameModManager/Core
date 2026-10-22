@@ -98,6 +98,44 @@ struct PluginInfo {
   std::string exe_windows;
   std::string exe_linux;
   std::string exe_macos;
+
+  // One game record per register_game / register_identity call (v3 P1),
+  // in registration order. The flat identity fields above mirror
+  // games[0] so every existing single-game reader keeps working; a
+  // plugin that registered N games carries N records and game_plugins()
+  // returns one row per record.
+  struct GameRecord {
+    std::string game_id;
+    std::string game_display_name;
+    uint32_t steam_appid = 0;
+    std::string nexus_domain;
+    std::string gog_id;
+    std::string epic_namespace;
+    std::string exe_windows;
+    std::string exe_linux;
+    std::string exe_macos;
+    // True when this record owns its game_id (first registrant across
+    // all plugins). A refused record keeps its identity but cannot back
+    // an instance and is not emitted by game_plugins().
+    bool game_support = false;
+  };
+  std::vector<GameRecord> games;
+
+  // Point the flat identity fields at one record: the games[0] mirror
+  // after registration, and the per-record row inside game_plugins().
+  void apply_game_record(const GameRecord &rec) {
+    game_id           = rec.game_id;
+    game_display_name = rec.game_display_name;
+    steam_appid       = rec.steam_appid;
+    nexus_domain      = rec.nexus_domain;
+    gog_id            = rec.gog_id;
+    epic_namespace    = rec.epic_namespace;
+    exe_windows       = rec.exe_windows;
+    exe_linux         = rec.exe_linux;
+    exe_macos         = rec.exe_macos;
+    game_support      = rec.game_support;
+  }
+
   // True only when the plugin called register_identity - i.e. it provides
   // game support (a game to create instances for). Tool/feature plugins
   // (ImageDiff, IsaacModSorter, ...) never do; their game_id is just the
@@ -229,13 +267,29 @@ public:
   const std::vector<PluginInfo> &plugins() const { return plugins_; }
   std::vector<PluginInfo> &plugins_mutable() { return plugins_; }
 
-  // Only the plugins that registered game support (register_identity) -
-  // the ones that can back an instance. Feature/tool plugins are excluded.
+  // One row per game record (v3 P1): a plugin that registered N games
+  // appears N times, each row's flat identity fields pointing at its own
+  // record. Feature/tool plugins and records that lost the game_id
+  // ownership check are excluded - only records that can back an
+  // instance are listed.
   [[nodiscard]] std::vector<PluginInfo> game_plugins() const {
     std::vector<PluginInfo> games;
-    for (const auto &p : plugins_)
-      if (p.game_support)
-        games.push_back(p);
+    for (const auto &p : plugins_) {
+      if (p.games.empty()) {
+        // Paths that never went through the sink (hand-built PluginInfo,
+        // the python game_info() dict path) keep the flat identity.
+        if (p.game_support)
+          games.push_back(p);
+        continue;
+      }
+      for (const auto &rec : p.games) {
+        if (!rec.game_support)
+          continue;
+        PluginInfo row = p;
+        row.apply_game_record(rec);
+        games.push_back(std::move(row));
+      }
+    }
     return games;
   }
 
@@ -246,8 +300,8 @@ public:
   // than one variant is on offer.
   [[nodiscard]] std::vector<PluginInfo::GameVariant>
   game_variants(const std::string &game_id) const {
-    for (const auto &p : plugins_) {
-      if (p.game_support && p.game_id == game_id && !p.variants.empty())
+    for (const auto &p : game_plugins()) {
+      if (p.game_id == game_id && !p.variants.empty())
         return p.variants;
     }
     return {};
@@ -260,8 +314,8 @@ public:
   // per-game, so every Nexus lookup is keyed by this rather than by a
   // hardcoded domain in Core.
   [[nodiscard]] std::string nexus_domain_for(const std::string &game_id) const {
-    for (const auto &p : plugins_)
-      if (p.game_support && p.game_id == game_id && !p.nexus_domain.empty())
+    for (const auto &p : game_plugins())
+      if (p.game_id == game_id && !p.nexus_domain.empty())
         return p.nexus_domain;
     return {};
   }
