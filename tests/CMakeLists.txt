@@ -392,8 +392,44 @@ set_target_properties(gmm_settings_tab_plugin PROPERTIES
 # Fixture plugins resolve the host's gmm_* accessors through dlopen, so their
 # undefined symbols are expected. Linux .so links allow that by default; macOS
 # two-level namespace does not — opt into load-time flat lookup.
+add_library(gmm_multi_game_plugin MODULE
+    engine/plugins/multi_game_plugin.cpp
+)
+target_include_directories(gmm_multi_game_plugin PRIVATE
+    ${PROJECT_SOURCE_DIR}/external/abi/include)
+set_target_properties(gmm_multi_game_plugin PROPERTIES
+    PREFIX ""
+    LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/test_plugins"
+)
+
+# Same source, two targets: colliding game_id, distinct display names. The
+# determinism test loads both from one directory and asserts filename order.
+add_library(gmm_collide_plugin_a MODULE
+    engine/plugins/collide_game_plugin.cpp
+)
+target_include_directories(gmm_collide_plugin_a PRIVATE
+    ${PROJECT_SOURCE_DIR}/external/abi/include)
+target_compile_definitions(gmm_collide_plugin_a PRIVATE
+    GMM_COLLIDE_DISPLAY_NAME="Collide Alpha")
+set_target_properties(gmm_collide_plugin_a PROPERTIES
+    PREFIX ""
+    LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/test_plugins"
+)
+
+add_library(gmm_collide_plugin_b MODULE
+    engine/plugins/collide_game_plugin.cpp
+)
+target_include_directories(gmm_collide_plugin_b PRIVATE
+    ${PROJECT_SOURCE_DIR}/external/abi/include)
+target_compile_definitions(gmm_collide_plugin_b PRIVATE
+    GMM_COLLIDE_DISPLAY_NAME="Collide Beta")
+set_target_properties(gmm_collide_plugin_b PROPERTIES
+    PREFIX ""
+    LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/test_plugins"
+)
+
 if(APPLE)
-    foreach(_fixture gmm_override_mod_data_checker gmm_fomod_stage_plugin gmm_settings_tab_plugin)
+    foreach(_fixture gmm_override_mod_data_checker gmm_fomod_stage_plugin gmm_settings_tab_plugin gmm_multi_game_plugin gmm_collide_plugin_a gmm_collide_plugin_b)
         target_link_options(${_fixture} PRIVATE -undefined dynamic_lookup)
     endforeach()
 endif()
@@ -419,6 +455,18 @@ gmm_catch2_test(game_registration_sink_test engine/game_registration_sink_test.c
         GMM_SKYRIM_PLUGIN_VERSION="${GMM_VERSION}"
 )
 add_dependencies(game_registration_sink_test SkyrimSpecialEdition)
+
+# v3 P1 N-records + determinism - register_game twice yields two
+# game_plugins() rows; colliding game_ids resolve in filename order.
+gmm_catch2_test(plugin_n_records_test engine/plugin_n_records_test.cpp
+    DEFINES
+        GMM_SKYRIM_PLUGIN_PATH="$<TARGET_FILE:SkyrimSpecialEdition>"
+        GMM_MULTI_GAME_PLUGIN_PATH="$<TARGET_FILE:gmm_multi_game_plugin>"
+        GMM_COLLIDE_PLUGIN_A_PATH="$<TARGET_FILE:gmm_collide_plugin_a>"
+        GMM_COLLIDE_PLUGIN_B_PATH="$<TARGET_FILE:gmm_collide_plugin_b>"
+)
+add_dependencies(plugin_n_records_test SkyrimSpecialEdition gmm_multi_game_plugin
+    gmm_collide_plugin_a gmm_collide_plugin_b)
 
 # P1.4 host UI bridge test — a plugin claims the Fomod stage and runs the
 # install through GmmHostUi::fomod_wizard. The fixture plugin resolves the

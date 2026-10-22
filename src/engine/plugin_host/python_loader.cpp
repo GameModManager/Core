@@ -3,6 +3,7 @@
 #include "engine/log/logger.h"
 #include "engine/vfs/path_resolver.h"
 #include "engine/game/registry/game_features/game_feature_registry.h"
+#include "engine/game/registry/game_registration_sink.h"
 #include "engine/game/saves/save_reader.h"
 #include "engine/pipeline/pipeline.h"
 #include "engine/plugin_host/deploy_strategy_registry.h"
@@ -785,11 +786,24 @@ public:
                     const std::string &epic_namespace, const std::string &nexus_domain,
                     const std::string &display_name, const std::string &exe_windows,
                     const std::string &exe_linux, const std::string &exe_macos) {
-    plugin_->steam_appid  = steam_appid;
-    plugin_->nexus_domain = nexus_domain;
-    if (!display_name.empty())
-      plugin_->game_display_name = display_name;
-    plugin_->game_support = true;
+    // v3 P1: identity registration appends a game record through the same
+    // sink the C ABI paths use. Python clears optional fields to empty, so
+    // every optional is set on the descriptor.
+    engine::GameDescriptor desc;
+    desc.provenance     = engine::DescriptorProvenance::Python;
+    desc.plugin_path    = plugin_->path;
+    desc.steam_appid    = steam_appid;
+    desc.gog_id         = gog_id;
+    desc.epic_namespace = epic_namespace;
+    desc.nexus_domain   = nexus_domain;
+    desc.display_name   = display_name;  // empty = not supplied
+    desc.exe_windows    = exe_windows;
+    desc.exe_linux      = exe_linux;
+    desc.exe_macos      = exe_macos;
+    // No game_id argument on this path: the duplicate check keys on the
+    // plugin's game_id (the module name).
+    engine::RegistrationSink sink(*loader_, *plugin_);
+    sink.add_entity(desc, plugin_->game_id);
     engine::Logger::instance().debug(
         "Python plugin registered identity: appid=" + std::to_string(steam_appid) +
         " name=" + (display_name.empty() ? plugin_->game_id : display_name) +
@@ -1313,18 +1327,23 @@ public:
                 const std::string &gog_id = "", const std::string &epic_namespace = "",
                 const std::string &exe_windows = "", const std::string &exe_linux = "",
                 const std::string &exe_macos = "") {
-    if (!game_id.empty())
-      plugin_->game_id = game_id;
-    if (!display_name.empty())
-      plugin_->game_display_name = display_name;
-    plugin_->steam_appid    = steam_appid;
-    plugin_->nexus_domain   = nexus_domain;
-    plugin_->gog_id         = gog_id;
-    plugin_->epic_namespace = epic_namespace;
-    plugin_->exe_windows    = exe_windows;
-    plugin_->exe_linux      = exe_linux;
-    plugin_->exe_macos      = exe_macos;
-    plugin_->game_support   = true;
+    // v3 P1: same sink path as the C ABI register_game - one record per
+    // call, appended in registration order. Python clears optional fields
+    // to empty, so every optional is set on the descriptor.
+    engine::GameDescriptor desc;
+    desc.provenance     = engine::DescriptorProvenance::Python;
+    desc.plugin_path    = plugin_->path;
+    desc.id             = game_id;  // empty = keep the module-name fallback
+    desc.display_name   = display_name;
+    desc.steam_appid    = steam_appid;
+    desc.nexus_domain   = nexus_domain;
+    desc.gog_id         = gog_id;
+    desc.epic_namespace = epic_namespace;
+    desc.exe_windows    = exe_windows;
+    desc.exe_linux      = exe_linux;
+    desc.exe_macos      = exe_macos;
+    engine::RegistrationSink sink(*loader_, *plugin_);
+    sink.add_entity(desc, game_id);
     engine::Logger::instance().debug(
         "Python plugin registered game: id=" + plugin_->game_id +
         " name=" + plugin_->game_display_name + " nexus=" + nexus_domain);
@@ -1935,8 +1954,24 @@ bool engine::python_load_plugin(PluginLoader *loader, const std::string &path) {
               info.exe_linux = py::cast<std::string>(d["exe_linux"]);
             if (d.contains("exe_macos"))
               info.exe_macos = py::cast<std::string>(d["exe_macos"]);
-            if (info.steam_appid > 0 || !info.nexus_domain.empty())
+            if (info.steam_appid > 0 || !info.nexus_domain.empty()) {
               info.game_support = true;
+              // v3 P1: the dict path bypasses the sink (its game-support
+              // rule - appid or nexus present - differs from the ABI
+              // paths), so append its own record.
+              engine::PluginInfo::GameRecord rec;
+              rec.game_id           = info.game_id;
+              rec.game_display_name = info.game_display_name;
+              rec.steam_appid       = info.steam_appid;
+              rec.nexus_domain      = info.nexus_domain;
+              rec.gog_id            = info.gog_id;
+              rec.epic_namespace    = info.epic_namespace;
+              rec.exe_windows       = info.exe_windows;
+              rec.exe_linux         = info.exe_linux;
+              rec.exe_macos         = info.exe_macos;
+              rec.game_support      = true;
+              info.games.push_back(std::move(rec));
+            }
           }
         }
 
