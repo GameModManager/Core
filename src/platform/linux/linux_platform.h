@@ -35,6 +35,10 @@ public:
   [[nodiscard]] std::filesystem::path
   game_local_appdata_dir(uint32_t steam_appid) const override;
   [[nodiscard]] std::filesystem::path native_documents_dir() const override;
+  [[nodiscard]] std::filesystem::path native_appdata_dir() const override;
+  [[nodiscard]] std::filesystem::path native_localappdata_dir() const override;
+  [[nodiscard]] std::filesystem::path
+  game_userprofile_dir(uint32_t steam_appid) const override;
   [[nodiscard]] std::filesystem::path steam_userdata_dir() const override;
   [[nodiscard]] std::filesystem::path find_wine() const override;
 

@@ -117,6 +117,42 @@ public:
     return {};
   }
 
+  // Host-native Windows %APPDATA% (Roaming): on Windows %APPDATA% (with a
+  // %USERPROFILE%\AppData\Roaming fallback); on Linux XDG_CONFIG_HOME or
+  // ~/.config; on macOS ~/Library/Application Support. Empty when the host
+  // dir cannot be determined.
+  [[nodiscard]] virtual std::filesystem::path native_appdata_dir() const { return {}; }
+
+  // Host-native Windows %LOCALAPPDATA%: on Windows %LOCALAPPDATA% (with a
+  // %USERPROFILE%\AppData\Local fallback); on Linux XDG_DATA_HOME or
+  // ~/.local/share; on macOS ~/Library/Application Support. Empty when the
+  // host dir cannot be determined.
+  [[nodiscard]] virtual std::filesystem::path native_localappdata_dir() const {
+    return {};
+  }
+
+  // Host-native Windows %USERPROFILE%\AppData\LocalLow. Windows only; the
+  // other hosts have no equivalent, so the base returns empty and %LOCALLOW%
+  // expansion on them is a loud error, never a guess.
+  [[nodiscard]] virtual std::filesystem::path native_locallow_dir() const { return {}; }
+
+  // Host-native machine-wide data dir: on Windows %PROGRAMDATA%; on macOS
+  // /Library/Application Support (the read-only system-wide probe). Linux
+  // has no equivalent, so the base returns empty and %PROGRAMDATA%
+  // expansion there is a loud error, never a guess.
+  [[nodiscard]] virtual std::filesystem::path native_programdata_dir() const {
+    return {};
+  }
+
+  // Windows user profile dir inside a Proton prefix
+  // (drive_c/users/<user>), the %USERPROFILE% a Windows-target template
+  // resolves to when the instance launches a Windows exe under Proton.
+  // Empty when not applicable (no Steam, no prefix).
+  [[nodiscard]] virtual std::filesystem::path
+  game_userprofile_dir([[maybe_unused]] uint32_t steam_appid) const {
+    return {};
+  }
+
   // Steam "userdata" directory (<steam_install>/userdata/) holding per-user
   // cloud saves (<userid>/<appid>/remote/). Some games (Isaac) keep saves
   // here instead of Documents. Empty when Steam is not installed.

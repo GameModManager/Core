@@ -484,6 +484,30 @@ std::filesystem::path LinuxPlatform::native_documents_dir() const {
   return home / "Documents";
 }
 
+std::filesystem::path LinuxPlatform::native_appdata_dir() const {
+  const char *config_env = std::getenv("XDG_CONFIG_HOME");
+  const char *home_env   = std::getenv("HOME");
+  if (config_env && config_env[0] != '\0')
+    return std::filesystem::path(config_env);
+  if (!home_env || home_env[0] == '\0')
+    return {};
+  return std::filesystem::path(home_env) / ".config";
+}
+
+std::filesystem::path LinuxPlatform::native_localappdata_dir() const {
+  const char *data_env = std::getenv("XDG_DATA_HOME");
+  const char *home_env = std::getenv("HOME");
+  if (data_env && data_env[0] != '\0')
+    return std::filesystem::path(data_env);
+  if (!home_env || home_env[0] == '\0')
+    return {};
+  return std::filesystem::path(home_env) / ".local" / "share";
+}
+
+std::filesystem::path LinuxPlatform::game_userprofile_dir(uint32_t steam_appid) const {
+  return prefix_user_dir(resolve_proton_prefix(steam_appid));
+}
+
 std::filesystem::path LinuxPlatform::steam_userdata_dir() const {
   auto root = find_steam_root();
   if (root.empty())

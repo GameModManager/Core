@@ -135,7 +135,7 @@ nlohmann::json build_supported_games(const PluginLoader &plugins,
   for (const auto &plugin : plugins.game_plugins()) {
     auto &game          = games[plugin.game_id];
     game.name           = plugin.game_display_name;
-    game.provenance     = "plugin";
+    game.provenance     = plugin.provenance;
     game.plugin         = std::filesystem::path(plugin.path).filename().string();
     game.steam_appid    = plugin.steam_appid;
     game.nexus_domain   = plugin.nexus_domain;

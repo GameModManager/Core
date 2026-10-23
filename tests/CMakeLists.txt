@@ -247,6 +247,8 @@ gmm_catch2_test(incremental_update_test engine/incremental_update_test.cpp)
 gmm_catch2_test(fs_utils_test engine/fs_utils_test.cpp)
 gmm_catch2_test(local_saves_test engine/local_saves_test.cpp)
 gmm_catch2_test(mygames_test engine/mygames_test.cpp)
+gmm_catch2_test(path_template_test engine/path_template_test.cpp)
+gmm_catch2_test(toml_descriptor_test engine/toml_descriptor_test.cpp)
 gmm_catch2_test(deploy_hidden_test engine/deploy_hidden_test.cpp)
 gmm_catch2_test(workarounds_test engine/workarounds_test.cpp)
 # Settings > Workarounds: the QSettings read reaching the engine predicates.
