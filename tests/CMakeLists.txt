@@ -404,6 +404,26 @@ set_target_properties(gmm_multi_game_plugin PROPERTIES
     LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/test_plugins"
 )
 
+add_library(gmm_v3_loader_fixture MODULE
+    engine/plugins/v3_loader_fixture.cpp
+)
+target_include_directories(gmm_v3_loader_fixture PRIVATE
+    ${PROJECT_SOURCE_DIR}/external/abi/include)
+set_target_properties(gmm_v3_loader_fixture PROPERTIES
+    PREFIX ""
+    LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/test_plugins"
+)
+
+add_library(gmm_v3_version_mismatch_fixture MODULE
+    engine/plugins/v3_version_mismatch_fixture.cpp
+)
+target_include_directories(gmm_v3_version_mismatch_fixture PRIVATE
+    ${PROJECT_SOURCE_DIR}/external/abi/include)
+set_target_properties(gmm_v3_version_mismatch_fixture PROPERTIES
+    PREFIX ""
+    LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/test_plugins"
+)
+
 # Same source, two targets: colliding game_id, distinct display names. The
 # determinism test loads both from one directory and asserts filename order.
 add_library(gmm_collide_plugin_a MODULE
@@ -431,7 +451,7 @@ set_target_properties(gmm_collide_plugin_b PROPERTIES
 )
 
 if(APPLE)
-    foreach(_fixture gmm_override_mod_data_checker gmm_fomod_stage_plugin gmm_settings_tab_plugin gmm_multi_game_plugin gmm_collide_plugin_a gmm_collide_plugin_b)
+    foreach(_fixture gmm_override_mod_data_checker gmm_fomod_stage_plugin gmm_settings_tab_plugin gmm_multi_game_plugin gmm_collide_plugin_a gmm_collide_plugin_b gmm_v3_loader_fixture gmm_v3_version_mismatch_fixture)
         target_link_options(${_fixture} PRIVATE -undefined dynamic_lookup)
     endforeach()
 endif()
@@ -470,6 +490,14 @@ gmm_catch2_test(plugin_n_records_test engine/plugin_n_records_test.cpp
 add_dependencies(plugin_n_records_test SkyrimSpecialEdition gmm_multi_game_plugin
     gmm_collide_plugin_a gmm_collide_plugin_b)
 
+# v3 P3 loader - v3 fixture loads, v2 fixture still loads, version mismatch refused.
+gmm_catch2_test(plugin_v3_loader_test engine/plugin_v3_loader_test.cpp
+    DEFINES
+        GMM_V3_LOADER_FIXTURE_PATH="$<TARGET_FILE:gmm_v3_loader_fixture>"
+        GMM_V3_VERSION_MISMATCH_FIXTURE_PATH="$<TARGET_FILE:gmm_v3_version_mismatch_fixture>"
+        GMM_SKYRIM_PLUGIN_PATH="$<TARGET_FILE:SkyrimSpecialEdition>"
+)
+add_dependencies(plugin_v3_loader_test gmm_v3_loader_fixture gmm_v3_version_mismatch_fixture SkyrimSpecialEdition)
 # P1.4 host UI bridge test — a plugin claims the Fomod stage and runs the
 # install through GmmHostUi::fomod_wizard. The fixture plugin resolves the
 # gmm_* accessors through dlopen — same export requirement as the app.
