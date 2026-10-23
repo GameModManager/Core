@@ -314,6 +314,22 @@ public:
     return {};
   }
 
+  // v3 P4: run any registered game validator (v2 game_validator_fn or v3
+  // detection.validator capability) for game_id against dir. Returns true when
+  // no validator is registered (default valid) or any validator accepts.
+  [[nodiscard]] bool validate_game_dir(const std::string &game_id,
+                                       const std::filesystem::path &dir) const {
+    return validate_game_dir_impl(game_id, dir);
+  }
+  [[nodiscard]] bool game_looks_valid(const std::string &game_id,
+                                      const std::filesystem::path &dir) const {
+    return validate_game_dir_impl(game_id, dir);
+  }
+  [[nodiscard]] bool is_valid_game_dir(const std::string &game_id,
+                                       const std::filesystem::path &dir) const {
+    return validate_game_dir_impl(game_id, dir);
+  }
+
   bool is_loaded(const std::string &path) const;
 
   // The nxm:// domain a game plugin registered (e.g. "skyrimspecialedition"),
@@ -365,6 +381,8 @@ public:
 
 private:
   void *dlopen_handle(const std::string &path);
+  bool validate_game_dir_impl(const std::string &game_id,
+                              const std::filesystem::path &dir) const;
   void unload_all();
 
   std::vector<PluginInfo> plugins_;
