@@ -77,6 +77,7 @@ struct PluginDiagnostics {
 
 struct PluginInfo {
   std::string path;
+  std::string provenance = "plugin";  // "plugin" (compiled) or "file" (TOML descriptor)
   std::string game_id;
   std::string game_display_name;  // e.g. "Skyrim Special Edition"
   std::string author;             // optional, via register_meta
