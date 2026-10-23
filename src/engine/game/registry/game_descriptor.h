@@ -12,6 +12,7 @@ namespace engine {
 enum class DescriptorProvenance {
   CompiledV1,
   CompiledV2,
+  CompiledV3,
   Python,
   TomlMarker,
 };

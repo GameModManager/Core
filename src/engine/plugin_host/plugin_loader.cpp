@@ -29,6 +29,7 @@
 
 #include "gmm_abi_v1.h"
 #include "gmm_abi_v2.h"
+#include "gmm_abi_v3.h"
 
 #include "platform/platform.h"
 
@@ -1246,9 +1247,274 @@ static void cb_v2_register_tab(GmmRegistrationCtxV2 *ctx, const char *capability
                                     supported_platforms, insert_before, insert_after);
 }
 
+// v3 host services callbacks (gmm_abi_v3.h GmmHostServices).
+static void v3_host_log(void *host_ctx, int level, const char *msg) {
+  (void)host_ctx;
+  if (!msg)
+    return;
+  switch (level) {
+  case GMM_LOG_DEBUG:
+    Logger::instance().debug(msg);
+    break;
+  case GMM_LOG_INFO:
+    Logger::instance().info(msg);
+    break;
+  case GMM_LOG_WARN:
+    Logger::instance().warn(msg);
+    break;
+  case GMM_LOG_ERROR:
+    Logger::instance().error(msg);
+    break;
+  default:
+    Logger::instance().info(msg);
+    break;
+  }
+}
+
+static const char *v3_host_resolve_path(void *host_ctx, const char *root,
+                                        const char *rel) {
+  (void)host_ctx;
+  if (!root || !rel)
+    return nullptr;
+  const auto gf =
+      engine::vfs::PathResolver(std::filesystem::path(root)).resolve(std::string(rel));
+  if (!gf)
+    return nullptr;
+  const std::string s = gf->absolute().string();
+  char *out           = static_cast<char *>(std::malloc(s.size() + 1));
+  if (out)
+    std::memcpy(out, s.c_str(), s.size() + 1);
+  return out;
+}
+
 PluginLoader::~PluginLoader() {
   unload_all();
 }
+
+// ---- v3 adapter: legacy v1 (body moved verbatim from the old if-branch) ----
+static bool load_legacy_v1(void *handle, const std::string &path, PluginLoader &loader,
+                           PluginInfo &info, uint64_t /*features*/) {
+  auto register_fn = reinterpret_cast<void (*)(GmmRegistrationCtx *)>(
+      engine::shared_library_symbol(handle, "gmm_register_v1"));
+  if (!register_fn) {
+    Logger::instance().error("Plugin missing gmm_register_v1: " + path);
+    engine::unload_shared_library(handle);
+    return false;
+  }
+
+  GmmRegistrationCtx ctx            = {};
+  ctx.register_identity             = cb_register_identity;
+  ctx.register_stage_claim          = cb_register_stage_claim;
+  ctx.register_hook                 = cb_register_hook;
+  ctx.register_order_encoding       = cb_register_order_encoding;
+  ctx.register_deploy_strategy      = cb_register_deploy_strategy;
+  ctx.register_tool                 = cb_register_tool;
+  ctx.register_sort_provider        = cb_register_sort_provider;
+  ctx.register_image_diff           = cb_register_image_diff;
+  ctx.register_capability           = cb_register_capability;
+  ctx.register_tab                  = cb_register_tab;
+  ctx.register_meta                 = cb_register_meta;
+  ctx.register_category             = cb_register_category;
+  ctx.register_categories           = cb_register_categories;
+  ctx.register_settings             = cb_register_settings;
+  ctx.register_settings_tab         = cb_register_settings_tab;
+  ctx.register_diagnostics          = cb_register_diagnostics;
+  ctx.register_game_feature         = cb_register_game_feature;
+  ctx.register_game_feature_data    = cb_register_game_feature_data;
+  ctx.register_save_parser          = cb_register_save_parser;
+  ctx.register_animation_parser     = cb_register_animation_parser;
+  ctx.subscribe_event               = cb_subscribe_event;
+  ctx.host_ui.fomod_wizard          = cb_fomod_wizard;
+  ctx.register_wildcard_stage_claim = cb_register_wildcard_stage_claim;
+
+  RegistrationBridge bridge;
+  bridge.loader         = &loader;
+  bridge.current_plugin = &info;
+
+  RegistrationSink sink(loader, info);
+  bridge.sink = &sink;
+
+  ctx.user_data = &bridge;
+
+  register_fn(&ctx);
+
+  info.registered = true;
+  loader.add_loaded_plugin(info);
+
+  Logger::instance().debug("Plugin registered: " + info.game_display_name + " (" +
+                           path + ", game=" + info.game_id +
+                           ", appid=" + std::to_string(info.steam_appid) + ")");
+  return true;
+}
+
+// ---- v3 adapter: legacy v2 (body moved verbatim from the old else-if branch) ----
+static bool load_legacy_v2(void *handle, const std::string &path, PluginLoader &loader,
+                           PluginInfo &info, uint64_t /*features*/) {
+  auto register_fn = reinterpret_cast<void (*)(GmmRegistrationCtxV2 *)>(
+      engine::shared_library_symbol(handle, "gmm_register_v2"));
+  if (!register_fn) {
+    Logger::instance().error("Plugin missing gmm_register_v2: " + path);
+    engine::unload_shared_library(handle);
+    return false;
+  }
+
+  RegistrationBridge bridge;
+  bridge.loader         = &loader;
+  bridge.current_plugin = &info;
+
+  RegistrationSink sink(loader, info);
+  bridge.sink = &sink;
+
+  GmmRegistrationCtxV2 ctx          = {};
+  ctx.user_data                     = &bridge;
+  ctx.register_plugin               = cb_v2_register_plugin;
+  ctx.register_settings             = cb_v2_register_settings;
+  ctx.register_settings_tab         = cb_v2_register_settings_tab;
+  ctx.register_requirements         = cb_v2_register_requirements;
+  ctx.register_diagnostics          = cb_v2_register_diagnostics;
+  ctx.register_game                 = cb_v2_register_game;
+  ctx.register_game_feature         = cb_v2_register_game_feature;
+  ctx.register_game_feature_data    = cb_v2_register_game_feature_data;
+  ctx.register_hook                 = cb_v2_register_hook;
+  ctx.register_order_encoding       = cb_v2_register_order_encoding;
+  ctx.register_deploy_strategy      = cb_v2_register_deploy_strategy;
+  ctx.register_file_mapper          = cb_v2_register_file_mapper;
+  ctx.register_sort_provider        = cb_v2_register_sort_provider;
+  ctx.register_stage_claim          = cb_v2_register_stage_claim;
+  ctx.register_wildcard_stage_claim = cb_v2_register_wildcard_stage_claim;
+  ctx.register_preview              = cb_v2_register_preview;
+  ctx.register_tool                 = cb_v2_register_tool;
+  ctx.register_modpage              = cb_v2_register_modpage;
+  ctx.register_save_parser          = cb_v2_register_save_parser;
+  ctx.register_animation_parser     = cb_v2_register_animation_parser;
+  ctx.register_category             = cb_v2_register_category;
+  ctx.register_categories           = cb_v2_register_categories;
+  ctx.register_tab                  = cb_v2_register_tab;
+  ctx.resolve_file                  = cb_v2_resolve_file;
+  ctx.resolve_file_user_data        = nullptr;
+  ctx.host_ui.fomod_wizard          = cb_fomod_wizard_v2;
+  ctx.register_game_validator       = cb_v2_register_game_validator;
+  ctx.register_game_variant         = cb_v2_register_game_variant;
+  ctx.register_save_overlay         = cb_v2_register_save_overlay;
+
+  register_fn(&ctx);
+
+  info.registered = true;
+  loader.add_loaded_plugin(info);
+
+  Logger::instance().debug("Plugin (v2) registered: " + info.game_display_name + " (" +
+                           path + ", game=" + info.game_id + ")");
+  return true;
+}
+
+// ---- v3 adapter: OOP/ECS desc blob (gmm_entry) ----
+static bool load_v3(void *handle, const std::string &path, PluginLoader &loader,
+                    PluginInfo &info, uint64_t /*features*/) {
+  auto entry_fn = reinterpret_cast<const GmmPluginDesc *(*)(const GmmHostServices *)>(
+      engine::shared_library_symbol(handle, "gmm_entry"));
+  if (!entry_fn) {
+    Logger::instance().error("Plugin missing gmm_entry: " + path);
+    engine::unload_shared_library(handle);
+    return false;
+  }
+
+  GmmHostServices host = {};
+  host.version         = GMM_API_VERSION;
+  host.host_ctx        = nullptr;
+  host.log             = v3_host_log;
+  host.resolve_path    = v3_host_resolve_path;
+
+  const GmmPluginDesc *desc = entry_fn(&host);
+  if (!desc) {
+    Logger::instance().error("Plugin gmm_entry returned null: " + path);
+    engine::unload_shared_library(handle);
+    return false;
+  }
+
+  // Version gate: the desc version and the abi version symbol must both be 3.
+  auto version_fn = reinterpret_cast<uint32_t (*)()>(
+      engine::shared_library_symbol(handle, "gmm_abi_version"));
+  uint32_t plugin_abi = version_fn ? version_fn() : 0;
+  if (plugin_abi != GMM_API_VERSION || desc->version != GMM_API_VERSION) {
+    Logger::instance().error("ABI version mismatch: plugin=" +
+                             std::to_string(plugin_abi) + " host supports 1, 2 and 3");
+    engine::unload_shared_library(handle);
+    return false;
+  }
+
+  if (desc->name)
+    info.plugin_name = desc->name;
+  if (desc->author)
+    info.author = desc->author;
+  if (desc->version_string)
+    info.version = desc->version_string;
+  if (desc->description)
+    info.description = desc->description;
+
+  info.v3_desc      = desc;
+  info.v3_cap_count = desc->cap_count;
+  info.v3_caps      = desc->caps;
+
+  RegistrationBridge bridge;
+  bridge.loader         = &loader;
+  bridge.current_plugin = &info;
+
+  RegistrationSink sink(loader, info);
+  bridge.sink = &sink;
+
+  // Games: one record per GmmGameEntity, via the sink (same registries).
+  for (uint32_t i = 0; i < desc->game_count; ++i) {
+    const GmmGameEntity &g = desc->games[i];
+    GameDescriptor gd;
+    gd.provenance  = DescriptorProvenance::CompiledV3;
+    gd.plugin_path = path;
+    if (g.game_id)
+      gd.id = g.game_id;
+    if (g.display_name)
+      gd.display_name = g.display_name;
+    if (g.mods_subpath)
+      gd.mods_subpath = g.mods_subpath;
+    if (g.steam_appid_count > 0 && g.steam_appids)
+      gd.steam_appid = g.steam_appids[0];
+    if (g.gog_id)
+      gd.gog_id = g.gog_id;
+    if (g.epic_namespace)
+      gd.epic_namespace = g.epic_namespace;
+    if (g.nexus_domain)
+      gd.nexus_domain = g.nexus_domain;
+    const std::string dup_key = g.game_id ? g.game_id : "";
+    sink.add_entity(gd, dup_key);
+  }
+
+  info.registered = true;
+  loader.add_loaded_plugin(info);
+
+  Logger::instance().debug("Plugin (v3) registered: " + info.game_display_name + " (" +
+                           path + ", game=" + info.game_id +
+                           ", games=" + std::to_string(desc->game_count) +
+                           ", caps=" + std::to_string(desc->cap_count) + ")");
+  return true;
+}
+
+namespace {
+  struct ApiSurface {
+    uint32_t version;
+    const char *entry_symbol;
+    bool (*load)(void *handle, const std::string &path, PluginLoader &loader,
+                 PluginInfo &info, uint64_t features);
+  };
+  static const ApiSurface kSurfaces[] = {
+      {1, "gmm_register_v1", load_legacy_v1},
+      {2, "gmm_register_v2", load_legacy_v2},
+      {3, "gmm_entry", load_v3},
+  };
+  static const ApiSurface *surface_for(uint32_t v) {
+    for (const auto &s : kSurfaces)
+      if (s.version == v)
+        return &s;
+    return nullptr;
+  }
+}  // namespace
 
 bool PluginLoader::load_plugin(const std::string &path) {
   if (is_loaded(path)) {
@@ -1268,7 +1534,7 @@ bool PluginLoader::load_plugin(const std::string &path) {
     return false;
   }
 
-  // Check ABI version
+  // Check ABI version first (authoritative).
   auto version_fn = reinterpret_cast<uint32_t (*)()>(
       engine::shared_library_symbol(handle, "gmm_abi_version"));
   if (!version_fn) {
@@ -1279,160 +1545,34 @@ bool PluginLoader::load_plugin(const std::string &path) {
 
   uint32_t plugin_abi = version_fn();
 
-  // Probe for the optional gmm_abi_features symbol. v2.1+ plugins export it
-  // as `uint64_t gmm_abi_features(void)` returning a bitmask of the additive
-  // v2.1 tail-append features they support (see GMM_FEATURE_* in
-  // plugin_loader.h). Plugins built before v2.1 do NOT export this symbol;
-  // the dlsym returns NULL and the engine treats the plugin as v2.0 baseline,
-  // reading only the pre-v2.1 GmmSaveDataV2 fields. Stored on PluginInfo
-  // and consulted at the parse-time bridge to decide whether to copy the
-  // new fields. Load-time only, so no concurrency concern.
+  // Probe for the optional gmm_abi_features symbol.
   uint64_t plugin_features = 0;
   if (auto features_fn = reinterpret_cast<uint64_t (*)()>(
           engine::shared_library_symbol(handle, "gmm_abi_features"))) {
     plugin_features = features_fn();
   }
 
-  if (plugin_abi == 1) {
-    // ---- v1 path (unchanged) ----
-    auto register_fn = reinterpret_cast<void (*)(GmmRegistrationCtx *)>(
-        engine::shared_library_symbol(handle, "gmm_register_v1"));
-    if (!register_fn) {
-      Logger::instance().error("Plugin missing gmm_register_v1: " + path);
-      engine::unload_shared_library(handle);
-      return false;
-    }
-
-    PluginInfo info;
-    info.path              = path;
-    info.game_id           = std::filesystem::path(path).stem().string();
-    info.game_display_name = info.game_id;  // fallback, overridden by register_identity
-    info.abi_version       = plugin_abi;
-    info.features          = plugin_features;
-    info.loaded            = true;
-    info.handle            = handle;
-
-    // Set up registration context and call plugin
-    GmmRegistrationCtx ctx            = {};
-    ctx.register_identity             = cb_register_identity;
-    ctx.register_stage_claim          = cb_register_stage_claim;
-    ctx.register_hook                 = cb_register_hook;
-    ctx.register_order_encoding       = cb_register_order_encoding;
-    ctx.register_deploy_strategy      = cb_register_deploy_strategy;
-    ctx.register_tool                 = cb_register_tool;
-    ctx.register_sort_provider        = cb_register_sort_provider;
-    ctx.register_image_diff           = cb_register_image_diff;
-    ctx.register_capability           = cb_register_capability;
-    ctx.register_tab                  = cb_register_tab;
-    ctx.register_meta                 = cb_register_meta;
-    ctx.register_category             = cb_register_category;
-    ctx.register_categories           = cb_register_categories;
-    ctx.register_settings             = cb_register_settings;
-    ctx.register_settings_tab         = cb_register_settings_tab;
-    ctx.register_diagnostics          = cb_register_diagnostics;
-    ctx.register_game_feature         = cb_register_game_feature;
-    ctx.register_game_feature_data    = cb_register_game_feature_data;
-    ctx.register_save_parser          = cb_register_save_parser;
-    ctx.register_animation_parser     = cb_register_animation_parser;
-    ctx.subscribe_event               = cb_subscribe_event;
-    ctx.host_ui.fomod_wizard          = cb_fomod_wizard;
-    ctx.register_wildcard_stage_claim = cb_register_wildcard_stage_claim;
-
-    RegistrationBridge bridge;
-    bridge.loader         = this;
-    bridge.current_plugin = &info;
-
-    RegistrationSink sink(*this, info);
-    bridge.sink = &sink;
-
-    ctx.user_data = &bridge;
-
-    register_fn(&ctx);
-
-    info.registered = true;
-    plugins_.push_back(info);
-
-    Logger::instance().debug("Plugin registered: " + info.game_display_name + " (" +
-                             path + ", game=" + info.game_id +
-                             ", appid=" + std::to_string(info.steam_appid) + ")");
-    return true;
-  } else if (plugin_abi == 2) {
-    // ---- v2 path ----
-    auto register_fn = reinterpret_cast<void (*)(GmmRegistrationCtxV2 *)>(
-        engine::shared_library_symbol(handle, "gmm_register_v2"));
-    if (!register_fn) {
-      Logger::instance().error("Plugin missing gmm_register_v2: " + path);
-      engine::unload_shared_library(handle);
-      return false;
-    }
-
-    PluginInfo info;
-    info.path              = path;
-    info.game_id           = std::filesystem::path(path).stem().string();
-    info.game_display_name = info.game_id;  // fallback, overridden by register_game
-    info.abi_version       = plugin_abi;
-    info.features          = plugin_features;
-    info.loaded            = true;
-    info.handle            = handle;
-
-    RegistrationBridge bridge;
-    bridge.loader         = this;
-    bridge.current_plugin = &info;
-
-    RegistrationSink sink(*this, info);
-    bridge.sink = &sink;
-
-    GmmRegistrationCtxV2 ctx          = {};
-    ctx.user_data                     = &bridge;
-    ctx.register_plugin               = cb_v2_register_plugin;
-    ctx.register_settings             = cb_v2_register_settings;
-    ctx.register_settings_tab         = cb_v2_register_settings_tab;
-    ctx.register_requirements         = cb_v2_register_requirements;
-    ctx.register_diagnostics          = cb_v2_register_diagnostics;
-    ctx.register_game                 = cb_v2_register_game;
-    ctx.register_game_feature         = cb_v2_register_game_feature;
-    ctx.register_game_feature_data    = cb_v2_register_game_feature_data;
-    ctx.register_hook                 = cb_v2_register_hook;
-    ctx.register_order_encoding       = cb_v2_register_order_encoding;
-    ctx.register_deploy_strategy      = cb_v2_register_deploy_strategy;
-    ctx.register_file_mapper          = cb_v2_register_file_mapper;
-    ctx.register_sort_provider        = cb_v2_register_sort_provider;
-    ctx.register_stage_claim          = cb_v2_register_stage_claim;
-    ctx.register_wildcard_stage_claim = cb_v2_register_wildcard_stage_claim;
-    ctx.register_preview              = cb_v2_register_preview;
-    ctx.register_tool                 = cb_v2_register_tool;
-    ctx.register_modpage              = cb_v2_register_modpage;
-    ctx.register_save_parser          = cb_v2_register_save_parser;
-    ctx.register_animation_parser     = cb_v2_register_animation_parser;
-    ctx.register_category             = cb_v2_register_category;
-    ctx.register_categories           = cb_v2_register_categories;
-    ctx.register_tab                  = cb_v2_register_tab;
-    ctx.resolve_file                  = cb_v2_resolve_file;
-    ctx.resolve_file_user_data        = nullptr;
-    ctx.host_ui.fomod_wizard          = cb_fomod_wizard_v2;
-    // v2.1+ additive tail-append slots. The ctx struct grew these fields
-    // in gmm_abi_v2.h 3a1484c; zero-initialised above so the .so can be
-    // called even on plugins that were built without them (dlsym'd
-    // gmm_abi_features will be 0, the ctx slot is NULL, the plugin
-    // doesn't touch it).
-    ctx.register_game_validator = cb_v2_register_game_validator;
-    ctx.register_game_variant   = cb_v2_register_game_variant;
-    ctx.register_save_overlay   = cb_v2_register_save_overlay;
-
-    register_fn(&ctx);
-
-    info.registered = true;
-    plugins_.push_back(info);
-
-    Logger::instance().debug("Plugin (v2) registered: " + info.game_display_name +
-                             " (" + path + ", game=" + info.game_id + ")");
-    return true;
-  } else {
+  const ApiSurface *surf = surface_for(plugin_abi);
+  if (!surf) {
     Logger::instance().error("ABI version mismatch: plugin=" +
-                             std::to_string(plugin_abi) + " host supports 1 and 2");
+                             std::to_string(plugin_abi) + " host supports 1, 2 and 3");
     engine::unload_shared_library(handle);
     return false;
   }
+
+  PluginInfo info;
+  info.path              = path;
+  info.game_id           = std::filesystem::path(path).stem().string();
+  info.game_display_name = info.game_id;
+  info.abi_version       = plugin_abi;
+  info.features          = plugin_features;
+  info.loaded            = true;
+  info.handle            = handle;
+
+  if (!surf->load(handle, path, *this, info, plugin_features)) {
+    return false;
+  }
+  return true;
 }
 
 bool PluginLoader::load_directory(const std::string &dir_path) {

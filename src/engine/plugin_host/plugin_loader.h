@@ -143,9 +143,15 @@ struct PluginInfo {
   // module stem, so gate any "list of games" on this, never on game_id.
   bool game_support    = false;
   uint32_t abi_version = 0;
-  bool loaded          = false;
-  bool registered      = false;
-  void *handle         = nullptr;  // dlopen handle
+  // v3 (gmm_abi_v3.h) captured state. Stored as void* to keep this header
+  // ABI-free; cast to const GmmPluginDesc* / const GmmCapabilityObject* in
+  // the .cpp. P4 dispatches the capabilities through the registry.
+  const void *v3_desc   = nullptr;
+  uint32_t v3_cap_count = 0;
+  const void *v3_caps   = nullptr;
+  bool loaded           = false;
+  bool registered       = false;
+  void *handle          = nullptr;  // dlopen handle
 
   // User-facing options declared via register_settings as plain
   // key:value pairs (key = label, value = default). Source providers
