@@ -7,6 +7,7 @@
 #include "engine/game/registry/game_features/game_feature.h"
 #include "engine/game/registry/game_features/game_feature_registry.h"
 #include "engine/game/registry/game_registration_sink.h"
+#include "engine/game/registry/capability_manifest.h"
 #include "engine/game/saves/save_reader.h"
 #include "engine/mod/meta/category_set_registry.h"
 #include "engine/mod/model/mod.h"
@@ -1462,6 +1463,55 @@ static bool load_v3(void *handle, const std::string &path, PluginLoader &loader,
   RegistrationSink sink(loader, info);
   bridge.sink = &sink;
 
+  // Capabilities: validate against the manifest and attach to the existing
+  // registries. Unknown ids warn and drop; functional ids with a NULL invoke
+  // refuse the whole desc.
+  for (uint32_t i = 0; i < desc->cap_count; ++i) {
+    const GmmCapabilityObject &c      = desc->caps[i];
+    const char *cid                   = c.id ? c.id : "";
+    const CapabilityManifestEntry *me = find_capability(cid);
+    if (!me) {
+      Logger::instance().warn("v3 plugin " + path + ": unknown capability id '" +
+                              std::string(cid) + "' - dropped");
+      continue;
+    }
+    if (me->kind == CapabilityKind::Functional && c.invoke == nullptr) {
+      Logger::instance().error("v3 plugin " + path + ": functional capability '" +
+                               std::string(cid) + "' has NULL invoke - refusing desc");
+      engine::unload_shared_library(handle);
+      return false;
+    }
+    if (c.version > me->payload_version) {
+      Logger::instance().warn("v3 plugin " + path + ": capability '" +
+                              std::string(cid) + "' payload version " +
+                              std::to_string(c.version) + " newer than host " +
+                              std::to_string(me->payload_version) + " - dropped");
+      continue;
+    }
+    // Attach dispatch: feed the existing registries based on id.
+    std::string gid = c.game_id ? c.game_id : "";
+    if (gid.empty() && desc->game_count > 0 && desc->games)
+      gid = desc->games[0].game_id ? desc->games[0].game_id : "";
+    if (std::string(cid) == "detection.validator") {
+      // Rescued validator: store on the plugin (v2-compatible slot) so the
+      // instance-creation browse + secondary detection pass can consume it.
+      info.game_validator_fn        = reinterpret_cast<void *>(c.invoke);
+      info.game_validator_user_data = c.self;
+    } else if (std::string(cid) == "tool") {
+      // Feed PluginToolRegistry via the sink. tool_id defaults to game_id when
+      // the cap carries no explicit id (the ABI cap has no payload field).
+      std::string tid = gid.empty() ? std::string(cid) : gid;
+      sink.tool_register(tid.c_str(), "tool", reinterpret_cast<void *>(c.invoke),
+                         c.self, true);
+    } else if (std::string(cid) == "preview.file") {
+      // preview registry needs an extension; without payload we register
+      // nothing here (the cap's invoke is still reachable via v3_caps).
+    } else if (std::string(cid) == "event.subscribe") {
+      // EventBus: store the invoke; consumers dispatch through v3_caps.
+    }
+    // Other ids: validated + accepted; consumers read v3_caps directly.
+  }
+
   // Games: one record per GmmGameEntity, via the sink (same registries).
   for (uint32_t i = 0; i < desc->game_count; ++i) {
     const GmmGameEntity &g = desc->games[i];
@@ -1777,6 +1827,58 @@ std::string PluginLoader::resolve_game_id(const std::string &game_id) const {
   }
 
   return game_id;  // no match - return as-is
+}
+
+bool PluginLoader::validate_game_dir_impl(const std::string &game_id,
+                                          const std::filesystem::path &dir) const {
+  bool any = false;
+  bool ok  = true;
+  for (const auto &p : plugins_) {
+    // v2 validator
+    if (p.game_validator_fn && (p.game_id == game_id || p.game_id.empty())) {
+      any     = true;
+      auto fn = reinterpret_cast<GmmLooksValidFn>(p.game_validator_fn);
+      if (!fn(dir.string().c_str(), p.game_validator_user_data))
+        ok = false;
+    }
+    // v3 detection.validator capability
+    if (p.v3_caps) {
+      const auto *caps = static_cast<const GmmCapabilityObject *>(p.v3_caps);
+      for (uint32_t i = 0; i < p.v3_cap_count; ++i) {
+        const auto &c = caps[i];
+        if (!c.id || std::string(c.id) != "detection.validator")
+          continue;
+        std::string cid = c.game_id ? c.game_id : "";
+        if (!cid.empty() && cid != game_id)
+          continue;
+        if (!c.invoke)
+          continue;
+        any = true;
+        struct Args {
+          const char *dir;
+        } args{dir.string().c_str()};
+        int result = 0;
+        struct Out {
+          int result;
+        } out{0};
+        if (c.invoke(c.self, 1 /*GMM_VALIDATE_DIR*/, &args, &out) == 0) {
+          result = out.result;
+        } else {
+          // Fallback convention: args is the dir string, out is int*.
+          int r   = 0;
+          void *o = &r;
+          // Re-invoke with alternate convention only if first produced nothing?
+          // Keep first result.
+          result = r;
+        }
+        if (!result)
+          ok = false;
+      }
+    }
+  }
+  if (!any)
+    return true;
+  return ok;
 }
 
 }  // namespace engine

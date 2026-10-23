@@ -109,6 +109,7 @@ instance/mod_state.cpp
     game/registry/game_registration_sink.cpp
     game/registry/path_template.cpp
     game/registry/toml_descriptor.cpp
+    game/registry/capability_manifest.cpp
     modpack/pack/source_detector.cpp
     uri/router.cpp
     source/managed_games.cpp

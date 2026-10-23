@@ -1,6 +1,7 @@
 #include "engine/game/registry/toml_descriptor.h"
 
 #include "engine/game/registry/game_descriptor.h"
+#include "engine/game/registry/capability_manifest.h"
 #include "engine/game/registry/game_knowledge.h"
 #include "engine/game/registry/game_registration_sink.h"
 #include "engine/game/registry/path_template.h"
@@ -333,8 +334,9 @@ int load_toml_game_dir(const fs::path &dir, PluginLoader &loader) {
         }
       }
 
-      // capabilities: register each via sink (data caps only). Minimal: just
-      // capability id.
+      // capabilities: validate against the manifest; unknown/functional ids
+      // warn and drop. Data caps (ui.tabs) feed the existing GameCapabilities
+      // registry via the sink.
       if (auto *caps = g->get("capabilities")) {
         if (auto *arr = caps->as_array()) {
           for (const auto &c : *arr) {
@@ -344,7 +346,21 @@ int load_toml_game_dir(const fs::path &dir, PluginLoader &loader) {
                 if (auto *s = n->as_string())
                   cap_id = std::string(s->get());
               }
-              if (!cap_id.empty()) {
+              if (cap_id.empty())
+                continue;
+              if (!is_known_capability(cap_id.c_str())) {
+                Logger::instance().warn("toml descriptor: unknown capability id '" +
+                                        cap_id + "' in " + file.string() +
+                                        " - dropped");
+                continue;
+              }
+              if (capability_kind(cap_id.c_str()) != CapabilityKind::Data) {
+                Logger::instance().warn("toml descriptor: functional capability '" +
+                                        cap_id + "' cannot be declared from TOML in " +
+                                        file.string() + " - dropped");
+                continue;
+              }
+              if (cap_id == "ui.tabs") {
                 sink.capability_register(cap_id.c_str(), nullptr, nullptr, nullptr,
                                          nullptr, nullptr, nullptr, nullptr, nullptr);
               }
