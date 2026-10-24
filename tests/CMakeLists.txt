@@ -67,6 +67,15 @@ add_test(NAME platform_contract_test
         --src ${PROJECT_SOURCE_DIR}/src)
 
 # ---------------------------------------------------------------------------
+# ABI boundary: SDK veneer must not leak into Core (v3 P6)
+# ---------------------------------------------------------------------------
+add_test(NAME abi_boundary_test
+    COMMAND ${Python3_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/abi_boundary_scan.py
+        --src ${PROJECT_SOURCE_DIR}/src
+        --cmake-root ${PROJECT_SOURCE_DIR})
+
+# ---------------------------------------------------------------------------
 # Windows compile check (Workspace-kgvn)
 # ---------------------------------------------------------------------------
 # Windows platform module: CMake picks GMM_PLATFORM from the host, so a
