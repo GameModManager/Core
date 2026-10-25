@@ -187,9 +187,7 @@ private:
   int indent_depth_role_           = Qt::UserRole;
   int is_last_child_role_          = Qt::UserRole;
   int is_separator_role_           = Qt::UserRole;
-  static constexpr int kIndentStep = 20;  // px per nesting level (visible at depth 1)
-  static constexpr int kCenterOffset =
-      kIndentStep / 2;  // center of each indentation zone
+  static constexpr int kIndentStep = 8;  // px per nesting level (1 text space)
 };
 
 // Anti-bounce guard (Workspace-8fy), shared by every checkable list view:

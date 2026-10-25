@@ -221,16 +221,20 @@ void IndentDelegate::paint(QPainter *painter, const QStyleOptionViewItem &option
     style->drawControl(QStyle::CE_ItemViewItem, &content, painter, widget);
   }
 
-  // Pass 4: KDE-style tree connector lines in the indent gutter. Separators
-  // are structural parents and never get connectors on their own rows; only
-  // mod rows (non-separator children) get the visual nesting lines.
+  // Pass 4: tree connector lines in the indent gutter. Separators are
+  // structural parents and never get connectors on their own rows; only
+  // mod rows (non-separator children) get the visual nesting lines. The
+  // vertical rail sits at the LEFT edge of each indent zone (a narrow
+  // gutter that does not overlap the checkbox column) and runs the full
+  // row height, so the line extends continuously from the parent separator
+  // down through every child to the next separator. The immediate parent
+  // level adds a horizontal branch from its rail to the shifted checkbox.
   const bool is_separator = index.data(is_separator_role_).toBool();
   if (!is_separator) {
-    const int checkbox_left  = opt.rect.left() + indentShift;
-    const int row_top        = opt.rect.top();
-    const int row_bottom     = opt.rect.bottom();
-    const int row_mid        = (row_top + row_bottom) / 2;
-    const bool is_last_child = index.data(is_last_child_role_).toBool();
+    const int checkbox_left = opt.rect.left() + indentShift;
+    const int row_top       = opt.rect.top();
+    const int row_bottom    = opt.rect.bottom();
+    const int row_mid       = (row_top + row_bottom) / 2;
 
     const QPalette pal = widget ? widget->palette() : QApplication::palette();
     // ponytail: PlaceholderText is mid-gray on both light and dark themes;
@@ -238,22 +242,13 @@ void IndentDelegate::paint(QPainter *painter, const QStyleOptionViewItem &option
     painter->setPen(QPen(pal.color(QPalette::PlaceholderText), 1));
 
     for (int i = 0; i < depth; ++i) {
-      const int x = opt.rect.left() + kIndentStep * i + kCenterOffset;
-      if (i < depth - 1) {
-        // Ancestor level: continuous vertical line through the row.
-        painter->drawLine(x, row_top, x, row_bottom);
-      } else {
-        // Immediate parent level: horizontal from the vertical line
-        // to the shifted checkbox (start of content area).
-        if (is_last_child) {
-          // L-connector: vertical from top to center, then horizontal.
-          painter->drawLine(x, row_top, x, row_mid);
-          painter->drawLine(x, row_mid, checkbox_left, row_mid);
-        } else {
-          // T-connector: vertical full height, horizontal at center.
-          painter->drawLine(x, row_top, x, row_bottom);
-          painter->drawLine(x, row_mid, checkbox_left, row_mid);
-        }
+      const int x = opt.rect.left() + kIndentStep * i;
+      // Rail: continuous vertical line through the full row height.
+      painter->drawLine(x, row_top, x, row_bottom);
+      if (i == depth - 1) {
+        // Immediate parent level: horizontal branch from the rail to the
+        // shifted checkbox (start of the content area).
+        painter->drawLine(x, row_mid, checkbox_left, row_mid);
       }
     }
   }
