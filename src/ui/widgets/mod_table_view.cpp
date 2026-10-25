@@ -221,11 +221,10 @@ void IndentDelegate::paint(QPainter *painter, const QStyleOptionViewItem &option
     style->drawControl(QStyle::CE_ItemViewItem, &content, painter, widget);
   }
 
-  // Pass 4: KDE-style tree connector lines in the indent gutter. Separators
-  // are structural parents and never get connectors on their own rows; only
-  // mod rows (non-separator children) get the visual nesting lines.
-  const bool is_separator = index.data(is_separator_role_).toBool();
-  if (!is_separator) {
+  // Pass 4: KDE-style tree connector lines in the indent gutter. Drawn for
+  // every nested row (depth > 0), including separators, so a separator
+  // nested under a parent separator shows the parent->child tree line.
+  {
     const int checkbox_left  = opt.rect.left() + indentShift;
     const int row_top        = opt.rect.top();
     const int row_bottom     = opt.rect.bottom();
