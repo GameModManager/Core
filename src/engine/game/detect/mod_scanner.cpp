@@ -589,7 +589,7 @@ scan_entry(const std::filesystem::path &entry_path, const ScanConfig &cfg,
               meta.get("GameModManager", "source_type") == "steam_workshop";
           if (!is_workshop) {
             const std::string &fn = folder_name;
-            auto us = fn.rfind('_');
+            auto us               = fn.rfind('_');
             if (us != std::string::npos && us + 1 < fn.size()) {
               bool all_digits = true;
               for (size_t k = us + 1; k < fn.size(); ++k)
@@ -823,7 +823,7 @@ bool ModScanner::mod_enabled_on_disk(const GameKnowledge &knowledge,
 bool ModScanner::disable_mod(const GameKnowledge &knowledge, const std::string &game_id,
                              const std::filesystem::path &mod_folder,
                              std::string *error) {
-  auto disable_file = disable_mechanism_for(knowledge, game_id);
+  auto disable_file   = disable_mechanism_for(knowledge, game_id);
   const auto sentinel = mod_folder / disable_file;
 
   std::error_code ec;
@@ -839,7 +839,7 @@ bool ModScanner::disable_mod(const GameKnowledge &knowledge, const std::string &
 bool ModScanner::enable_mod(const GameKnowledge &knowledge, const std::string &game_id,
                             const std::filesystem::path &mod_folder,
                             std::string *error) {
-  auto disable_file = disable_mechanism_for(knowledge, game_id);
+  auto disable_file   = disable_mechanism_for(knowledge, game_id);
   const auto sentinel = mod_folder / disable_file;
 
   std::error_code ec;

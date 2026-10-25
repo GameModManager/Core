@@ -428,7 +428,7 @@ bool deploy_impl(const path &mods_dir, const path &deploy_root,
             if (!is_workshop) {
               // Fallback: folder name ending in _<digits> (Isaac workshop id).
               const std::string &fn = folder;
-              auto us = fn.rfind('_');
+              auto us               = fn.rfind('_');
               if (us != std::string::npos && us + 1 < fn.size()) {
                 bool all_digits = true;
                 for (size_t k = us + 1; k < fn.size(); ++k)

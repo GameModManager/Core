@@ -164,11 +164,10 @@ namespace Source {
         return true;
       }
       Logger::instance().error("InstallStage: no staging directory found");
-      ctx.error_message =
-          "nothing was extracted from " +
-          (mod.archive_filename.empty() ? std::string("the archive")
-                                        : mod.archive_filename) +
-          ", so there are no files to install";
+      ctx.error_message = "nothing was extracted from " +
+                          (mod.archive_filename.empty() ? std::string("the archive")
+                                                        : mod.archive_filename) +
+                          ", so there are no files to install";
       return false;
     }
 
@@ -562,7 +561,7 @@ namespace Source {
           replaced_meta.get("GameModManager", "source_type") == "steam_workshop";
       if (!is_workshop) {
         const std::string &fn = folder_name;
-        auto us = fn.rfind('_');
+        auto us               = fn.rfind('_');
         if (us != std::string::npos && us + 1 < fn.size()) {
           bool all_digits = true;
           for (size_t k = us + 1; k < fn.size(); ++k)

@@ -129,9 +129,9 @@ TEST_CASE("direct strategy deploy_all and queries", "[engine]") {
   std::mutex progress_mutex;
   std::vector<std::pair<int, int>> progress;
   check(strategy.deploy_all([&](int done, int total) {
-          std::lock_guard<std::mutex> lock(progress_mutex);
-          progress.emplace_back(done, total);
-        }),
+    std::lock_guard<std::mutex> lock(progress_mutex);
+    progress.emplace_back(done, total);
+  }),
         "deploy_all succeeds");
 
   // Enabled mod deployed as symlinks into game_dir.
@@ -154,10 +154,14 @@ TEST_CASE("direct strategy deploy_all and queries", "[engine]") {
   check(!progress.empty(), "progress reported");
   check(progress.size() == 2, "one progress report per work item");
   check(std::all_of(progress.begin(), progress.end(),
-                    [](const std::pair<int, int> &p) { return p.second == 2; }),
+                    [](const std::pair<int, int> &p) {
+                      return p.second == 2;
+                    }),
         "progress total is the work count");
   check(std::any_of(progress.begin(), progress.end(),
-                    [](const std::pair<int, int> &p) { return p.first == 2; }),
+                    [](const std::pair<int, int> &p) {
+                      return p.first == 2;
+                    }),
         "progress completes at the total");
 
   // Persistent ledger written at the instance root.
