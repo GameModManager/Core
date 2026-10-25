@@ -190,6 +190,10 @@ struct ScanConfig {
   // XML element name that contains category tags in the metadata file
   // (e.g. "tag" for Isaac's <tag id="Lua"/>). Empty = not an XML-tag game.
   std::string metadata_tag_element;
+  // Hybrid games (Isaac-style): mods deploy into mods/<ModName>/, so a
+  // rootOverride flag on a managed (non-Workshop) mod would scatter its
+  // files into the mods root. Tracked here so the scanner can drop it.
+  bool deploy_include_mod_id = false;
 };
 
 // MO2's GamebryoModDataChecker::dataLooksValid analogue: a folder has valid
@@ -249,6 +253,8 @@ static ScanConfig make_scan_config(const GameKnowledge &knowledge,
   cfg.separator_suffix = knowledge.get(game_id, "separator_suffix", "_separator");
   cfg.workshop_pattern = knowledge.get(game_id, "workshop_id_pattern", "");
   cfg.priority_prefix_re = knowledge.get(game_id, "priority_prefix_re", "");
+  cfg.deploy_include_mod_id =
+      knowledge.get(game_id, "deploy_include_mod_id", "false") == "true";
   // Content-validity allow-lists come from the game's support plugin, never
   // hardcoded here: mod_valid_dirs = valid top-level folder names (CSV),
   // mod_valid_exts = valid top-level file extensions (CSV, no leading dot).
@@ -569,6 +575,35 @@ scan_entry(const std::filesystem::path &entry_path, const ScanConfig &cfg,
         // the game's root directory at deploy time (files under a leading
         // Data/ folder still land in Data/; everything else goes to root).
         mod.root_override = meta.get("General", "rootOverride") == "1";
+        // Hybrid games (Isaac-style, deploy_include_mod_id): managed
+        // (non-Workshop) mods deploy to their own folder, so a rootOverride
+        // flag would scatter their files into the mods root. Honor it only
+        // for Steam Workshop mods. Workshop detection mirrors deploy_utils:
+        // [SteamWorkshop]workshop_id, source_type steam/steam_workshop, or a
+        // trailing _<digits> folder name (Isaac workshop id).
+        if (cfg.deploy_include_mod_id && mod.root_override) {
+          bool is_workshop =
+              mod.workshop_id != 0 ||
+              !meta.get("SteamWorkshop", "workshop_id").empty() ||
+              meta.get("GameModManager", "source_type") == "steam" ||
+              meta.get("GameModManager", "source_type") == "steam_workshop";
+          if (!is_workshop) {
+            const std::string &fn = folder_name;
+            auto us = fn.rfind('_');
+            if (us != std::string::npos && us + 1 < fn.size()) {
+              bool all_digits = true;
+              for (size_t k = us + 1; k < fn.size(); ++k)
+                if (!std::isdigit(static_cast<unsigned char>(fn[k]))) {
+                  all_digits = false;
+                  break;
+                }
+              if (all_digits)
+                is_workshop = true;
+            }
+          }
+          if (!is_workshop)
+            mod.root_override = false;
+        }
       } else {
         // Malformed meta.ini: MO2's QSettings reads it as empty, so the
         // folder keeps its defaults rather than vanishing from the list.

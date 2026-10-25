@@ -547,6 +547,34 @@ namespace Source {
       // This is where rootOverride, validated and color live, and where the keys
       // nobody has named yet will live. Nothing above re-derives any of them:
       // the install knows the archive, not what the user did to the mod row.
+      // Hybrid games (Isaac-style): only managed (non-Workshop) mods must
+      // never carry rootOverride. Determine workshop status from the install
+      // source and the meta on disk (old + new) plus Isaac's trailing-digit
+      // folder-name convention.
+      bool is_workshop =
+          mod.download_source_type == "steam" ||
+          mod.download_source_type == "steam_workshop" ||
+          !meta.get("SteamWorkshop", "workshop_id").empty() ||
+          !replaced_meta.get("SteamWorkshop", "workshop_id").empty() ||
+          meta.get("GameModManager", "source_type") == "steam" ||
+          meta.get("GameModManager", "source_type") == "steam_workshop" ||
+          replaced_meta.get("GameModManager", "source_type") == "steam" ||
+          replaced_meta.get("GameModManager", "source_type") == "steam_workshop";
+      if (!is_workshop) {
+        const std::string &fn = folder_name;
+        auto us = fn.rfind('_');
+        if (us != std::string::npos && us + 1 < fn.size()) {
+          bool all_digits = true;
+          for (size_t k = us + 1; k < fn.size(); ++k)
+            if (!std::isdigit(static_cast<unsigned char>(fn[k]))) {
+              all_digits = false;
+              break;
+            }
+          if (all_digits)
+            is_workshop = true;
+        }
+      }
+
       // Dropping rootOverride is the expensive one - deploy_utils reads
       // [General] rootOverride to send the mod to the GAME ROOT instead of the
       // data dir, so a mod flagged root-override quietly stopped reaching the
@@ -557,6 +585,13 @@ namespace Source {
         for (const auto &key : replaced_meta.keys(section)) {
           if (per_install_meta_keys.count({section, key}) != 0)
             continue;
+          // Hybrid games (Isaac-style, deploy_include_mod_id): managed
+          // (non-Workshop) mods deploy to their own folder, so rootOverride
+          // must never survive an update - otherwise a managed mod scatters
+          // into the mods root. Workshop mods keep a legitimate rootOverride.
+          if (ctx.deploy_include_mod_id && section == "General" &&
+              key == "rootOverride" && !is_workshop)
+            continue;
           const bool already_there =
               std::find(held.begin(), held.end(), key) != held.end();
           const std::string value = replaced_meta.get(section, key);
@@ -564,6 +599,13 @@ namespace Source {
             meta.set(section, key, value);
         }
       }
+
+      // Hybrid games (Isaac-style): a managed (non-Workshop) mod must never
+      // carry a rootOverride flag, even one shipped inside the archive's own
+      // meta.ini - managed mods deploy to their own folder, not the mods root.
+      // Workshop mods keep a legitimate rootOverride.
+      if (ctx.deploy_include_mod_id && !is_workshop)
+        meta.unset("General", "rootOverride");
 
       // Filter membership, with the one carry that deliberately overrides the
       // new meta. write_game_metadata writes category=0 into every meta it

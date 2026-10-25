@@ -411,6 +411,38 @@ bool deploy_impl(const path &mods_dir, const path &deploy_root,
         try {
           engine::ModMeta meta = engine::ModMeta::load_file(meta_ini);
           root_override        = meta.get("General", "rootOverride") == "1";
+          // Hybrid games (Isaac-style, deploy_include_mod_id): mods deploy
+          // into mods/<ModName>/, so a rootOverride flag would scatter a
+          // managed (manually installed, workshop_id==0) mod's files into
+          // the mods root instead of its own folder. Honor rootOverride only
+          // for Steam Workshop mods (workshop_id != 0); managed mods always
+          // deploy to their own folder. workshop_id is read from meta.ini
+          // ([SteamWorkshop]workshop_id or source_type=steam) and, as a
+          // fallback, from a trailing _<digits> in the folder name (Isaac's
+          // workshop_id_pattern).
+          if (deploy_include_mod_id && root_override) {
+            bool is_workshop =
+                !meta.get("SteamWorkshop", "workshop_id").empty() ||
+                meta.get("GameModManager", "source_type") == "steam" ||
+                meta.get("GameModManager", "source_type") == "steam_workshop";
+            if (!is_workshop) {
+              // Fallback: folder name ending in _<digits> (Isaac workshop id).
+              const std::string &fn = folder;
+              auto us = fn.rfind('_');
+              if (us != std::string::npos && us + 1 < fn.size()) {
+                bool all_digits = true;
+                for (size_t k = us + 1; k < fn.size(); ++k)
+                  if (!std::isdigit(static_cast<unsigned char>(fn[k]))) {
+                    all_digits = false;
+                    break;
+                  }
+                if (all_digits)
+                  is_workshop = true;
+              }
+            }
+            if (!is_workshop)
+              root_override = false;
+          }
         } catch (const std::exception &ex) {
           Logger::instance().warn("deploy_all_enabled_mods: cannot read meta for " +
                                   folder + ": " + ex.what());
