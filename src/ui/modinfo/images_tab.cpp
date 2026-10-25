@@ -199,7 +199,10 @@ void ImagesTab::open_full_size() {
     return;
   if (!maybe_flush_preview())
     return;
-  FullSizePreview dlg(path, this);
+  // Parentless: a preview spawned from Mod Info must stack ABOVE it and
+  // block it, not below. Parenting to the tab made it a child window of the
+  // modal ModInfoDialog, which blocked input to the preview (Workspace-fix).
+  FullSizePreview dlg(path, nullptr);
   dlg.exec();
   preview_->open(path);  // re-attach the file after the dialog steals it
 }
