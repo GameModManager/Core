@@ -1,5 +1,6 @@
 #include "ui/controllers/launch_controller.h"
 #include "engine/deploy/launch/elevation.h"
+#include "engine/util/fs_utils.h"
 #include "platform/platform.h"
 #include "ui/controllers/downloads_controller.h"
 #include "ui/controllers/mod_list_controller.h"
@@ -555,6 +556,20 @@ void LaunchController::launch_with_executable(
   trace.begin_flow("launch");
 
   auto exec_path = std::filesystem::path(full_path.toStdString());
+
+  // Executables blacklist (Workarounds): a blacklisted binary must never be
+  // launched, even if it slipped into the saved list by hand. Checked here on
+  // the launch path so the setting is a real gate, not just a list filter.
+  const bool blacklisted = engine::is_blacklisted_executable(
+      exec_path.filename().string(),
+      Settings::instance().executables_blacklist().toStdString());
+  if (blacklisted) {
+    QMessageBox::warning(
+        w_, tr("Launch"),
+        tr("This executable is on the Workarounds blacklist and cannot be launched."));
+    trace.end_flow("launch", false, "Blacklisted executable");
+    return;
+  }
 
   // Extra privilege, resolved from the entry the same way output_mod is. The
   // mechanism is checked here, on the UI thread, before the deploy starts: a
