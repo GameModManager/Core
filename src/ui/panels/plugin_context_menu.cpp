@@ -39,9 +39,29 @@ void ContextMenu::add_actions(QMenu &menu, int row, const std::vector<int> &sele
 
   if (!core) {
     const bool enable = !rows_[r].enabled;
+    // MO2's "Enable/Disable selected" acts on the whole selection, not just
+    // the clicked row (pluginlistcontextmenu.cpp:24-29). Fall back to the
+    // clicked row when nothing is selected, matching MO2's index fallback
+    // (pluginlistcontextmenu.cpp:17-20) and the lock pair below.
     menu.addAction(tr(enable ? "Enable selected" : "Disable selected"), this,
-                   [this, r, enable]() {
-                     emit toggle_requested(rows_[r].name, enable);
+                   [this, r, enable, selection, nrows]() {
+                     std::vector<size_t> targets;
+                     if (selection.empty()) {
+                       targets.push_back(r);
+                     } else {
+                       for (int sel : selection) {
+                         if (sel < 0 || sel >= nrows)
+                           continue;
+                         const auto s = static_cast<size_t>(sel);
+                         if (s >= rows_.size() || rows_[s].force_loaded)
+                           continue;
+                         targets.push_back(s);
+                       }
+                     }
+                     if (targets.empty())
+                       targets.push_back(r);
+                     for (size_t s : targets)
+                       emit toggle_requested(rows_[s].name, enable);
                    });
   }
 
