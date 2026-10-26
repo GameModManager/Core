@@ -193,7 +193,9 @@ void FiletreeTab::on_preview() {
   if (path.isEmpty())
     return;
   if (QFileInfo(path).isFile()) {
-    PreviewDialog dlg(path, this);
+    // Parentless: same as images_tab - spawned-from-ModInfo windows must
+    // stack above Mod Info, not be blocked by it as children.
+    PreviewDialog dlg(path, nullptr);
     dlg.exec();
   } else {
     on_explore();

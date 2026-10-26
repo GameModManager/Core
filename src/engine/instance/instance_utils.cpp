@@ -230,16 +230,26 @@ DeployConfig deploy_config_for(const fs::path &instance_root, const fs::path &ga
   // root-override mods that must land in the game root.
   if (cfg.game_mods_dir.empty())
     cfg.game_mods_dir = resolve_plugin_game_mods_dir(game_id, game_dir, knowledge);
+  cfg.deploy_prefix = knowledge.get(game_id, "deploy_prefix", "Data");
+  cfg.deploy_include_mod_id =
+      knowledge.get(game_id, "deploy_include_mod_id", "false") == "true";
+  // Hybrid games (Isaac-style): the mods folder IS the deploy root, so
+  // root_override mods must deploy into it (not one level higher into the
+  // game root). When game_mods_dir is empty (plugin hook missing or
+  // instance override cleared), fold deploy_prefix into game_mods_dir so
+  // the deploy root is the mods folder, not the game root. This fixes the
+  // "one folder too high" bug for internally managed mods.
+  if (cfg.deploy_include_mod_id && cfg.game_mods_dir.empty() && !cfg.deploy_prefix.empty()) {
+    cfg.game_mods_dir = game_dir / cfg.deploy_prefix;
+    cfg.deploy_prefix.clear();
+  }
   if (!cfg.game_mods_dir.empty() && cfg.game_mods_dir == cfg.mods_dir)
     cfg.game_mods_dir.clear();  // self-referential deploy guard
-  cfg.deploy_prefix = knowledge.get(game_id, "deploy_prefix", "Data");
   // game_mods_dir IS the mods folder - appending deploy_prefix would
   // double-nest (game_mods_dir/"mods"). Enforce what the DeployConfig
   // comment promises instead of relying on every consumer remembering.
   if (!cfg.game_mods_dir.empty())
     cfg.deploy_prefix.clear();
-  cfg.deploy_include_mod_id =
-      knowledge.get(game_id, "deploy_include_mod_id", "false") == "true";
   cfg.disable_mechanism = disable_mechanism_for(knowledge, game_id);
   cfg.case_sensitive    = knowledge.get(game_id, "case_sensitive", "true") != "false";
   if (const char *cs = std::getenv("GMM_CASE_SENSITIVE"); cs)
