@@ -1641,9 +1641,10 @@ QWidget *SettingsContentWidget::build_workarounds_tab() {
   auto *archive_box = new QCheckBox(tr("Experimental archive parsing"), misc_group);
   archive_box->setChecked(s.experimental_archive_parsing());
   archive_box->setToolTip(
-      tr("Not wired to anything yet: every mod is installed by extracting it, "
-         "so no file ever lives only inside an archive for the file views to "
-         "have to read."));
+      tr("Gates the Data tab's archive listing: with it off, archive contents "
+         "are never expanded in the file tree, even with the Archives filter "
+         "ticked. Every mod is still installed by extracting it, so this only "
+         "affects browsing, not deployment."));
   auto *lock_gui_box =
       new QCheckBox(tr("Lock the interface while it works"), misc_group);
   lock_gui_box->setChecked(s.lock_gui());
