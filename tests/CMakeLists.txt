@@ -334,8 +334,33 @@ set_target_properties(gmm_collide_plugin_b PROPERTIES
     LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/test_plugins"
 )
 
+# Tool-vs-GameSupport ownership fixture: same source, two targets. The Tool
+# target declares category "Tool" before register_game; the other is an
+# untyped game-support provider. The test loads the Tool first to prove
+# ownership is type-aware, not order-dependent.
+add_library(gmm_tool_first_plugin MODULE
+    engine/plugins/tool_first_game_plugin.cpp
+)
+target_include_directories(gmm_tool_first_plugin PRIVATE
+    ${PROJECT_SOURCE_DIR}/external/abi/include)
+target_compile_definitions(gmm_tool_first_plugin PRIVATE GMM_IS_TOOL)
+set_target_properties(gmm_tool_first_plugin PROPERTIES
+    PREFIX ""
+    LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/test_plugins"
+)
+
+add_library(gmm_game_support_plugin MODULE
+    engine/plugins/tool_first_game_plugin.cpp
+)
+target_include_directories(gmm_game_support_plugin PRIVATE
+    ${PROJECT_SOURCE_DIR}/external/abi/include)
+set_target_properties(gmm_game_support_plugin PROPERTIES
+    PREFIX ""
+    LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/test_plugins"
+)
+
 if(APPLE)
-    foreach(_fixture gmm_override_mod_data_checker gmm_fomod_stage_plugin gmm_settings_tab_plugin gmm_multi_game_plugin gmm_collide_plugin_a gmm_collide_plugin_b gmm_v3_loader_fixture gmm_v3_version_mismatch_fixture)
+    foreach(_fixture gmm_override_mod_data_checker gmm_fomod_stage_plugin gmm_settings_tab_plugin gmm_multi_game_plugin gmm_collide_plugin_a gmm_collide_plugin_b gmm_tool_first_plugin gmm_game_support_plugin gmm_v3_loader_fixture gmm_v3_version_mismatch_fixture)
         target_link_options(${_fixture} PRIVATE -undefined dynamic_lookup)
     endforeach()
 endif()
@@ -367,6 +392,16 @@ gmm_catch2_test(plugin_v3_loader_test engine/plugin_v3_loader_test.cpp
         GMM_SKYRIM_PLUGIN_PATH="$<TARGET_FILE:SkyrimSpecialEdition>"
 )
 add_dependencies(plugin_v3_loader_test gmm_v3_loader_fixture gmm_v3_version_mismatch_fixture SkyrimSpecialEdition)
+
+# game_support ownership: Tool-first registration must not steal game_support.
+gmm_catch2_test(game_support_ownership_test engine/game_support_ownership_test.cpp
+    DEFINES
+        GMM_TOOL_PLUGIN_PATH="$<TARGET_FILE:gmm_tool_first_plugin>"
+        GMM_GAMESUPPORT_PLUGIN_PATH="$<TARGET_FILE:gmm_game_support_plugin>"
+        GMM_MODSORTER_PLUGIN_PATH="$<TARGET_FILE:IsaacModSorter>"
+        GMM_ISAAC_PLUGIN_PATH="$<TARGET_FILE:TheBindingOfIsaacRebirth>"
+)
+add_dependencies(game_support_ownership_test gmm_tool_first_plugin gmm_game_support_plugin IsaacModSorter TheBindingOfIsaacRebirth)
 # P1.4 host UI bridge test — a plugin claims the Fomod stage and runs the
 # install through GmmHostUi::fomod_wizard. The fixture plugin resolves the
 # gmm_* accessors through dlopen — same export requirement as the app.

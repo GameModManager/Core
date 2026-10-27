@@ -73,14 +73,18 @@ void RegistrationSink::add_entity(const GameDescriptor &desc,
     }
   }
 
-  // register_game / register_identity is THE game-support marker: only the
-  // first plugin to register a given game_id gets game_support = true;
-  // secondary registrants (e.g. a Tool plugin that also registers the game to
-  // scope its sort provider) still get their record but don't appear in
-  // the "Create New Instance" game list. Directory load is sorted (v3 P1),
-  // so "first" is deterministic: filename order.
-  bool duplicate = false;
-  if (loader_) {
+  // game_support ownership is TYPE-AWARE, not order-dependent: a plugin
+  // categorized as "Tool" (e.g. IsaacModSorter, which registers a game_id
+  // only to scope its sort provider) never owns game support, no matter
+  // when it registers. Every other registrant (untyped or "Game Support")
+  // keeps the first-registrant-wins rule, so genuine duplicate GameSupport
+  // claims still resolve deterministically (directory load is sorted, v3 P1)
+  // and the loser is refused with a warning. A Tool registrant gets its
+  // record (sort-provider scoping keeps working) but game_support=false and
+  // never triggers the duplicate warning.
+  const bool is_tool = (plugin_->category == "Tool");
+  bool duplicate     = false;
+  if (loader_ && !is_tool) {
     for (const auto &other : loader_->plugins()) {
       if (&other == plugin_)
         continue;
@@ -94,8 +98,8 @@ void RegistrationSink::add_entity(const GameDescriptor &desc,
         break;
     }
   }
-  rec.game_support = !duplicate;
-  if (duplicate) {
+  rec.game_support = !is_tool && !duplicate;
+  if (duplicate && !is_tool) {
     Logger::instance().warn("Plugin " + plugin_->path + " registered game_id '" +
                             dup_check_game_id +
                             "' already owned by another plugin; game support refused");
