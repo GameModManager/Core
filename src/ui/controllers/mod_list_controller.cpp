@@ -5076,7 +5076,10 @@ void ModListController::apply_mod_filter() {
   w_->mod_model_->apply_fold_state();
 
   const QString group = w_->filter_bar_->current_group();
-  const auto &mods    = w_->mod_model_->mods();
+  // Read once here, not per row: filter_text() is a widget query and this
+  // runs on every keystroke.
+  const QString raw_text = w_->filter_bar_->filter_text().trimmed();
+  const auto &mods       = w_->mod_model_->mods();
 
   // Category filter: with any category checked, a mod matches when it carries
   // at least one checked category id (MO2 OR semantics). No checked categories
@@ -5132,9 +5135,8 @@ void ModListController::apply_mod_filter() {
 
     // Text filter: MO2 keyword grammar (space = AND, ";" / "|" / "OR" = OR,
     // "*" / "?" wildcards). Empty/malformed query matches everything.
-    // `text` is already trimmed+lowercased above; pass the raw-ish query by
-    // re-reading the filter bar text so case-sensitive "OR" splitting works.
-    const QString raw_text = w_->filter_bar_->filter_text().trimmed();
+    // raw_text is trimmed once at the top of apply_mod_filter; the helper
+    // does its own lowercasing.
     const bool text_match = mod_list_text_matches(raw_text, m.name, m.id);
 
     // Group filter
@@ -5207,8 +5209,8 @@ void ModListController::apply_mod_filter() {
 
     if (group == "Separators") {
       visible[row] = true;
-    } else if (w_->filter_bar_->filter_text().trimmed().isEmpty() &&
-               !category_filter_active && !special_filter_active &&
+    } else if (raw_text.isEmpty() && !category_filter_active &&
+               !special_filter_active &&
                (group == "All" || group == "Enabled" || group == "Disabled" ||
                 group == "Conflicts")) {
       visible[row] = true;
