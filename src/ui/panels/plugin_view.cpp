@@ -532,11 +532,17 @@ QTableWidget *PluginView::table() const {
 PluginView::PluginView(QWidget *parent) : QWidget(parent) {
   auto *layout = new QVBoxLayout(this);
   layout->setContentsMargins(0, 0, 0, 0);
-  table_ = new PluginTable(0, 9, this);
-  table_->setHorizontalHeaderLabels({tr("Plugin Name"), tr("Flags"), tr("Priority"),
-                                     tr("Mod Index"), tr("Form Version"),
-                                     tr("Header Version"), tr("Author"),
-                                     tr("Description"), tr("Locked")});
+  table_ = new PluginTable(0, 5, this);
+  // MO2 PluginList::getColumnName also names Form Version, Header Version,
+  // Author and Description (pluginlist.cpp:88-106), and we used to give them
+  // columns. They are not columns here: HEDR is an optional record, so for
+  // most plugins all four read empty (form_version 0, no CNAM, no SNAM) and
+  // the columns bought width and nothing else. MO2 serves the same four
+  // values in the row tooltip - PluginList::tooltipData emits them at
+  // pluginlist.cpp:1512-1528 - which plugin_tooltip_html already matches, on
+  // every cell of the row.
+  table_->setHorizontalHeaderLabels(
+      {tr("Plugin Name"), tr("Flags"), tr("Priority"), tr("Mod Index"), tr("Locked")});
   // MO2 MainWindow::resizeLists (mainwindow.cpp:678-682), the fresh-profile
   // path: fit every section to its contents and let the name column stretch.
   // ResizeToContents is what keeps a section from ever being narrower than its
@@ -559,14 +565,6 @@ PluginView::PluginView(QWidget *parent) : QWidget(parent) {
                       "is and thus overwrites data from plugins with lower priority."));
   if (auto *hh = table_->horizontalHeaderItem(ColModIndex))
     hh->setToolTip(tr("Determines the formids of objects originating from this mods."));
-  if (auto *hh = table_->horizontalHeaderItem(ColFormVersion))
-    hh->setToolTip(tr("Form version of the plugin."));
-  if (auto *hh = table_->horizontalHeaderItem(ColHeaderVersion))
-    hh->setToolTip(tr("Header version of the plugin."));
-  if (auto *hh = table_->horizontalHeaderItem(ColAuthor))
-    hh->setToolTip(tr("Author of the plugin."));
-  if (auto *hh = table_->horizontalHeaderItem(ColDescription))
-    hh->setToolTip(tr("Description of the plugin."));
   if (auto *hh = table_->horizontalHeaderItem(ColLocked))
     hh->setToolTip(tr("Pins the plugin at this position: auto-sort and manual moves "
                       "cannot move it."));
@@ -574,7 +572,7 @@ PluginView::PluginView(QWidget *parent) : QWidget(parent) {
   table_->setItemDelegateForColumn(
       1, new ui::FlagsDelegate(PluginView::kPluginFlagsRole,
                                PluginView::kPluginFlagTooltipsRole, table_));
-  table_->setItemDelegateForColumn(ColLocked, new CenteredIconDelegate(table_));
+  table_->setItemDelegateForColumn(4, new CenteredIconDelegate(table_));
   connect(table_->horizontalHeader(), &QHeaderView::sectionResized, this,
           [this](int logical, int, int) {
             if (logical == 1)
@@ -809,49 +807,6 @@ void PluginView::set_plugins(const std::vector<engine::GamePlugin> &plugins) {
     idx->setToolTip(tooltip);
     table_->setItem(i, 3, idx);
 
-    auto *formver = new QTableWidgetItem(
-        p.form_version != 0 ? QString::number(p.form_version) : QString());
-    Qt::ItemFlags fv = Qt::ItemIsEnabled | Qt::ItemIsSelectable;
-    if (!p.force_loaded && !p.force_disabled && !p.locked)
-      fv |= Qt::ItemIsDragEnabled;
-    formver->setFlags(fv);
-    formver->setTextAlignment(Qt::AlignCenter);
-    if (p.force_loaded)
-      formver->setForeground(fixed_color);
-    formver->setToolTip(tooltip);
-    table_->setItem(i, ColFormVersion, formver);
-
-    auto *headver    = new QTableWidgetItem(QString::number(p.header_version));
-    Qt::ItemFlags hv = Qt::ItemIsEnabled | Qt::ItemIsSelectable;
-    if (!p.force_loaded && !p.force_disabled && !p.locked)
-      hv |= Qt::ItemIsDragEnabled;
-    headver->setFlags(hv);
-    headver->setTextAlignment(Qt::AlignCenter);
-    if (p.force_loaded)
-      headver->setForeground(fixed_color);
-    headver->setToolTip(tooltip);
-    table_->setItem(i, ColHeaderVersion, headver);
-
-    auto *author     = new QTableWidgetItem(QString::fromStdString(p.author));
-    Qt::ItemFlags af = Qt::ItemIsEnabled | Qt::ItemIsSelectable;
-    if (!p.force_loaded && !p.force_disabled && !p.locked)
-      af |= Qt::ItemIsDragEnabled;
-    author->setFlags(af);
-    if (p.force_loaded)
-      author->setForeground(fixed_color);
-    author->setToolTip(tooltip);
-    table_->setItem(i, ColAuthor, author);
-
-    auto *desc       = new QTableWidgetItem(QString::fromStdString(p.description));
-    Qt::ItemFlags df = Qt::ItemIsEnabled | Qt::ItemIsSelectable;
-    if (!p.force_loaded && !p.force_disabled && !p.locked)
-      df |= Qt::ItemIsDragEnabled;
-    desc->setFlags(df);
-    if (p.force_loaded)
-      desc->setForeground(fixed_color);
-    desc->setToolTip(tooltip);
-    table_->setItem(i, ColDescription, desc);
-
     auto *lock       = new QTableWidgetItem;
     Qt::ItemFlags lf = Qt::ItemIsEnabled | Qt::ItemIsSelectable;
     if (!p.force_loaded && !p.force_disabled && !p.locked)
@@ -861,7 +816,7 @@ void PluginView::set_plugins(const std::vector<engine::GamePlugin> &plugins) {
       lock->setIcon(plugin_flag_icon(QLatin1String("locked")));
       lock->setToolTip(locked_column_tooltip());
     }
-    table_->setItem(i, ColLocked, lock);
+    table_->setItem(i, 4, lock);
   }
   syncing_ = false;
   apply_highlights();

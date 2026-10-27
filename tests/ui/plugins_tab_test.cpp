@@ -190,10 +190,10 @@ TEST_CASE("plugins tab", "[ui]") {
   tab.set_plugins(plugins);
 
   check(table->rowCount() == 5, "five plugin rows");
-  check(table->columnCount() == 9, "nine columns");
+  check(table->columnCount() == 5, "five columns");
   check(table->horizontalHeaderItem(0)->text() == QLatin1String("Plugin Name"),
         "Plugin Name is the first column");
-  check(table->horizontalHeaderItem(8)->text() == QLatin1String("Locked"),
+  check(table->horizontalHeaderItem(4)->text() == QLatin1String("Locked"),
         "Locked column header");
   // MO2 PluginList::getColumnToolTip (pluginlist.cpp:110-133) explains each
   // column on hover. Without these the Priority column in particular is
@@ -214,7 +214,7 @@ TEST_CASE("plugins tab", "[ui]") {
             QLatin1String(
                 "Determines the formids of objects originating from this mods."),
         "Mod Index header explains itself");
-  check(!table->horizontalHeaderItem(8)->toolTip().isEmpty(),
+  check(!table->horizontalHeaderItem(4)->toolTip().isEmpty(),
         "Locked header explains itself");
   // MO2 MainWindow::resizeLists (mainwindow.cpp:678-682) makes column 0
   // Stretch on a fresh profile. That is what keeps the identifying column
@@ -558,18 +558,14 @@ TEST_CASE("plugins tab", "[ui]") {
     check(!(table->item(lr, 1)->flags() & Qt::ItemIsDragEnabled) &&
               !(table->item(lr, 2)->flags() & Qt::ItemIsDragEnabled) &&
               !(table->item(lr, 3)->flags() & Qt::ItemIsDragEnabled) &&
-              !(table->item(lr, 4)->flags() & Qt::ItemIsDragEnabled) &&
-              !(table->item(lr, 5)->flags() & Qt::ItemIsDragEnabled) &&
-              !(table->item(lr, 6)->flags() & Qt::ItemIsDragEnabled) &&
-              !(table->item(lr, 7)->flags() & Qt::ItemIsDragEnabled) &&
-              !(table->item(lr, 8)->flags() & Qt::ItemIsDragEnabled),
+              !(table->item(lr, 4)->flags() & Qt::ItemIsDragEnabled),
           "locked row drag disabled on every column");
     check(table->item(lr, 1)->data(ui::PluginsTab::kPluginFlagsRole).isNull(),
           "lock is no longer a Flags emblem");
-    check(!table->item(lr, 8)->icon().isNull(), "lock pin shown in the Locked column");
-    check(table->item(lr, 8)->toolTip().contains("locked"),
+    check(!table->item(lr, 4)->icon().isNull(), "lock pin shown in the Locked column");
+    check(table->item(lr, 4)->toolTip().contains("locked"),
           "Locked cell hover explains the pin");
-    check(table->item(rr, 8)->icon().isNull(), "unlocked rich row has no lock pin");
+    check(table->item(rr, 4)->icon().isNull(), "unlocked rich row has no lock pin");
     check(!ln->toolTip().isEmpty(), "locked row keeps the rich tooltip");
 
     // Multiple emblems on one row stay separate QIcons (the composite

@@ -98,17 +98,7 @@ public:
   // Column order (setHorizontalHeaderLabels in the ctor). Named so the rest
   // of the UI talks about columns by name rather than a bare integer, the way
   // MO2 does (PluginList::COL_PRIORITY).
-  enum Col {
-    ColName = 0,
-    ColFlags,
-    ColPriority,
-    ColModIndex,
-    ColFormVersion,
-    ColHeaderVersion,
-    ColAuthor,
-    ColDescription,
-    ColLocked
-  };
+  enum Col { ColName = 0, ColFlags, ColPriority, ColModIndex, ColLocked };
 
 signals:
   void toggle_requested(const std::string &name, bool enabled);
