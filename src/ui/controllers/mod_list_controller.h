@@ -281,4 +281,11 @@ private:
   bool loot_locked_ = false;
 };
 
+// Pure helper: does `name`/`id` match the mod-list text filter query `query`
+// under MO2's keyword grammar (space = AND, ";" / "|" / "OR" = OR, "*" / "?"
+// wildcards). Empty/malformed query matches everything (no-op). Case-insensitive
+// on both sides. Exposed for unit testing.
+[[nodiscard]] bool mod_list_text_matches(const QString &query, const QString &name,
+                                         const QString &id);
+
 }  // namespace ui
