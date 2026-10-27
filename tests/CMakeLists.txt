@@ -630,6 +630,9 @@ gmm_catch2_test(instance_switch_restart_test
 gmm_catch2_test(qsettings_sandbox_test ui/qsettings_sandbox_test.cpp
     LIBS gmm_ui Qt6::Core)
 
+gmm_catch2_test(mod_list_filter_grammar_test ui/mod_list_filter_grammar_test.cpp
+    LIBS gmm_ui Qt6::Core)
+
 
 # The settings migration: a data-loss path, so it gets the one test the design
 # note calls for. Drives settings_migration::migrate() - the exact call the

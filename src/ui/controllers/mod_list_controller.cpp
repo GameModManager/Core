@@ -5075,9 +5075,11 @@ void ModListController::apply_mod_filter() {
   // Start from a clean fold state
   w_->mod_model_->apply_fold_state();
 
-  const QString text  = w_->filter_bar_->filter_text().trimmed().toLower();
   const QString group = w_->filter_bar_->current_group();
-  const auto &mods    = w_->mod_model_->mods();
+  // Read once here, not per row: filter_text() is a widget query and this
+  // runs on every keystroke.
+  const QString raw_text = w_->filter_bar_->filter_text().trimmed();
+  const auto &mods       = w_->mod_model_->mods();
 
   // Category filter: with any category checked, a mod matches when it carries
   // at least one checked category id (MO2 OR semantics). No checked categories
@@ -5131,9 +5133,11 @@ void ModListController::apply_mod_filter() {
     const bool foreign_match =
         Settings::instance().display_foreign() || !m.is_game_native;
 
-    // Text filter: match against name or id
-    const bool text_match = text.isEmpty() || m.name.toLower().contains(text) ||
-                            m.id.toLower().contains(text);
+    // Text filter: MO2 keyword grammar (space = AND, ";" / "|" / "OR" = OR,
+    // "*" / "?" wildcards). Empty/malformed query matches everything.
+    // raw_text is trimmed once at the top of apply_mod_filter; the helper
+    // does its own lowercasing.
+    const bool text_match = mod_list_text_matches(raw_text, m.name, m.id);
 
     // Group filter
     bool group_match = true;
@@ -5182,7 +5186,7 @@ void ModListController::apply_mod_filter() {
     // filter box and an "All" group never read as filters that matched
     // nothing.
     const engine::filter::Criterion criteria[] = {
-        {!text.isEmpty(), text_match},
+        {!raw_text.isEmpty(), text_match},
         {group != "All", group_match},
         {category_filter_active, category_match},
         {special_filter_active, special_match},
@@ -5205,7 +5209,8 @@ void ModListController::apply_mod_filter() {
 
     if (group == "Separators") {
       visible[row] = true;
-    } else if (text.isEmpty() && !category_filter_active && !special_filter_active &&
+    } else if (raw_text.isEmpty() && !category_filter_active &&
+               !special_filter_active &&
                (group == "All" || group == "Enabled" || group == "Disabled" ||
                 group == "Conflicts")) {
       visible[row] = true;
@@ -5261,6 +5266,108 @@ void ModListController::apply_mod_filter() {
 
   // Publish the verdicts for the bulk toggle (see filter_visible above).
   w_->mod_model_->set_filter_visible(filter_visible);
+}
+
+// ---------------------------------------------------------------------------
+// mod_list_text_matches: MO2 keyword grammar for the mod-list text filter.
+// MO2 reference: references/modorganizer/src/modlistsortproxy.cpp:458-512
+// (filterMatchesMod). Grammar:
+//   - space separates AND terms (all must match)
+//   - ";" or "|" or "OR" separates OR segments (any segment may match)
+//   - "*" / "?" wildcards (full-string glob, case-insensitive) when present
+//   - plain terms use case-insensitive substring (contains) match
+//   - empty / operator-only query matches everything (no-op)
+// Matching is against name OR id per term (MO2 checks name first then others).
+// ---------------------------------------------------------------------------
+namespace {
+  // Case-insensitive glob match of `pattern` against `text`. Supports '*' (zero
+  // or more) and '?' (exactly one). No escape handling (matches MO2 GlobPattern
+  // which has no escape).
+  bool wildcard_match(const QString &pattern, const QString &text) {
+    // Iterative dynamic-ish two-pointer glob.
+    const int plen = pattern.size();
+    const int tlen = text.size();
+    int pi = 0, ti = 0;
+    int star_pi = -1, star_ti = -1;
+    while (ti < tlen) {
+      const QChar pc = (pi < plen) ? pattern[pi].toLower() : QChar();
+      const QChar tc = text[ti].toLower();
+      if (pi < plen && (pc == tc || pc == QChar('?'))) {
+        ++pi;
+        ++ti;
+      } else if (pi < plen && pc == QChar('*')) {
+        star_pi = pi;
+        star_ti = ti;
+        ++pi;
+      } else if (star_pi != -1) {
+        pi = star_pi + 1;
+        ++star_ti;
+        ti = star_ti;
+      } else {
+        return false;
+      }
+    }
+    while (pi < plen && pattern[pi] == QChar('*'))
+      ++pi;
+    return pi == plen;
+  }
+
+  bool term_matches(const QString &term, const QString &name, const QString &id) {
+    const QString t = term.trimmed();
+    if (t.isEmpty())
+      return true;  // empty term never narrows
+    const bool has_wild = t.contains(QChar('*')) || t.contains(QChar('?'));
+    if (has_wild) {
+      return wildcard_match(t, name) || wildcard_match(t, id);
+    }
+    const QString tl = t.toLower();
+    return name.toLower().contains(tl) || id.toLower().contains(tl);
+  }
+}  // namespace
+
+bool mod_list_text_matches(const QString &query, const QString &name,
+                           const QString &id) {
+  const QString q = query.trimmed();
+  if (q.isEmpty())
+    return true;  // empty query = no filter
+
+  // Malformed: unbalanced double quotes -> no-op (match all).
+  if (q.count(QChar('"')) % 2 != 0)
+    return true;
+
+  // MO2: replace "||" -> ";" then "OR" -> ";" then "|" -> ";".
+  QString copy = q;
+  copy.replace(QStringLiteral("||"), QStringLiteral(";"));
+  copy.replace(QStringLiteral("OR"), QStringLiteral(";"));
+  copy.replace(QStringLiteral("|"), QStringLiteral(";"));
+  const QStringList or_segments = copy.split(QChar(';'), Qt::SkipEmptyParts);
+
+  // Malformed: no segments with content -> no-op (match all).
+  if (or_segments.isEmpty())
+    return true;
+
+  bool any_segment_good = false;
+  for (const QString &seg : or_segments) {
+    const QStringList and_terms = seg.split(QChar(' '), Qt::SkipEmptyParts);
+    // An OR segment with no terms is skipped (not a failure).
+    if (and_terms.isEmpty())
+      continue;
+    bool segment_good = true;
+    for (const QString &kw : and_terms) {
+      if (!term_matches(kw, name, id)) {
+        segment_good = false;
+        break;
+      }
+    }
+    if (segment_good) {
+      any_segment_good = true;
+      break;
+    }
+  }
+
+  // If no segment had any terms at all, treat as no-op.
+  // (Already handled by or_segments empty above; but guard anyway.)
+  return any_segment_good;
 }
 
 }  // namespace ui
