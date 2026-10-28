@@ -1471,4 +1471,30 @@ TEST_CASE("plugins tab column sorting", "[ui][sort]") {
   QApplication::processEvents();
   check(table->item(0, 0)->flags() & Qt::ItemIsDragEnabled,
         "drag re-enabled when sorted by priority");
+
+  // Descending priority sort: view row != model row, but model_row meta
+  // stays mapped to the original priority index per visual row.
+  table->sortByColumn(ui::PluginView::ColPriority, Qt::DescendingOrder);
+  QApplication::processEvents();
+  check(row_with_name(table, "Apple.esp") == 0, "descending: Apple first");
+  check(row_with_name(table, "middle.esp") == 1, "descending: middle second");
+  check(row_with_name(table, "zebra.esp") == 2, "descending: zebra third");
+  check(table->item(0, 0)
+                ->data(ui::PluginsTab::kPluginMetaRole)
+                .toMap()
+                .value(QStringLiteral("model_row"))
+                .toInt() == 1,
+        "descending: Apple keeps model_row 1");
+  check(table->item(1, 0)
+                ->data(ui::PluginsTab::kPluginMetaRole)
+                .toMap()
+                .value(QStringLiteral("model_row"))
+                .toInt() == 2,
+        "descending: middle keeps model_row 2");
+  check(table->item(2, 0)
+                ->data(ui::PluginsTab::kPluginMetaRole)
+                .toMap()
+                .value(QStringLiteral("model_row"))
+                .toInt() == 0,
+        "descending: zebra keeps model_row 0");
 }

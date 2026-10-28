@@ -467,6 +467,9 @@ protected:
   void dropEvent(QDropEvent *event) override {
     // MO2 drag guard (pluginlistsortproxy.cpp:111-120): drag/drop is only
     // supported while sorted by priority or mod index. Refuse otherwise.
+    // ModIndex sort is still safe to drop into: mod index order == priority
+    // order (mod index is derived from priority), so a drop maps cleanly; we
+    // map view rows to model rows below so descending priority also works.
     const int sort_col = horizontalHeader()->sortIndicatorSection();
     const bool drag_ok = (sort_col < 0 || sort_col == PluginView::ColPriority ||
                           sort_col == PluginView::ColModIndex);
@@ -477,25 +480,41 @@ protected:
       event->ignore();
       return;
     }
-    const int from = currentRow();
-    if (from < 0) {
+    const int from_view = currentRow();
+    if (from_view < 0) {
       event->ignore();
       return;
     }
     const QModelIndex idx = indexAt(event->position().toPoint());
-    int to;
+    int to_view;
     switch (dropIndicatorPosition()) {
     case QAbstractItemView::AboveItem:
     case QAbstractItemView::OnItem:
-      to = idx.isValid() ? idx.row() : rowCount() - 1;
+      to_view = idx.isValid() ? idx.row() : rowCount() - 1;
       break;
     case QAbstractItemView::BelowItem:
-      to = idx.isValid() ? idx.row() + 1 : rowCount() - 1;
+      to_view = idx.isValid() ? idx.row() + 1 : rowCount() - 1;
       break;
     default:
-      to = rowCount() - 1;
+      to_view = rowCount() - 1;
       break;
     }
+    // Map view rows to model (priority) rows via the model_row meta stored
+    // when the rows were built. View row != model row whenever the table is
+    // sorted (priority descending, or any non-identity order), so passing
+    // view indices straight to on_reorder would move the wrong plugin.
+    auto model_row_of = [this](int view_row) -> int {
+      if (view_row < 0 || view_row >= rowCount())
+        return view_row;  // out-of-range (e.g. past-the-end) stays as-is for
+                          // move_plugin's clamp
+      auto *name = item(view_row, 0);
+      if (!name)
+        return view_row;
+      const QVariantMap meta = name->data(kPluginMetaRole).toMap();
+      return meta.value(QStringLiteral("model_row"), view_row).toInt();
+    };
+    const int from = model_row_of(from_view);
+    const int to   = model_row_of(to_view);
     if (from == to || from + 1 == to) {
       event->accept();
       return;
@@ -862,6 +881,10 @@ void PluginView::set_plugins(const std::vector<engine::GamePlugin> &plugins) {
                 p.force_loaded || p.force_enabled || (!p.force_disabled && p.enabled));
     meta.insert(QStringLiteral("draggable"),
                 static_cast<bool>(name->flags() & Qt::ItemIsDragEnabled));
+    // Original model (priority) row this row was built from. Survives sorting
+    // because the item (and its meta) moves with the row; used by the drop
+    // path to map view rows back to model indices.
+    meta.insert(QStringLiteral("model_row"), i);
     name->setData(kPluginMetaRole, meta);
     table_->setItem(i, 0, name);
 
