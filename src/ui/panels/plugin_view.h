@@ -94,6 +94,12 @@ public:
   static constexpr int kPluginFlagsRole = Qt::UserRole + 60;
   // Parallel role: per-emblem hover text (QStringList).
   static constexpr int kPluginFlagTooltipsRole = Qt::UserRole + 61;
+  // Parallel role: per-emblem flag token strings (QStringList) used for
+  // MO2-style flags sorting (size first, then lexicographic token order).
+  static constexpr int kPluginFlagTokensRole = Qt::UserRole + 62;
+  // User role on the Name column holding per-row metadata (QVariantMap) so
+  // the parallel metadata arrays can be rebuilt after a sort reorders rows.
+  static constexpr int kPluginMetaRole = Qt::UserRole + 63;
 
   // Column order (setHorizontalHeaderLabels in the ctor). Named so the rest
   // of the UI talks about columns by name rather than a bare integer, the way
@@ -130,6 +136,8 @@ protected:
 private:
   void apply_highlights();
   void relayout_flag_rows();
+  void rebuild_row_metadata();
+  void update_drag_flags();
   // MO2 PluginListView::event keyboard routing; true = key consumed.
   bool handle_key(QKeyEvent *event);
 
@@ -155,7 +163,10 @@ private:
   QSet<QString> master_names_;
   // Last text handed to apply_filter, so set_plugins can re-apply it.
   QString filter_text_;
-  bool syncing_ = false;
+  bool syncing_             = false;
+  bool user_has_sorted_     = false;
+  int sort_column_          = -1;
+  Qt::SortOrder sort_order_ = Qt::AscendingOrder;
 };
 
 }  // namespace ui

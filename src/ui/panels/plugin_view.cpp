@@ -13,6 +13,7 @@
 #include <QHBoxLayout>
 #include <QHeaderView>
 #include <QIcon>
+#include <QMessageBox>
 #include <QLCDNumber>
 #include <QList>
 #include <QKeyEvent>
@@ -385,6 +386,51 @@ public:
   }
 };
 
+// --- PluginItem (QTableWidgetItem with MO2 sort semantics) -------------------
+// QTableWidget sorts rows by QTableWidgetItem::operator<. Overriding it here
+// gives per-column MO2 semantics (pluginlistsortproxy.cpp:58-109): Name
+// case-insensitive, Flags by emblem count then token order, Mod Index by its
+// string, and Priority/Locked/other by numeric priority. The default
+// QTableWidgetItem compares display text, which would sort "10" before "2".
+class PluginItem : public QTableWidgetItem {
+public:
+  using QTableWidgetItem::QTableWidgetItem;
+
+  bool operator<(const QTableWidgetItem &other) const override {
+    const int col = column();
+    if (col == PluginView::ColName) {
+      return text().compare(other.text(), Qt::CaseInsensitive) < 0;
+    }
+    if (col == PluginView::ColFlags) {
+      const QStringList lhs = data(PluginView::kPluginFlagTokensRole).toStringList();
+      const QStringList rhs =
+          other.data(PluginView::kPluginFlagTokensRole).toStringList();
+      if (lhs.size() != rhs.size())
+        return lhs.size() < rhs.size();
+      for (int i = 0; i < lhs.size(); ++i) {
+        if (lhs.at(i) != rhs.at(i))
+          return lhs.at(i) < rhs.at(i);
+      }
+      return false;
+    }
+    if (col == PluginView::ColModIndex) {
+      return text() < other.text();
+    }
+    // Default (Priority, Locked, anything else): numeric priority compare.
+    // Priority lives in ColPriority of the same row; for the Priority column
+    // itself that is this item.
+    int lp = 0;
+    int rp = 0;
+    if (tableWidget()) {
+      if (auto *li = tableWidget()->item(row(), PluginView::ColPriority))
+        lp = li->text().toInt();
+      if (auto *ri = tableWidget()->item(other.row(), PluginView::ColPriority))
+        rp = ri->text().toInt();
+    }
+    return lp < rp;
+  }
+};
+
 // --- PluginTable (QTableWidget subclass with drag-reorder + deselection) ---
 
 class PluginView::PluginTable : public QTableWidget {
@@ -419,6 +465,18 @@ protected:
     QTableWidget::keyPressEvent(event);
   }
   void dropEvent(QDropEvent *event) override {
+    // MO2 drag guard (pluginlistsortproxy.cpp:111-120): drag/drop is only
+    // supported while sorted by priority or mod index. Refuse otherwise.
+    const int sort_col = horizontalHeader()->sortIndicatorSection();
+    const bool drag_ok = (sort_col < 0 || sort_col == PluginView::ColPriority ||
+                          sort_col == PluginView::ColModIndex);
+    if (!drag_ok) {
+      QMessageBox::warning(this, tr("Drag and Drop"),
+                           tr("Drag&Drop is only supported when sorting by "
+                              "priority or mod index"));
+      event->ignore();
+      return;
+    }
     const int from = currentRow();
     if (from < 0) {
       event->ignore();
@@ -496,8 +554,8 @@ protected:
     // double-click that follows is swallowed. Programmatic toggles
     // (set_plugins / sync_enabled) never pass through here.
     const QModelIndex idx = indexAt(event->pos());
-    const bool watching = event->button() == Qt::LeftButton && idx.isValid() &&
-                          idx.column() == 0;
+    const bool watching =
+        event->button() == Qt::LeftButton && idx.isValid() && idx.column() == 0;
     // Copy the state, never hold the QTableWidgetItem*: the toggle emits
     // toggle_requested, and the controller behind it may rebuild the table
     // and delete the item (use-after-free). Re-looked up after the base call.
@@ -585,13 +643,20 @@ PluginView::PluginView(QWidget *parent) : QWidget(parent) {
   table_->setDefaultDropAction(Qt::MoveAction);
   table_->setDragDropOverwriteMode(false);
   table_->setDropIndicatorShown(true);
+  // Column sorting (MO2 PluginListSortProxy semantics). Enabled so the
+  // header is clickable; the default indicator is none (-1), so rows stay in
+  // their model/priority order until the user sorts.
+  table_->setSortingEnabled(true);
+  table_->horizontalHeader()->setSortIndicator(-1, Qt::AscendingOrder);
   table_->on_reorder = [this](int from, int to) {
     emit reorder_requested(from, to);
   };
   // Double-click routing (MO2 parity): plain opens the owning mod's Mod
   // Info, Ctrl reveals the owning mod's folder. The table only reports the
   // owner id; what to do with it belongs to the controller.
-  table_->owner_of_row = [this](int row) { return owner_mod_at(row); };
+  table_->owner_of_row = [this](int row) {
+    return owner_mod_at(row);
+  };
   table_->on_mod_info = [this](const std::string &owner) {
     emit mod_info_requested(owner);
   };
@@ -610,6 +675,21 @@ PluginView::PluginView(QWidget *parent) : QWidget(parent) {
     emit toggle_requested(names_[static_cast<size_t>(row)],
                           item->checkState() == Qt::Checked);
   });
+  // Keep the parallel metadata arrays and drag flags in sync when a sort
+  // reorders the rows.
+  connect(table_->horizontalHeader(), &QHeaderView::sortIndicatorChanged, this,
+          [this](int section, Qt::SortOrder order) {
+            if (section >= 0) {
+              user_has_sorted_ = true;
+              sort_column_     = section;
+              sort_order_      = order;
+            } else {
+              sort_column_ = -1;
+            }
+            rebuild_row_metadata();
+            update_drag_flags();
+            apply_highlights();
+          });
 
   // Header row: refresh button + backup/restore pair + counter. MO2 parks
   // its save/restore pair immediately left of the "Active:" counter
@@ -680,7 +760,10 @@ void PluginView::apply_filter(const QString &text) {
 }
 
 void PluginView::set_plugins(const std::vector<engine::GamePlugin> &plugins) {
+  const bool was_sorting = table_->isSortingEnabled();
+
   syncing_ = true;
+  table_->setSortingEnabled(false);
   table_->setRowCount(0);
   names_.clear();
   owners_.clear();
@@ -718,7 +801,7 @@ void PluginView::set_plugins(const std::vector<engine::GamePlugin> &plugins) {
       rows_type_.push_back(PluginType::Regular);
     }
 
-    auto *name       = new QTableWidgetItem(QString::fromStdString(p.name));
+    auto *name       = new PluginItem(QString::fromStdString(p.name));
     Qt::ItemFlags nf = Qt::ItemIsEnabled | Qt::ItemIsSelectable;
     // MO2 PluginList::checkstateData/flags parity: forceLoaded and
     // forceEnabled rows render checked and cannot be toggled; forceDisabled
@@ -768,9 +851,21 @@ void PluginView::set_plugins(const std::vector<engine::GamePlugin> &plugins) {
 
     const QString tooltip = plugin_tooltip_html(p);
     name->setToolTip(tooltip);
+    // Per-row metadata so the parallel arrays can be rebuilt after a sort
+    // reorders the rows (and so drag flags can be re-derived).
+    QVariantMap meta;
+    meta.insert(QStringLiteral("owner"), QString::fromStdString(p.owner_mod));
+    meta.insert(QStringLiteral("locked"), p.locked);
+    meta.insert(QStringLiteral("force_loaded"), p.force_loaded);
+    meta.insert(QStringLiteral("type"), static_cast<int>(rows_type_.back()));
+    meta.insert(QStringLiteral("enabled"),
+                p.force_loaded || p.force_enabled || (!p.force_disabled && p.enabled));
+    meta.insert(QStringLiteral("draggable"),
+                static_cast<bool>(name->flags() & Qt::ItemIsDragEnabled));
+    name->setData(kPluginMetaRole, meta);
     table_->setItem(i, 0, name);
 
-    auto *flags      = new QTableWidgetItem;
+    auto *flags      = new PluginItem;
     Qt::ItemFlags ff = Qt::ItemIsEnabled | Qt::ItemIsSelectable;
     if (!p.force_loaded && !p.force_disabled && !p.locked)
       ff |= Qt::ItemIsDragEnabled;
@@ -779,13 +874,18 @@ void PluginView::set_plugins(const std::vector<engine::GamePlugin> &plugins) {
       flags->setData(kPluginFlagsRole, QVariant::fromValue(flag_icons));
     if (!flag_tips.isEmpty())
       flags->setData(kPluginFlagTooltipsRole, QVariant::fromValue(flag_tips));
+    QStringList flag_tokens;
+    for (const auto &f : flag_frags)
+      flag_tokens << f.first;
+    if (!flag_tokens.isEmpty())
+      flags->setData(kPluginFlagTokensRole, flag_tokens);
     // MO2 serves the same rich row tooltip on every column including Flags
     // (column-independent data()); the per-emblem fragments above stay as a
     // GMM additive extra answered by FlagsDelegate::helpEvent.
     flags->setToolTip(tooltip);
     table_->setItem(i, 1, flags);
 
-    auto *prio       = new QTableWidgetItem(QString::number(p.priority));
+    auto *prio       = new PluginItem(QString::number(p.priority));
     Qt::ItemFlags pf = Qt::ItemIsEnabled | Qt::ItemIsSelectable;
     if (!p.force_loaded && !p.force_disabled && !p.locked)
       pf |= Qt::ItemIsDragEnabled;
@@ -796,7 +896,7 @@ void PluginView::set_plugins(const std::vector<engine::GamePlugin> &plugins) {
     prio->setToolTip(tooltip);
     table_->setItem(i, 2, prio);
 
-    auto *idx        = new QTableWidgetItem(QString::fromStdString(p.mod_index_text));
+    auto *idx        = new PluginItem(QString::fromStdString(p.mod_index_text));
     Qt::ItemFlags xf = Qt::ItemIsEnabled | Qt::ItemIsSelectable;
     if (!p.force_loaded && !p.force_disabled && !p.locked)
       xf |= Qt::ItemIsDragEnabled;
@@ -807,7 +907,7 @@ void PluginView::set_plugins(const std::vector<engine::GamePlugin> &plugins) {
     idx->setToolTip(tooltip);
     table_->setItem(i, 3, idx);
 
-    auto *lock       = new QTableWidgetItem;
+    auto *lock       = new PluginItem;
     Qt::ItemFlags lf = Qt::ItemIsEnabled | Qt::ItemIsSelectable;
     if (!p.force_loaded && !p.force_disabled && !p.locked)
       lf |= Qt::ItemIsDragEnabled;
@@ -819,11 +919,17 @@ void PluginView::set_plugins(const std::vector<engine::GamePlugin> &plugins) {
     table_->setItem(i, 4, lock);
   }
   syncing_ = false;
+  rebuild_row_metadata();
   apply_highlights();
   relayout_flag_rows();
   // A rebuild starts every row visible, so an active filter has to be
   // re-applied or a Refresh would silently show the whole list again.
   apply_filter(filter_text_);
+  table_->setSortingEnabled(was_sorting);
+  if (was_sorting && user_has_sorted_ && sort_column_ >= 0) {
+    table_->sortByColumn(sort_column_, sort_order_);
+  }
+  update_drag_flags();
 }
 
 void PluginView::relayout_flag_rows() {
@@ -840,17 +946,74 @@ void PluginView::relayout_flag_rows() {
   }
 }
 
+void PluginView::rebuild_row_metadata() {
+  names_.clear();
+  owners_.clear();
+  rows_locked_.clear();
+  rows_force_loaded_.clear();
+  rows_enabled_.clear();
+  rows_type_.clear();
+  names_.reserve(static_cast<size_t>(table_->rowCount()));
+  owners_.reserve(static_cast<size_t>(table_->rowCount()));
+  rows_locked_.reserve(static_cast<size_t>(table_->rowCount()));
+  rows_force_loaded_.reserve(static_cast<size_t>(table_->rowCount()));
+  rows_enabled_.reserve(static_cast<size_t>(table_->rowCount()));
+  rows_type_.reserve(static_cast<size_t>(table_->rowCount()));
+  for (int i = 0; i < table_->rowCount(); ++i) {
+    auto *name             = table_->item(i, 0);
+    const QVariantMap meta = name ? name->data(kPluginMetaRole).toMap() : QVariantMap();
+    names_.push_back(name ? name->text().toStdString() : std::string());
+    owners_.push_back(meta.value(QStringLiteral("owner")).toString().toStdString());
+    rows_locked_.push_back(meta.value(QStringLiteral("locked")).toBool());
+    rows_force_loaded_.push_back(meta.value(QStringLiteral("force_loaded")).toBool());
+    rows_enabled_.push_back(meta.value(QStringLiteral("enabled")).toBool());
+    rows_type_.push_back(
+        static_cast<PluginType>(meta.value(QStringLiteral("type")).toInt()));
+  }
+}
+
+void PluginView::update_drag_flags() {
+  const int sort_col = table_->horizontalHeader()->sortIndicatorSection();
+  const bool allow_drag =
+      (sort_col < 0 || sort_col == ColPriority || sort_col == ColModIndex);
+  for (int i = 0; i < table_->rowCount(); ++i) {
+    bool base = false;
+    if (auto *name = table_->item(i, 0))
+      base = name->data(kPluginMetaRole)
+                 .toMap()
+                 .value(QStringLiteral("draggable"))
+                 .toBool();
+    const bool drag = allow_drag && base;
+    for (int c = 0; c < table_->columnCount(); ++c) {
+      if (auto *it = table_->item(i, c)) {
+        Qt::ItemFlags f = it->flags();
+        if (drag)
+          f |= Qt::ItemIsDragEnabled;
+        else
+          f &= ~Qt::ItemIsDragEnabled;
+        it->setFlags(f);
+      }
+    }
+  }
+}
+
 void PluginView::sync_enabled(const std::vector<engine::GamePlugin> &plugins) {
-  syncing_       = true;
-  const int rows = std::min(static_cast<int>(plugins.size()), table_->rowCount());
-  for (int i = 0; i < rows; ++i) {
-    const auto &p          = plugins[static_cast<size_t>(i)];
-    QTableWidgetItem *item = table_->item(i, 0);
-    if (!item || p.force_loaded || p.force_enabled || p.force_disabled)
+  syncing_ = true;
+  for (int i = 0; i < table_->rowCount(); ++i) {
+    auto *item = table_->item(i, 0);
+    if (!item)
       continue;
-    if (i < static_cast<int>(rows_enabled_.size()))
-      rows_enabled_[static_cast<size_t>(i)] = p.enabled;
-    item->setCheckState(p.enabled ? Qt::Checked : Qt::Unchecked);
+    const std::string row_name = item->text().toStdString();
+    for (const auto &p : plugins) {
+      if (p.name != row_name)
+        continue;
+      if (p.force_loaded || p.force_enabled || p.force_disabled)
+        continue;
+      if (i < static_cast<int>(rows_enabled_.size()))
+        rows_enabled_[static_cast<size_t>(i)] = p.enabled;
+      item->setCheckState(p.enabled ? Qt::Checked : Qt::Unchecked);
+      break;
+    }
   }
   syncing_ = false;
   refresh_counters();
@@ -858,6 +1021,10 @@ void PluginView::sync_enabled(const std::vector<engine::GamePlugin> &plugins) {
 
 void PluginView::showEvent(QShowEvent *event) {
   QWidget::showEvent(event);
+  // Qt resets the sort indicator to 0 on first show; restore "unsorted" (-1).
+  if (table_->horizontalHeader()->sortIndicatorSection() == 0 && !user_has_sorted_) {
+    table_->horizontalHeader()->setSortIndicator(-1, Qt::AscendingOrder);
+  }
   refresh_counters();
 }
 

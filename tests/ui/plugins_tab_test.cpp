@@ -1409,3 +1409,66 @@ TEST_CASE("plugins tab filter hides non-matching rows and recounts", "[ui][filte
   panel.hide();
   std::filesystem::remove_all("/tmp/gmm_plugins_filter");
 }
+
+// Focused test for column sorting (Workspace-4l56).
+TEST_CASE("plugins tab column sorting", "[ui][sort]") {
+  qputenv("QT_QPA_PLATFORM", "offscreen");
+  const std::filesystem::path cfg = "/tmp/gmm_plugins_sort/config";
+  std::filesystem::remove_all("/tmp/gmm_plugins_sort");
+  std::filesystem::create_directories(cfg);
+  qputenv("XDG_CONFIG_HOME", cfg.c_str());
+  int test_argc     = 1;
+  char test_argv0[] = "test";
+  char *test_argv[] = {test_argv0, nullptr};
+  QApplication app(test_argc, test_argv);
+  QCoreApplication::setOrganizationName("GameModManager");
+  QCoreApplication::setApplicationName("GameModManager");
+  engine::IconManager::instance().discover_packs(GMM_TEST_RESOURCES_DIR);
+
+  engine::GamePlugin a;
+  a.name           = "zebra.esp";
+  a.enabled        = true;
+  a.priority       = 2;
+  a.mod_index_text = "02";
+  engine::GamePlugin b;
+  b.name           = "Apple.esp";
+  b.enabled        = true;
+  b.priority       = 10;
+  b.mod_index_text = "10";
+  engine::GamePlugin c;
+  c.name           = "middle.esp";
+  c.enabled        = true;
+  c.priority       = 5;
+  c.mod_index_text = "05";
+
+  ui::PluginsTab tab;
+  auto *table = tab.table();
+  tab.set_plugins({a, b, c});
+  QApplication::processEvents();
+
+  // Priority column sorts numerically: 2 before 5 before 10.
+  table->sortByColumn(ui::PluginView::ColPriority, Qt::AscendingOrder);
+  QApplication::processEvents();
+  check(row_with_name(table, "zebra.esp") == 0, "priority 2 first");
+  check(row_with_name(table, "middle.esp") == 1, "priority 5 second");
+  check(row_with_name(table, "Apple.esp") == 2,
+        "priority 10 third (numeric, not text)");
+
+  // Name column sorts case-insensitively.
+  table->sortByColumn(ui::PluginView::ColName, Qt::AscendingOrder);
+  QApplication::processEvents();
+  check(row_with_name(table, "Apple.esp") == 0,
+        "name sort case-insensitive: Apple first");
+  check(row_with_name(table, "middle.esp") == 1, "name sort: middle second");
+  check(row_with_name(table, "zebra.esp") == 2, "name sort: zebra third");
+
+  // Drag is disabled when sorted by a non-priority column.
+  check(!(table->item(0, 0)->flags() & Qt::ItemIsDragEnabled),
+        "drag disabled when sorted by name");
+
+  // Restore priority sort re-enables drag.
+  table->sortByColumn(ui::PluginView::ColPriority, Qt::AscendingOrder);
+  QApplication::processEvents();
+  check(table->item(0, 0)->flags() & Qt::ItemIsDragEnabled,
+        "drag re-enabled when sorted by priority");
+}
