@@ -610,7 +610,6 @@ PluginView::PluginView(QWidget *parent) : QWidget(parent) {
   auto *layout = new QVBoxLayout(this);
   layout->setContentsMargins(0, 0, 0, 0);
   table_ = new PluginTable(0, 5, this);
-  table_->horizontalHeader()->installEventFilter(this);
   // MO2 PluginList::getColumnName also names Form Version, Header Version,
   // Author and Description (pluginlist.cpp:88-106), and we used to give them
   // columns. They are not columns here: HEDR is an optional record, so for
@@ -663,11 +662,14 @@ PluginView::PluginView(QWidget *parent) : QWidget(parent) {
   table_->setDefaultDropAction(Qt::MoveAction);
   table_->setDragDropOverwriteMode(false);
   table_->setDropIndicatorShown(true);
-  // Column sorting (MO2 PluginListSortProxy semantics). Enabled so the
-  // header is clickable; the default indicator is none (-1), so rows stay in
-  // their model/priority order until the user sorts.
+  // Column sorting (MO2 PluginListSortProxy semantics). Sorting stays
+  // enabled permanently (MO2 never toggles it); the default indicator is
+  // Priority ascending, matching MO2 PluginListView::setup's
+  // sortByColumn(COL_PRIORITY, Ascending). A valid indicator is always
+  // present - Qt warns that -1 may crash models that do not support it.
+  table_->horizontalHeader()->setSortIndicator(PluginView::ColPriority,
+                                               Qt::AscendingOrder);
   table_->setSortingEnabled(true);
-  table_->horizontalHeader()->setSortIndicator(-1, Qt::AscendingOrder);
   table_->on_reorder = [this](int from, int to) {
     emit reorder_requested(from, to);
   };
@@ -695,14 +697,21 @@ PluginView::PluginView(QWidget *parent) : QWidget(parent) {
     emit toggle_requested(names_[static_cast<size_t>(row)],
                           item->checkState() == Qt::Checked);
   });
+  // Track an explicit user sort separately from programmatic sorts, so a
+  // Refresh (set_plugins) can restore the user's choice without mistaking the
+  // default Priority sort for a user action.
+  connect(table_->horizontalHeader(), &QHeaderView::sectionClicked, this,
+          [this](int section) {
+            if (section >= 0)
+              user_has_sorted_ = true;
+          });
   // Keep the parallel metadata arrays and drag flags in sync when a sort
   // reorders the rows.
   connect(table_->horizontalHeader(), &QHeaderView::sortIndicatorChanged, this,
           [this](int section, Qt::SortOrder order) {
             if (section >= 0) {
-              user_has_sorted_ = true;
-              sort_column_     = section;
-              sort_order_      = order;
+              sort_column_ = section;
+              sort_order_  = order;
             } else {
               sort_column_ = -1;
             }
@@ -781,10 +790,10 @@ void PluginView::apply_filter(const QString &text) {
 
 void PluginView::set_plugins(const std::vector<engine::GamePlugin> &plugins) {
   syncing_ = true;
-  // Reset to unsorted before rebuilding so row insertion does not trigger an
-  // auto-sort (and so the disable/enable cycle that used to break Qt's
-  // internal header-click -> sort connection is avoided).
-  table_->horizontalHeader()->setSortIndicator(-1, Qt::AscendingOrder);
+  // Disable sorting while rebuilding so inserting rows does not auto-sort
+  // half-built rows and corrupt columns. Re-enabled below with a valid
+  // indicator (never -1).
+  table_->setSortingEnabled(false);
   table_->setRowCount(0);
   names_.clear();
   owners_.clear();
@@ -951,10 +960,13 @@ void PluginView::set_plugins(const std::vector<engine::GamePlugin> &plugins) {
   // re-applied or a Refresh would silently show the whole list again.
   apply_filter(filter_text_);
   if (user_has_sorted_ && sort_column_ >= 0) {
-    table_->sortByColumn(sort_column_, sort_order_);
+    table_->horizontalHeader()->setSortIndicator(sort_column_, sort_order_);
   } else {
-    table_->horizontalHeader()->setSortIndicator(-1, Qt::AscendingOrder);
+    table_->horizontalHeader()->setSortIndicator(PluginView::ColPriority,
+                                                 Qt::AscendingOrder);
   }
+  // Re-enable sorting; this triggers sortByColumn with the indicator above.
+  table_->setSortingEnabled(true);
   update_drag_flags();
 }
 
@@ -1045,24 +1057,8 @@ void PluginView::sync_enabled(const std::vector<engine::GamePlugin> &plugins) {
   refresh_counters();
 }
 
-bool PluginView::eventFilter(QObject *watched, QEvent *event) {
-  if (watched == table_->horizontalHeader()) {
-    if (event->type() == QEvent::MouseButtonPress ||
-        event->type() == QEvent::MouseButtonRelease ||
-        event->type() == QEvent::MouseButtonDblClick ||
-        event->type() == QEvent::MouseMove) {
-      return QApplication::sendEvent(table_->horizontalHeader()->viewport(), event);
-    }
-  }
-  return QWidget::eventFilter(watched, event);
-}
-
 void PluginView::showEvent(QShowEvent *event) {
   QWidget::showEvent(event);
-  // Qt resets the sort indicator to 0 on first show; restore "unsorted" (-1).
-  if (table_->horizontalHeader()->sortIndicatorSection() == 0 && !user_has_sorted_) {
-    table_->horizontalHeader()->setSortIndicator(-1, Qt::AscendingOrder);
-  }
   refresh_counters();
 }
 
