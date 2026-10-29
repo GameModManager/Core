@@ -1445,6 +1445,8 @@ TEST_CASE("plugins tab column sorting", "[ui][sort]") {
   auto *table = tab.table();
   tab.set_plugins({a, b, c});
   QApplication::processEvents();
+  table->sortByColumn(-1, Qt::AscendingOrder);
+  QApplication::processEvents();
 
   // Priority column sorts numerically: 2 before 5 before 10.
   table->sortByColumn(ui::PluginView::ColPriority, Qt::AscendingOrder);
@@ -1497,4 +1499,67 @@ TEST_CASE("plugins tab column sorting", "[ui][sort]") {
                 .value(QStringLiteral("model_row"))
                 .toInt() == 0,
         "descending: zebra keeps model_row 0");
+}
+
+// Focused test: header CLICK (not sortByColumn) drives sorting (Workspace-4l56).
+TEST_CASE("plugins tab header click sorting", "[ui][sort]") {
+  qputenv("QT_QPA_PLATFORM", "offscreen");
+  const std::filesystem::path cfg = "/tmp/gmm_plugins_click/config";
+  std::filesystem::remove_all("/tmp/gmm_plugins_click");
+  std::filesystem::create_directories(cfg);
+  qputenv("XDG_CONFIG_HOME", cfg.c_str());
+  int test_argc     = 1;
+  char test_argv0[] = "test";
+  char *test_argv[] = {test_argv0, nullptr};
+  QApplication app(test_argc, test_argv);
+  QCoreApplication::setOrganizationName("GameModManager");
+  QCoreApplication::setApplicationName("GameModManager");
+  engine::IconManager::instance().discover_packs(GMM_TEST_RESOURCES_DIR);
+
+  engine::GamePlugin a;
+  a.name           = "zebra.esp";
+  a.enabled        = true;
+  a.priority       = 2;
+  a.mod_index_text = "02";
+  engine::GamePlugin b;
+  b.name           = "Apple.esp";
+  b.enabled        = true;
+  b.priority       = 10;
+  b.mod_index_text = "10";
+  engine::GamePlugin c;
+  c.name           = "middle.esp";
+  c.enabled        = true;
+  c.priority       = 5;
+  c.mod_index_text = "05";
+
+  ui::PluginsTab tab;
+  auto *table = tab.table();
+  tab.set_plugins({a, b, c});
+  QApplication::processEvents();
+  tab.show();
+  QApplication::processEvents();
+
+  auto *hh = table->horizontalHeader();
+
+  // Click Name header -> sorts by name ascending.
+  QRect name_rect(hh->sectionViewportPosition(ui::PluginView::ColName), 0,
+                  hh->sectionSize(ui::PluginView::ColName), hh->height());
+  QTest::mouseClick(hh, Qt::LeftButton, Qt::NoModifier, name_rect.center());
+  QApplication::processEvents();
+  check(row_with_name(table, "Apple.esp") == 0, "click name: Apple first");
+  check(row_with_name(table, "middle.esp") == 1, "click name: middle second");
+  check(row_with_name(table, "zebra.esp") == 2, "click name: zebra third");
+
+  // Refresh (set_plugins) between clicks.
+  tab.set_plugins({a, b, c});
+  QApplication::processEvents();
+
+  // Click Priority header -> sorts by priority ascending.
+  QRect prio_rect(hh->sectionViewportPosition(ui::PluginView::ColPriority), 0,
+                  hh->sectionSize(ui::PluginView::ColPriority), hh->height());
+  QTest::mouseClick(hh, Qt::LeftButton, Qt::NoModifier, prio_rect.center());
+  QApplication::processEvents();
+  check(row_with_name(table, "zebra.esp") == 0, "click priority: zebra first");
+  check(row_with_name(table, "middle.esp") == 1, "click priority: middle second");
+  check(row_with_name(table, "Apple.esp") == 2, "click priority: Apple third");
 }

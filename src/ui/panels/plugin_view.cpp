@@ -610,6 +610,7 @@ PluginView::PluginView(QWidget *parent) : QWidget(parent) {
   auto *layout = new QVBoxLayout(this);
   layout->setContentsMargins(0, 0, 0, 0);
   table_ = new PluginTable(0, 5, this);
+  table_->horizontalHeader()->installEventFilter(this);
   // MO2 PluginList::getColumnName also names Form Version, Header Version,
   // Author and Description (pluginlist.cpp:88-106), and we used to give them
   // columns. They are not columns here: HEDR is an optional record, so for
@@ -779,10 +780,11 @@ void PluginView::apply_filter(const QString &text) {
 }
 
 void PluginView::set_plugins(const std::vector<engine::GamePlugin> &plugins) {
-  const bool was_sorting = table_->isSortingEnabled();
-
   syncing_ = true;
-  table_->setSortingEnabled(false);
+  // Reset to unsorted before rebuilding so row insertion does not trigger an
+  // auto-sort (and so the disable/enable cycle that used to break Qt's
+  // internal header-click -> sort connection is avoided).
+  table_->horizontalHeader()->setSortIndicator(-1, Qt::AscendingOrder);
   table_->setRowCount(0);
   names_.clear();
   owners_.clear();
@@ -948,9 +950,10 @@ void PluginView::set_plugins(const std::vector<engine::GamePlugin> &plugins) {
   // A rebuild starts every row visible, so an active filter has to be
   // re-applied or a Refresh would silently show the whole list again.
   apply_filter(filter_text_);
-  table_->setSortingEnabled(was_sorting);
-  if (was_sorting && user_has_sorted_ && sort_column_ >= 0) {
+  if (user_has_sorted_ && sort_column_ >= 0) {
     table_->sortByColumn(sort_column_, sort_order_);
+  } else {
+    table_->horizontalHeader()->setSortIndicator(-1, Qt::AscendingOrder);
   }
   update_drag_flags();
 }
@@ -1040,6 +1043,18 @@ void PluginView::sync_enabled(const std::vector<engine::GamePlugin> &plugins) {
   }
   syncing_ = false;
   refresh_counters();
+}
+
+bool PluginView::eventFilter(QObject *watched, QEvent *event) {
+  if (watched == table_->horizontalHeader()) {
+    if (event->type() == QEvent::MouseButtonPress ||
+        event->type() == QEvent::MouseButtonRelease ||
+        event->type() == QEvent::MouseButtonDblClick ||
+        event->type() == QEvent::MouseMove) {
+      return QApplication::sendEvent(table_->horizontalHeader()->viewport(), event);
+    }
+  }
+  return QWidget::eventFilter(watched, event);
 }
 
 void PluginView::showEvent(QShowEvent *event) {
