@@ -606,6 +606,48 @@ QTableWidget *PluginView::table() const {
   return table_;
 }
 
+void PluginView::wire_header() {
+  if (!table_)
+    return;
+  auto *hh = table_->horizontalHeader();
+  if (!hh || hh == connected_header_)
+    return;
+  connected_header_ = hh;
+  hh->installEventFilter(this);
+  connect(hh, &QHeaderView::sectionClicked, this, [this](int section) {
+    if (section >= 0)
+      user_has_sorted_ = true;
+  });
+  connect(hh, &QHeaderView::sortIndicatorChanged, this,
+          [this](int section, Qt::SortOrder order) {
+            if (section >= 0) {
+              sort_column_ = section;
+              sort_order_  = order;
+            } else {
+              sort_column_ = -1;
+            }
+            rebuild_row_metadata();
+            update_drag_flags();
+            apply_highlights();
+          });
+}
+
+bool PluginView::eventFilter(QObject *watched, QEvent *event) {
+  // Forward header mouse events to its viewport: clicking the header widget
+  // itself does not trigger Qt's sort (the sort slot is wired to the
+  // viewport), so without this forward the column header is dead in the real
+  // app. Restored from pre-12be608 (Workspace-4l56).
+  if (watched == table_->horizontalHeader()) {
+    if (event->type() == QEvent::MouseButtonPress ||
+        event->type() == QEvent::MouseButtonRelease ||
+        event->type() == QEvent::MouseButtonDblClick ||
+        event->type() == QEvent::MouseMove) {
+      return QApplication::sendEvent(table_->horizontalHeader()->viewport(), event);
+    }
+  }
+  return QWidget::eventFilter(watched, event);
+}
+
 PluginView::PluginView(QWidget *parent) : QWidget(parent) {
   auto *layout = new QVBoxLayout(this);
   layout->setContentsMargins(0, 0, 0, 0);
@@ -670,6 +712,12 @@ PluginView::PluginView(QWidget *parent) : QWidget(parent) {
   table_->horizontalHeader()->setSortIndicator(PluginView::ColPriority,
                                                Qt::AscendingOrder);
   table_->setSortingEnabled(true);
+  // Keep the header clickable even if it is later swapped (RightPanel replaces
+  // it with a ColumnToggleHeaderView): setSortingEnabled(true) is a no-op at
+  // the view level once sorting is already enabled, so a swapped-in header
+  // never receives sectionsClickable=true unless we set it explicitly.
+  table_->horizontalHeader()->setSectionsClickable(true);
+  table_->horizontalHeader()->setSortIndicatorShown(true);
   table_->on_reorder = [this](int from, int to) {
     emit reorder_requested(from, to);
   };
@@ -699,26 +747,10 @@ PluginView::PluginView(QWidget *parent) : QWidget(parent) {
   });
   // Track an explicit user sort separately from programmatic sorts, so a
   // Refresh (set_plugins) can restore the user's choice without mistaking the
-  // default Priority sort for a user action.
-  connect(table_->horizontalHeader(), &QHeaderView::sectionClicked, this,
-          [this](int section) {
-            if (section >= 0)
-              user_has_sorted_ = true;
-          });
-  // Keep the parallel metadata arrays and drag flags in sync when a sort
-  // reorders the rows.
-  connect(table_->horizontalHeader(), &QHeaderView::sortIndicatorChanged, this,
-          [this](int section, Qt::SortOrder order) {
-            if (section >= 0) {
-              sort_column_ = section;
-              sort_order_  = order;
-            } else {
-              sort_column_ = -1;
-            }
-            rebuild_row_metadata();
-            update_drag_flags();
-            apply_highlights();
-          });
+  // default Priority sort for a user action. Wired through wire_header() so
+  // the connections survive a header swap (RightPanel replaces the header with
+  // a ColumnToggleHeaderView after this ctor runs).
+  wire_header();
 
   // Header row: refresh button + backup/restore pair + counter. MO2 parks
   // its save/restore pair immediately left of the "Active:" counter
@@ -789,6 +821,7 @@ void PluginView::apply_filter(const QString &text) {
 }
 
 void PluginView::set_plugins(const std::vector<engine::GamePlugin> &plugins) {
+  wire_header();
   syncing_ = true;
   // Disable sorting while rebuilding so inserting rows does not auto-sort
   // half-built rows and corrupt columns. Re-enabled below with a valid
@@ -967,6 +1000,11 @@ void PluginView::set_plugins(const std::vector<engine::GamePlugin> &plugins) {
   }
   // Re-enable sorting; this triggers sortByColumn with the indicator above.
   table_->setSortingEnabled(true);
+  // Explicit: a header swapped in by RightPanel (ColumnToggleHeaderView) does
+  // not inherit sectionsClickable from setSortingEnabled, which is a no-op
+  // once sorting is already enabled at the view level.
+  table_->horizontalHeader()->setSectionsClickable(true);
+  table_->horizontalHeader()->setSortIndicatorShown(true);
   update_drag_flags();
 }
 

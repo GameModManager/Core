@@ -17,6 +17,7 @@ class QKeyEvent;
 class QLCDNumber;
 class QPushButton;
 class QTableWidget;
+class QHeaderView;
 
 namespace ui {
 
@@ -106,6 +107,9 @@ public:
   // MO2 does (PluginList::COL_PRIORITY).
   enum Col { ColName = 0, ColFlags, ColPriority, ColModIndex, ColLocked };
 
+protected:
+  bool eventFilter(QObject *watched, QEvent *event) override;
+
 signals:
   void toggle_requested(const std::string &name, bool enabled);
   void reorder_requested(int from_row, int to_row);
@@ -138,6 +142,9 @@ private:
   void relayout_flag_rows();
   void rebuild_row_metadata();
   void update_drag_flags();
+  // (Re)connect header signals when the header widget changes (e.g. RightPanel
+  // swaps in a ColumnToggleHeaderView). Idempotent per header instance.
+  void wire_header();
   // MO2 PluginListView::event keyboard routing; true = key consumed.
   bool handle_key(QKeyEvent *event);
 
@@ -145,11 +152,12 @@ private:
   enum class PluginType { Regular, Master, Light, Medium };
 
   class PluginTable;
-  PluginTable *table_          = nullptr;
-  QPushButton *refresh_button_ = nullptr;
-  QPushButton *backup_button_  = nullptr;
-  QPushButton *restore_button_ = nullptr;
-  QLCDNumber *counter_display_ = nullptr;
+  PluginTable *table_            = nullptr;
+  QHeaderView *connected_header_ = nullptr;
+  QPushButton *refresh_button_   = nullptr;
+  QPushButton *backup_button_    = nullptr;
+  QPushButton *restore_button_   = nullptr;
+  QLCDNumber *counter_display_   = nullptr;
   std::vector<std::string> names_;
   // Mod folder providing each row's plugin ("" = game Data), parallel to
   // names_. The double-click handlers need it: a plugin's own name says

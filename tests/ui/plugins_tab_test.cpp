@@ -65,7 +65,6 @@
 #include <QTest>
 
 #include <catch2/catch_test_macros.hpp>
-#include <cstdio>
 #include <initializer_list>
 #include <string>
 #include <utility>
@@ -1532,11 +1531,24 @@ TEST_CASE("plugins tab header click sorting", "[ui][sort]") {
   c.priority       = 5;
   c.mod_index_text = "05";
 
-  ui::PluginsTab tab;
-  auto *table = tab.table();
-  tab.set_plugins({a, b, c});
-  QApplication::processEvents();
-  tab.show();
+  engine::GameCapabilities caps;
+  engine::CapabilityInfo info;
+  info.game_id      = "clickgame";
+  info.capability   = "plugins";
+  info.display_name = "Plugins";
+  caps.register_capability(info);
+
+  ui::RightPanel panel;
+  panel.set_capabilities(&caps);
+  panel.set_game("clickgame");
+  panel.resize(600, 300);
+  panel.show();
+  auto *tab = panel.ensure_plugins_tab();
+  check(tab != nullptr, "plugins tab builds");
+  panel.show_plugins_tab();
+
+  auto *table = tab->table();
+  tab->set_plugins({a, b, c});
   QApplication::processEvents();
 
   auto *hh = table->horizontalHeader();
@@ -1544,20 +1556,20 @@ TEST_CASE("plugins tab header click sorting", "[ui][sort]") {
   // Click Name header -> sorts by name ascending.
   QRect name_rect(hh->sectionViewportPosition(ui::PluginView::ColName), 0,
                   hh->sectionSize(ui::PluginView::ColName), hh->height());
-  QTest::mouseClick(hh->viewport(), Qt::LeftButton, Qt::NoModifier, name_rect.center());
+  QTest::mouseClick(hh, Qt::LeftButton, Qt::NoModifier, name_rect.center());
   QApplication::processEvents();
   check(row_with_name(table, "Apple.esp") == 0, "click name: Apple first");
   check(row_with_name(table, "middle.esp") == 1, "click name: middle second");
   check(row_with_name(table, "zebra.esp") == 2, "click name: zebra third");
 
   // Refresh (set_plugins) between clicks.
-  tab.set_plugins({a, b, c});
+  tab->set_plugins({a, b, c});
   QApplication::processEvents();
 
   // Click Priority header -> sorts by priority ascending.
   QRect prio_rect(hh->sectionViewportPosition(ui::PluginView::ColPriority), 0,
                   hh->sectionSize(ui::PluginView::ColPriority), hh->height());
-  QTest::mouseClick(hh->viewport(), Qt::LeftButton, Qt::NoModifier, prio_rect.center());
+  QTest::mouseClick(hh, Qt::LeftButton, Qt::NoModifier, prio_rect.center());
   QApplication::processEvents();
   check(row_with_name(table, "zebra.esp") == 0, "click priority: zebra first");
   check(row_with_name(table, "middle.esp") == 1, "click priority: middle second");
@@ -1613,3 +1625,5 @@ TEST_CASE("plugins tab default priority sort", "[ui][sort]") {
   check(row_with_name(table, "middle.esp") == 1, "default: middle second");
   check(row_with_name(table, "Apple.esp") == 2, "default: Apple third");
 }
+
+// TEMPORARY repro (Workspace-4l56 round 4): real stack via RightPanel.
