@@ -2234,6 +2234,18 @@ bool ModList::is_row_filter_visible(int row) const {
   return filter_visible_[row];
 }
 
+void ModList::set_view_visible(const QVector<bool> &visible) {
+  view_visible_ = visible;
+}
+
+bool ModList::is_row_view_visible(int row) const {
+  if (view_visible_.isEmpty())
+    return true;
+  if (row < 0 || row >= view_visible_.size())
+    return true;
+  return view_visible_[row];
+}
+
 void ModList::sanitize_parent_links() {
   bool changed = false;
   for (int i = 0; i < mods_.size(); ++i) {
@@ -2299,13 +2311,9 @@ bool ModList::has_visible_descendant(int row, const QVector<bool> &visible) cons
 }
 
 void ModList::apply_fold_state() {
-  auto *tree = qobject_cast<QTreeView *>(mod_view_);
-  if (!tree)
-    return;
-
-  const QVector<bool> hidden = compute_fold_hidden();
-  for (int i = 0; i < mods_.size(); ++i)
-    tree->setRowHidden(i, QModelIndex(), hidden[i]);
+  // View coupling removed: visibility is published via set_view_visible /
+  // is_row_view_visible and consumed by ModListSortProxy::filterAcceptsRow.
+  emit fold_state_changed();
 }
 
 QIcon ModList::source_icon(const QString &source_type) const {

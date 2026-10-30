@@ -65,6 +65,7 @@ namespace ui {
 
 class DebugWindow;
 class ModList;
+class ModListSortProxy;
 class ModView;
 class ColumnToggleHeaderView;
 class MainToolbar;
@@ -328,6 +329,7 @@ private:
   QLCDNumber *mod_count_enabled_      = nullptr;
   ColumnToggleHeaderView *mod_header_ = nullptr;
   ModList *mod_model_                 = nullptr;
+  ModListSortProxy *sort_proxy_ = nullptr;
   RightPanel *right_panel_            = nullptr;
   QSplitter *main_splitter_           = nullptr;
   QSplitter *console_splitter_        = nullptr;

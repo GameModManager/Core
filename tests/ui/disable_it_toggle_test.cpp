@@ -31,6 +31,7 @@
 #include <QElapsedTimer>
 #include <QEventLoop>
 #include <QIcon>
+#include <QSortFilterProxyModel>
 #include <QThread>
 #include <QVariant>
 
@@ -161,7 +162,12 @@ struct IsaacWorld {
     }));
   }
   [[nodiscard]] ui::ModList *model() const {
-    return qobject_cast<ui::ModList *>(w.mod_view()->model());
+    auto *m = w.mod_view()->model();
+    if (!m) return nullptr;
+    if (auto *p = qobject_cast<QSortFilterProxyModel *>(m)) {
+      m = p->sourceModel();
+    }
+    return qobject_cast<ui::ModList *>(m);
   }
 };
 

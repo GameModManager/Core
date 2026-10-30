@@ -82,6 +82,7 @@
 #include <QLabel>
 #include <QMenu>
 #include <QModelIndex>
+#include <QSortFilterProxyModel>
 #include <QPlainTextEdit>
 #include <QPushButton>
 #include <QTabBar>
@@ -1296,6 +1297,7 @@ TEST_CASE("MainWindow: mod list double-click tabs, separator toggle, bounce guar
   QTest::mouseClick(view->viewport(), Qt::LeftButton, Qt::NoModifier,
                     QPoint(name_cell.left() + 8, name_cell.center().y()));
   QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
+  name_idx = view->model()->index(foo, ui::ModList::Name);
   const auto after_click = static_cast<Qt::CheckState>(
       view->model()->data(name_idx, Qt::CheckStateRole).toInt());
   REQUIRE(after_click != before_click);
@@ -1387,8 +1389,8 @@ TEST_CASE("MainWindow: display_foreign hides the game-native rows",
   const int native_on = row_of(QStringLiteral("TestGame.esm"));
   REQUIRE(foo_on >= 0);
   REQUIRE(native_on >= 0);
-  CHECK(!view->isRowHidden(foo_on, QModelIndex()));
-  CHECK(!view->isRowHidden(native_on, QModelIndex()));
+  CHECK(model->is_row_view_visible(foo_on));
+  CHECK(model->is_row_view_visible(native_on));
 
   // The setting off: the foreign row leaves the list, the managed mod stays.
   Settings::instance().set_display_foreign(false);
@@ -1400,14 +1402,14 @@ TEST_CASE("MainWindow: display_foreign hides the game-native rows",
   const int native_off = row_of(QStringLiteral("TestGame.esm"));
   REQUIRE(foo_off >= 0);
   REQUIRE(native_off >= 0);
-  CHECK(!view->isRowHidden(foo_off, QModelIndex()));
-  CHECK(view->isRowHidden(native_off, QModelIndex()));
+  CHECK(model->is_row_view_visible(foo_off));
+  CHECK(!model->is_row_view_visible(native_off));
 
   // Back on: the row returns, which is the same path the setting takes when a
   // user re-checks the box.
   Settings::instance().set_display_foreign(true);
   mlc->apply_mod_filter();
-  CHECK(!view->isRowHidden(row_of(QStringLiteral("TestGame.esm")), QModelIndex()));
+  CHECK(model->is_row_view_visible(row_of(QStringLiteral("TestGame.esm"))));
 }
 
 // Settings > Mod List > "Check for mods for updates after install".
@@ -1665,16 +1667,30 @@ TEST_CASE("MainWindow: All Mods menu enables only the filter-matching mods",
 
   // Start every mod disabled, written through the model's own CheckStateRole
   // path - the same write a checkbox click makes.
+  auto to_source = [&](int proxy_row) {
+    if (proxy_row < 0) return proxy_row;
+    if (auto *p = qobject_cast<QSortFilterProxyModel *>(view->model()))
+      return p->mapToSource(view->model()->index(proxy_row, 0)).row();
+    return proxy_row;
+  };
   auto set_enabled = [&](const QString &id, bool on) {
-    const int row = find_mod_row(view, id);
+    const int row = to_source(find_mod_row(view, id));
     REQUIRE(row >= 0);
     model->setData(model->index(row, ui::ModList::Name),
                    on ? Qt::Checked : Qt::Unchecked, Qt::CheckStateRole);
   };
   auto mod_enabled = [&](const QString &id) {
-    const int row = find_mod_row(view, id);
-    REQUIRE(row >= 0);
-    return model->mods()[static_cast<size_t>(row)].enabled;
+    const int proxy_row = find_mod_row(view, id);
+    if (proxy_row >= 0) {
+      const int row = to_source(proxy_row);
+      REQUIRE(row >= 0);
+      return model->mods()[static_cast<size_t>(row)].enabled;
+    }
+    // filtered out of the view: look up by id in the source model
+    for (const auto &m : model->mods())
+      if (m.id == id)
+        return m.enabled;
+    return false;
   };
   set_enabled(QStringLiteral("Foo_mod"), false);
   set_enabled(QStringLiteral("Bar_mod"), false);
@@ -1732,12 +1748,9 @@ TEST_CASE("MainWindow: All Mods menu enables only the filter-matching mods",
     edit->setText(QStringLiteral("Foo"));
   }
   REQUIRE(pump_until([&] {
-    return view->isRowHidden(find_mod_row(view, QStringLiteral("Bar_mod")),
-                             QModelIndex()) &&
-           view->isRowHidden(find_mod_row(view, QStringLiteral("Baz_mod")),
-                             QModelIndex()) &&
-           !view->isRowHidden(find_mod_row(view, QStringLiteral("Foo_mod")),
-                              QModelIndex());
+    return find_mod_row(view, QStringLiteral("Bar_mod")) < 0 &&
+           find_mod_row(view, QStringLiteral("Baz_mod")) < 0 &&
+           find_mod_row(view, QStringLiteral("Foo_mod")) >= 0;
   }));
 
   run_all_mods_action(QStringLiteral("Foo_mod"), [&](QMenu &all_mods) {
@@ -1763,10 +1776,9 @@ TEST_CASE("MainWindow: All Mods menu enables only the filter-matching mods",
     edit->clear();
   }
   REQUIRE(pump_until([&] {
-    return !view->isRowHidden(find_mod_row(view, QStringLiteral("Bar_mod")),
-                              QModelIndex()) &&
-           !view->isRowHidden(find_mod_row(view, QStringLiteral("Baz_mod")),
-                              QModelIndex());
+    return find_mod_row(view, QStringLiteral("Bar_mod")) >= 0 &&
+           find_mod_row(view, QStringLiteral("Baz_mod")) >= 0 &&
+           find_mod_row(view, QStringLiteral("Foo_mod")) >= 0;
   }));
 
   run_all_mods_action(QStringLiteral("Foo_mod"), [&](QMenu &all_mods) {
@@ -2574,13 +2586,17 @@ TEST_CASE("MainWindow: the installed mod is selected with its separator opened",
   // actually on screen.
   CHECK_FALSE(model->mods()[sep_row].folded);
   CHECK_FALSE(model->is_row_fold_hidden(mod_row));
-  CHECK_FALSE(view->isRowHidden(mod_row, QModelIndex()));
+  CHECK(model->is_row_view_visible(mod_row));
 
   // The row is selected - scrollTo alone leaves the selection where it was,
   // which is what made this look like "nothing happened".
   CHECK(view->currentIndex().isValid());
   CHECK(view->currentIndex().row() == mod_row);
-  CHECK(view->selectionModel()->isSelected(model->index(mod_row, 0)));
+  QModelIndex src_idx = model->index(mod_row, 0);
+  QModelIndex view_idx = src_idx;
+  if (auto *p = qobject_cast<QSortFilterProxyModel *>(view->model()))
+    view_idx = p->mapFromSource(src_idx);
+  CHECK(view->selectionModel()->isSelected(view_idx));
 
   // The 50 ms deferred focus MO2 uses (modlistview.cpp:432-434). Bounded, so
   // a callback that never fires FAILs the case instead of hanging it.

@@ -3,6 +3,7 @@
 #include "ui/settings/settings.h"
 
 #include <QAbstractItemModel>
+#include <QAbstractProxyModel>
 #include <QAbstractItemView>
 #include <QApplication>
 #include <QDragEnterEvent>
@@ -509,8 +510,13 @@ void ModView::dragMoveEvent(QDragMoveEvent *event) {
   // in flight the separator band under the cursor opens so it can be aimed at,
   // and closes again as soon as the cursor leaves. The model ignores the call
   // when the setting is off.
-  if (auto *mod_model = qobject_cast<ModList *>(model()))
-    mod_model->hover_expand_separator(indexAt(event->position().toPoint()).row());
+  if (mod_list_) {
+    const QModelIndex idx = indexAt(event->position().toPoint());
+    int src_row = idx.row();
+    if (auto *proxy = qobject_cast<QAbstractProxyModel *>(model()))
+      src_row = proxy->mapToSource(idx).row();
+    mod_list_->hover_expand_separator(src_row);
+  }
 
   if (event->mimeData()->hasUrls()) {
     for (const auto &url : event->mimeData()->urls()) {
@@ -541,7 +547,10 @@ void ModView::dropEvent(QDropEvent *event) {
     }
 
     if (!overwrite_paths.isEmpty()) {
-      const int row = indexAt(event->position().toPoint()).row();
+      const QModelIndex idx = indexAt(event->position().toPoint());
+      int row = idx.row();
+      if (auto *proxy = qobject_cast<QAbstractProxyModel *>(model()))
+        row = proxy->mapToSource(idx).row();
       if (row >= 0) {
         emit overwrite_files_dropped(overwrite_paths, row);
         event->acceptProposedAction();
@@ -560,16 +569,15 @@ void ModView::dropEvent(QDropEvent *event) {
 void ModView::dragLeaveEvent(QDragLeaveEvent *event) {
   // The band opened by dragMoveEvent() closes the moment the drag leaves the
   // view, so a cancelled drag never leaves a separator expanded.
-  if (auto *mod_model = qobject_cast<ModList *>(model()))
-    mod_model->hover_expand_separator(-1);
+  if (mod_list_)
+    mod_list_->hover_expand_separator(-1);
   QTreeView::dragLeaveEvent(event);
 }
 
 bool ModView::is_under_overwrite(const QString &path) const {
-  const auto *model = qobject_cast<const ModList *>(this->model());
-  if (!model)
+  if (!mod_list_)
     return false;
-  const auto ow = model->overwrite_path();
+  const auto ow = mod_list_->overwrite_path();
   if (ow.isEmpty())
     return false;
 

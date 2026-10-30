@@ -96,6 +96,7 @@
 #include "ui/widgets/loot_report_dialog.h"
 #include "ui/widgets/mod_filter_bar.h"
 #include "ui/widgets/mod_list_model.h"
+#include "ui/widgets/mod_list_sort_proxy.h"
 #include "ui/widgets/mod_table_view.h"
 #include "ui/widgets/profile_bar.h"
 #include "ui/widgets/right_panel.h"
@@ -300,6 +301,11 @@ ModListController::ModListController(MainWindow *w, QObject *parent)
   mod_actions_->set_apply_mod_filter([this]() {
     apply_mod_filter();
   });
+  mod_actions_->set_to_source_row([this](const QModelIndex &idx) {
+    if (!w_->sort_proxy_)
+      return idx.row();
+    return w_->sort_proxy_->mapToSource(idx).row();
+  });
   mod_actions_->set_load_mods_from_game([this]() {
     load_mods_from_game();
   });
@@ -380,8 +386,17 @@ void ModListController::setup_mod_list(QVBoxLayout *left_layout) {
 
   w_->mod_model_ = new ModList(w_);
   w_->mod_view_  = new ModView(w_);
-  w_->mod_model_->set_view(w_->mod_view_);
-  w_->mod_view_->setModel(w_->mod_model_);
+  w_->mod_view_->set_mod_list(w_->mod_model_);
+  w_->sort_proxy_ = new ModListSortProxy(w_->mod_model_, w_);
+  w_->mod_view_->setModel(w_->sort_proxy_);
+  connect(w_->mod_model_, &ModList::fold_state_changed, w_->sort_proxy_, [this]() {
+    if (w_->sort_proxy_)
+      w_->sort_proxy_->invalidate();
+  });
+  connect(w_->mod_model_, &ModList::mod_list_changed, w_->sort_proxy_, [this]() {
+    if (w_->sort_proxy_)
+      w_->sort_proxy_->rebuild_ranks();
+  });
 
   // Highlight conflicting mods on selection + populate ConflictsTab
   connect(w_->mod_view_->selectionModel(), &QItemSelectionModel::currentChanged, this,
@@ -392,10 +407,12 @@ void ModListController::setup_mod_list(QVBoxLayout *left_layout) {
               return;
             }
             const auto &mods = w_->mod_model_->mods();
-            if (current.row() >= 0 && current.row() < mods.size() &&
-                !mods[current.row()].is_separator &&
-                !mods[current.row()].is_overwrite) {
-              auto &selected = mods[current.row()];
+            const int src_row = w_->sort_proxy_ ? w_->sort_proxy_->mapToSource(current).row()
+                                                : current.row();
+            if (src_row >= 0 && src_row < mods.size() &&
+                !mods[src_row].is_separator &&
+                !mods[src_row].is_overwrite) {
+              auto &selected = mods[src_row];
               w_->mod_model_->set_selected_mods({selected.id});
             } else {
               w_->mod_model_->set_selected_mods({});
@@ -493,7 +510,7 @@ void ModListController::setup_mod_list(QVBoxLayout *left_layout) {
   connect(w_->mod_view_, &QTreeView::clicked, this, [this](const QModelIndex &idx) {
     if (!idx.isValid() || idx.column() != ModList::Fold)
       return;
-    int row = idx.row();
+    const int row = w_->sort_proxy_ ? w_->sort_proxy_->mapToSource(idx).row() : idx.row();
     if (row < 0 || row >= w_->mod_model_->mods().size())
       return;
     if (!w_->mod_model_->has_content(row))
@@ -526,7 +543,7 @@ void ModListController::setup_mod_list(QVBoxLayout *left_layout) {
             // request.
             if (w_->mod_view_->checkbox_toggle_recent())
               return;
-            int row = idx.row();
+            const int row = w_->sort_proxy_ ? w_->sort_proxy_->mapToSource(idx).row() : idx.row();
             if (row < 0 || row >= w_->mod_model_->mods().size())
               return;
             const auto &entry = w_->mod_model_->mods()[row];
@@ -567,7 +584,7 @@ void ModListController::setup_mod_list(QVBoxLayout *left_layout) {
           [this](const QModelIndex &idx) {
             if (!idx.isValid())
               return;
-            int row = idx.row();
+            const int row = w_->sort_proxy_ ? w_->sort_proxy_->mapToSource(idx).row() : idx.row();
             if (row < 0 || row >= w_->mod_model_->mods().size())
               return;
             const auto &entry = w_->mod_model_->mods()[row];
@@ -635,6 +652,24 @@ void ModListController::setup_mod_list(QVBoxLayout *left_layout) {
   // The Name and Fold columns can never be hidden (the context menu shows
   // them checked + disabled). Persist user visibility toggles per instance;
   // the restore happens on scan finish when the instance name is known.
+  // Column sorting (MO2 semantics) via the proxy. Fold clicks are ignored.
+  mod_header->setSortIndicatorShown(true);
+  mod_header->setSectionsClickable(true);
+  connect(mod_header, &QHeaderView::sectionClicked, this, [this, mod_header](int logical) {
+    if (logical == ModList::Fold)
+      return;
+    if (!w_->sort_proxy_)
+      return;
+    Qt::SortOrder order = Qt::AscendingOrder;
+    if (w_->sort_proxy_->sort_column() == logical &&
+        w_->sort_proxy_->display_order() == Qt::AscendingOrder)
+      order = Qt::DescendingOrder;
+    mod_header->setSortIndicator(logical, order);
+    w_->sort_proxy_->sort(logical, order);
+  });
+  // default indicator
+  mod_header->setSortIndicator(ModList::Priority, Qt::AscendingOrder);
+
   mod_header->set_locked_section(ModList::Name);
   mod_header->set_locked_section(ModList::Fold);
   connect(mod_header, &ColumnToggleHeaderView::section_toggled, this,
@@ -2269,7 +2304,10 @@ void ModListController::focus_installed_mod(const std::string &folder_name) {
     }
   }
 
-  const QModelIndex index = w_->mod_model_->index(row, 0);
+  const QModelIndex src_index = w_->mod_model_->index(row, 0);
+  QModelIndex index = src_index;
+  if (w_->sort_proxy_)
+    index = w_->sort_proxy_->mapFromSource(src_index);
   if (!index.isValid())
     return;
   view->scrollTo(index);
@@ -3482,14 +3520,17 @@ void ModListController::refresh_conflicts_tab() {
   if (!ct || !w_->mod_view_ || !w_->mod_model_)
     return;
   const QModelIndex current = w_->mod_view_->selectionModel()->currentIndex();
+  int cur_row = current.isValid() ? current.row() : -1;
+  if (w_->sort_proxy_ && current.isValid())
+    cur_row = w_->sort_proxy_->mapToSource(current).row();
   const auto &mods          = w_->mod_model_->mods();
-  if (!current.isValid() || current.row() < 0 || current.row() >= mods.size() ||
-      mods[current.row()].is_separator || mods[current.row()].is_overwrite) {
+  if (cur_row < 0 || cur_row >= mods.size() ||
+      mods[cur_row].is_separator || mods[cur_row].is_overwrite) {
     ct->clear_content();
     return;
   }
   // Push conflict data to the ConflictsTab
-  ct->show_conflicts(mods[current.row()].id, mods, w_->last_conflict_registry_,
+  ct->show_conflicts(mods[cur_row].id, mods, w_->last_conflict_registry_,
                      w_->mod_model_->conflict_pairs(),
                      w_->mod_model_->is_conflict_order_reversed());
 }
@@ -3983,7 +4024,9 @@ void ModListController::on_mod_selection_changed() {
 
   const auto rows = w_->mod_view_->selectionModel()->selectedRows();
   for (const auto &idx : rows) {
-    const int r = idx.row();
+    int r = idx.row();
+    if (w_->sort_proxy_)
+      r = w_->sort_proxy_->mapToSource(idx).row();
     if (r < 0 || r >= mods.size())
       continue;
     const auto &m = mods[r];
@@ -4282,7 +4325,9 @@ void ModListController::visit_selected_mod_source() {
   if (sel.isEmpty())
     return;
   const auto &mods = w_->mod_model_->mods();
-  const int row    = sel.first().row();
+  int row = sel.first().row();
+  if (w_->sort_proxy_)
+    row = w_->sort_proxy_->mapToSource(sel.first()).row();
   if (row < 0 || row >= mods.size())
     return;
   const auto &entry = mods[row];
@@ -5234,7 +5279,6 @@ void ModListController::apply_mod_filter() {
     if (visible[row] && group == "All" && fold_hidden[row]) {
       visible[row] = false;
     }
-    w_->mod_view_->setRowHidden(row, QModelIndex(), !visible[row]);
   }
 
   // Nesting: a filtered-out ancestor (mod parent or separator) stays visible
@@ -5257,15 +5301,13 @@ void ModListController::apply_mod_filter() {
     }
   }
 
-  // Apply visibility to all mod rows
-  for (int row = 0; row < mods.size(); ++row) {
-    if (mods[row].is_separator)
-      continue;
-    w_->mod_view_->setRowHidden(row, QModelIndex(), !visible[row]);
-  }
-
   // Publish the verdicts for the bulk toggle (see filter_visible above).
   w_->mod_model_->set_filter_visible(filter_visible);
+
+  // Publish final visibility to the sort proxy (presentation-only).
+  w_->mod_model_->set_view_visible(visible);
+  if (w_->sort_proxy_)
+    w_->sort_proxy_->invalidate();
 }
 
 // ---------------------------------------------------------------------------
