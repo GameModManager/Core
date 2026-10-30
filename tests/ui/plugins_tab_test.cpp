@@ -46,6 +46,7 @@
 #include <QApplication>
 #include <QEventLoop>
 #include <QHeaderView>
+#include <QSignalSpy>
 #include <QIcon>
 #include <QItemSelection>
 #include <QItemSelectionModel>
@@ -1167,12 +1168,12 @@ TEST_CASE("plugins tab double-click targets the owning mod", "[ui][dblclick]") {
   native.mod_index_text    = "00";
 
   engine::GamePlugin skyui;
-  skyui.name           = "SkyUI_SE.esp";
-  skyui.owner_mod      = "SkyUI";
+  skyui.name             = "SkyUI_SE.esp";
+  skyui.owner_mod        = "SkyUI";
   skyui.is_light_flagged = true;
-  skyui.enabled        = true;
-  skyui.priority       = 1;
-  skyui.mod_index_text = "FE:000";
+  skyui.enabled          = true;
+  skyui.priority         = 1;
+  skyui.mod_index_text   = "FE:000";
 
   engine::GamePlugin foo;
   foo.name           = "Foo.esp";
@@ -1196,9 +1197,13 @@ TEST_CASE("plugins tab double-click targets the owning mod", "[ui][dblclick]") {
   std::vector<std::string> mod_info;
   std::vector<std::string> reveals;
   QObject::connect(&tab, &ui::PluginsTab::mod_info_requested,
-                   [&](const std::string &owner) { mod_info.push_back(owner); });
+                   [&](const std::string &owner) {
+                     mod_info.push_back(owner);
+                   });
   QObject::connect(&tab, &ui::PluginsTab::reveal_requested,
-                   [&](const std::string &owner) { reveals.push_back(owner); });
+                   [&](const std::string &owner) {
+                     reveals.push_back(owner);
+                   });
 
   // Synthesized platform double-click (Press, Release, DblClick, Release).
   // QTest::mouseDClick does not reach mouseDoubleClickEvent on these views
@@ -1260,7 +1265,8 @@ TEST_CASE("plugins tab double-click targets the owning mod", "[ui][dblclick]") {
   QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
   REQUIRE(table->item(skyui_row, 0)->checkState() != before_click);
   dblclick(skyui_row, Qt::NoModifier);
-  check(mod_info.size() == 2, "double-click right after a checkbox toggle is swallowed");
+  check(mod_info.size() == 2,
+        "double-click right after a checkbox toggle is swallowed");
 
   // Control: the same gesture opens once the interval has passed, so the
   // check above is the guard and not a dead gesture.
@@ -1626,4 +1632,95 @@ TEST_CASE("plugins tab default priority sort", "[ui][sort]") {
   check(row_with_name(table, "Apple.esp") == 2, "default: Apple third");
 }
 
-// TEMPORARY repro (Workspace-4l56 round 4): real stack via RightPanel.
+// Focused test: sorting/filtering/refresh must never emit toggle_requested
+// (Workspace-4l56 regression). A disabled plugin with a missing master would
+// otherwise trigger the "Cannot enable ...: missing master" dialog.
+TEST_CASE("plugins tab sort is silent w.r.t. plugin state", "[ui][sort]") {
+  qputenv("QT_QPA_PLATFORM", "offscreen");
+  const std::filesystem::path cfg = "/tmp/gmm_plugins_silent/config";
+  std::filesystem::remove_all("/tmp/gmm_plugins_silent");
+  std::filesystem::create_directories(cfg);
+  qputenv("XDG_CONFIG_HOME", cfg.c_str());
+  int test_argc     = 1;
+  char test_argv0[] = "test";
+  char *test_argv[] = {test_argv0, nullptr};
+  QApplication app(test_argc, test_argv);
+  QCoreApplication::setOrganizationName("GameModManager");
+  QCoreApplication::setApplicationName("GameModManager");
+  engine::IconManager::instance().discover_packs(GMM_TEST_RESOURCES_DIR);
+
+  engine::GamePlugin ok;
+  ok.name           = "ok.esp";
+  ok.enabled        = true;
+  ok.priority       = 2;
+  ok.mod_index_text = "02";
+
+  engine::GamePlugin broken;
+  broken.name           = "MCMHelper.esp";
+  broken.enabled        = false;
+  broken.priority       = 5;
+  broken.mod_index_text = "05";
+  broken.masters        = {"SkyUI_SE.esp"};  // absent master -> enable fails
+
+  engine::GameCapabilities caps;
+  engine::CapabilityInfo info;
+  info.game_id      = "silentgame";
+  info.capability   = "plugins";
+  info.display_name = "Plugins";
+  caps.register_capability(info);
+
+  ui::RightPanel panel;
+  panel.set_capabilities(&caps);
+  panel.set_game("silentgame");
+  panel.resize(600, 300);
+  panel.show();
+  auto *tab = panel.ensure_plugins_tab();
+  check(tab != nullptr, "plugins tab builds");
+  panel.show_plugins_tab();
+
+  auto *table = tab->table();
+  tab->set_plugins({ok, broken});
+  QApplication::processEvents();
+
+  QSignalSpy spy(tab, &ui::PluginsTab::toggle_requested);
+
+  // Record check states before.
+  const int ok_row_before              = row_with_name(table, "ok.esp");
+  const int broken_row_before          = row_with_name(table, "MCMHelper.esp");
+  const Qt::CheckState ok_state_before = table->item(ok_row_before, 0)->checkState();
+  const Qt::CheckState broken_state_before =
+      table->item(broken_row_before, 0)->checkState();
+
+  auto *hh = table->horizontalHeader();
+
+  // Click Name header -> sort.
+  QRect name_rect(hh->sectionViewportPosition(ui::PluginView::ColName), 0,
+                  hh->sectionSize(ui::PluginView::ColName), hh->height());
+  QTest::mouseClick(hh, Qt::LeftButton, Qt::NoModifier, name_rect.center());
+  QApplication::processEvents();
+
+  check(spy.count() == 0, "header click emits no toggle_requested");
+  // check states unchanged (by name, since rows moved).
+  int ok_row_after     = row_with_name(table, "ok.esp");
+  int broken_row_after = row_with_name(table, "MCMHelper.esp");
+  check(table->item(ok_row_after, 0)->checkState() == ok_state_before,
+        "ok check state unchanged after sort");
+  check(table->item(broken_row_after, 0)->checkState() == broken_state_before,
+        "broken check state unchanged after sort");
+
+  // Filter path.
+  tab->apply_filter(QStringLiteral("ok"));
+  QApplication::processEvents();
+  check(spy.count() == 0, "filter emits no toggle_requested");
+
+  tab->apply_filter(QString());
+  QApplication::processEvents();
+
+  // Refresh path.
+  tab->set_plugins({ok, broken});
+  QApplication::processEvents();
+  check(spy.count() == 0, "refresh emits no toggle_requested");
+
+  panel.hide();
+  std::filesystem::remove_all("/tmp/gmm_plugins_silent");
+}

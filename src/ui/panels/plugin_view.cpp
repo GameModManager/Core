@@ -742,8 +742,23 @@ PluginView::PluginView(QWidget *parent) : QWidget(parent) {
     const int row = item->row();
     if (row < 0 || row >= static_cast<int>(names_.size()))
       return;
-    emit toggle_requested(names_[static_cast<size_t>(row)],
-                          item->checkState() == Qt::Checked);
+    // Sorting, filtering, refreshing and other row churn fire itemChanged for
+    // every moved row even though no checkbox actually changed. Only emit a
+    // user toggle when the check state really differs from the last value we
+    // recorded for this item; otherwise the sort path would re-run enable/
+    // disable (and hit the missing-master guard) for plugins that never
+    // changed. Recorded state lives in the item's meta map ("enabled").
+    const Qt::CheckState current = item->checkState();
+    const bool current_bool      = (current == Qt::Checked);
+    QVariantMap meta             = item->data(kPluginMetaRole).toMap();
+    const bool has_stored        = meta.contains(QStringLiteral("enabled"));
+    const bool stored = has_stored ? meta.value(QStringLiteral("enabled")).toBool()
+                                   : current_bool;  // no record: treat as unchanged
+    if (has_stored && stored == current_bool)
+      return;
+    meta.insert(QStringLiteral("enabled"), current_bool);
+    item->setData(kPluginMetaRole, meta);
+    emit toggle_requested(names_[static_cast<size_t>(row)], current_bool);
   });
   // Track an explicit user sort separately from programmatic sorts, so a
   // Refresh (set_plugins) can restore the user's choice without mistaking the
@@ -985,7 +1000,9 @@ void PluginView::set_plugins(const std::vector<engine::GamePlugin> &plugins) {
     }
     table_->setItem(i, 4, lock);
   }
-  syncing_ = false;
+  // Keep syncing_ true through the rebuild AND the final sort so the
+  // itemChanged events that Qt fires while rows are being moved cannot be
+  // mistaken for user toggles (Workspace-4l56 regression).
   rebuild_row_metadata();
   apply_highlights();
   relayout_flag_rows();
@@ -1006,6 +1023,7 @@ void PluginView::set_plugins(const std::vector<engine::GamePlugin> &plugins) {
   table_->horizontalHeader()->setSectionsClickable(true);
   table_->horizontalHeader()->setSortIndicatorShown(true);
   update_drag_flags();
+  syncing_ = false;
 }
 
 void PluginView::relayout_flag_rows() {
@@ -1088,6 +1106,11 @@ void PluginView::sync_enabled(const std::vector<engine::GamePlugin> &plugins) {
       if (i < static_cast<int>(rows_enabled_.size()))
         rows_enabled_[static_cast<size_t>(i)] = p.enabled;
       item->setCheckState(p.enabled ? Qt::Checked : Qt::Unchecked);
+      // Keep the recorded check state in sync so a later sort does not
+      // mistake the row for a user toggle (Workspace-4l56).
+      QVariantMap m = item->data(kPluginMetaRole).toMap();
+      m.insert(QStringLiteral("enabled"), p.enabled);
+      item->setData(kPluginMetaRole, m);
       break;
     }
   }
