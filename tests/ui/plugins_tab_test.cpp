@@ -46,6 +46,7 @@
 #include <QApplication>
 #include <QEventLoop>
 #include <QHeaderView>
+#include <QSignalSpy>
 #include <QIcon>
 #include <QItemSelection>
 #include <QItemSelectionModel>
@@ -65,7 +66,6 @@
 #include <QTest>
 
 #include <catch2/catch_test_macros.hpp>
-#include <cstdio>
 #include <initializer_list>
 #include <string>
 #include <utility>
@@ -1168,12 +1168,12 @@ TEST_CASE("plugins tab double-click targets the owning mod", "[ui][dblclick]") {
   native.mod_index_text    = "00";
 
   engine::GamePlugin skyui;
-  skyui.name           = "SkyUI_SE.esp";
-  skyui.owner_mod      = "SkyUI";
+  skyui.name             = "SkyUI_SE.esp";
+  skyui.owner_mod        = "SkyUI";
   skyui.is_light_flagged = true;
-  skyui.enabled        = true;
-  skyui.priority       = 1;
-  skyui.mod_index_text = "FE:000";
+  skyui.enabled          = true;
+  skyui.priority         = 1;
+  skyui.mod_index_text   = "FE:000";
 
   engine::GamePlugin foo;
   foo.name           = "Foo.esp";
@@ -1197,9 +1197,13 @@ TEST_CASE("plugins tab double-click targets the owning mod", "[ui][dblclick]") {
   std::vector<std::string> mod_info;
   std::vector<std::string> reveals;
   QObject::connect(&tab, &ui::PluginsTab::mod_info_requested,
-                   [&](const std::string &owner) { mod_info.push_back(owner); });
+                   [&](const std::string &owner) {
+                     mod_info.push_back(owner);
+                   });
   QObject::connect(&tab, &ui::PluginsTab::reveal_requested,
-                   [&](const std::string &owner) { reveals.push_back(owner); });
+                   [&](const std::string &owner) {
+                     reveals.push_back(owner);
+                   });
 
   // Synthesized platform double-click (Press, Release, DblClick, Release).
   // QTest::mouseDClick does not reach mouseDoubleClickEvent on these views
@@ -1261,7 +1265,8 @@ TEST_CASE("plugins tab double-click targets the owning mod", "[ui][dblclick]") {
   QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
   REQUIRE(table->item(skyui_row, 0)->checkState() != before_click);
   dblclick(skyui_row, Qt::NoModifier);
-  check(mod_info.size() == 2, "double-click right after a checkbox toggle is swallowed");
+  check(mod_info.size() == 2,
+        "double-click right after a checkbox toggle is swallowed");
 
   // Control: the same gesture opens once the interval has passed, so the
   // check above is the guard and not a dead gesture.
@@ -1408,4 +1413,314 @@ TEST_CASE("plugins tab filter hides non-matching rows and recounts", "[ui][filte
 
   panel.hide();
   std::filesystem::remove_all("/tmp/gmm_plugins_filter");
+}
+
+// Focused test for column sorting (Workspace-4l56).
+TEST_CASE("plugins tab column sorting", "[ui][sort]") {
+  qputenv("QT_QPA_PLATFORM", "offscreen");
+  const std::filesystem::path cfg = "/tmp/gmm_plugins_sort/config";
+  std::filesystem::remove_all("/tmp/gmm_plugins_sort");
+  std::filesystem::create_directories(cfg);
+  qputenv("XDG_CONFIG_HOME", cfg.c_str());
+  int test_argc     = 1;
+  char test_argv0[] = "test";
+  char *test_argv[] = {test_argv0, nullptr};
+  QApplication app(test_argc, test_argv);
+  QCoreApplication::setOrganizationName("GameModManager");
+  QCoreApplication::setApplicationName("GameModManager");
+  engine::IconManager::instance().discover_packs(GMM_TEST_RESOURCES_DIR);
+
+  engine::GamePlugin a;
+  a.name           = "zebra.esp";
+  a.enabled        = true;
+  a.priority       = 2;
+  a.mod_index_text = "02";
+  engine::GamePlugin b;
+  b.name           = "Apple.esp";
+  b.enabled        = true;
+  b.priority       = 10;
+  b.mod_index_text = "10";
+  engine::GamePlugin c;
+  c.name           = "middle.esp";
+  c.enabled        = true;
+  c.priority       = 5;
+  c.mod_index_text = "05";
+
+  ui::PluginsTab tab;
+  auto *table = tab.table();
+  tab.set_plugins({a, b, c});
+  QApplication::processEvents();
+  table->sortByColumn(-1, Qt::AscendingOrder);
+  QApplication::processEvents();
+
+  // Priority column sorts numerically: 2 before 5 before 10.
+  table->sortByColumn(ui::PluginView::ColPriority, Qt::AscendingOrder);
+  QApplication::processEvents();
+  check(row_with_name(table, "zebra.esp") == 0, "priority 2 first");
+  check(row_with_name(table, "middle.esp") == 1, "priority 5 second");
+  check(row_with_name(table, "Apple.esp") == 2,
+        "priority 10 third (numeric, not text)");
+
+  // Name column sorts case-insensitively.
+  table->sortByColumn(ui::PluginView::ColName, Qt::AscendingOrder);
+  QApplication::processEvents();
+  check(row_with_name(table, "Apple.esp") == 0,
+        "name sort case-insensitive: Apple first");
+  check(row_with_name(table, "middle.esp") == 1, "name sort: middle second");
+  check(row_with_name(table, "zebra.esp") == 2, "name sort: zebra third");
+
+  // Drag is disabled when sorted by a non-priority column.
+  check(!(table->item(0, 0)->flags() & Qt::ItemIsDragEnabled),
+        "drag disabled when sorted by name");
+
+  // Restore priority sort re-enables drag.
+  table->sortByColumn(ui::PluginView::ColPriority, Qt::AscendingOrder);
+  QApplication::processEvents();
+  check(table->item(0, 0)->flags() & Qt::ItemIsDragEnabled,
+        "drag re-enabled when sorted by priority");
+
+  // Descending priority sort: view row != model row, but model_row meta
+  // stays mapped to the original priority index per visual row.
+  table->sortByColumn(ui::PluginView::ColPriority, Qt::DescendingOrder);
+  QApplication::processEvents();
+  check(row_with_name(table, "Apple.esp") == 0, "descending: Apple first");
+  check(row_with_name(table, "middle.esp") == 1, "descending: middle second");
+  check(row_with_name(table, "zebra.esp") == 2, "descending: zebra third");
+  check(table->item(0, 0)
+                ->data(ui::PluginsTab::kPluginMetaRole)
+                .toMap()
+                .value(QStringLiteral("model_row"))
+                .toInt() == 1,
+        "descending: Apple keeps model_row 1");
+  check(table->item(1, 0)
+                ->data(ui::PluginsTab::kPluginMetaRole)
+                .toMap()
+                .value(QStringLiteral("model_row"))
+                .toInt() == 2,
+        "descending: middle keeps model_row 2");
+  check(table->item(2, 0)
+                ->data(ui::PluginsTab::kPluginMetaRole)
+                .toMap()
+                .value(QStringLiteral("model_row"))
+                .toInt() == 0,
+        "descending: zebra keeps model_row 0");
+}
+
+// Focused test: header CLICK (not sortByColumn) drives sorting (Workspace-4l56).
+TEST_CASE("plugins tab header click sorting", "[ui][sort]") {
+  qputenv("QT_QPA_PLATFORM", "offscreen");
+  const std::filesystem::path cfg = "/tmp/gmm_plugins_click/config";
+  std::filesystem::remove_all("/tmp/gmm_plugins_click");
+  std::filesystem::create_directories(cfg);
+  qputenv("XDG_CONFIG_HOME", cfg.c_str());
+  int test_argc     = 1;
+  char test_argv0[] = "test";
+  char *test_argv[] = {test_argv0, nullptr};
+  QApplication app(test_argc, test_argv);
+  QCoreApplication::setOrganizationName("GameModManager");
+  QCoreApplication::setApplicationName("GameModManager");
+  engine::IconManager::instance().discover_packs(GMM_TEST_RESOURCES_DIR);
+
+  engine::GamePlugin a;
+  a.name           = "zebra.esp";
+  a.enabled        = true;
+  a.priority       = 2;
+  a.mod_index_text = "02";
+  engine::GamePlugin b;
+  b.name           = "Apple.esp";
+  b.enabled        = true;
+  b.priority       = 10;
+  b.mod_index_text = "10";
+  engine::GamePlugin c;
+  c.name           = "middle.esp";
+  c.enabled        = true;
+  c.priority       = 5;
+  c.mod_index_text = "05";
+
+  engine::GameCapabilities caps;
+  engine::CapabilityInfo info;
+  info.game_id      = "clickgame";
+  info.capability   = "plugins";
+  info.display_name = "Plugins";
+  caps.register_capability(info);
+
+  ui::RightPanel panel;
+  panel.set_capabilities(&caps);
+  panel.set_game("clickgame");
+  panel.resize(600, 300);
+  panel.show();
+  auto *tab = panel.ensure_plugins_tab();
+  check(tab != nullptr, "plugins tab builds");
+  panel.show_plugins_tab();
+
+  auto *table = tab->table();
+  tab->set_plugins({a, b, c});
+  QApplication::processEvents();
+
+  auto *hh = table->horizontalHeader();
+
+  // Click Name header -> sorts by name ascending.
+  QRect name_rect(hh->sectionViewportPosition(ui::PluginView::ColName), 0,
+                  hh->sectionSize(ui::PluginView::ColName), hh->height());
+  QTest::mouseClick(hh, Qt::LeftButton, Qt::NoModifier, name_rect.center());
+  QApplication::processEvents();
+  check(row_with_name(table, "Apple.esp") == 0, "click name: Apple first");
+  check(row_with_name(table, "middle.esp") == 1, "click name: middle second");
+  check(row_with_name(table, "zebra.esp") == 2, "click name: zebra third");
+
+  // Refresh (set_plugins) between clicks.
+  tab->set_plugins({a, b, c});
+  QApplication::processEvents();
+
+  // Click Priority header -> sorts by priority ascending.
+  QRect prio_rect(hh->sectionViewportPosition(ui::PluginView::ColPriority), 0,
+                  hh->sectionSize(ui::PluginView::ColPriority), hh->height());
+  QTest::mouseClick(hh, Qt::LeftButton, Qt::NoModifier, prio_rect.center());
+  QApplication::processEvents();
+  check(row_with_name(table, "zebra.esp") == 0, "click priority: zebra first");
+  check(row_with_name(table, "middle.esp") == 1, "click priority: middle second");
+  check(row_with_name(table, "Apple.esp") == 2, "click priority: Apple third");
+}
+
+// Focused test: default sort is Priority ascending (MO2 parity) without any
+// user click (Workspace-4l56 round 3). Pre-fix code left the indicator at -1
+// and rows in insertion order, so this fails until the -1 resets are removed.
+TEST_CASE("plugins tab default priority sort", "[ui][sort]") {
+  qputenv("QT_QPA_PLATFORM", "offscreen");
+  const std::filesystem::path cfg = "/tmp/gmm_plugins_default/config";
+  std::filesystem::remove_all("/tmp/gmm_plugins_default");
+  std::filesystem::create_directories(cfg);
+  qputenv("XDG_CONFIG_HOME", cfg.c_str());
+  int test_argc     = 1;
+  char test_argv0[] = "test";
+  char *test_argv[] = {test_argv0, nullptr};
+  QApplication app(test_argc, test_argv);
+  QCoreApplication::setOrganizationName("GameModManager");
+  QCoreApplication::setApplicationName("GameModManager");
+  engine::IconManager::instance().discover_packs(GMM_TEST_RESOURCES_DIR);
+
+  engine::GamePlugin a;
+  a.name           = "zebra.esp";
+  a.enabled        = true;
+  a.priority       = 2;
+  a.mod_index_text = "02";
+  engine::GamePlugin b;
+  b.name           = "Apple.esp";
+  b.enabled        = true;
+  b.priority       = 10;
+  b.mod_index_text = "10";
+  engine::GamePlugin c;
+  c.name           = "middle.esp";
+  c.enabled        = true;
+  c.priority       = 5;
+  c.mod_index_text = "05";
+
+  ui::PluginsTab tab;
+  auto *table = tab.table();
+  tab.set_plugins({a, b, c});
+  QApplication::processEvents();
+  tab.show();
+  QApplication::processEvents();
+
+  auto *hh = table->horizontalHeader();
+  check(hh->sortIndicatorSection() == ui::PluginView::ColPriority,
+        "default sort indicator is Priority");
+  check(hh->sortIndicatorOrder() == Qt::AscendingOrder,
+        "default sort order is ascending");
+  check(row_with_name(table, "zebra.esp") == 0, "default: zebra first");
+  check(row_with_name(table, "middle.esp") == 1, "default: middle second");
+  check(row_with_name(table, "Apple.esp") == 2, "default: Apple third");
+}
+
+// Focused test: sorting/filtering/refresh must never emit toggle_requested
+// (Workspace-4l56 regression). A disabled plugin with a missing master would
+// otherwise trigger the "Cannot enable ...: missing master" dialog.
+TEST_CASE("plugins tab sort is silent w.r.t. plugin state", "[ui][sort]") {
+  qputenv("QT_QPA_PLATFORM", "offscreen");
+  const std::filesystem::path cfg = "/tmp/gmm_plugins_silent/config";
+  std::filesystem::remove_all("/tmp/gmm_plugins_silent");
+  std::filesystem::create_directories(cfg);
+  qputenv("XDG_CONFIG_HOME", cfg.c_str());
+  int test_argc     = 1;
+  char test_argv0[] = "test";
+  char *test_argv[] = {test_argv0, nullptr};
+  QApplication app(test_argc, test_argv);
+  QCoreApplication::setOrganizationName("GameModManager");
+  QCoreApplication::setApplicationName("GameModManager");
+  engine::IconManager::instance().discover_packs(GMM_TEST_RESOURCES_DIR);
+
+  engine::GamePlugin ok;
+  ok.name           = "ok.esp";
+  ok.enabled        = true;
+  ok.priority       = 2;
+  ok.mod_index_text = "02";
+
+  engine::GamePlugin broken;
+  broken.name           = "MCMHelper.esp";
+  broken.enabled        = false;
+  broken.priority       = 5;
+  broken.mod_index_text = "05";
+  broken.masters        = {"SkyUI_SE.esp"};  // absent master -> enable fails
+
+  engine::GameCapabilities caps;
+  engine::CapabilityInfo info;
+  info.game_id      = "silentgame";
+  info.capability   = "plugins";
+  info.display_name = "Plugins";
+  caps.register_capability(info);
+
+  ui::RightPanel panel;
+  panel.set_capabilities(&caps);
+  panel.set_game("silentgame");
+  panel.resize(600, 300);
+  panel.show();
+  auto *tab = panel.ensure_plugins_tab();
+  check(tab != nullptr, "plugins tab builds");
+  panel.show_plugins_tab();
+
+  auto *table = tab->table();
+  tab->set_plugins({ok, broken});
+  QApplication::processEvents();
+
+  QSignalSpy spy(tab, &ui::PluginsTab::toggle_requested);
+
+  // Record check states before.
+  const int ok_row_before              = row_with_name(table, "ok.esp");
+  const int broken_row_before          = row_with_name(table, "MCMHelper.esp");
+  const Qt::CheckState ok_state_before = table->item(ok_row_before, 0)->checkState();
+  const Qt::CheckState broken_state_before =
+      table->item(broken_row_before, 0)->checkState();
+
+  auto *hh = table->horizontalHeader();
+
+  // Click Name header -> sort.
+  QRect name_rect(hh->sectionViewportPosition(ui::PluginView::ColName), 0,
+                  hh->sectionSize(ui::PluginView::ColName), hh->height());
+  QTest::mouseClick(hh, Qt::LeftButton, Qt::NoModifier, name_rect.center());
+  QApplication::processEvents();
+
+  check(spy.count() == 0, "header click emits no toggle_requested");
+  // check states unchanged (by name, since rows moved).
+  int ok_row_after     = row_with_name(table, "ok.esp");
+  int broken_row_after = row_with_name(table, "MCMHelper.esp");
+  check(table->item(ok_row_after, 0)->checkState() == ok_state_before,
+        "ok check state unchanged after sort");
+  check(table->item(broken_row_after, 0)->checkState() == broken_state_before,
+        "broken check state unchanged after sort");
+
+  // Filter path.
+  tab->apply_filter(QStringLiteral("ok"));
+  QApplication::processEvents();
+  check(spy.count() == 0, "filter emits no toggle_requested");
+
+  tab->apply_filter(QString());
+  QApplication::processEvents();
+
+  // Refresh path.
+  tab->set_plugins({ok, broken});
+  QApplication::processEvents();
+  check(spy.count() == 0, "refresh emits no toggle_requested");
+
+  panel.hide();
+  std::filesystem::remove_all("/tmp/gmm_plugins_silent");
 }

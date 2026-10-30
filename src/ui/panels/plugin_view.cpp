@@ -13,6 +13,7 @@
 #include <QHBoxLayout>
 #include <QHeaderView>
 #include <QIcon>
+#include <QMessageBox>
 #include <QLCDNumber>
 #include <QList>
 #include <QKeyEvent>
@@ -385,6 +386,51 @@ public:
   }
 };
 
+// --- PluginItem (QTableWidgetItem with MO2 sort semantics) -------------------
+// QTableWidget sorts rows by QTableWidgetItem::operator<. Overriding it here
+// gives per-column MO2 semantics (pluginlistsortproxy.cpp:58-109): Name
+// case-insensitive, Flags by emblem count then token order, Mod Index by its
+// string, and Priority/Locked/other by numeric priority. The default
+// QTableWidgetItem compares display text, which would sort "10" before "2".
+class PluginItem : public QTableWidgetItem {
+public:
+  using QTableWidgetItem::QTableWidgetItem;
+
+  bool operator<(const QTableWidgetItem &other) const override {
+    const int col = column();
+    if (col == PluginView::ColName) {
+      return text().compare(other.text(), Qt::CaseInsensitive) < 0;
+    }
+    if (col == PluginView::ColFlags) {
+      const QStringList lhs = data(PluginView::kPluginFlagTokensRole).toStringList();
+      const QStringList rhs =
+          other.data(PluginView::kPluginFlagTokensRole).toStringList();
+      if (lhs.size() != rhs.size())
+        return lhs.size() < rhs.size();
+      for (int i = 0; i < lhs.size(); ++i) {
+        if (lhs.at(i) != rhs.at(i))
+          return lhs.at(i) < rhs.at(i);
+      }
+      return false;
+    }
+    if (col == PluginView::ColModIndex) {
+      return text() < other.text();
+    }
+    // Default (Priority, Locked, anything else): numeric priority compare.
+    // Priority lives in ColPriority of the same row; for the Priority column
+    // itself that is this item.
+    int lp = 0;
+    int rp = 0;
+    if (tableWidget()) {
+      if (auto *li = tableWidget()->item(row(), PluginView::ColPriority))
+        lp = li->text().toInt();
+      if (auto *ri = tableWidget()->item(other.row(), PluginView::ColPriority))
+        rp = ri->text().toInt();
+    }
+    return lp < rp;
+  }
+};
+
 // --- PluginTable (QTableWidget subclass with drag-reorder + deselection) ---
 
 class PluginView::PluginTable : public QTableWidget {
@@ -419,25 +465,56 @@ protected:
     QTableWidget::keyPressEvent(event);
   }
   void dropEvent(QDropEvent *event) override {
-    const int from = currentRow();
-    if (from < 0) {
+    // MO2 drag guard (pluginlistsortproxy.cpp:111-120): drag/drop is only
+    // supported while sorted by priority or mod index. Refuse otherwise.
+    // ModIndex sort is still safe to drop into: mod index order == priority
+    // order (mod index is derived from priority), so a drop maps cleanly; we
+    // map view rows to model rows below so descending priority also works.
+    const int sort_col = horizontalHeader()->sortIndicatorSection();
+    const bool drag_ok = (sort_col < 0 || sort_col == PluginView::ColPriority ||
+                          sort_col == PluginView::ColModIndex);
+    if (!drag_ok) {
+      QMessageBox::warning(this, tr("Drag and Drop"),
+                           tr("Drag&Drop is only supported when sorting by "
+                              "priority or mod index"));
+      event->ignore();
+      return;
+    }
+    const int from_view = currentRow();
+    if (from_view < 0) {
       event->ignore();
       return;
     }
     const QModelIndex idx = indexAt(event->position().toPoint());
-    int to;
+    int to_view;
     switch (dropIndicatorPosition()) {
     case QAbstractItemView::AboveItem:
     case QAbstractItemView::OnItem:
-      to = idx.isValid() ? idx.row() : rowCount() - 1;
+      to_view = idx.isValid() ? idx.row() : rowCount() - 1;
       break;
     case QAbstractItemView::BelowItem:
-      to = idx.isValid() ? idx.row() + 1 : rowCount() - 1;
+      to_view = idx.isValid() ? idx.row() + 1 : rowCount() - 1;
       break;
     default:
-      to = rowCount() - 1;
+      to_view = rowCount() - 1;
       break;
     }
+    // Map view rows to model (priority) rows via the model_row meta stored
+    // when the rows were built. View row != model row whenever the table is
+    // sorted (priority descending, or any non-identity order), so passing
+    // view indices straight to on_reorder would move the wrong plugin.
+    auto model_row_of = [this](int view_row) -> int {
+      if (view_row < 0 || view_row >= rowCount())
+        return view_row;  // out-of-range (e.g. past-the-end) stays as-is for
+                          // move_plugin's clamp
+      auto *name = item(view_row, 0);
+      if (!name)
+        return view_row;
+      const QVariantMap meta = name->data(kPluginMetaRole).toMap();
+      return meta.value(QStringLiteral("model_row"), view_row).toInt();
+    };
+    const int from = model_row_of(from_view);
+    const int to   = model_row_of(to_view);
     if (from == to || from + 1 == to) {
       event->accept();
       return;
@@ -496,8 +573,8 @@ protected:
     // double-click that follows is swallowed. Programmatic toggles
     // (set_plugins / sync_enabled) never pass through here.
     const QModelIndex idx = indexAt(event->pos());
-    const bool watching = event->button() == Qt::LeftButton && idx.isValid() &&
-                          idx.column() == 0;
+    const bool watching =
+        event->button() == Qt::LeftButton && idx.isValid() && idx.column() == 0;
     // Copy the state, never hold the QTableWidgetItem*: the toggle emits
     // toggle_requested, and the controller behind it may rebuild the table
     // and delete the item (use-after-free). Re-looked up after the base call.
@@ -527,6 +604,48 @@ private:
 
 QTableWidget *PluginView::table() const {
   return table_;
+}
+
+void PluginView::wire_header() {
+  if (!table_)
+    return;
+  auto *hh = table_->horizontalHeader();
+  if (!hh || hh == connected_header_)
+    return;
+  connected_header_ = hh;
+  hh->installEventFilter(this);
+  connect(hh, &QHeaderView::sectionClicked, this, [this](int section) {
+    if (section >= 0)
+      user_has_sorted_ = true;
+  });
+  connect(hh, &QHeaderView::sortIndicatorChanged, this,
+          [this](int section, Qt::SortOrder order) {
+            if (section >= 0) {
+              sort_column_ = section;
+              sort_order_  = order;
+            } else {
+              sort_column_ = -1;
+            }
+            rebuild_row_metadata();
+            update_drag_flags();
+            apply_highlights();
+          });
+}
+
+bool PluginView::eventFilter(QObject *watched, QEvent *event) {
+  // Forward header mouse events to its viewport: clicking the header widget
+  // itself does not trigger Qt's sort (the sort slot is wired to the
+  // viewport), so without this forward the column header is dead in the real
+  // app. Restored from pre-12be608 (Workspace-4l56).
+  if (watched == table_->horizontalHeader()) {
+    if (event->type() == QEvent::MouseButtonPress ||
+        event->type() == QEvent::MouseButtonRelease ||
+        event->type() == QEvent::MouseButtonDblClick ||
+        event->type() == QEvent::MouseMove) {
+      return QApplication::sendEvent(table_->horizontalHeader()->viewport(), event);
+    }
+  }
+  return QWidget::eventFilter(watched, event);
 }
 
 PluginView::PluginView(QWidget *parent) : QWidget(parent) {
@@ -585,13 +704,29 @@ PluginView::PluginView(QWidget *parent) : QWidget(parent) {
   table_->setDefaultDropAction(Qt::MoveAction);
   table_->setDragDropOverwriteMode(false);
   table_->setDropIndicatorShown(true);
+  // Column sorting (MO2 PluginListSortProxy semantics). Sorting stays
+  // enabled permanently (MO2 never toggles it); the default indicator is
+  // Priority ascending, matching MO2 PluginListView::setup's
+  // sortByColumn(COL_PRIORITY, Ascending). A valid indicator is always
+  // present - Qt warns that -1 may crash models that do not support it.
+  table_->horizontalHeader()->setSortIndicator(PluginView::ColPriority,
+                                               Qt::AscendingOrder);
+  table_->setSortingEnabled(true);
+  // Keep the header clickable even if it is later swapped (RightPanel replaces
+  // it with a ColumnToggleHeaderView): setSortingEnabled(true) is a no-op at
+  // the view level once sorting is already enabled, so a swapped-in header
+  // never receives sectionsClickable=true unless we set it explicitly.
+  table_->horizontalHeader()->setSectionsClickable(true);
+  table_->horizontalHeader()->setSortIndicatorShown(true);
   table_->on_reorder = [this](int from, int to) {
     emit reorder_requested(from, to);
   };
   // Double-click routing (MO2 parity): plain opens the owning mod's Mod
   // Info, Ctrl reveals the owning mod's folder. The table only reports the
   // owner id; what to do with it belongs to the controller.
-  table_->owner_of_row = [this](int row) { return owner_mod_at(row); };
+  table_->owner_of_row = [this](int row) {
+    return owner_mod_at(row);
+  };
   table_->on_mod_info = [this](const std::string &owner) {
     emit mod_info_requested(owner);
   };
@@ -607,9 +742,30 @@ PluginView::PluginView(QWidget *parent) : QWidget(parent) {
     const int row = item->row();
     if (row < 0 || row >= static_cast<int>(names_.size()))
       return;
-    emit toggle_requested(names_[static_cast<size_t>(row)],
-                          item->checkState() == Qt::Checked);
+    // Sorting, filtering, refreshing and other row churn fire itemChanged for
+    // every moved row even though no checkbox actually changed. Only emit a
+    // user toggle when the check state really differs from the last value we
+    // recorded for this item; otherwise the sort path would re-run enable/
+    // disable (and hit the missing-master guard) for plugins that never
+    // changed. Recorded state lives in the item's meta map ("enabled").
+    const Qt::CheckState current = item->checkState();
+    const bool current_bool      = (current == Qt::Checked);
+    QVariantMap meta             = item->data(kPluginMetaRole).toMap();
+    const bool has_stored        = meta.contains(QStringLiteral("enabled"));
+    const bool stored = has_stored ? meta.value(QStringLiteral("enabled")).toBool()
+                                   : current_bool;  // no record: treat as unchanged
+    if (has_stored && stored == current_bool)
+      return;
+    meta.insert(QStringLiteral("enabled"), current_bool);
+    item->setData(kPluginMetaRole, meta);
+    emit toggle_requested(names_[static_cast<size_t>(row)], current_bool);
   });
+  // Track an explicit user sort separately from programmatic sorts, so a
+  // Refresh (set_plugins) can restore the user's choice without mistaking the
+  // default Priority sort for a user action. Wired through wire_header() so
+  // the connections survive a header swap (RightPanel replaces the header with
+  // a ColumnToggleHeaderView after this ctor runs).
+  wire_header();
 
   // Header row: refresh button + backup/restore pair + counter. MO2 parks
   // its save/restore pair immediately left of the "Active:" counter
@@ -680,7 +836,12 @@ void PluginView::apply_filter(const QString &text) {
 }
 
 void PluginView::set_plugins(const std::vector<engine::GamePlugin> &plugins) {
+  wire_header();
   syncing_ = true;
+  // Disable sorting while rebuilding so inserting rows does not auto-sort
+  // half-built rows and corrupt columns. Re-enabled below with a valid
+  // indicator (never -1).
+  table_->setSortingEnabled(false);
   table_->setRowCount(0);
   names_.clear();
   owners_.clear();
@@ -718,7 +879,7 @@ void PluginView::set_plugins(const std::vector<engine::GamePlugin> &plugins) {
       rows_type_.push_back(PluginType::Regular);
     }
 
-    auto *name       = new QTableWidgetItem(QString::fromStdString(p.name));
+    auto *name       = new PluginItem(QString::fromStdString(p.name));
     Qt::ItemFlags nf = Qt::ItemIsEnabled | Qt::ItemIsSelectable;
     // MO2 PluginList::checkstateData/flags parity: forceLoaded and
     // forceEnabled rows render checked and cannot be toggled; forceDisabled
@@ -768,9 +929,25 @@ void PluginView::set_plugins(const std::vector<engine::GamePlugin> &plugins) {
 
     const QString tooltip = plugin_tooltip_html(p);
     name->setToolTip(tooltip);
+    // Per-row metadata so the parallel arrays can be rebuilt after a sort
+    // reorders the rows (and so drag flags can be re-derived).
+    QVariantMap meta;
+    meta.insert(QStringLiteral("owner"), QString::fromStdString(p.owner_mod));
+    meta.insert(QStringLiteral("locked"), p.locked);
+    meta.insert(QStringLiteral("force_loaded"), p.force_loaded);
+    meta.insert(QStringLiteral("type"), static_cast<int>(rows_type_.back()));
+    meta.insert(QStringLiteral("enabled"),
+                p.force_loaded || p.force_enabled || (!p.force_disabled && p.enabled));
+    meta.insert(QStringLiteral("draggable"),
+                static_cast<bool>(name->flags() & Qt::ItemIsDragEnabled));
+    // Original model (priority) row this row was built from. Survives sorting
+    // because the item (and its meta) moves with the row; used by the drop
+    // path to map view rows back to model indices.
+    meta.insert(QStringLiteral("model_row"), i);
+    name->setData(kPluginMetaRole, meta);
     table_->setItem(i, 0, name);
 
-    auto *flags      = new QTableWidgetItem;
+    auto *flags      = new PluginItem;
     Qt::ItemFlags ff = Qt::ItemIsEnabled | Qt::ItemIsSelectable;
     if (!p.force_loaded && !p.force_disabled && !p.locked)
       ff |= Qt::ItemIsDragEnabled;
@@ -779,13 +956,18 @@ void PluginView::set_plugins(const std::vector<engine::GamePlugin> &plugins) {
       flags->setData(kPluginFlagsRole, QVariant::fromValue(flag_icons));
     if (!flag_tips.isEmpty())
       flags->setData(kPluginFlagTooltipsRole, QVariant::fromValue(flag_tips));
+    QStringList flag_tokens;
+    for (const auto &f : flag_frags)
+      flag_tokens << f.first;
+    if (!flag_tokens.isEmpty())
+      flags->setData(kPluginFlagTokensRole, flag_tokens);
     // MO2 serves the same rich row tooltip on every column including Flags
     // (column-independent data()); the per-emblem fragments above stay as a
     // GMM additive extra answered by FlagsDelegate::helpEvent.
     flags->setToolTip(tooltip);
     table_->setItem(i, 1, flags);
 
-    auto *prio       = new QTableWidgetItem(QString::number(p.priority));
+    auto *prio       = new PluginItem(QString::number(p.priority));
     Qt::ItemFlags pf = Qt::ItemIsEnabled | Qt::ItemIsSelectable;
     if (!p.force_loaded && !p.force_disabled && !p.locked)
       pf |= Qt::ItemIsDragEnabled;
@@ -796,7 +978,7 @@ void PluginView::set_plugins(const std::vector<engine::GamePlugin> &plugins) {
     prio->setToolTip(tooltip);
     table_->setItem(i, 2, prio);
 
-    auto *idx        = new QTableWidgetItem(QString::fromStdString(p.mod_index_text));
+    auto *idx        = new PluginItem(QString::fromStdString(p.mod_index_text));
     Qt::ItemFlags xf = Qt::ItemIsEnabled | Qt::ItemIsSelectable;
     if (!p.force_loaded && !p.force_disabled && !p.locked)
       xf |= Qt::ItemIsDragEnabled;
@@ -807,7 +989,7 @@ void PluginView::set_plugins(const std::vector<engine::GamePlugin> &plugins) {
     idx->setToolTip(tooltip);
     table_->setItem(i, 3, idx);
 
-    auto *lock       = new QTableWidgetItem;
+    auto *lock       = new PluginItem;
     Qt::ItemFlags lf = Qt::ItemIsEnabled | Qt::ItemIsSelectable;
     if (!p.force_loaded && !p.force_disabled && !p.locked)
       lf |= Qt::ItemIsDragEnabled;
@@ -818,12 +1000,30 @@ void PluginView::set_plugins(const std::vector<engine::GamePlugin> &plugins) {
     }
     table_->setItem(i, 4, lock);
   }
-  syncing_ = false;
+  // Keep syncing_ true through the rebuild AND the final sort so the
+  // itemChanged events that Qt fires while rows are being moved cannot be
+  // mistaken for user toggles (Workspace-4l56 regression).
+  rebuild_row_metadata();
   apply_highlights();
   relayout_flag_rows();
   // A rebuild starts every row visible, so an active filter has to be
   // re-applied or a Refresh would silently show the whole list again.
   apply_filter(filter_text_);
+  if (user_has_sorted_ && sort_column_ >= 0) {
+    table_->horizontalHeader()->setSortIndicator(sort_column_, sort_order_);
+  } else {
+    table_->horizontalHeader()->setSortIndicator(PluginView::ColPriority,
+                                                 Qt::AscendingOrder);
+  }
+  // Re-enable sorting; this triggers sortByColumn with the indicator above.
+  table_->setSortingEnabled(true);
+  // Explicit: a header swapped in by RightPanel (ColumnToggleHeaderView) does
+  // not inherit sectionsClickable from setSortingEnabled, which is a no-op
+  // once sorting is already enabled at the view level.
+  table_->horizontalHeader()->setSectionsClickable(true);
+  table_->horizontalHeader()->setSortIndicatorShown(true);
+  update_drag_flags();
+  syncing_ = false;
 }
 
 void PluginView::relayout_flag_rows() {
@@ -840,17 +1040,79 @@ void PluginView::relayout_flag_rows() {
   }
 }
 
+void PluginView::rebuild_row_metadata() {
+  names_.clear();
+  owners_.clear();
+  rows_locked_.clear();
+  rows_force_loaded_.clear();
+  rows_enabled_.clear();
+  rows_type_.clear();
+  names_.reserve(static_cast<size_t>(table_->rowCount()));
+  owners_.reserve(static_cast<size_t>(table_->rowCount()));
+  rows_locked_.reserve(static_cast<size_t>(table_->rowCount()));
+  rows_force_loaded_.reserve(static_cast<size_t>(table_->rowCount()));
+  rows_enabled_.reserve(static_cast<size_t>(table_->rowCount()));
+  rows_type_.reserve(static_cast<size_t>(table_->rowCount()));
+  for (int i = 0; i < table_->rowCount(); ++i) {
+    auto *name             = table_->item(i, 0);
+    const QVariantMap meta = name ? name->data(kPluginMetaRole).toMap() : QVariantMap();
+    names_.push_back(name ? name->text().toStdString() : std::string());
+    owners_.push_back(meta.value(QStringLiteral("owner")).toString().toStdString());
+    rows_locked_.push_back(meta.value(QStringLiteral("locked")).toBool());
+    rows_force_loaded_.push_back(meta.value(QStringLiteral("force_loaded")).toBool());
+    rows_enabled_.push_back(meta.value(QStringLiteral("enabled")).toBool());
+    rows_type_.push_back(
+        static_cast<PluginType>(meta.value(QStringLiteral("type")).toInt()));
+  }
+}
+
+void PluginView::update_drag_flags() {
+  const int sort_col = table_->horizontalHeader()->sortIndicatorSection();
+  const bool allow_drag =
+      (sort_col < 0 || sort_col == ColPriority || sort_col == ColModIndex);
+  for (int i = 0; i < table_->rowCount(); ++i) {
+    bool base = false;
+    if (auto *name = table_->item(i, 0))
+      base = name->data(kPluginMetaRole)
+                 .toMap()
+                 .value(QStringLiteral("draggable"))
+                 .toBool();
+    const bool drag = allow_drag && base;
+    for (int c = 0; c < table_->columnCount(); ++c) {
+      if (auto *it = table_->item(i, c)) {
+        Qt::ItemFlags f = it->flags();
+        if (drag)
+          f |= Qt::ItemIsDragEnabled;
+        else
+          f &= ~Qt::ItemIsDragEnabled;
+        it->setFlags(f);
+      }
+    }
+  }
+}
+
 void PluginView::sync_enabled(const std::vector<engine::GamePlugin> &plugins) {
-  syncing_       = true;
-  const int rows = std::min(static_cast<int>(plugins.size()), table_->rowCount());
-  for (int i = 0; i < rows; ++i) {
-    const auto &p          = plugins[static_cast<size_t>(i)];
-    QTableWidgetItem *item = table_->item(i, 0);
-    if (!item || p.force_loaded || p.force_enabled || p.force_disabled)
+  syncing_ = true;
+  for (int i = 0; i < table_->rowCount(); ++i) {
+    auto *item = table_->item(i, 0);
+    if (!item)
       continue;
-    if (i < static_cast<int>(rows_enabled_.size()))
-      rows_enabled_[static_cast<size_t>(i)] = p.enabled;
-    item->setCheckState(p.enabled ? Qt::Checked : Qt::Unchecked);
+    const std::string row_name = item->text().toStdString();
+    for (const auto &p : plugins) {
+      if (p.name != row_name)
+        continue;
+      if (p.force_loaded || p.force_enabled || p.force_disabled)
+        continue;
+      if (i < static_cast<int>(rows_enabled_.size()))
+        rows_enabled_[static_cast<size_t>(i)] = p.enabled;
+      item->setCheckState(p.enabled ? Qt::Checked : Qt::Unchecked);
+      // Keep the recorded check state in sync so a later sort does not
+      // mistake the row for a user toggle (Workspace-4l56).
+      QVariantMap m = item->data(kPluginMetaRole).toMap();
+      m.insert(QStringLiteral("enabled"), p.enabled);
+      item->setData(kPluginMetaRole, m);
+      break;
+    }
   }
   syncing_ = false;
   refresh_counters();

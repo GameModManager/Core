@@ -47,6 +47,8 @@ public:
   // reference them via PluginsTab::kPluginFlagsRole).
   static constexpr int kPluginFlagsRole        = PluginView::kPluginFlagsRole;
   static constexpr int kPluginFlagTooltipsRole = PluginView::kPluginFlagTooltipsRole;
+  static constexpr int kPluginFlagTokensRole   = PluginView::kPluginFlagTokensRole;
+  static constexpr int kPluginMetaRole         = PluginView::kPluginMetaRole;
 
 signals:
   void toggle_requested(const std::string &name, bool enabled);

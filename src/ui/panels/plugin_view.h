@@ -17,6 +17,7 @@ class QKeyEvent;
 class QLCDNumber;
 class QPushButton;
 class QTableWidget;
+class QHeaderView;
 
 namespace ui {
 
@@ -94,11 +95,20 @@ public:
   static constexpr int kPluginFlagsRole = Qt::UserRole + 60;
   // Parallel role: per-emblem hover text (QStringList).
   static constexpr int kPluginFlagTooltipsRole = Qt::UserRole + 61;
+  // Parallel role: per-emblem flag token strings (QStringList) used for
+  // MO2-style flags sorting (size first, then lexicographic token order).
+  static constexpr int kPluginFlagTokensRole = Qt::UserRole + 62;
+  // User role on the Name column holding per-row metadata (QVariantMap) so
+  // the parallel metadata arrays can be rebuilt after a sort reorders rows.
+  static constexpr int kPluginMetaRole = Qt::UserRole + 63;
 
   // Column order (setHorizontalHeaderLabels in the ctor). Named so the rest
   // of the UI talks about columns by name rather than a bare integer, the way
   // MO2 does (PluginList::COL_PRIORITY).
   enum Col { ColName = 0, ColFlags, ColPriority, ColModIndex, ColLocked };
+
+protected:
+  bool eventFilter(QObject *watched, QEvent *event) override;
 
 signals:
   void toggle_requested(const std::string &name, bool enabled);
@@ -130,6 +140,11 @@ protected:
 private:
   void apply_highlights();
   void relayout_flag_rows();
+  void rebuild_row_metadata();
+  void update_drag_flags();
+  // (Re)connect header signals when the header widget changes (e.g. RightPanel
+  // swaps in a ColumnToggleHeaderView). Idempotent per header instance.
+  void wire_header();
   // MO2 PluginListView::event keyboard routing; true = key consumed.
   bool handle_key(QKeyEvent *event);
 
@@ -137,11 +152,12 @@ private:
   enum class PluginType { Regular, Master, Light, Medium };
 
   class PluginTable;
-  PluginTable *table_          = nullptr;
-  QPushButton *refresh_button_ = nullptr;
-  QPushButton *backup_button_  = nullptr;
-  QPushButton *restore_button_ = nullptr;
-  QLCDNumber *counter_display_ = nullptr;
+  PluginTable *table_            = nullptr;
+  QHeaderView *connected_header_ = nullptr;
+  QPushButton *refresh_button_   = nullptr;
+  QPushButton *backup_button_    = nullptr;
+  QPushButton *restore_button_   = nullptr;
+  QLCDNumber *counter_display_   = nullptr;
   std::vector<std::string> names_;
   // Mod folder providing each row's plugin ("" = game Data), parallel to
   // names_. The double-click handlers need it: a plugin's own name says
@@ -155,7 +171,10 @@ private:
   QSet<QString> master_names_;
   // Last text handed to apply_filter, so set_plugins can re-apply it.
   QString filter_text_;
-  bool syncing_ = false;
+  bool syncing_             = false;
+  bool user_has_sorted_     = false;
+  int sort_column_          = -1;
+  Qt::SortOrder sort_order_ = Qt::AscendingOrder;
 };
 
 }  // namespace ui
