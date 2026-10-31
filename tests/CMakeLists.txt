@@ -583,6 +583,12 @@ gmm_catch2_test(instance_creation_wizard_test
     LIBS gmm_ui
     PROPERTIES TIMEOUT 300)
 
+gmm_catch2_test(settings_experimental_tab_test
+    ui/settings_experimental_tab_test.cpp
+    UI
+    LIBS gmm_ui
+    PROPERTIES TIMEOUT 300)
+
 # Last-used directory per named file dialog (MO2 FileDialogMemory).
 
 
