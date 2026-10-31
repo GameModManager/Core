@@ -45,6 +45,10 @@ public:
   }
   [[nodiscard]] const GameEntry &chosen_game() const { return chosen_game_; }
 
+  // Exposed for tests: specific validation message (empty when valid).
+  [[nodiscard]] QString name_validation_message() const;
+  QLineEdit *name_edit() const { return name_edit_; }
+
 private:
   struct StepState {
     int id;

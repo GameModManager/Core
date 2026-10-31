@@ -372,7 +372,12 @@ void InstanceCreationWizard::on_page_entered(int index) {
     variant_combo_->clear();
     if (loader_ && !chosen_game_.game_id.empty()) {
       auto variants = loader_->game_variants(chosen_game_.game_id);
+      // Dedup by variant_id (defensive; game_variants already dedups).
+      std::vector<std::string> seen;
       for (const auto &v : variants) {
+        if (std::find(seen.begin(), seen.end(), v.variant_id) != seen.end())
+          continue;
+        seen.push_back(v.variant_id);
         variant_combo_->addItem(QString::fromStdString(v.display_name),
                                 QString::fromStdString(v.variant_id));
       }
@@ -392,28 +397,47 @@ void InstanceCreationWizard::on_page_entered(int index) {
   }
 }
 
-bool InstanceCreationWizard::name_valid() const {
+QString InstanceCreationWizard::name_validation_message() const {
   if (!name_edit_)
-    return true;
+    return QString();
   QString text = name_edit_->text().trimmed();
   if (text.isEmpty())
-    return false;
+    return tr("Name cannot be empty.");
   if (text == "." || text == "..")
-    return false;
+    return tr("Name cannot be \".\" or \"..\".");
   const QString bad_chars = QStringLiteral("\\/:*?\"<>|");
+  QString found;
+  bool has_control = false;
   for (const QChar c : text) {
-    if (c.unicode() < 32)
-      return false;
-    if (bad_chars.contains(c))
-      return false;
+    if (c.unicode() < 32) {
+      has_control = true;
+    } else if (bad_chars.contains(c) && !found.contains(c)) {
+      if (!found.isEmpty())
+        found += QLatin1Char(' ');
+      found += c;
+    }
+  }
+  if (!found.isEmpty() || has_control) {
+    QString chars = found;
+    if (has_control) {
+      if (!chars.isEmpty())
+        chars += QLatin1Char(' ');
+      chars += tr("control characters");
+    }
+    return tr("Name cannot contain: %1").arg(chars);
   }
   std::string sanitized = engine::sanitize_directory_name(text.toStdString());
   if (sanitized.empty())
-    return false;
+    return tr("Name cannot be empty.");
   auto existing = engine::scan_instances();
   if (std::find(existing.begin(), existing.end(), sanitized) != existing.end())
-    return false;
-  return true;
+    return tr("An instance named \"%1\" already exists.")
+        .arg(QString::fromStdString(sanitized));
+  return QString();
+}
+
+bool InstanceCreationWizard::name_valid() const {
+  return name_validation_message().isEmpty();
 }
 
 bool InstanceCreationWizard::game_dir_valid() const {
@@ -491,13 +515,13 @@ QWidget *InstanceCreationWizard::build_name_page() {
   name_error_->hide();
   layout->addWidget(name_error_);
   connect(name_edit_, &QLineEdit::textChanged, this, [this]() {
-    // update error label
     if (!name_error_)
       return;
-    if (name_valid()) {
+    QString msg = name_validation_message();
+    if (msg.isEmpty()) {
       name_error_->hide();
     } else {
-      name_error_->setText(tr("Invalid or duplicate name."));
+      name_error_->setText(msg);
       name_error_->show();
     }
     refresh_next_enabled();
@@ -560,6 +584,11 @@ QWidget *InstanceCreationWizard::build_paths_page() {
   cache_dir_edit_     = new QLineEdit(page);
   profiles_dir_edit_  = new QLineEdit(page);
   overwrite_dir_edit_ = new QLineEdit(page);
+  mods_dir_edit_->setPlaceholderText(QStringLiteral("$BASE_DIRECTORY/mods"));
+  downloads_dir_edit_->setPlaceholderText(QStringLiteral("$BASE_DIRECTORY/downloads"));
+  cache_dir_edit_->setPlaceholderText(QStringLiteral("$BASE_DIRECTORY/cache"));
+  profiles_dir_edit_->setPlaceholderText(QStringLiteral("$BASE_DIRECTORY/profiles"));
+  overwrite_dir_edit_->setPlaceholderText(QStringLiteral("$BASE_DIRECTORY/overwrite"));
   form->addRow(tr("Mods"), mods_dir_edit_);
   form->addRow(tr("Downloads"), downloads_dir_edit_);
   form->addRow(tr("Cache"), cache_dir_edit_);
