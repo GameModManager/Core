@@ -285,6 +285,7 @@ bool Instance::write_toml() const {
 
   assign_str_or_erase("proton_runner", info_.proton_runner);
   assign_str_or_erase("deploy_strategy", info_.deploy_strategy);
+  assign_str_or_erase("game_variant", info_.game_variant);
   assign_str_or_erase("modpack_id", info_.modpack_id);
   assign_int_or_erase("modpack_revision", info_.modpack_revision);
   assign_str_or_erase("last_tab", info_.last_tab);
@@ -399,6 +400,9 @@ bool Instance::read_toml() {
   }
   if (auto v = (*tbl)["deploy_strategy"].value<std::string>()) {
     info_.deploy_strategy = *v;
+  }
+  if (auto v = (*tbl)["game_variant"].value<std::string>()) {
+    info_.game_variant = *v;
   }
   if (auto v = (*tbl)["modpack_id"].value<std::string>()) {
     info_.modpack_id = *v;

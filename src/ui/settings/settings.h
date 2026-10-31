@@ -46,6 +46,11 @@ public:
   void set_default_profile(const QString &name);
   bool force_enable_core_files() const;
   void set_force_enable_core_files(bool on);
+  // Global toggle: when true, the create-instance entry points open the
+  // guided instance creation wizard instead of the quick 2-step flow.
+  // Default off (quick create remains the default during the transition).
+  bool instance_creation_wizard() const;  // key: general/instance_creation_wizard
+  void set_instance_creation_wizard(bool on);
 
   // == GeometrySettings =====================================================
   // MO2 GeometrySettings. MO2 keys geometry by widget objectName; GMM's

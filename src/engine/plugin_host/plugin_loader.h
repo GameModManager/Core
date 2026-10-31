@@ -308,8 +308,24 @@ public:
   [[nodiscard]] std::vector<PluginInfo::GameVariant>
   game_variants(const std::string &game_id) const {
     for (const auto &p : game_plugins()) {
-      if (p.game_id == game_id && !p.variants.empty())
-        return p.variants;
+      if (p.game_id != game_id || p.variants.empty())
+        continue;
+      // Dedup by variant_id: a single plugin may register the same
+      // variant under several game_id aliases (e.g. "SkyrimSpecialEdition"
+      // and "skyrimse"), which would otherwise surface duplicate entries.
+      std::vector<PluginInfo::GameVariant> out;
+      for (const auto &v : p.variants) {
+        bool dup = false;
+        for (const auto &o : out) {
+          if (o.variant_id == v.variant_id) {
+            dup = true;
+            break;
+          }
+        }
+        if (!dup)
+          out.push_back(v);
+      }
+      return out;
     }
     return {};
   }

@@ -4,6 +4,7 @@
 #include "engine/deploy/deploy_utils.h"
 #include "engine/game/detect/game_detector.h"
 #include "engine/instance/instance.h"
+#include "engine/profile/profile_creation.h"
 #include "engine/game/registry/game_knowledge.h"
 
 #include <filesystem>
@@ -72,6 +73,34 @@ resolve_instance_path(const std::string &name_or_path);
 create_instance_for_game(const DetectedGame &game,
                          const std::filesystem::path &instances_root,
                          const std::string &display_name);
+
+// Options collected by the instance creation wizard (and any other caller).
+// All fields default to "no override / current behavior" so the existing
+// overloads delegate with a default-constructed options object.
+struct InstanceCreationOptions {
+  // Game variant / edition chosen by the user (e.g. "Steam", "GOG", "Epic").
+  // Empty = none. Persisted on the instance (Instance::Info::game_variant).
+  std::string game_variant;
+  // Per-folder overrides (empty = default under root). Written through
+  // Instance::set_path_override before write_toml.
+  std::filesystem::path mods_dir;
+  std::filesystem::path downloads_dir;
+  std::filesystem::path cache_dir;
+  std::filesystem::path profiles_dir;
+  std::filesystem::path overwrite_dir;
+  // Profile seed for the Default profile created by the caller. The engine
+  // does not create the profile itself; the caller passes this to
+  // create_fresh_profile. Stored here so there is one options struct.
+  engine::profile::ProfileSeed profile_seed;
+  bool create_default_profile = true;
+};
+
+// Options-aware overload: applies game_variant and per-folder overrides to
+// the instance before write_toml. Returns an Instance with empty game_id on
+// failure (duplicate name, empty name, directory/toml write failure).
+[[nodiscard]] Instance create_instance_for_game(
+    const DetectedGame &game, const std::filesystem::path &instances_root,
+    const std::string &display_name, const InstanceCreationOptions &options);
 
 // Legacy form: no custom name - folder derived from the game name via
 // Instance::to_instance_name (spaces folded to underscores).

@@ -158,6 +158,55 @@ Instance create_instance_for_game(const DetectedGame &game,
 }
 
 Instance create_instance_for_game(const DetectedGame &game,
+                                  const fs::path &instances_root,
+                                  const std::string &display_name,
+                                  const InstanceCreationOptions &options) {
+  const std::string sanitized = sanitize_directory_name(display_name);
+  if (sanitized.empty()) {
+    Logger::instance().error("create_instance_for_game: empty instance name for game=" +
+                             game.game_id);
+    return Instance::portable({});
+  }
+  if (fs::exists(instances_root / sanitized / "instance.toml")) {
+    Logger::instance().warn("create_instance_for_game: instance already exists: " +
+                            sanitized);
+    return Instance::portable({});
+  }
+  Instance inst = Instance::installed(sanitized, instances_root);
+
+  inst.info().game_id      = game.game_id;
+  inst.info().display_name = display_name;
+  inst.info().game_dir     = game.install_path;
+  inst.info().steam_appid  = game.steam_appid;
+  inst.info().game_variant = options.game_variant;
+
+  // Per-folder overrides (empty = default).
+  if (!options.mods_dir.empty())
+    inst.set_path_override(InstanceKind::Mods, options.mods_dir);
+  if (!options.downloads_dir.empty())
+    inst.set_path_override(InstanceKind::Downloads, options.downloads_dir);
+  if (!options.cache_dir.empty())
+    inst.set_path_override(InstanceKind::Cache, options.cache_dir);
+  if (!options.profiles_dir.empty())
+    inst.set_path_override(InstanceKind::Profiles, options.profiles_dir);
+  if (!options.overwrite_dir.empty())
+    inst.set_path_override(InstanceKind::Overwrite, options.overwrite_dir);
+
+  if (!inst.create_directories()) {
+    Logger::instance().error("Failed to create instance directories for " + sanitized);
+    return Instance::portable({});
+  }
+  if (!inst.write_toml()) {
+    Logger::instance().error("Failed to write instance.toml for " + sanitized);
+    return Instance::portable({});
+  }
+
+  Logger::instance().debug("Instance created: " + sanitized + " (game=" + game.game_id +
+                           ") at " + inst.info().root.string());
+  return inst;
+}
+
+Instance create_instance_for_game(const DetectedGame &game,
                                   const fs::path &instances_root) {
   // Legacy path: derive the folder name from the game name, keeping
   // to_instance_name's space->underscore folding. Auto-disambiguates with

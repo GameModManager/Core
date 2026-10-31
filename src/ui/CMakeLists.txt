@@ -108,6 +108,7 @@ set(UI_SOURCES
     modpack/modpack_import_dialog.cpp
     modpack/modpack_instance_dialog.cpp
     modpack/modpack_install_wizard.cpp
+    instance_creation/instance_creation_wizard.cpp
     modpack/export_pack_worker.cpp
     modpack/export_wizard.cpp
     fomod/fomod_image_viewer.cpp

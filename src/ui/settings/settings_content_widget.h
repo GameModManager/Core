@@ -57,6 +57,7 @@ private:
   QWidget *build_sources_tab();
   QWidget *build_plugins_tab();
   QWidget *build_workarounds_tab();
+  QWidget *build_experimental_tab();
   QWidget *build_diagnostics_tab();
 
   // Rewrite the read-only line that reports whether an automatic app update
