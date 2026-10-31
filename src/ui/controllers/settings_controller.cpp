@@ -59,6 +59,7 @@
 #include "engine/source/steam/provider.h"
 #include "ui/fomod/fomod_wizard_dialog.h"
 #include "ui/game_selection/game_selection_widget.h"
+#include "ui/instance_creation/instance_creation_wizard.h"
 #include "ui/install/install_name_dialog.h"
 #include "ui/install/layout_dialog.h"
 #include "ui/install/password_prompt.h"
@@ -1421,6 +1422,9 @@ void SettingsController::show_instance_switcher() {
 }
 
 bool SettingsController::create_new_instance() {
+  if (Settings::instance().instance_creation_wizard()) {
+    return create_instance_wizard(nullptr);
+  }
   auto instances_dir = engine::default_instances_dir();
 
   std::vector<engine::DetectedGame> installed_games;
@@ -1511,6 +1515,30 @@ bool SettingsController::create_new_instance() {
                 inst.info().root);
   engine::Logger::instance().debug("Created and switched to instance: " +
                                    inst.info().root.filename().string());
+  return true;
+}
+
+bool SettingsController::create_instance_wizard(const GameEntry *preselected) {
+  ui::InstanceCreationWizard dlg(w_->plugin_loader_, w_, preselected);
+  if (dlg.exec() != QDialog::Accepted)
+    return false;
+
+  const QString created = dlg.created_instance_name();
+  if (created.isEmpty())
+    return false;
+
+  // Switch to the new instance (live, matching quick create).
+  auto inst = engine::Instance::from_root(engine::default_instances_dir() /
+                                          created.toStdString());
+  if (!inst.read_toml())
+    return false;
+
+  engine::write_last_instance(inst.info().root.filename().string());
+  Settings::instance().ensure_modlist_column_defaults(created);
+  set_game_info(inst.info().game_id, inst.info().display_name, "Default",
+                inst.info().game_dir, inst.info().root);
+  engine::Logger::instance().debug("Created and switched to instance (wizard): " +
+                                   created.toStdString());
   return true;
 }
 

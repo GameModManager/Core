@@ -11,6 +11,7 @@
 
 #include "engine/instance/instance.h"
 #include "engine/modpack/model.h"
+#include "ui/game_selection/game_card.h"
 #include "ui/main_window/main_window.h"
 
 namespace engine::Uri {
@@ -88,6 +89,9 @@ public slots:
   // cancelled the picker or creation failed. Shared by the popup switcher
   // (after the dialog's create button) and the Full UI tab-mode switcher.
   bool create_new_instance();
+  // Guided wizard variant (Workspace-ffei). Used when the global setting
+  // instance_creation_wizard is on. Returns true on creation+switch.
+  bool create_instance_wizard(const GameEntry *preselected = nullptr);
   void refresh_recent_instances();
   void prompt_nxm_registration();
   void ensure_nxm_handler_default();

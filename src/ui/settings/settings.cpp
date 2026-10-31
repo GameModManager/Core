@@ -636,6 +636,14 @@ void Settings::set_force_enable_core_files(bool on) {
   settings_.setValue("game/force_enable_core_files", on);
 }
 
+bool Settings::instance_creation_wizard() const {
+  return settings_.value("general/instance_creation_wizard", false).toBool();
+}
+
+void Settings::set_instance_creation_wizard(bool on) {
+  settings_.setValue("general/instance_creation_wizard", on);
+}
+
 bool Settings::experimental_archive_parsing() const {
   return settings_.value("archive/experimental_parsing", false).toBool();
 }
