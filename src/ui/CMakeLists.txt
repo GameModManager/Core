@@ -33,6 +33,7 @@ set(UI_SOURCES
     controllers/settings_controller.cpp
     controllers/tab_mode_controller.cpp
     widgets/mod_list_model.cpp
+    widgets/mod_list_sort_proxy.cpp
     widgets/mod_table_view.cpp
     widgets/install_widget.cpp
     widgets/main_toolbar.cpp

@@ -450,6 +450,11 @@ public:
   // matching, which is the no-filter semantics.
   void set_filter_visible(const QVector<bool> &visible);
   [[nodiscard]] bool is_row_filter_visible(int row) const;
+  // Presentation visibility (final verdict published by apply_mod_filter).
+  void set_view_visible(const QVector<bool> &visible);
+  [[nodiscard]] bool is_row_view_visible(int row) const;
+  [[nodiscard]] const QVector<bool> &view_visible() const { return view_visible_; }
+  [[nodiscard]] bool has_view_visible() const { return !view_visible_.isEmpty(); }
   // Drop parent_id links that are dangling (parent id not present), point at
   // Overwrite/MERGED/game-native rows, link a mod under a separator or a
   // separator under a mod, or form a cycle. Runs at load time.
@@ -522,6 +527,7 @@ public:
 
 signals:
   void mod_list_changed();
+  void fold_state_changed();
   // Emitted by setData(Qt::EditRole) on the Name column. The window handler
   // performs the disk rename (folder rename + metadata); on failure it must
   // restore the row and emit dataChanged so the editor is reverted.
@@ -580,6 +586,11 @@ private:
   // apply_mod_filter, which runs on every mod_list_changed, so it never goes
   // stale across model mutations.
   QVector<bool> filter_visible_;
+  QVector<bool> view_visible_;
+  // Cached fold-hidden verdict (compute_fold_hidden is O(n^2)); refreshed
+  // lazily. See is_row_fold_hidden / apply_fold_state.
+  mutable QVector<bool> fold_hidden_cache_;
+  mutable bool fold_hidden_cache_dirty_ = true;
   QIcon overwrite_icon_;
   QIcon overwritten_icon_;
   QIcon mixed_icon_;

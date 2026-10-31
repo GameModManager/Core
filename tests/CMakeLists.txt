@@ -433,6 +433,9 @@ add_dependencies(game_support_ownership_test gmm_tool_first_plugin gmm_game_supp
 # mod folder the moment the checkbox is ticked. The plugin is loaded from the
 # build tree for the same reason game_feature_registry_test loads Skyrim, so a
 # declaration change fails here rather than at the user's desk.
+gmm_catch2_test(mod_list_sort_proxy_test ui/mod_list_sort_proxy_test.cpp
+    UI
+    LIBS gmm_ui Qt6::Test)
 gmm_catch2_test(disable_it_toggle_test ui/disable_it_toggle_test.cpp
     UI
     LIBS gmm_ui Qt6::Test ${CMAKE_DL_LIBS}

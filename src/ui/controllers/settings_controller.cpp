@@ -90,6 +90,7 @@
 #include "ui/widgets/main_toolbar.h"
 #include "ui/widgets/menu_bar.h"
 #include "ui/widgets/mod_list_model.h"
+#include "ui/widgets/mod_list_sort_proxy.h"
 #include "ui/widgets/mod_table_view.h"
 #include "ui/widgets/pipeline_window.h"
 #include "ui/widgets/right_panel.h"
@@ -747,14 +748,16 @@ void SettingsController::connect_menu_actions() {
   connect(w_->menu_bar_, &AppMenuBar::enable_selected_requested, this, [this]() {
     auto sel = w_->mod_view_->selectionModel()->selectedRows();
     for (const auto &idx : sel) {
-      w_->mod_model_->setData(idx, Qt::Checked, Qt::CheckStateRole);
+      auto src = w_->sort_proxy_ ? w_->sort_proxy_->mapToSource(idx) : idx;
+      w_->mod_model_->setData(src, Qt::Checked, Qt::CheckStateRole);
     }
     engine::Logger::instance().debug("Enabled " + std::to_string(sel.size()) + " mods");
   });
   connect(w_->menu_bar_, &AppMenuBar::disable_selected_requested, this, [this]() {
     auto sel = w_->mod_view_->selectionModel()->selectedRows();
     for (const auto &idx : sel) {
-      w_->mod_model_->setData(idx, Qt::Unchecked, Qt::CheckStateRole);
+      auto src = w_->sort_proxy_ ? w_->sort_proxy_->mapToSource(idx) : idx;
+      w_->mod_model_->setData(src, Qt::Unchecked, Qt::CheckStateRole);
     }
     engine::Logger::instance().debug("Disabled " + std::to_string(sel.size()) +
                                      " mods");

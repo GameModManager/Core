@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QList>
+#include <QModelIndex>
 #include <QString>
 #include <QStringList>
 #include <filesystem>
@@ -33,6 +34,7 @@ public:
   void set_sync_mod_enable_state(std::function<void(const QString &, bool)> cb);
   void set_refresh_data_tab(std::function<void()> cb);
   void set_apply_mod_filter(std::function<void()> cb);
+  void set_to_source_row(std::function<int(const QModelIndex &)> cb);
   void set_load_mods_from_game(std::function<void()> cb);
 
   // Context-menu actions.
@@ -130,6 +132,7 @@ private:
   std::function<void()> refresh_data_tab_cb_;
   std::function<void()> apply_mod_filter_cb_;
   std::function<void()> load_mods_from_game_cb_;
+  std::function<int(const QModelIndex &)> to_source_row_cb_;
 };
 
 }  // namespace ui

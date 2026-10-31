@@ -221,6 +221,7 @@ public:
   void apply_scrollbar_policy();
 
   void setModel(QAbstractItemModel *model) override;
+  void set_mod_list(ModList *mod_list) { mod_list_ = mod_list; }
   // Re-layout rows whenever the Flags column is resized: the flag icons wrap
   // to extra lines (growing the row) based on the column width, and the
   // cached row heights must follow the drag. Hides the (non-virtual)
@@ -255,6 +256,7 @@ protected:
 
 private:
   bool is_under_overwrite(const QString &path) const;
+  ModList *mod_list_ = nullptr;
   // Last Name-checkbox toggle from a real mouse release (see above).
   CheckboxBounceGuard bounce_guard_;
 };

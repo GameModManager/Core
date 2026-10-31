@@ -1,4 +1,5 @@
 #include "ui/controllers/mod_actions.h"
+#include "ui/widgets/mod_list_sort_proxy.h"
 #include "engine/backup/backup_service.h"
 #include "engine/instance/instance_utils.h"
 #include "engine/log/logger.h"
@@ -113,6 +114,10 @@ void ModActions::set_apply_mod_filter(std::function<void()> cb) {
   apply_mod_filter_cb_ = std::move(cb);
 }
 
+void ModActions::set_to_source_row(std::function<int(const QModelIndex &)> cb) {
+  to_source_row_cb_ = std::move(cb);
+}
+
 void ModActions::set_load_mods_from_game(std::function<void()> cb) {
   load_mods_from_game_cb_ = std::move(cb);
 }
@@ -135,7 +140,7 @@ void ModActions::remove_selected_mods() {
 
   QStringList names;
   for (const auto &idx : sel) {
-    int r = idx.row();
+    int r = to_source_row_cb_ ? to_source_row_cb_(idx) : idx.row();
     if (r < 0 || r >= w_->mod_model_->mods().size())
       continue;
     if (w_->mod_model_->mods()[r].is_overwrite)
@@ -156,7 +161,7 @@ void ModActions::remove_selected_mods() {
   auto mods_dir = w_->mods_dir_path();
 
   for (const auto &idx : sel) {
-    int r = idx.row();
+    int r = to_source_row_cb_ ? to_source_row_cb_(idx) : idx.row();
     if (r < 0 || r >= w_->mod_model_->mods().size())
       continue;
     const auto &entry = w_->mod_model_->mods()[r];
@@ -350,7 +355,7 @@ void ModActions::priority_move_selected(int step) {
   if (sel.isEmpty())
     return;
 
-  int r            = sel.first().row();
+  int r            = to_source_row_cb_ ? to_source_row_cb_(sel.first()) : sel.first().row();
   const auto &mods = w_->mod_model_->mods();
   if (r < 0 || r >= mods.size())
     return;
@@ -370,7 +375,7 @@ void ModActions::priority_move_selected(int step) {
 void ModActions::toggle_selected_mods(bool enabled) {
   auto sel = w_->mod_view_->selectionModel()->selectedRows();
   for (const auto &idx : sel) {
-    int r = idx.row();
+    int r = to_source_row_cb_ ? to_source_row_cb_(idx) : idx.row();
     if (r < 0 || r >= w_->mod_model_->mods().size())
       continue;
     const auto &entry = w_->mod_model_->mods()[r];
@@ -816,7 +821,11 @@ void ModActions::rename_mod_inline(int row) {
   const auto &mod = w_->mod_model_->mods()[row];
   if (mod.is_overwrite || mod.is_merged || mod.is_game_native)
     return;
-  w_->mod_view_->edit(w_->mod_model_->index(row, ModList::Name));
+  QModelIndex src_idx = w_->mod_model_->index(row, ModList::Name);
+  QModelIndex view_idx = src_idx;
+  if (w_->sort_proxy_)
+    view_idx = w_->sort_proxy_->mapFromSource(src_idx);
+  w_->mod_view_->edit(view_idx);
 }
 
 void ModActions::apply_rename(int row, const QString &name) {
@@ -1007,7 +1016,8 @@ void ModActions::select_color_for_selected() {
   if (sel.isEmpty())
     return;
 
-  const auto &ref = w_->mod_model_->mods()[sel.first().row()];
+  const int first_row = to_source_row_cb_ ? to_source_row_cb_(sel.first()) : sel.first().row();
+  const auto &ref = w_->mod_model_->mods()[first_row];
   QColor current;
   if (ref.is_separator && !ref.separator_color.isEmpty())
     current = QColor(ref.separator_color);
@@ -1032,7 +1042,7 @@ void ModActions::select_color_for_selected() {
   const QString hex = color.name(QColor::HexArgb);
 
   for (const auto &idx : sel) {
-    int row = idx.row();
+    int row = to_source_row_cb_ ? to_source_row_cb_(idx) : idx.row();
     if (row < 0 || row >= w_->mod_model_->mods().size())
       continue;
     const auto &mod = w_->mod_model_->mods()[row];
@@ -1049,7 +1059,7 @@ void ModActions::reset_color_for_selected() {
     return;
 
   for (const auto &idx : sel) {
-    int row = idx.row();
+    int row = to_source_row_cb_ ? to_source_row_cb_(idx) : idx.row();
     if (row < 0 || row >= w_->mod_model_->mods().size())
       continue;
     const auto &mod = w_->mod_model_->mods()[row];
@@ -1306,7 +1316,7 @@ void ModActions::mirror_selected_mods() {
   int total = 0;
   int done  = 0;
   for (const auto &idx : sel) {
-    int r = idx.row();
+    int r = to_source_row_cb_ ? to_source_row_cb_(idx) : idx.row();
     if (r < 0 || r >= w_->mod_model_->mods().size())
       continue;
     const auto &entry = w_->mod_model_->mods()[r];
@@ -1332,7 +1342,7 @@ void ModActions::unmirror_selected_mods() {
   int total = 0;
   int done  = 0;
   for (const auto &idx : sel) {
-    int r = idx.row();
+    int r = to_source_row_cb_ ? to_source_row_cb_(idx) : idx.row();
     if (r < 0 || r >= w_->mod_model_->mods().size())
       continue;
     const auto &entry = w_->mod_model_->mods()[r];
