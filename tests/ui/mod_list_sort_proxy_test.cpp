@@ -5,8 +5,8 @@
 
 #include <QApplication>
 #include <QMimeData>
+#include <QHash>
 
-#include <cstdio>
 #include <vector>
 
 namespace {
@@ -177,4 +177,90 @@ TEST_CASE("ModListSortProxy: filter + sort composition", "[ui][sort]") {
     if (m.mods()[i].name == "apple")
       CHECK(proxy.filterAcceptsRow(i, QModelIndex()));
   }
+}
+
+TEST_CASE("ModListSortProxy: separator block moves as a unit", "[ui][sort]") {
+  AppGuard g;
+  ui::ModList m;
+  // Source order is NOT name order: Core, Utils, Early -> sorted Core, Early, Utils
+  m.add_separator("sepA", "Core", "");
+  m.add_mod("a1", "childA1", "1.0", 100);
+  m.add_mod("a2", "childA2", "1.0", 101);
+  m.add_separator("sepB", "Utils", "");
+  m.add_mod("b1", "childB1", "1.0", 102);
+  m.add_separator("sepC", "Early", "");
+  m.add_mod("c1", "childC1", "1.0", 103);
+
+  auto src_row_of = [&m](const QString &name) {
+    for (int i = 0; i < m.mods().size(); ++i)
+      if (m.mods()[i].name == name)
+        return i;
+    return -1;
+  };
+  const int rSepA = src_row_of("Core");
+  const int rSepB = src_row_of("Utils");
+  const int rSepC = src_row_of("Early");
+  const int rA1   = src_row_of("childA1");
+  const int rA2   = src_row_of("childA2");
+  const int rB1   = src_row_of("childB1");
+  const int rC1   = src_row_of("childC1");
+
+  ui::ModListSortProxy proxy(&m);
+  proxy.sort(ui::ModList::Name, Qt::AscendingOrder);
+
+  auto pos_of = [&](int src) {
+    for (int i = 0; i < m.mods().size(); ++i)
+      if (proxy.mapToSource(proxy.index(i, 0)).row() == src)
+        return i;
+    return -1;
+  };
+
+  // Separators sorted by name: Core < Early < Utils
+  REQUIRE(pos_of(rSepA) < pos_of(rSepC));
+  REQUIRE(pos_of(rSepC) < pos_of(rSepB));
+  // Each block stays contiguous
+  REQUIRE(pos_of(rA1) == pos_of(rSepA) + 1);
+  REQUIRE(pos_of(rA2) == pos_of(rSepA) + 2);
+  REQUIRE(pos_of(rC1) == pos_of(rSepC) + 1);
+  REQUIRE(pos_of(rB1) == pos_of(rSepB) + 1);
+}
+
+TEST_CASE("ModListSortProxy: nested separator block", "[ui][sort]") {
+  AppGuard g;
+  ui::ModList m;
+  m.add_separator("outer", "Outer", "");
+  m.add_separator("inner", "Inner", "");
+  m.add_mod("x", "childX", "1.0", 100);
+  m.add_separator("other", "Other", "");
+
+  // nest inner under outer
+  QHash<QString, QString> links;
+  links.insert("inner", "outer");
+  m.restore_parent_links(links);
+  m.set_nesting_enabled(true);
+
+  auto src_row_of = [&m](const QString &name) {
+    for (int i = 0; i < m.mods().size(); ++i)
+      if (m.mods()[i].name == name)
+        return i;
+    return -1;
+  };
+  const int rOuter = src_row_of("Outer");
+  const int rInner = src_row_of("Inner");
+  const int rX     = src_row_of("childX");
+  const int rOther = src_row_of("Other");
+
+  ui::ModListSortProxy proxy(&m);
+  proxy.sort(ui::ModList::Name, Qt::AscendingOrder);
+
+  auto pos_of = [&](int src) {
+    for (int i = 0; i < m.mods().size(); ++i)
+      if (proxy.mapToSource(proxy.index(i, 0)).row() == src)
+        return i;
+    return -1;
+  };
+
+  // Whole outer block (outer, inner, childX) moves together; inner follows outer
+  REQUIRE(pos_of(rInner) == pos_of(rOuter) + 1);
+  REQUIRE(pos_of(rX) == pos_of(rOuter) + 2);
 }

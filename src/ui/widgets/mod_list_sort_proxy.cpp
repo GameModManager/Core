@@ -14,7 +14,7 @@ namespace {
 // Whether a row is a "fixed" unit that must not move: separator, game-native,
 // Overwrite/MERGED (pinned). These act as band barriers.
 bool is_fixed_row(const ModEntry &m) {
-  return m.is_separator || m.is_game_native || m.is_overwrite || m.is_merged;
+  return m.is_game_native || m.is_overwrite || m.is_merged;
 }
 
 // Compare two ModEntry by the requested column. Returns negative/0/positive.
@@ -258,70 +258,84 @@ void ModListSortProxy::rebuild_rank_for(int column, Qt::SortOrder order) {
   rank_.assign(n, 0);
 
   // Build units: each unit is a block of source rows moving together.
-  // A unit starts at a row whose parent is absent/empty or which is fixed.
-  // Children (rows with a present parent) are folded into their parent's unit.
+  // A separator row plus its full descendant block (rows below it that are
+  // indented deeper, including nested separators and their bands) form one
+  // unit that sorts as a whole by the separator's sort key. Standalone mod
+  // rows are their own units. Fixed rows (game-native/overwrite/merged) are
+  // their own fixed units and act as band barriers.
+  // Nesting is tracked by indent depth (kIndentDepthRole / nesting_depth()):
+  // a row belongs to the innermost open separator whose indent is strictly
+  // less than its own. When nesting is disabled every indent is 0, so each
+  // separator's block is just the contiguous band of rows below it until the
+  // next separator or fixed row (positional band grouping).
   QVector<QVector<int>> units;
   QVector<char> is_fixed_unit;
   QVector<int> unit_of(n, -1);
+  // open separators: stack of (row index, unit index, indent)
+  QVector<int> open_sep_rows;
+  QVector<int> open_sep_units;
+  QVector<int> open_sep_indents;
   for (int i = 0; i < n; ++i) {
-    // skip children; they get added to parent unit
-    const QString pid = mods[i].parent_id;
-    bool is_child = false;
-    if (!pid.isEmpty() && mod_list_->nesting_enabled()) {
-      for (int j = 0; j < n; ++j) {
-        if (j != i && mods[j].id == pid) {
-          is_child = true;
-          break;
-        }
-      }
-    }
-    if (is_child)
+    const int indent = mod_list_->nesting_depth(i);
+    // fixed rows (non-separator) are barriers: close open blocks first
+    if (is_fixed_row(mods[i]) && !mods[i].is_separator) {
+      open_sep_rows.clear();
+      open_sep_units.clear();
+      open_sep_indents.clear();
+      QVector<int> block;
+      block.append(i);
+      units.append(block);
+      is_fixed_unit.append(1);
+      unit_of[i] = units.size() - 1;
       continue;
-    // start new unit
-    QVector<int> block;
-    block.append(i);
-    // gather descendants in source order
-    if (mod_list_->nesting_enabled()) {
-      for (int j = i + 1; j < n; ++j) {
-        if (mods[j].parent_id.isEmpty())
-          continue;
-        // descendant of i?
-        // check chain
-        QString cur = mods[j].parent_id;
-        bool desc = false;
-        QSet<QString> seen;
-        while (!cur.isEmpty() && !seen.contains(cur)) {
-          seen.insert(cur);
-          if (cur == mods[i].id) {
-            desc = true;
-            break;
-          }
-          // find parent row
-          QString next;
-          for (int k = 0; k < n; ++k)
-            if (mods[k].id == cur) {
-              next = mods[k].parent_id;
-              break;
-            }
-          cur = next;
-        }
-        if (desc && !block.contains(j))
-          block.append(j);
-      }
-      std::sort(block.begin(), block.end());
     }
-    // fixed?
-    bool fixed = false;
-    for (int r : block)
-      if (is_fixed_row(mods[r]))
-        fixed = true;
-    units.append(block);
-    is_fixed_unit.append(fixed ? 1 : 0);
-    for (int r : block)
-      unit_of[r] = units.size() - 1;
+    // close open separators whose indent >= this row's indent, but only
+    // when this row is itself a separator (a mod never closes a block)
+    if (mods[i].is_separator) {
+      while (!open_sep_indents.isEmpty() && indent <= open_sep_indents.back()) {
+        open_sep_rows.pop_back();
+        open_sep_units.pop_back();
+        open_sep_indents.pop_back();
+      }
+    }
+    if (mods[i].is_separator) {
+      if (!open_sep_indents.isEmpty()) {
+        // nested separator: fold into the open (parent) unit's block
+        const int pu = open_sep_units.back();
+        units[pu].append(i);
+        unit_of[i] = pu;
+        open_sep_rows.append(i);
+        open_sep_units.append(pu);
+        open_sep_indents.append(indent);
+      } else {
+        // top-level separator: new movable unit
+        QVector<int> block;
+      block.append(i);
+        units.append(block);
+        is_fixed_unit.append(is_fixed_row(mods[i]) ? 1 : 0);
+        const int ui = units.size() - 1;
+        unit_of[i]   = ui;
+        open_sep_rows.append(i);
+        open_sep_units.append(ui);
+        open_sep_indents.append(indent);
+      }
+    } else {
+      if (!open_sep_indents.isEmpty()) {
+        // descendant of an open separator: fold into its unit
+        const int pu = open_sep_units.back();
+        units[pu].append(i);
+        unit_of[i] = pu;
+      } else {
+        // standalone mod
+        QVector<int> block;
+      block.append(i);
+        units.append(block);
+        is_fixed_unit.append(is_fixed_row(mods[i]) ? 1 : 0);
+        unit_of[i] = units.size() - 1;
+      }
+    }
   }
-  // Rows that were skipped as children but whose parent wasn't found (orphan)
-  // - add as own unit.
+  // Orphan rows (not claimed) - add as own units.
   for (int i = 0; i < n; ++i) {
     if (unit_of[i] >= 0)
       continue;
