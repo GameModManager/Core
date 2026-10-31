@@ -12,6 +12,7 @@
 #include "ui/main_window/main_window.h"
 #include "ui/settings/settings.h"
 #include "ui/widgets/mod_list_model.h"
+#include "ui/widgets/mod_list_sort_proxy.h"
 #include "ui/widgets/mod_table_view.h"
 #include "ui/widgets/web_link.h"
 
@@ -169,6 +170,8 @@ void ModContextMenu::setup_mod_list_context_menu() {
         }
 
         int row = idx.row();
+        if (w_->sort_proxy_)
+          row = w_->sort_proxy_->mapToSource(idx).row();
         if (row < 0 || row >= w_->mod_model_->mods().size()) {
           add_global_actions(menu);
           menu.exec(global_pos);
@@ -313,12 +316,15 @@ void ModContextMenu::setup_mod_list_context_menu() {
             bool any_mirrorable = false;
             bool any_mirrored   = false;
             for (const auto &si : sel) {
-              if (si.row() < 0 || si.row() >= w_->mod_model_->mods().size())
+              int srow = si.row();
+              if (w_->sort_proxy_)
+                srow = w_->sort_proxy_->mapToSource(si).row();
+              if (srow < 0 || srow >= w_->mod_model_->mods().size())
                 continue;
-              const auto &m = w_->mod_model_->mods()[si.row()];
+              const auto &m = w_->mod_model_->mods()[srow];
               if (m.is_separator || m.is_overwrite || m.is_merged || m.is_game_native)
                 continue;
-              rows << si.row();
+              rows << srow;
               if (m.root_override)
                 any_on = true;
               else
@@ -356,9 +362,12 @@ void ModContextMenu::setup_mod_list_context_menu() {
             bool has_separator = false;
             QStringList mod_ids;
             for (const auto &si : sel) {
-              if (si.row() < 0 || si.row() >= w_->mod_model_->mods().size())
+              int srow = si.row();
+              if (w_->sort_proxy_)
+                srow = w_->sort_proxy_->mapToSource(si).row();
+              if (srow < 0 || srow >= w_->mod_model_->mods().size())
                 continue;
-              const auto &m = w_->mod_model_->mods()[si.row()];
+              const auto &m = w_->mod_model_->mods()[srow];
               if (m.is_separator || m.is_overwrite || m.is_merged || m.is_game_native) {
                 has_separator = true;
                 break;

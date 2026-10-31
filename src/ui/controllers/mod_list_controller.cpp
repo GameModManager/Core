@@ -397,6 +397,11 @@ void ModListController::setup_mod_list(QVBoxLayout *left_layout) {
     if (w_->sort_proxy_)
       w_->sort_proxy_->rebuild_ranks();
   });
+  connect(w_->sort_proxy_, &ModListSortProxy::drag_refused, w_, [this]() {
+    QMessageBox::warning(w_->mod_view_, tr("Drag and Drop"),
+                         tr("Drag&Drop is only supported when sorting by "
+                            "priority"));
+  });
 
   // Highlight conflicting mods on selection + populate ConflictsTab
   connect(w_->mod_view_->selectionModel(), &QItemSelectionModel::currentChanged, this,
@@ -5304,9 +5309,11 @@ void ModListController::apply_mod_filter() {
   // Publish the verdicts for the bulk toggle (see filter_visible above).
   w_->mod_model_->set_filter_visible(filter_visible);
 
-  // Publish final visibility to the sort proxy (presentation-only).
+  // Publish final visibility to the sort proxy (presentation-only). Gate the
+  // invalidate on an actual change so mid-drag churn does not re-sort.
+  const bool vis_changed = (w_->mod_model_->view_visible() != visible);
   w_->mod_model_->set_view_visible(visible);
-  if (w_->sort_proxy_)
+  if (vis_changed && w_->sort_proxy_)
     w_->sort_proxy_->invalidate();
 }
 

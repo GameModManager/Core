@@ -73,6 +73,11 @@ ModList::ModList(QObject *parent) : QAbstractTableModel(parent) {
     if (!icon.isNull())
       vendor_icons_[QString::fromLatin1(key)] = icon;
   }
+
+  // Keep the fold-hidden cache honest across structural mutations that do not
+  // route through apply_fold_state().
+  connect(this, &ModList::mod_list_changed, this,
+          [this]() { fold_hidden_cache_dirty_ = true; });
 }
 
 int ModList::rowCount(const QModelIndex &parent) const {
@@ -2042,8 +2047,11 @@ void ModList::hover_expand_separator(int row) {
   hover_expanded_separator_ = open;
   // No mod_list_changed() emit: the persisted `folded` flag is untouched, so a
   // hover must never reach the separator's meta.ini.
+  const QVector<bool> before_fold = fold_hidden_cache_;
   apply_fold_state();
-  if (!open.isEmpty())
+  // Gate the full-range repaint on an actual fold-visibility change so mid-drag
+  // hover churn does not trigger a redundant re-sort/repaint.
+  if (before_fold != fold_hidden_cache_ && !open.isEmpty())
     emit dataChanged(index(0, Fold), index(mods_.size() - 1, Name), {Qt::DisplayRole});
 }
 
@@ -2221,7 +2229,11 @@ QVector<bool> ModList::compute_fold_hidden() const {
 bool ModList::is_row_fold_hidden(int row) const {
   if (row < 0 || row >= mods_.size())
     return false;
-  return compute_fold_hidden()[row];
+  if (fold_hidden_cache_dirty_ || fold_hidden_cache_.size() != mods_.size()) {
+    fold_hidden_cache_ = compute_fold_hidden();
+    fold_hidden_cache_dirty_ = false;
+  }
+  return fold_hidden_cache_[row];
 }
 
 void ModList::set_filter_visible(const QVector<bool> &visible) {
@@ -2311,9 +2323,14 @@ bool ModList::has_visible_descendant(int row, const QVector<bool> &visible) cons
 }
 
 void ModList::apply_fold_state() {
-  // View coupling removed: visibility is published via set_view_visible /
-  // is_row_view_visible and consumed by ModListSortProxy::filterAcceptsRow.
-  emit fold_state_changed();
+  // Refresh the cached fold-hidden verdict once per change batch.
+  const QVector<bool> before = fold_hidden_cache_;
+  fold_hidden_cache_ = compute_fold_hidden();
+  fold_hidden_cache_dirty_ = false;
+  // Gate the downstream invalidate: only signal when fold visibility actually
+  // changed, so mid-drag hover churn does not trigger a full re-sort.
+  if (before != fold_hidden_cache_)
+    emit fold_state_changed();
 }
 
 QIcon ModList::source_icon(const QString &source_type) const {

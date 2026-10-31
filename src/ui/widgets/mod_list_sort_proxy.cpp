@@ -3,6 +3,8 @@
 #include "ui/widgets/mod_list_model.h"
 
 #include <QMimeData>
+#include <QSet>
+#include <QString>
 #include <QVector>
 #include <algorithm>
 
@@ -49,6 +51,10 @@ int compare_mods(const ModEntry &a, const ModEntry &b, int column, int srcA, int
     // Not sortable; identity.
     return (srcA < srcB) ? -1 : (srcA > srcB ? 1 : 0);
   case ModList::Name: {
+    if (a.name.isEmpty() && !b.name.isEmpty())
+      return 1;
+    if (!a.name.isEmpty() && b.name.isEmpty())
+      return -1;
     int c = a.name.compare(b.name, Qt::CaseInsensitive);
     if (c != 0)
       return c;
@@ -232,8 +238,10 @@ void ModListSortProxy::sort(int column, Qt::SortOrder order) {
   sort_column_   = column;
   display_order_ = order;
   rebuild_ranks();
-  // base with Ascending: ranks already encode direction
+  // base with Ascending: ranks already encode direction. Force a re-sort even
+  // when only the direction changed (base sees Ascending both ways).
   QSortFilterProxyModel::sort(column, Qt::AscendingOrder);
+  invalidate();
 }
 
 void ModListSortProxy::rebuild_ranks() {
@@ -366,6 +374,16 @@ void ModListSortProxy::rebuild_rank_for(int column, Qt::SortOrder order) {
     rank_[flat[pos]] = pos;
 }
 
+bool ModListSortProxy::lessThan(const QModelIndex &left, const QModelIndex &right) const {
+  if (!mod_list_ || rank_.isEmpty())
+    return QSortFilterProxyModel::lessThan(left, right);
+  const int lr = left.row();
+  const int rr = right.row();
+  if (lr < 0 || lr >= rank_.size() || rr < 0 || rr >= rank_.size())
+    return QSortFilterProxyModel::lessThan(left, right);
+  return rank_[lr] < rank_[rr];
+}
+
 bool ModListSortProxy::filterAcceptsRow(int source_row, const QModelIndex &source_parent) const {
   Q_UNUSED(source_parent);
   if (!mod_list_)
@@ -399,7 +417,7 @@ bool ModListSortProxy::dropMimeData(const QMimeData *data, Qt::DropAction action
                                     int column, const QModelIndex &parent) {
   if (data && data->hasFormat(QString::fromLatin1(kModListMimeType))) {
     if (!(sort_column_ == ModList::Priority && display_order_ == Qt::AscendingOrder)) {
-      emit const_cast<ModListSortProxy *>(this)->drag_refused();
+      emit drag_refused();
       return false;
     }
   }

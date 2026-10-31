@@ -21,6 +21,8 @@ public:
 
   void sort(int column, Qt::SortOrder order = Qt::AscendingOrder) override;
 
+  bool lessThan(const QModelIndex &left, const QModelIndex &right) const override;
+
   bool filterAcceptsRow(int source_row, const QModelIndex &source_parent) const override;
 
   // Drag guard: internal mod moves only while sorted by Priority ascending.
@@ -42,9 +44,9 @@ private:
   void rebuild_rank_for(int column, Qt::SortOrder order);
 
   ModList *mod_list_ = nullptr;
-  int sort_column_   = ModList::Priority;  // placeholder, set properly
+  int sort_column_   = ModList::Priority;
   Qt::SortOrder display_order_ = Qt::AscendingOrder;
-  QVector<int> rank_;  // rank_[source_row] = display position
+  mutable QVector<int> rank_;  // rank_[source_row] = display position
 };
 
 }  // namespace ui

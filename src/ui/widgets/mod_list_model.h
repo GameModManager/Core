@@ -453,6 +453,7 @@ public:
   // Presentation visibility (final verdict published by apply_mod_filter).
   void set_view_visible(const QVector<bool> &visible);
   [[nodiscard]] bool is_row_view_visible(int row) const;
+  [[nodiscard]] const QVector<bool> &view_visible() const { return view_visible_; }
   [[nodiscard]] bool has_view_visible() const { return !view_visible_.isEmpty(); }
   // Drop parent_id links that are dangling (parent id not present), point at
   // Overwrite/MERGED/game-native rows, link a mod under a separator or a
@@ -586,6 +587,10 @@ private:
   // stale across model mutations.
   QVector<bool> filter_visible_;
   QVector<bool> view_visible_;
+  // Cached fold-hidden verdict (compute_fold_hidden is O(n^2)); refreshed
+  // lazily. See is_row_fold_hidden / apply_fold_state.
+  mutable QVector<bool> fold_hidden_cache_;
+  mutable bool fold_hidden_cache_dirty_ = true;
   QIcon overwrite_icon_;
   QIcon overwritten_icon_;
   QIcon mixed_icon_;
