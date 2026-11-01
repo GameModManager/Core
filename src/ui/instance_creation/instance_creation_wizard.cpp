@@ -19,6 +19,7 @@
 #include "engine/instance/instance_utils.h"
 #include "engine/plugin_host/plugin_loader.h"
 #include "ui/game_selection/game_card.h"
+#include "ui/game_selection/game_selection_widget.h"
 #include "ui/settings/settings.h"
 #include "ui/widgets/file_dialog_memory.h"
 
@@ -464,10 +465,12 @@ QWidget *InstanceCreationWizard::build_game_page() {
     auto *item = new QListWidgetItem(
         QString::fromStdString(e.display_name) + tr(" (installed)"), list);
     item->setData(Qt::UserRole, QString::fromStdString(e.game_id));
+    item->setIcon(ui::GameSelectionWidget::resolve_icon_public(e));
   }
   for (const auto &e : available_entries_) {
     auto *item = new QListWidgetItem(QString::fromStdString(e.display_name), list);
     item->setData(Qt::UserRole, QString::fromStdString(e.game_id));
+    item->setIcon(ui::GameSelectionWidget::resolve_icon_public(e));
   }
   layout->addWidget(list, 1);
   connect(list, &QListWidget::itemClicked, this, [this, list](QListWidgetItem *item) {

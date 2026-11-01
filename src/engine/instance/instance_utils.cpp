@@ -12,6 +12,7 @@
 #include "engine/game/saves/local_saves.h"
 #include "platform/platform.h"
 
+#include <algorithm>
 #include <cctype>
 #include <cstdlib>
 #include <cwctype>
@@ -115,6 +116,148 @@ std::string instance_display_name(const fs::path &instance_root) {
       return inst.info().display_name;
   }
   return instance_root.filename().string();
+}
+
+namespace {
+  bool is_bare_instance_name(const std::string &name) {
+    if (name.empty() || name == "." || name == "..")
+      return false;
+    fs::path p(name);
+    if (p.is_absolute())
+      return false;
+    if (p.filename().string() != name)
+      return false;
+    // no separators
+    for (char c : name)
+      if (c == '/' || c == '\\')
+        return false;
+    return true;
+  }
+}  // namespace
+
+bool delete_instance(const std::string &name, bool permanent) {
+  if (!is_bare_instance_name(name))
+    return false;
+  const fs::path root = default_instances_dir() / name;
+  std::error_code ec;
+  if (!fs::is_regular_file(root / "instance.toml", ec))
+    return false;
+  return remove_path(root, permanent);
+}
+
+std::vector<fs::path> instance_external_paths(const std::string &name) {
+  std::vector<fs::path> out;
+  if (!is_bare_instance_name(name))
+    return out;
+  const fs::path root = default_instances_dir() / name;
+  std::error_code ec;
+  if (!fs::is_regular_file(root / "instance.toml", ec))
+    return out;
+  Instance inst = Instance::from_root(root);
+  if (!inst.read_toml())
+    return out;
+  const auto check = [&](InstanceKind kind) {
+    fs::path p = inst.path_for(kind);
+    std::error_code ec2;
+    if (p.empty())
+      return;
+    // outside root?
+    auto rel = fs::relative(p, root, ec2);
+    if (ec2 || rel.empty())
+      return;
+    // if relative path starts with ".." it's outside
+    auto it = rel.begin();
+    if (it == rel.end() || it->string() != "..")
+      return;  // inside or equal
+    if (fs::exists(p, ec2) && !ec2)
+      out.push_back(p);
+  };
+  check(InstanceKind::Mods);
+  check(InstanceKind::Downloads);
+  check(InstanceKind::Cache);
+  check(InstanceKind::Profiles);
+  check(InstanceKind::Overwrite);
+  return out;
+}
+
+bool rename_instance_display_name(const std::string &name,
+                                  const std::string &new_display_name) {
+  if (!is_bare_instance_name(name))
+    return false;
+  std::string trimmed = new_display_name;
+  // trim
+  auto notspace = [](unsigned char c) {
+    return !std::isspace(c);
+  };
+  trimmed.erase(trimmed.begin(),
+                std::find_if(trimmed.begin(), trimmed.end(), notspace));
+  trimmed.erase(std::find_if(trimmed.rbegin(), trimmed.rend(), notspace).base(),
+                trimmed.end());
+  if (trimmed.empty())
+    return false;
+  const fs::path root = default_instances_dir() / name;
+  std::error_code ec;
+  if (!fs::is_regular_file(root / "instance.toml", ec))
+    return false;
+  Instance inst = Instance::from_root(root);
+  if (!inst.read_toml())
+    return false;
+  inst.info().display_name = trimmed;
+  return inst.write_toml();
+}
+
+Instance clone_instance(const std::string &source_name,
+                        const std::string &new_display_name) {
+  if (!is_bare_instance_name(source_name))
+    return Instance::portable({});
+  std::string trimmed = new_display_name;
+  auto notspace       = [](unsigned char c) {
+    return !std::isspace(c);
+  };
+  trimmed.erase(trimmed.begin(),
+                std::find_if(trimmed.begin(), trimmed.end(), notspace));
+  trimmed.erase(std::find_if(trimmed.rbegin(), trimmed.rend(), notspace).base(),
+                trimmed.end());
+  if (trimmed.empty())
+    return Instance::portable({});
+  const std::string folder = sanitize_directory_name(trimmed);
+  if (folder.empty())
+    return Instance::portable({});
+  const fs::path instances_root = default_instances_dir();
+  const fs::path src_root       = instances_root / source_name;
+  const fs::path dst_root       = instances_root / folder;
+  std::error_code ec;
+  if (!fs::is_regular_file(src_root / "instance.toml", ec))
+    return Instance::portable({});
+  if (fs::exists(dst_root, ec))
+    return Instance::portable({});
+  // copy recursively
+  fs::copy(src_root, dst_root,
+           fs::copy_options::recursive | fs::copy_options::copy_symlinks, ec);
+  if (ec)
+    return Instance::portable({});
+  // rewrite display name + clear external overrides
+  Instance inst = Instance::from_root(dst_root);
+  if (!inst.read_toml())
+    return Instance::portable({});
+  inst.info().display_name = trimmed;
+  inst.set_path_override(InstanceKind::Mods, {});
+  inst.set_path_override(InstanceKind::Downloads, {});
+  inst.set_path_override(InstanceKind::Cache, {});
+  inst.set_path_override(InstanceKind::Profiles, {});
+  inst.set_path_override(InstanceKind::Overwrite, {});
+  // Clear stored override keys (write_toml erases empty fields).
+  // Ensure fields empty:
+  inst.info().mods_dir.clear();
+  inst.info().downloads_dir.clear();
+  inst.info().cache_dir.clear();
+  inst.info().profiles_dir.clear();
+  inst.info().overwrite_dir.clear();
+  if (!inst.create_directories())
+    return Instance::portable({});
+  if (!inst.write_toml())
+    return Instance::portable({});
+  return inst;
 }
 
 Instance create_instance_for_game(const DetectedGame &game,
@@ -288,7 +431,8 @@ DeployConfig deploy_config_for(const fs::path &instance_root, const fs::path &ga
   // instance override cleared), fold deploy_prefix into game_mods_dir so
   // the deploy root is the mods folder, not the game root. This fixes the
   // "one folder too high" bug for internally managed mods.
-  if (cfg.deploy_include_mod_id && cfg.game_mods_dir.empty() && !cfg.deploy_prefix.empty()) {
+  if (cfg.deploy_include_mod_id && cfg.game_mods_dir.empty() &&
+      !cfg.deploy_prefix.empty()) {
     cfg.game_mods_dir = game_dir / cfg.deploy_prefix;
     cfg.deploy_prefix.clear();
   }

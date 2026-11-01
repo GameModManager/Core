@@ -53,6 +53,30 @@ unique_instance_name(const std::string &display_name,
 [[nodiscard]] std::string
 instance_display_name(const std::filesystem::path &instance_root);
 
+// Delete an instance by its bare folder name. `name` must be a bare folder
+// name (no separators, not "."/".."); the instance must live under
+// default_instances_dir(). Returns false (and deletes nothing) otherwise or on
+// I/O failure. `permanent` selects remove_all vs. the platform trash.
+[[nodiscard]] bool delete_instance(const std::string &name, bool permanent = false);
+
+// Paths of override folders (mods/downloads/cache/profiles/overwrite) that
+// live OUTSIDE the instance root and currently exist. Feeds the delete
+// confirmation dialog only; never deleted silently.
+[[nodiscard]] std::vector<std::filesystem::path> instance_external_paths(
+    const std::string &name);
+
+// Rename the display name (instance.toml "name") of an instance. Folder name
+// is unchanged. Trims; refuses empty. Returns false on I/O failure.
+[[nodiscard]] bool rename_instance_display_name(const std::string &name,
+                                               const std::string &new_display_name);
+
+// Clone an instance: copy its root folder to a new folder named from
+// `new_display_name`, with a fresh display name. External override folders are
+// NOT cloned - the clone gets default paths under its own root. Returns an
+// Instance with empty game_id on failure.
+[[nodiscard]] Instance clone_instance(const std::string &source_name,
+                                     const std::string &new_display_name);
+
 // Resolve an instance path from a short name or absolute path.
 // If name_or_path is absolute, checks if instance.toml exists at that path.
 // If relative, checks under default_instances_dir()/name_or_path.

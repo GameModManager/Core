@@ -254,6 +254,7 @@ void TabModeController::route_instance_switcher() {
   auto instances_dir = engine::default_instances_dir();
   auto *content      = new InstanceSwitcherContentWidget(w_->plugin_loader_, w_);
   content->set_immediate_switch(true);
+  content->set_active_instance(w_->current_instance_root_);
   content->load_instances(instances_dir.string());
   connect(content, &InstanceSwitcherContentWidget::instance_selected, this,
           [this, key](const QString &name) {
@@ -265,6 +266,9 @@ void TabModeController::route_instance_switcher() {
             if (w_->settings_->create_new_instance())
               close_tab(key);
           });
+  connect(content, &InstanceSwitcherContentWidget::instances_changed, this, [this]() {
+    w_->settings_->refresh_recent_instances();
+  });
   open_in_tab(content, tr("Switch Instance"), key);
 }
 

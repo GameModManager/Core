@@ -7,7 +7,9 @@
 #include <vector>
 
 class QLabel;
+class QLineEdit;
 class QListWidget;
+class QPushButton;
 
 namespace engine {
 class PluginLoader;
@@ -52,6 +54,19 @@ public:
   // mode keeps OK / double-click semantics.
   void set_immediate_switch(bool enabled);
 
+  // Active instance root (used to mark the current row and guard deletion).
+  void set_active_instance(const std::filesystem::path &root);
+
+  // Action handlers (also wired to buttons).
+  void delete_selected();
+  void rename_selected();
+  void duplicate_selected();
+  void open_folder_selected();
+  void open_toml_selected();
+
+  // Filter text.
+  void set_filter_text(const QString &text);
+
 signals:
   // Emitted when the user activates an instance row (double-click always;
   // single click when immediate switch is enabled). The host decides what
@@ -62,16 +77,26 @@ signals:
   // GameSelectionWidget create flow.
   void create_new_instance();
 
+  // Emitted after an instance is deleted/renamed/duplicated so hosts can
+  // refresh menus/lists.
+  void instances_changed();
+
 private:
   void refresh_list();
   void update_icons_for(const QString &game_id);
   void emit_selected();
+  void update_details();
+  void apply_filter();
 
   engine::PluginLoader *plugins_ = nullptr;
   std::string instances_dir_;
+  std::filesystem::path active_root_;
   QListWidget *list_     = nullptr;
+  QLineEdit *filter_  = nullptr;
+  QLabel *details_    = nullptr;
   bool immediate_switch_ = false;
   std::vector<InstanceSwitcherEntry> entries_;
+  QString filter_text_;
 };
 
 }  // namespace ui

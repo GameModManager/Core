@@ -908,3 +908,62 @@ TEST_CASE("write_toml preserves unknown sections", "[engine]") {
 
   fs::remove_all(root);
 }
+
+TEST_CASE("instance delete rename clone", "[engine]") {
+  using engine::Instance;
+  const fs::path root = fs::temp_directory_path() / "gmm_xdv0_inst";
+  std::error_code ec;
+  fs::remove_all(root, ec);
+  fs::create_directories(root / "instances", ec);
+  engine::set_instances_dir_override(root / "instances");
+
+  engine::DetectedGame game;
+  game.game_id = "testgame";
+  game.name    = "Test Game";
+
+  Instance a = engine::create_instance_for_game(game, root / "instances", "Inst A");
+  Instance b = engine::create_instance_for_game(game, root / "instances", "Inst B");
+  REQUIRE(!a.info().root.empty());
+  REQUIRE(!b.info().root.empty());
+
+  REQUIRE(b.write_key("mods_dir", (root / "external_mods").string()));
+  fs::create_directories(root / "external_mods", ec);
+
+  auto ext       = engine::instance_external_paths("Inst B");
+  bool found_ext = false;
+  for (auto &p : ext)
+    if (p == (root / "external_mods").lexically_normal())
+      found_ext = true;
+  REQUIRE(found_ext);
+
+  REQUIRE_FALSE(engine::delete_instance("../x", false));
+  REQUIRE_FALSE(engine::delete_instance("nope", false));
+
+  REQUIRE(engine::rename_instance_display_name("Inst B", "Renamed B"));
+  Instance b2 = Instance::from_root(b.info().root);
+  REQUIRE(b2.read_toml());
+  REQUIRE(b2.info().display_name == "Renamed B");
+  REQUIRE(b2.info().root.filename() == "Inst B");
+
+  auto cloned = engine::clone_instance("Inst A", "Inst A Copy");
+  REQUIRE(!cloned.info().root.empty());
+  REQUIRE(cloned.info().display_name == "Inst A Copy");
+  REQUIRE(cloned.info().root.filename() == "Inst A Copy");
+  Instance cloned2 = Instance::from_root(cloned.info().root);
+  REQUIRE(cloned2.read_toml());
+  REQUIRE(cloned2.info().mods_dir.empty());
+
+  REQUIRE(engine::delete_instance("Inst B", true));
+  REQUIRE_FALSE(fs::exists(b.info().root));
+
+  Instance c = engine::create_instance_for_game(game, root / "instances", "Inst C");
+  REQUIRE(c.write_key("mods_dir", (root / "ext_c").string()));
+  fs::create_directories(root / "ext_c", ec);
+  auto clonedc = engine::clone_instance("Inst C", "Inst C Copy");
+  REQUIRE(!clonedc.info().root.empty());
+  Instance clonedc2 = Instance::from_root(clonedc.info().root);
+  REQUIRE(clonedc2.read_toml());
+  REQUIRE(clonedc2.info().mods_dir.empty());
+
+  fs::remove_all(root, ec);
+}

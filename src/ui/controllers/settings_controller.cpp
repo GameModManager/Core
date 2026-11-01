@@ -106,13 +106,13 @@
 namespace ui {
 
 namespace {
-// Key holding "the user changed a column's visibility from this tab's header
-// menu", beside that tab's saved header blob. Suffixing the tab text keeps it
-// out of the tab-name keys save_app_state() writes; the restore loop only ever
-// looks a tab's own name up, so the two cannot collide.
-QString columns_touched_key(const QString &tab_text) {
-  return QStringLiteral("%1_columns_touched").arg(tab_text);
-}
+  // Key holding "the user changed a column's visibility from this tab's header
+  // menu", beside that tab's saved header blob. Suffixing the tab text keeps it
+  // out of the tab-name keys save_app_state() writes; the restore loop only ever
+  // looks a tab's own name up, so the two cannot collide.
+  QString columns_touched_key(const QString &tab_text) {
+    return QStringLiteral("%1_columns_touched").arg(tab_text);
+  }
 }  // namespace
 
 void configure_instance_restart_dialog(TaskDialog &dlg, bool allow_continue) {
@@ -1405,9 +1405,12 @@ void SettingsController::show_instance_switcher() {
 
   InstanceSwitcherDialog dlg(w_->plugin_loader_, w_);
   dlg.load_instances(instances_dir.string());
+  dlg.set_active_instance(w_->current_instance_root_);
 
-  if (dlg.exec() != QDialog::Accepted)
+  if (dlg.exec() != QDialog::Accepted) {
+    refresh_recent_instances();
     return;
+  }
 
   if (dlg.create_requested()) {
     create_new_instance();
