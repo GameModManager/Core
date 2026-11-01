@@ -503,23 +503,21 @@ void InstanceSwitcherContentWidget::delete_selected() {
   // TaskDialog
   ui::TaskDialog dlg(this, tr("Deleting instance"));
   dlg.main(tr("These files and folders will be deleted"));
-  QString content = tr("All checked items will be deleted.");
-  if (!ext.empty()) {
-    content += tr("\n\nExternal folders (unchecked = left in place):");
-  }
-  dlg.content(content);
-  // checkboxes for external paths
-  QWidget *cb_container = new QWidget();
-  auto *cb_layout       = new QVBoxLayout(cb_container);
+  const auto dlg_content = ui::build_instance_delete_dialog_content(ext);
+  dlg.content(tr(dlg_content.content.toStdString().c_str()));
+  // checkboxes for external paths (only when externals exist)
   std::vector<QCheckBox *> cbs;
-  for (auto &p : ext) {
-    auto *cb = new QCheckBox(QString::fromStdString(p.string()), cb_container);
-    cb->setChecked(false);
-    cb_layout->addWidget(cb);
-    cbs.push_back(cb);
-  }
-  if (!ext.empty())
+  if (dlg_content.show_external_list) {
+    QWidget *cb_container = new QWidget();
+    auto *cb_layout       = new QVBoxLayout(cb_container);
+    for (auto &p : ext) {
+      auto *cb = new QCheckBox(QString::fromStdString(p.string()), cb_container);
+      cb->setChecked(false);
+      cb_layout->addWidget(cb);
+      cbs.push_back(cb);
+    }
     dlg.add_content(cb_container);
+  }
 
   dlg.add_button({"Move to the recycle bin", "", QMessageBox::Yes});
   dlg.add_button({"Delete permanently", "", QMessageBox::No});

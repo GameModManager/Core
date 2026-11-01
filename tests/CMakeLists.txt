@@ -583,6 +583,12 @@ gmm_catch2_test(instance_creation_wizard_test
     LIBS gmm_ui
     PROPERTIES TIMEOUT 300)
 
+gmm_catch2_test(instance_switcher_delete_test
+    ui/instance_switcher_delete_test.cpp
+    UI
+    LIBS gmm_ui
+    PROPERTIES TIMEOUT 120)
+
 gmm_catch2_test(settings_experimental_tab_test
     ui/settings_experimental_tab_test.cpp
     UI
