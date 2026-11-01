@@ -1531,8 +1531,8 @@ bool SettingsController::create_instance_wizard(const GameEntry *preselected) {
     return false;
 
   // Switch to the new instance (live, matching quick create).
-  auto inst = engine::Instance::from_root(engine::default_instances_dir() /
-                                          created.toStdString());
+  auto inst =
+      engine::Instance::from_root(engine::resolve_instance_path(created.toStdString()));
   if (!inst.read_toml())
     return false;
 
@@ -1553,9 +1553,11 @@ namespace {
   // therefore the whole of what an instance chooser is allowed to offer.
   std::vector<ModpackInstanceChoice> instances_for_game(const std::string &game_id) {
     std::vector<ModpackInstanceChoice> choices;
-    const auto instances_dir = engine::default_instances_dir();
     for (const auto &name : engine::scan_instances()) {
-      auto inst = engine::Instance::installed(name, instances_dir);
+      auto root = engine::resolve_instance_path(name);
+      if (root.empty())
+        continue;
+      auto inst = engine::Instance::from_root(root);
       if (!inst.read_toml() || inst.info().game_id != game_id)
         continue;
       const std::string display =
@@ -1704,8 +1706,7 @@ void SettingsController::handle_collection_link(const engine::Uri::NxmLink &link
     return;
   }
 
-  auto target =
-      engine::Instance::installed(target_folder, engine::default_instances_dir());
+  auto target = engine::Instance::from_root(engine::resolve_instance_path(target_folder));
   if (!target.read_toml() || target.info().game_id != game_id) {
     QMessageBox::warning(w_, tr("Nexus Collection"),
                          tr("\"%1\" is not an instance of this game, so the "
@@ -1763,21 +1764,24 @@ void SettingsController::export_modpack() {
 }
 
 bool SettingsController::switch_to_instance(const QString &name) {
-  auto instances_dir = engine::default_instances_dir();
-  auto selected      = name.toStdString();
+  auto selected = name.toStdString();
   if (selected.empty())
+    return false;
+
+  const std::filesystem::path selected_root = engine::resolve_instance_path(selected);
+  if (selected_root.empty())
     return false;
 
   // Don't reload if already on w_ instance
   if (!w_->current_instance_root_.empty() &&
-      instances_dir / selected == w_->current_instance_root_)
+      selected_root == w_->current_instance_root_)
     return true;
 
   // Validate the target BEFORE touching the current window: a broken target
   // must show an error and leave the current instance running, not close the
   // window and then fail to relaunch (the old window is already gone at that
   // point, so the app would exit entirely).
-  auto inst = engine::Instance::installed(selected, instances_dir);
+  auto inst = engine::Instance::from_root(selected_root);
   if (!inst.read_toml()) {
     QMessageBox::warning(w_, tr("Error"),
                          tr("Failed to read instance.toml for %1").arg(name));
@@ -1883,11 +1887,12 @@ bool SettingsController::switch_to_instance(const QString &name) {
 void SettingsController::refresh_recent_instances() {
   if (!w_->menu_bar_)
     return;
-  auto instances_dir = engine::default_instances_dir();
   std::vector<std::string> names;
   std::error_code ec;
-  if (std::filesystem::is_directory(instances_dir, ec)) {
-    for (const auto &entry : std::filesystem::directory_iterator(instances_dir, ec)) {
+  for (const auto &root : engine::instance_roots()) {
+    if (!std::filesystem::is_directory(root, ec))
+      continue;
+    for (const auto &entry : std::filesystem::directory_iterator(root, ec)) {
       if (!entry.is_directory())
         continue;
       if (!std::filesystem::exists(entry.path() / "instance.toml"))
@@ -1896,6 +1901,7 @@ void SettingsController::refresh_recent_instances() {
     }
   }
   std::sort(names.begin(), names.end());
+  names.erase(std::unique(names.begin(), names.end()), names.end());
   w_->menu_bar_->set_recent_instances(names);
 }
 

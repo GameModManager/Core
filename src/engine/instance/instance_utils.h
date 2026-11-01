@@ -36,6 +36,17 @@ void write_last_instance(const std::string &name);
 // Scan for existing instances. Returns instance names (directory basenames).
 [[nodiscard]] std::vector<std::string> scan_instances();
 
+// All directories scanned for instances: the default (or override) plus any
+// registered extra roots. Always includes default_instances_dir().
+[[nodiscard]] std::vector<std::filesystem::path> instance_roots();
+
+// Register an extra instance root (persisted). Idempotent. A root equal to
+// the default is ignored.
+void register_instance_root(const std::filesystem::path &root);
+
+// True when `root` is one of instance_roots().
+[[nodiscard]] bool is_allowed_instance_root(const std::filesystem::path &root);
+
 // Sanitize a user-chosen instance name into a filesystem-safe folder name
 // (Instance::to_instance_name) and make it unique under instances_root by
 // appending " 2", " 3", ... while a directory or file of that name exists.
@@ -105,6 +116,11 @@ struct InstanceCreationOptions {
   // Game variant / edition chosen by the user (e.g. "Steam", "GOG", "Epic").
   // Empty = none. Persisted on the instance (Instance::Info::game_variant).
   std::string game_variant;
+  // Optional parent directory (instances root) override. Empty = use the
+  // instances_root argument passed to create_instance_for_game. Either field
+  // name is accepted for compatibility.
+  std::filesystem::path parent_dir;
+  std::filesystem::path instance_root;
   // Per-folder overrides (empty = default under root). Written through
   // Instance::set_path_override before write_toml.
   std::filesystem::path mods_dir;

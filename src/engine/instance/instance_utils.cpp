@@ -58,20 +58,85 @@ void write_last_instance(const std::string &name) {
 
 std::vector<std::string> scan_instances() {
   std::vector<std::string> result;
+  std::unordered_set<std::string> seen;
   std::error_code ec;
-  auto dir = default_instances_dir();
-  if (!fs::is_directory(dir, ec))
-    return result;
-
-  for (const auto &entry : fs::directory_iterator(dir, ec)) {
-    if (!entry.is_directory())
+  for (const auto &root : instance_roots()) {
+    if (!fs::is_directory(root, ec))
       continue;
-    auto toml = entry.path() / "instance.toml";
-    if (fs::exists(toml)) {
-      result.push_back(entry.path().filename().string());
+    for (const auto &entry : fs::directory_iterator(root, ec)) {
+      if (!entry.is_directory())
+        continue;
+      auto toml = entry.path() / "instance.toml";
+      if (fs::exists(toml)) {
+        const std::string name = entry.path().filename().string();
+        if (seen.insert(name).second)
+          result.push_back(name);
+      }
     }
   }
   return result;
+}
+
+std::vector<fs::path> instance_roots() {
+  std::vector<fs::path> roots;
+  std::unordered_set<std::string> seen;
+  auto add = [&](const fs::path &p) {
+    if (p.empty())
+      return;
+    std::error_code ec;
+    const std::string key = fs::weakly_canonical(p, ec).string();
+    const std::string k   = ec ? p.string() : key;
+    if (seen.insert(k).second)
+      roots.push_back(p);
+  };
+  add(default_instances_dir());
+
+  // Persisted extra roots.
+  const fs::path file = default_instances_dir().parent_path() / "instance_roots.txt";
+  std::ifstream in(file);
+  std::string line;
+  while (std::getline(in, line)) {
+    // trim
+    auto notspace = [](unsigned char c) {
+      return !std::isspace(c);
+    };
+    line.erase(line.begin(), std::find_if(line.begin(), line.end(), notspace));
+    line.erase(std::find_if(line.rbegin(), line.rend(), notspace).base(), line.end());
+    if (!line.empty())
+      add(fs::path(line));
+  }
+  return roots;
+}
+
+void register_instance_root(const fs::path &root) {
+  if (root.empty())
+    return;
+  if (root == default_instances_dir())
+    return;
+  // check existing
+  for (const auto &r : instance_roots())
+    if (r == root)
+      return;
+  const fs::path dir = default_instances_dir().parent_path();
+  std::error_code ec;
+  fs::create_directories(dir, ec);
+  const fs::path file = dir / "instance_roots.txt";
+  std::ofstream out(file, std::ios::app);
+  if (out)
+    out << root.string() << "\n";
+}
+
+bool is_allowed_instance_root(const fs::path &root) {
+  if (root.empty())
+    return false;
+  for (const auto &r : instance_roots())
+    if (r == root || root == r / root.filename())  // instance root's parent
+      return true;
+  // root is an instance root (parent/name); check its parent
+  for (const auto &r : instance_roots())
+    if (root.parent_path() == r)
+      return true;
+  return false;
 }
 
 fs::path resolve_instance_path(const std::string &name_or_path) {
@@ -85,9 +150,12 @@ fs::path resolve_instance_path(const std::string &name_or_path) {
     return {};
   }
 
-  auto resolved = default_instances_dir() / name_or_path;
-  if (fs::exists(resolved / "instance.toml"))
-    return resolved;
+  // Search all instance roots.
+  for (const auto &root : instance_roots()) {
+    auto resolved = root / name_or_path;
+    if (fs::exists(resolved / "instance.toml"))
+      return resolved;
+  }
   return {};
 }
 
@@ -138,7 +206,12 @@ namespace {
 bool delete_instance(const std::string &name, bool permanent) {
   if (!is_bare_instance_name(name))
     return false;
-  const fs::path root = default_instances_dir() / name;
+  const fs::path root = resolve_instance_path(name);
+  if (root.empty())
+    return false;
+  // Guard: must live under an allowed root.
+  if (!is_allowed_instance_root(root))
+    return false;
   std::error_code ec;
   if (!fs::is_regular_file(root / "instance.toml", ec))
     return false;
@@ -149,7 +222,9 @@ std::vector<fs::path> instance_external_paths(const std::string &name) {
   std::vector<fs::path> out;
   if (!is_bare_instance_name(name))
     return out;
-  const fs::path root = default_instances_dir() / name;
+  const fs::path root = resolve_instance_path(name);
+  if (root.empty())
+    return out;
   std::error_code ec;
   if (!fs::is_regular_file(root / "instance.toml", ec))
     return out;
@@ -195,7 +270,9 @@ bool rename_instance_display_name(const std::string &name,
                 trimmed.end());
   if (trimmed.empty())
     return false;
-  const fs::path root = default_instances_dir() / name;
+  const fs::path root = resolve_instance_path(name);
+  if (root.empty())
+    return false;
   std::error_code ec;
   if (!fs::is_regular_file(root / "instance.toml", ec))
     return false;
@@ -223,8 +300,10 @@ Instance clone_instance(const std::string &source_name,
   const std::string folder = sanitize_directory_name(trimmed);
   if (folder.empty())
     return Instance::portable({});
-  const fs::path instances_root = default_instances_dir();
-  const fs::path src_root       = instances_root / source_name;
+  const fs::path src_root = resolve_instance_path(source_name);
+  if (src_root.empty())
+    return Instance::portable({});
+  const fs::path instances_root = src_root.parent_path();
   const fs::path dst_root       = instances_root / folder;
   std::error_code ec;
   if (!fs::is_regular_file(src_root / "instance.toml", ec))
@@ -295,6 +374,7 @@ Instance create_instance_for_game(const DetectedGame &game,
     return Instance::portable({});
   }
 
+  register_instance_root(instances_root);
   Logger::instance().debug("Instance created: " + sanitized + " (game=" + game.game_id +
                            ") at " + inst.info().root.string());
   return inst;
@@ -304,18 +384,24 @@ Instance create_instance_for_game(const DetectedGame &game,
                                   const fs::path &instances_root,
                                   const std::string &display_name,
                                   const InstanceCreationOptions &options) {
+  fs::path effective_root = instances_root;
+  if (!options.instance_root.empty())
+    effective_root = options.instance_root;
+  else if (!options.parent_dir.empty())
+    effective_root = options.parent_dir;
+
   const std::string sanitized = sanitize_directory_name(display_name);
   if (sanitized.empty()) {
     Logger::instance().error("create_instance_for_game: empty instance name for game=" +
                              game.game_id);
     return Instance::portable({});
   }
-  if (fs::exists(instances_root / sanitized / "instance.toml")) {
+  if (fs::exists(effective_root / sanitized / "instance.toml")) {
     Logger::instance().warn("create_instance_for_game: instance already exists: " +
                             sanitized);
     return Instance::portable({});
   }
-  Instance inst = Instance::installed(sanitized, instances_root);
+  Instance inst = Instance::installed(sanitized, effective_root);
 
   inst.info().game_id      = game.game_id;
   inst.info().display_name = display_name;
@@ -344,6 +430,7 @@ Instance create_instance_for_game(const DetectedGame &game,
     return Instance::portable({});
   }
 
+  register_instance_root(effective_root);
   Logger::instance().debug("Instance created: " + sanitized + " (game=" + game.game_id +
                            ") at " + inst.info().root.string());
   return inst;
@@ -380,6 +467,7 @@ Instance create_instance_for_game(const DetectedGame &game,
     return Instance::portable({});
   }
 
+  register_instance_root(instances_root);
   Logger::instance().debug("Instance created: " + inst_name + " (game=" + game.game_id +
                            ") at " + inst.info().root.string());
   return inst;

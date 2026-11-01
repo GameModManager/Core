@@ -967,3 +967,48 @@ TEST_CASE("instance delete rename clone", "[engine]") {
 
   fs::remove_all(root, ec);
 }
+
+TEST_CASE("custom instance root discovery and delete", "[engine]") {
+  using engine::Instance;
+
+  const fs::path base = fs::temp_directory_path() / "gmm_custom_root_test";
+  std::error_code ec;
+  fs::remove_all(base, ec);
+  const fs::path default_instances = base / "instances";
+  const fs::path custom_root = base / "custom";
+  fs::create_directories(default_instances, ec);
+  fs::create_directories(custom_root, ec);
+
+  engine::set_instances_dir_override(default_instances);
+
+  engine::DetectedGame game;
+  game.game_id = "testgame";
+  game.name    = "Test Game";
+
+  // Create under custom root.
+  Instance inst = engine::create_instance_for_game(game, custom_root, "Custom Inst");
+  REQUIRE(!inst.info().root.empty());
+  REQUIRE(inst.info().root == custom_root / "Custom Inst");
+
+  // Discovery finds it.
+  auto names = engine::scan_instances();
+  REQUIRE(std::find(names.begin(), names.end(), "Custom Inst") != names.end());
+
+  // resolve_instance_path finds it.
+  REQUIRE(engine::resolve_instance_path("Custom Inst") == custom_root / "Custom Inst");
+
+  // is_allowed
+  REQUIRE(engine::is_allowed_instance_root(custom_root / "Custom Inst"));
+
+  // delete works.
+  REQUIRE(engine::delete_instance("Custom Inst", true));
+  REQUIRE(!fs::exists(custom_root / "Custom Inst"));
+
+  // default path unchanged: create under default still works.
+  Instance def =
+      engine::create_instance_for_game(game, default_instances, "Default Inst");
+  REQUIRE(!def.info().root.empty());
+  REQUIRE(def.info().root == default_instances / "Default Inst");
+
+  fs::remove_all(base, ec);
+}

@@ -277,7 +277,30 @@ void InstanceCreationWizard::on_next() {
     else
       dg.install_path = chosen_game_.install_path;
 
-    auto instances_dir = engine::default_instances_dir();
+    std::filesystem::path instances_dir = instance_parent_dir_.empty()
+                                              ? engine::default_instances_dir()
+                                              : instance_parent_dir_;
+    // validate picked dir exists or creatable
+    std::error_code ec;
+    if (!std::filesystem::exists(instances_dir, ec)) {
+      // try create
+      std::filesystem::create_directories(instances_dir, ec);
+      if (ec) {
+        QMessageBox::warning(this, tr("Error"),
+                             tr("Instance parent directory cannot be created."));
+        return;
+      }
+    }
+    // final root must not already exist
+    std::filesystem::path final_root = instances_dir / sanitized;
+    if (std::filesystem::exists(final_root / "instance.toml", ec)) {
+      QMessageBox::warning(this, tr("Error"),
+                           tr("An instance already exists at %1.")
+                               .arg(QString::fromStdString(final_root.string())));
+      return;
+    }
+    options_.parent_dir    = instances_dir;
+    options_.instance_root = instances_dir;
     auto inst = engine::create_instance_for_game(dg, instances_dir, name.toStdString(),
                                                  options_);
     if (inst.info().game_id.empty() && chosen_game_.game_id.empty() &&
@@ -395,6 +418,33 @@ void InstanceCreationWizard::on_page_entered(int index) {
   }
   if (index == PageProfile && archive_invalidation_check_) {
     archive_invalidation_check_->setChecked(true);
+  }
+  if (index == PageConfirm && confirm_label_) {
+    QString name          = name_edit_ ? name_edit_->text().trimmed() : QString();
+    std::string sanitized = engine::sanitize_directory_name(name.toStdString());
+    if (sanitized.empty())
+      sanitized = "New Instance";
+    std::filesystem::path parent = instance_parent_dir_.empty()
+                                       ? engine::default_instances_dir()
+                                       : instance_parent_dir_;
+    std::filesystem::path full   = parent / sanitized;
+    QString text;
+    text += tr("Instance name: %1\n").arg(QString::fromStdString(sanitized));
+    text += tr("Instance location: %1\n").arg(QString::fromStdString(full.string()));
+    if (game_dir_edit_ && !game_dir_edit_->text().trimmed().isEmpty())
+      text += tr("Game directory: %1").arg(game_dir_edit_->text().trimmed());
+    confirm_label_->setText(text);
+  }
+  if (index == PagePaths && instance_location_edit_) {
+    QString name          = name_edit_ ? name_edit_->text().trimmed() : QString();
+    std::string sanitized = engine::sanitize_directory_name(name.toStdString());
+    if (sanitized.empty())
+      sanitized = "New Instance";
+    std::filesystem::path parent = instance_parent_dir_.empty()
+                                       ? engine::default_instances_dir()
+                                       : instance_parent_dir_;
+    instance_location_edit_->setText(
+        QString::fromStdString((parent / sanitized).string()));
   }
 }
 
@@ -552,6 +602,33 @@ QWidget *InstanceCreationWizard::build_profile_page() {
 QWidget *InstanceCreationWizard::build_paths_page() {
   auto *page   = new QWidget(this);
   auto *layout = new QVBoxLayout(page);
+
+  layout->addWidget(new QLabel(tr("Instance location:"), page));
+  auto *loc_row = new QHBoxLayout();
+  instance_location_edit_ = new QLineEdit(page);
+  instance_location_edit_->setReadOnly(true);
+  loc_row->addWidget(instance_location_edit_, 1);
+  auto *loc_browse = new QPushButton(tr("Browse..."), page);
+  loc_row->addWidget(loc_browse);
+  layout->addLayout(loc_row);
+
+  // Keep the preview in sync with the chosen name.
+  if (name_edit_) {
+    connect(name_edit_, &QLineEdit::textChanged, this, [this]() {
+      if (!instance_location_edit_)
+        return;
+      QString name          = name_edit_->text().trimmed();
+      std::string sanitized = engine::sanitize_directory_name(name.toStdString());
+      if (sanitized.empty())
+        sanitized = "New Instance";
+      std::filesystem::path parent = instance_parent_dir_.empty()
+                                         ? engine::default_instances_dir()
+                                         : instance_parent_dir_;
+      instance_location_edit_->setText(
+          QString::fromStdString((parent / sanitized).string()));
+    });
+  }
+
   layout->addWidget(new QLabel(tr("Game directory:"), page));
   auto *gd_row   = new QHBoxLayout();
   game_dir_edit_ = new QLineEdit(page);
@@ -581,6 +658,33 @@ QWidget *InstanceCreationWizard::build_paths_page() {
       game_dir_edit_->setText(dir);
   });
 
+  connect(loc_browse, &QPushButton::clicked, this, [this]() {
+    QString start =
+        instance_parent_dir_.empty()
+            ? QString::fromStdString(engine::default_instances_dir().string())
+            : QString::fromStdString(instance_parent_dir_.string());
+    QString dir = QFileDialog::getExistingDirectory(this, tr("Choose instance parent directory"),
+                                                    start);
+    if (!dir.isEmpty()) {
+      instance_parent_dir_ = std::filesystem::path(dir.toStdString());
+      // validate creatable
+      std::error_code ec;
+      if (!std::filesystem::exists(instance_parent_dir_, ec)) {
+        // allow creatable: keep as is
+      }
+      // update preview
+      QString name          = name_edit_ ? name_edit_->text().trimmed() : QString();
+      std::string sanitized = engine::sanitize_directory_name(name.toStdString());
+      if (sanitized.empty())
+        sanitized = "New Instance";
+      std::filesystem::path parent = instance_parent_dir_.empty()
+                                         ? engine::default_instances_dir()
+                                         : instance_parent_dir_;
+      instance_location_edit_->setText(
+          QString::fromStdString((parent / sanitized).string()));
+    }
+  });
+
   auto *form          = new QFormLayout();
   mods_dir_edit_      = new QLineEdit(page);
   downloads_dir_edit_ = new QLineEdit(page);
@@ -606,6 +710,9 @@ QWidget *InstanceCreationWizard::build_confirm_page() {
   auto *page   = new QWidget(this);
   auto *layout = new QVBoxLayout(page);
   layout->addWidget(new QLabel(tr("Review and click Finish to create."), page));
+  confirm_label_ = new QLabel(page);
+  confirm_label_->setWordWrap(true);
+  layout->addWidget(confirm_label_);
   layout->addStretch(1);
   return page;
 }

@@ -109,6 +109,11 @@ private:
   QLineEdit *profiles_dir_edit_  = nullptr;
   QLineEdit *overwrite_dir_edit_ = nullptr;
 
+  // Instance location (parent directory) on the Paths page.
+  QLineEdit *instance_location_edit_ = nullptr;
+  QLabel *confirm_label_ = nullptr;
+  std::filesystem::path instance_parent_dir_;
+
   QList<StepState> steps_;
   int current_              = 0;
   QListWidget *sidebar_     = nullptr;

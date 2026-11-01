@@ -22,6 +22,7 @@
 #include "ui/widgets/task_dialog.h"
 
 #include <algorithm>
+#include <unordered_set>
 #include <filesystem>
 
 namespace ui {
@@ -184,39 +185,60 @@ void InstanceSwitcherContentWidget::refresh_list() {
   entries_.clear();
 
   std::error_code ec;
-  auto dir = std::filesystem::path(instances_dir_);
-  if (!std::filesystem::is_directory(dir, ec))
-    return;
-
-  for (const auto &entry : std::filesystem::directory_iterator(dir, ec)) {
-    if (!entry.is_directory())
-      continue;
-    auto toml = entry.path() / "instance.toml";
-    if (!std::filesystem::exists(toml))
-      continue;
-
-    InstanceSwitcherEntry ie;
-    ie.name = entry.path().filename().string();
-    ie.root = entry.path();
-
-    if (auto tbl = engine::parse_instance_toml(toml)) {
-      if (auto v = (*tbl)["game_id"].value<std::string>())
-        ie.game_id = *v;
-      if (auto v = (*tbl)["portable"].value<bool>())
-        ie.portable = *v;
+  // Roots to scan: the configured dir plus any registered extra roots.
+  std::vector<std::filesystem::path> roots;
+  if (!instances_dir_.empty())
+    roots.push_back(std::filesystem::path(instances_dir_));
+  for (const auto &r : engine::instance_roots()) {
+    bool dup = false;
+    for (const auto &x : roots) {
+      if (x == r) {
+        dup = true;
+        break;
+      }
     }
-
-    std::string display_name;
-    if (plugins_)
-      display_name = plugins_->display_name_for(ie.game_id);
-    if (display_name.empty())
-      display_name = ie.game_id;
-
-    std::string label = engine::instance_display_name(entry.path());
-
-    ie.display_name = display_name;
-    entries_.push_back(ie);
+    if (!dup)
+      roots.push_back(r);
   }
+
+  std::unordered_set<std::string> seen_names;
+  for (const auto &root : roots) {
+    if (!std::filesystem::is_directory(root, ec))
+      continue;
+    for (const auto &entry : std::filesystem::directory_iterator(root, ec)) {
+      if (!entry.is_directory())
+        continue;
+      auto toml = entry.path() / "instance.toml";
+      if (!std::filesystem::exists(toml))
+        continue;
+
+      const std::string name = entry.path().filename().string();
+      if (!seen_names.insert(name).second)
+        continue;
+
+      InstanceSwitcherEntry ie;
+      ie.name = name;
+      ie.root = entry.path();
+
+      if (auto tbl = engine::parse_instance_toml(toml)) {
+        if (auto v = (*tbl)["game_id"].value<std::string>())
+          ie.game_id = *v;
+        if (auto v = (*tbl)["portable"].value<bool>())
+          ie.portable = *v;
+      }
+
+      std::string display_name;
+      if (plugins_)
+        display_name = plugins_->display_name_for(ie.game_id);
+      if (display_name.empty())
+        display_name = ie.game_id;
+
+      std::string label = engine::instance_display_name(entry.path());
+
+      ie.display_name = display_name;
+      entries_.push_back(ie);
+    }  // directory_iterator
+  }  // roots
 
   // natural sort by display label (case-insensitive)
   std::sort(entries_.begin(), entries_.end(),
