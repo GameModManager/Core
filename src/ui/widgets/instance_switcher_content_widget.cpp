@@ -1,7 +1,9 @@
 #include "ui/widgets/instance_switcher_content_widget.h"
 
 #include <QCheckBox>
+#include <QFormLayout>
 #include <QHBoxLayout>
+#include <QIcon>
 #include <QLabel>
 #include <QLineEdit>
 #include <QListWidget>
@@ -17,6 +19,7 @@
 #include "platform/platform.h"
 #include "ui/settings/settings.h"
 #include "ui/game_selection/game_selection_widget.h"
+#include "ui/theme/icon_manager.h"
 #include "ui/widgets/game_icon_cache.h"
 #include "ui/widgets/smooth_scroll.h"
 #include "ui/widgets/task_dialog.h"
@@ -58,10 +61,54 @@ InstanceSwitcherContentWidget::InstanceSwitcherContentWidget(
   list_->setSpacing(2);
   body->addWidget(list_, 2);
 
-  details_ = new QLabel(this);
-  details_->setWordWrap(true);
-  details_->setAlignment(Qt::AlignTop | Qt::AlignLeft);
+  details_ = new QWidget(this);
   details_->setMinimumWidth(200);
+  auto *details_layout = new QVBoxLayout(details_);
+  details_layout->setContentsMargins(8, 8, 8, 8);
+  details_layout->setSpacing(8);
+  details_layout->setAlignment(Qt::AlignTop);
+
+  details_empty_ = new QLabel(tr("No instance selected."), details_);
+  details_empty_->setWordWrap(true);
+  details_layout->addWidget(details_empty_);
+
+  details_form_ = new QWidget(details_);
+  auto *form    = new QFormLayout(details_form_);
+  form->setFieldGrowthPolicy(QFormLayout::ExpandingFieldsGrow);
+  form->setLabelAlignment(Qt::AlignTop | Qt::AlignLeft);
+  form->setFormAlignment(Qt::AlignTop);
+  form->setHorizontalSpacing(8);
+  form->setVerticalSpacing(6);
+  form->setContentsMargins(0, 0, 0, 0);
+
+  auto make_label = [this](const QString &text) {
+    auto *lbl = new QLabel(text, details_form_);
+    QFont f   = lbl->font();
+    f.setBold(true);
+    lbl->setFont(f);
+    return lbl;
+  };
+  auto make_value = [this](const QString &initial) {
+    auto *v = new QLabel(initial, details_form_);
+    v->setWordWrap(true);
+    v->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    return v;
+  };
+
+  detail_name_value_ = make_value({});
+  form->addRow(make_label(tr("Name")), detail_name_value_);
+  detail_location_value_ = make_value({});
+  form->addRow(make_label(tr("Location")), detail_location_value_);
+  detail_game_value_ = make_value({});
+  form->addRow(make_label(tr("Game")), detail_game_value_);
+  detail_game_dir_value_ = make_value({});
+  form->addRow(make_label(tr("Game directory")), detail_game_dir_value_);
+
+  details_layout->addWidget(details_form_);
+  details_layout->addStretch(1);
+
+  details_form_->hide();
+
   body->addWidget(details_, 1);
 
   main_layout->addLayout(body, 1);
@@ -69,21 +116,30 @@ InstanceSwitcherContentWidget::InstanceSwitcherContentWidget(
   // Action buttons
   auto *create_btn = new QPushButton(this);
   {
-    auto icon = style()->standardIcon(QStyle::SP_FileDialogNewFolder);
-    if (!icon.isNull())
-      create_btn->setIcon(icon);
+    create_btn->setIcon(engine::IconManager::instance().resolve_icon(
+        QStringLiteral("document-new"), QStyle::SP_FileDialogNewFolder));
     create_btn->setText(tr("Create new instance"));
     create_btn->setObjectName("createButton");
   }
   auto *open_folder_btn = new QPushButton(tr("Open Folder"), this);
+  open_folder_btn->setIcon(engine::IconManager::instance().resolve_icon(
+      QStringLiteral("document-open-folder"), QStyle::SP_DirOpenIcon));
   open_folder_btn->setObjectName("openFolderButton");
   auto *open_toml_btn = new QPushButton(tr("Open instance.toml"), this);
+  open_toml_btn->setIcon(engine::IconManager::instance().resolve_icon(
+      QStringLiteral("text-html"), QStyle::SP_FileIcon));
   open_toml_btn->setObjectName("openTomlButton");
   auto *rename_btn = new QPushButton(tr("Rename..."), this);
+  rename_btn->setIcon(engine::IconManager::instance().resolve_icon(
+      QStringLiteral("document-edit"), QStyle::SP_FileIcon));
   rename_btn->setObjectName("renameButton");
   auto *duplicate_btn = new QPushButton(tr("Duplicate..."), this);
+  duplicate_btn->setIcon(engine::IconManager::instance().resolve_icon(
+      QStringLiteral("document-new"), QStyle::SP_FileDialogNewFolder));
   duplicate_btn->setObjectName("duplicateButton");
   auto *delete_btn = new QPushButton(tr("Delete..."), this);
+  delete_btn->setIcon(engine::IconManager::instance().resolve_icon(
+      QStringLiteral("edit-delete"), QStyle::SP_TrashIcon));
   delete_btn->setObjectName("deleteButton");
 
   auto *bottom_layout = new QHBoxLayout();
@@ -359,7 +415,12 @@ void InstanceSwitcherContentWidget::update_details() {
     return;
   QString name = selected_instance();
   if (name.isEmpty()) {
-    details_->setText(tr("No instance selected."));
+    if (details_empty_) {
+      details_empty_->setText(tr("No instance selected."));
+      details_empty_->show();
+    }
+    if (details_form_)
+      details_form_->hide();
     return;
   }
   // find entry
@@ -371,7 +432,12 @@ void InstanceSwitcherContentWidget::update_details() {
     }
   }
   if (!ie) {
-    details_->setText(tr("No instance selected."));
+    if (details_empty_) {
+      details_empty_->setText(tr("No instance selected."));
+      details_empty_->show();
+    }
+    if (details_form_)
+      details_form_->hide();
     return;
   }
   // read toml for game dir
@@ -380,13 +446,19 @@ void InstanceSwitcherContentWidget::update_details() {
     if (auto v = (*tbl)["game_dir"].value<std::string>())
       game_dir = *v;
   }
-  QString text;
-  text += tr("Name: %1\n")
-              .arg(QString::fromStdString(engine::instance_display_name(ie->root)));
-  text += tr("Location: %1\n").arg(QString::fromStdString(ie->root.string()));
-  text += tr("Game: %1\n").arg(QString::fromStdString(ie->display_name));
-  text += tr("Game directory: %1").arg(QString::fromStdString(game_dir));
-  details_->setText(text);
+  if (details_empty_)
+    details_empty_->hide();
+  if (details_form_)
+    details_form_->show();
+  if (detail_name_value_)
+    detail_name_value_->setText(
+        QString::fromStdString(engine::instance_display_name(ie->root)));
+  if (detail_location_value_)
+    detail_location_value_->setText(QString::fromStdString(ie->root.string()));
+  if (detail_game_value_)
+    detail_game_value_->setText(QString::fromStdString(ie->display_name));
+  if (detail_game_dir_value_)
+    detail_game_dir_value_->setText(QString::fromStdString(game_dir));
 }
 
 void InstanceSwitcherContentWidget::update_icons_for(const QString &game_id) {
