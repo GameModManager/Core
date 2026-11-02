@@ -108,16 +108,15 @@ fs::path resolve_startup_instance_root(const cli::ParsedArgs &args) {
     name = args.instance_name.toStdString();
   } else {
     name = engine::read_last_instance();
-    if (name.empty() ||
-        !fs::exists(engine::default_instances_dir() / name / "instance.toml")) {
+    if (name.empty() || engine::resolve_instance_path(name).empty()) {
       const auto existing = engine::scan_instances();
       name                = existing.empty() ? std::string() : existing[0];
     }
   }
   if (name.empty())
     return {};
-  const fs::path root = engine::default_instances_dir() / name;
-  if (!fs::exists(root / "instance.toml"))
+  const fs::path root = engine::resolve_instance_path(name);
+  if (root.empty() || !fs::exists(root / "instance.toml"))
     return {};
   return root;
 }
@@ -594,8 +593,7 @@ int Application::run() {
     // Find an existing instance for this game
     std::string target_instance;
     for (const auto &inst_name : existing_instances) {
-      auto inst =
-          engine::Instance::installed(inst_name, engine::default_instances_dir());
+      auto inst = engine::Instance::from_root(engine::resolve_instance_path(inst_name));
       if (inst.read_toml() && inst.info().game_id == matched_game_id) {
         target_instance = inst_name;
         break;
@@ -665,7 +663,7 @@ int Application::run() {
     } else {
       for (const auto &inst_name : existing_instances) {
         auto inst =
-            engine::Instance::installed(inst_name, engine::default_instances_dir());
+            engine::Instance::from_root(engine::resolve_instance_path(inst_name));
         if (inst.read_toml() && inst.info().game_id == matched_game_id) {
           target_instance = inst_name;
           break;
@@ -673,8 +671,8 @@ int Application::run() {
       }
     }
 
-    if (target_instance.empty() || !fs::exists(engine::default_instances_dir() /
-                                               target_instance / "instance.toml")) {
+    if (target_instance.empty() ||
+        engine::resolve_instance_path(target_instance).empty()) {
       engine::Logger::instance().error(
           "No instance available for modl:// link "
           "(open GameModManager and create an instance first)");
@@ -875,8 +873,8 @@ int Application::run() {
     active_instance = instance_name.toStdString();
   } else {
     active_instance = engine::read_last_instance();
-    if (active_instance.empty() || !fs::exists(engine::default_instances_dir() /
-                                               active_instance / "instance.toml")) {
+    if (active_instance.empty() ||
+        engine::resolve_instance_path(active_instance).empty()) {
       if (!existing_instances.empty()) {
         active_instance = existing_instances[0];
       }
@@ -890,7 +888,7 @@ int Application::run() {
   // set cannot hot-swap (plugins are already loaded), so restart into the
   // target instance instead.
   if (!active_instance.empty()) {
-    const fs::path active_root = engine::default_instances_dir() / active_instance;
+    const fs::path active_root = engine::resolve_instance_path(active_instance);
     if (active_root != startup_instance_root_ &&
         fs::exists(active_root / "instance.toml")) {
       if (ui::effective_disabled_plugins(startup_instance_root_) !=
@@ -914,7 +912,7 @@ int Application::run() {
     engine::write_last_instance(active_instance);
 
     auto temp_inst =
-        engine::Instance::installed(active_instance, engine::default_instances_dir());
+        engine::Instance::from_root(engine::resolve_instance_path(active_instance));
     temp_inst.read_toml();
     std::string game_id            = temp_inst.info().game_id;
     std::filesystem::path game_dir = temp_inst.info().game_dir;
@@ -932,7 +930,7 @@ int Application::run() {
     std::string display_name = plugin_loader_->display_name_for(game_id);
 
     window.set_game_info(game_id, display_name, "Default", game_dir,
-                         engine::default_instances_dir() / active_instance);
+                         engine::resolve_instance_path(active_instance));
     window.setWindowTitle(QCoreApplication::translate("main", "GameModManager - %1")
                               .arg(QString::fromStdString(display_name)));
   }

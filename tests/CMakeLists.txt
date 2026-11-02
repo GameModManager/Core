@@ -577,6 +577,31 @@ gmm_catch2_test(instance_switch_restart_test
     LIBS gmm_ui
     PROPERTIES TIMEOUT 300)
 
+gmm_catch2_test(instance_creation_wizard_test
+    ui/instance_creation_wizard_test.cpp
+    UI
+    LIBS gmm_ui
+    PROPERTIES TIMEOUT 300)
+
+gmm_catch2_test(instance_switcher_delete_test
+    ui/instance_switcher_delete_test.cpp
+    UI
+    LIBS gmm_ui
+    PROPERTIES TIMEOUT 120)
+
+gmm_catch2_test(instance_switcher_details_layout_test
+    ui/instance_switcher_details_layout_test.cpp
+    UI
+    LIBS gmm_ui
+    PROPERTIES TIMEOUT 120)
+
+
+gmm_catch2_test(settings_experimental_tab_test
+    ui/settings_experimental_tab_test.cpp
+    UI
+    LIBS gmm_ui
+    PROPERTIES TIMEOUT 300)
+
 # Last-used directory per named file dialog (MO2 FileDialogMemory).
 
 

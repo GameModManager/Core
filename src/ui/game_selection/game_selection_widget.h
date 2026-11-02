@@ -29,6 +29,9 @@ public:
   void set_games(const std::vector<GameEntry> &installed,
                  const std::vector<GameEntry> &available);
 
+  // Resolve an icon for a game entry (same source as the quick-create list).
+  static QIcon resolve_icon_public(const GameEntry &entry);
+
 signals:
   void game_selected(const GameEntry &entry);
 

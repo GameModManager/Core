@@ -86,6 +86,10 @@ public:
     // = the game plugin's "deploy_strategy" knowledge default. Persisted to
     // instance.toml; wins over the knowledge key when set.
     std::string deploy_strategy;
+    // Game variant / edition chosen at instance creation (e.g. "Steam",
+    // "GOG", "Epic"). Empty = none / not specified. Persisted to
+    // instance.toml as "game_variant" only when non-empty.
+    std::string game_variant;
     // Stable modpack identity for this instance (UUID v4). All modpack
     // exports from this instance reuse it so updated packs are identifiable
     // as revisions of the same pack. Empty = not yet assigned (assigned

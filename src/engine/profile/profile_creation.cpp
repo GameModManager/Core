@@ -93,7 +93,8 @@ bool is_valid_profile_name(const std::string &name, std::string *error) {
 
 ProfileCreationResult create_fresh_profile(const std::filesystem::path &profiles_dir,
                                            const std::string &name,
-                                           ProfileGameInitFn game_init) {
+                                           ProfileGameInitFn game_init,
+                                           const ProfileSeed *seed) {
   ProfileCreationResult result;
 
   std::string name_error;
@@ -145,6 +146,12 @@ ProfileCreationResult create_fresh_profile(const std::filesystem::path &profiles
   profile.set_local_settings(false);
   profile.set_automatic_archive_invalidation(false);
   detect_local_settings(profile);
+
+  if (seed) {
+    profile.set_local_settings(seed->local_settings);
+    profile.set_local_saves(seed->local_saves);
+    profile.set_automatic_archive_invalidation(seed->archive_invalidation);
+  }
 
   if (!profile.save_settings()) {
     result.error = "failed to write settings.ini in " + target.string();

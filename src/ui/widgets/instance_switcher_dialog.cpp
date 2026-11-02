@@ -56,6 +56,10 @@ void InstanceSwitcherDialog::load_instances(const std::string &instances_dir) {
   content_->load_instances(instances_dir);
 }
 
+void InstanceSwitcherDialog::set_active_instance(const std::filesystem::path &root) {
+  content_->set_active_instance(root);
+}
+
 QString InstanceSwitcherDialog::selected_instance() const {
   return content_->selected_instance();
 }

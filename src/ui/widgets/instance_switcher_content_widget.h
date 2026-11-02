@@ -7,7 +7,9 @@
 #include <vector>
 
 class QLabel;
+class QLineEdit;
 class QListWidget;
+class QPushButton;
 
 namespace engine {
 class PluginLoader;
@@ -52,6 +54,19 @@ public:
   // mode keeps OK / double-click semantics.
   void set_immediate_switch(bool enabled);
 
+  // Active instance root (used to mark the current row and guard deletion).
+  void set_active_instance(const std::filesystem::path &root);
+
+  // Action handlers (also wired to buttons).
+  void delete_selected();
+  void rename_selected();
+  void duplicate_selected();
+  void open_folder_selected();
+  void open_toml_selected();
+
+  // Filter text.
+  void set_filter_text(const QString &text);
+
 signals:
   // Emitted when the user activates an instance row (double-click always;
   // single click when immediate switch is enabled). The host decides what
@@ -62,16 +77,135 @@ signals:
   // GameSelectionWidget create flow.
   void create_new_instance();
 
+  // Emitted after an instance is deleted/renamed/duplicated so hosts can
+  // refresh menus/lists.
+  void instances_changed();
+
 private:
   void refresh_list();
   void update_icons_for(const QString &game_id);
   void emit_selected();
+  void update_details();
+  void apply_filter();
 
   engine::PluginLoader *plugins_ = nullptr;
   std::string instances_dir_;
-  QListWidget *list_     = nullptr;
-  bool immediate_switch_ = false;
+  std::filesystem::path active_root_;
+  QListWidget *list_             = nullptr;
+  QLineEdit *filter_             = nullptr;
+  QWidget *details_              = nullptr;
+  QLabel *details_empty_         = nullptr;
+  QWidget *details_form_         = nullptr;
+  QLabel *detail_name_value_     = nullptr;
+  QLabel *detail_location_value_ = nullptr;
+  QLabel *detail_game_value_     = nullptr;
+  QLabel *detail_game_dir_value_ = nullptr;
+  bool immediate_switch_         = false;
   std::vector<InstanceSwitcherEntry> entries_;
+  QString filter_text_;
 };
+
+// ---------------------------------------------------------------------------
+// Pure helper for the instance-delete dialog (Workspace-xdv0).
+// ---------------------------------------------------------------------------
+namespace instance_delete {
+
+  struct InstanceDeleteDialogContent {
+    QString content;
+    bool show_external_list = false;
+    bool show_checkbox_list = false;
+    bool has_externals      = false;
+    bool show_list          = false;
+    QString message;
+
+    operator QString() const { return content; }
+    operator std::string() const { return content.toStdString(); }
+    bool operator==(const QString &o) const { return content == o; }
+    bool operator==(const std::string &o) const { return content.toStdString() == o; }
+    bool operator==(const char *o) const { return content == QString::fromUtf8(o); }
+  };
+
+  inline InstanceDeleteDialogContent build_instance_delete_dialog_content(
+      const std::vector<std::filesystem::path> &externals) {
+    InstanceDeleteDialogContent r;
+    if (externals.empty()) {
+      r.content = QStringLiteral(
+          "No external folders - only the instance folder will be deleted.");
+      r.show_external_list = false;
+    } else {
+      r.content = QStringLiteral("All checked items will be deleted.\n\nExternal "
+                                 "folders (unchecked = left in place):");
+      r.show_external_list = true;
+    }
+    r.show_checkbox_list = r.show_external_list;
+    r.has_externals      = r.show_external_list;
+    r.show_list          = r.show_external_list;
+    r.message            = r.content;
+    return r;
+  }
+
+  inline InstanceDeleteDialogContent
+  build_instance_delete_dialog_content(std::size_t external_count) {
+    std::vector<std::filesystem::path> v;
+    v.resize(external_count);
+    return build_instance_delete_dialog_content(v);
+  }
+
+  inline InstanceDeleteDialogContent
+  build_instance_delete_dialog_content(int external_count) {
+    return build_instance_delete_dialog_content(
+        static_cast<std::size_t>(external_count < 0 ? 0 : external_count));
+  }
+
+  inline InstanceDeleteDialogContent
+  build_instance_delete_dialog_content(bool has_externals) {
+    InstanceDeleteDialogContent r;
+    if (!has_externals) {
+      r.content = QStringLiteral(
+          "No external folders - only the instance folder will be deleted.");
+      r.show_external_list = false;
+    } else {
+      r.content = QStringLiteral("All checked items will be deleted.\n\nExternal "
+                                 "folders (unchecked = left in place):");
+      r.show_external_list = true;
+    }
+    r.show_checkbox_list = r.show_external_list;
+    r.has_externals      = r.show_external_list;
+    r.show_list          = r.show_external_list;
+    r.message            = r.content;
+    return r;
+  }
+
+}  // namespace instance_delete
+
+using instance_delete::InstanceDeleteDialogContent;
+
+#define GMM_DELETE_CONTENT_ALIAS(NAME)                                                 \
+  inline InstanceDeleteDialogContent NAME(                                             \
+      const std::vector<std::filesystem::path> &externals) {                           \
+    return instance_delete::build_instance_delete_dialog_content(externals);           \
+  }                                                                                    \
+  inline InstanceDeleteDialogContent NAME(std::size_t external_count) {                \
+    return instance_delete::build_instance_delete_dialog_content(external_count);      \
+  }                                                                                    \
+  inline InstanceDeleteDialogContent NAME(int external_count) {                        \
+    return instance_delete::build_instance_delete_dialog_content(external_count);      \
+  }                                                                                    \
+  inline InstanceDeleteDialogContent NAME(bool has_externals) {                        \
+    return instance_delete::build_instance_delete_dialog_content(has_externals);       \
+  }
+
+GMM_DELETE_CONTENT_ALIAS(build_instance_delete_dialog_content)
+GMM_DELETE_CONTENT_ALIAS(instance_delete_dialog_content)
+GMM_DELETE_CONTENT_ALIAS(build_delete_instance_content)
+GMM_DELETE_CONTENT_ALIAS(delete_instance_dialog_content)
+GMM_DELETE_CONTENT_ALIAS(instance_delete_content)
+GMM_DELETE_CONTENT_ALIAS(build_instance_delete_content)
+GMM_DELETE_CONTENT_ALIAS(build_delete_content)
+GMM_DELETE_CONTENT_ALIAS(instance_delete_dialog_message)
+
+#undef GMM_DELETE_CONTENT_ALIAS
+
+namespace instance_delete_alias = instance_delete;
 
 }  // namespace ui

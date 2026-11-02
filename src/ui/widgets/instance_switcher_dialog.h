@@ -2,6 +2,7 @@
 
 #include <QDialog>
 #include <QString>
+#include <filesystem>
 #include <string>
 
 namespace engine {
@@ -24,6 +25,8 @@ public:
 
   // Populate from the global instances directory
   void load_instances(const std::string &instances_dir);
+
+  void set_active_instance(const std::filesystem::path &root);
 
   // Returns the selected instance name (empty if cancelled or no selection)
   [[nodiscard]] QString selected_instance() const;

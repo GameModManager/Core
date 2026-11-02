@@ -4,6 +4,7 @@
 #include "engine/deploy/deploy_utils.h"
 #include "engine/game/detect/game_detector.h"
 #include "engine/instance/instance.h"
+#include "engine/profile/profile_creation.h"
 #include "engine/game/registry/game_knowledge.h"
 
 #include <filesystem>
@@ -35,6 +36,17 @@ void write_last_instance(const std::string &name);
 // Scan for existing instances. Returns instance names (directory basenames).
 [[nodiscard]] std::vector<std::string> scan_instances();
 
+// All directories scanned for instances: the default (or override) plus any
+// registered extra roots. Always includes default_instances_dir().
+[[nodiscard]] std::vector<std::filesystem::path> instance_roots();
+
+// Register an extra instance root (persisted). Idempotent. A root equal to
+// the default is ignored.
+void register_instance_root(const std::filesystem::path &root);
+
+// True when `root` is one of instance_roots().
+[[nodiscard]] bool is_allowed_instance_root(const std::filesystem::path &root);
+
 // Sanitize a user-chosen instance name into a filesystem-safe folder name
 // (Instance::to_instance_name) and make it unique under instances_root by
 // appending " 2", " 3", ... while a directory or file of that name exists.
@@ -51,6 +63,30 @@ unique_instance_name(const std::string &display_name,
 // instance.toml when set, else the folder basename (legacy instances).
 [[nodiscard]] std::string
 instance_display_name(const std::filesystem::path &instance_root);
+
+// Delete an instance by its bare folder name. `name` must be a bare folder
+// name (no separators, not "."/".."); the instance must live under
+// default_instances_dir(). Returns false (and deletes nothing) otherwise or on
+// I/O failure. `permanent` selects remove_all vs. the platform trash.
+[[nodiscard]] bool delete_instance(const std::string &name, bool permanent = false);
+
+// Paths of override folders (mods/downloads/cache/profiles/overwrite) that
+// live OUTSIDE the instance root and currently exist. Feeds the delete
+// confirmation dialog only; never deleted silently.
+[[nodiscard]] std::vector<std::filesystem::path> instance_external_paths(
+    const std::string &name);
+
+// Rename the display name (instance.toml "name") of an instance. Folder name
+// is unchanged. Trims; refuses empty. Returns false on I/O failure.
+[[nodiscard]] bool rename_instance_display_name(const std::string &name,
+                                               const std::string &new_display_name);
+
+// Clone an instance: copy its root folder to a new folder named from
+// `new_display_name`, with a fresh display name. External override folders are
+// NOT cloned - the clone gets default paths under its own root. Returns an
+// Instance with empty game_id on failure.
+[[nodiscard]] Instance clone_instance(const std::string &source_name,
+                                     const std::string &new_display_name);
 
 // Resolve an instance path from a short name or absolute path.
 // If name_or_path is absolute, checks if instance.toml exists at that path.
@@ -72,6 +108,39 @@ resolve_instance_path(const std::string &name_or_path);
 create_instance_for_game(const DetectedGame &game,
                          const std::filesystem::path &instances_root,
                          const std::string &display_name);
+
+// Options collected by the instance creation wizard (and any other caller).
+// All fields default to "no override / current behavior" so the existing
+// overloads delegate with a default-constructed options object.
+struct InstanceCreationOptions {
+  // Game variant / edition chosen by the user (e.g. "Steam", "GOG", "Epic").
+  // Empty = none. Persisted on the instance (Instance::Info::game_variant).
+  std::string game_variant;
+  // Optional parent directory (instances root) override. Empty = use the
+  // instances_root argument passed to create_instance_for_game. Either field
+  // name is accepted for compatibility.
+  std::filesystem::path parent_dir;
+  std::filesystem::path instance_root;
+  // Per-folder overrides (empty = default under root). Written through
+  // Instance::set_path_override before write_toml.
+  std::filesystem::path mods_dir;
+  std::filesystem::path downloads_dir;
+  std::filesystem::path cache_dir;
+  std::filesystem::path profiles_dir;
+  std::filesystem::path overwrite_dir;
+  // Profile seed for the Default profile created by the caller. The engine
+  // does not create the profile itself; the caller passes this to
+  // create_fresh_profile. Stored here so there is one options struct.
+  engine::profile::ProfileSeed profile_seed;
+  bool create_default_profile = true;
+};
+
+// Options-aware overload: applies game_variant and per-folder overrides to
+// the instance before write_toml. Returns an Instance with empty game_id on
+// failure (duplicate name, empty name, directory/toml write failure).
+[[nodiscard]] Instance create_instance_for_game(
+    const DetectedGame &game, const std::filesystem::path &instances_root,
+    const std::string &display_name, const InstanceCreationOptions &options);
 
 // Legacy form: no custom name - folder derived from the game name via
 // Instance::to_instance_name (spaces folded to underscores).

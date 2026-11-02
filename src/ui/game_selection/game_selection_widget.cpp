@@ -36,6 +36,10 @@ QIcon GameSelectionWidget::resolve_icon(const GameEntry &entry) {
                                             64);
 }
 
+QIcon GameSelectionWidget::resolve_icon_public(const GameEntry &entry) {
+  return resolve_icon(entry);
+}
+
 // -- Instance name prompt (Workspace-4fu) --
 
 std::string prompt_instance_name(QWidget *parent, const QString &game_name) {

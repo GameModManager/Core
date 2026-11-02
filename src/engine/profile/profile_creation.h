@@ -24,6 +24,16 @@ struct ProfileCreationResult {
 // game plugin is available.
 using ProfileGameInitFn = std::function<void(const std::filesystem::path &)>;
 
+// Seed values for a freshly created profile (MO2's profile settings). When
+// provided to create_fresh_profile, these override the auto-detected defaults
+// for the three profile flags. Empty/absent seed keeps the current
+// false/false/false default behavior.
+struct ProfileSeed {
+  bool local_settings       = false;
+  bool local_saves          = false;
+  bool archive_invalidation = false;
+};
+
 // Create a fresh profile directory under profiles_dir (MO2's
 // Profile::Profile(name, gamePlugin, features, useDefaultSettings)).
 //
@@ -48,7 +58,8 @@ using ProfileGameInitFn = std::function<void(const std::filesystem::path &)>;
 // construct one from `directory` when they need to mutate it.
 ProfileCreationResult create_fresh_profile(const std::filesystem::path &profiles_dir,
                                            const std::string &name,
-                                           ProfileGameInitFn game_init = {});
+                                           ProfileGameInitFn game_init = {},
+                                           const ProfileSeed *seed     = nullptr);
 
 // Copy an existing profile directory to a new name under profiles_dir (MO2's
 // Profile::createPtrFrom(name, reference, gamePlugin)).

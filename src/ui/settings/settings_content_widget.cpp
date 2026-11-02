@@ -71,6 +71,7 @@ SettingsContentWidget::SettingsContentWidget(engine::StyleManager *style_manager
   tabs_->addTab(build_sources_tab(), tr("Sources"));
   tabs_->addTab(build_plugins_tab(), tr("Plugins"));
   tabs_->addTab(build_workarounds_tab(), tr("Workarounds"));
+  tabs_->addTab(build_experimental_tab(), tr("Experimental"));
   tabs_->addTab(build_diagnostics_tab(), tr("Diagnostics"));
 }
 
@@ -766,20 +767,7 @@ QWidget *SettingsContentWidget::build_modlist_tab() {
          "there is no per-profile copy for this to select between."));
   layout->addWidget(per_profile_box);
 
-  // Per-instance nesting toggle (Settings > Mod List, below the per-profile
-  // box). The key is the instance-root folder name, same key namespace as
-  // modlist_hidden_columns, so each instance remembers its own value.
-  const QString inst_key =
-      instance_root_.empty()
-          ? QString()
-          : QString::fromStdString(instance_root_.filename().string());
-  auto *nested_box = new QCheckBox(tr("Nested mod list ⚠️ (Experimental)"), page);
-  nested_box->setChecked(!inst_key.isEmpty() && s.modlist_nested(inst_key));
-  if (inst_key.isEmpty()) {
-    // No instance loaded (standalone tests): keep the checkbox inert.
-    nested_box->setEnabled(false);
-  }
-  layout->addWidget(nested_box);
+  // (Nested mod list toggle moved to the Experimental tab.)
 
   connect(asc_box, &QCheckBox::toggled, this, [&s](bool on) {
     s.set_collapsible_separators_asc(on);
@@ -807,10 +795,6 @@ QWidget *SettingsContentWidget::build_modlist_tab() {
   });
   connect(per_profile_box, &QCheckBox::toggled, this, [&s](bool on) {
     s.set_collapsible_separators_per_profile(on);
-  });
-  connect(nested_box, &QCheckBox::toggled, this, [&s, inst_key](bool on) {
-    if (!inst_key.isEmpty())
-      s.set_modlist_nested(inst_key, on);
   });
 
   layout->addStretch(1);
@@ -1376,14 +1360,24 @@ QWidget *SettingsContentWidget::build_plugins_tab() {
         state->content));
 
     if (e.is_plugin) {
-      auto *form = new QFormLayout;
-      form->setFieldGrowthPolicy(QFormLayout::ExpandingFieldsGrow);
+      auto *form = new QVBoxLayout;
+      form->setContentsMargins(0, 0, 0, 0);
+      form->setSpacing(4);
       auto add_row = [&](const QString &label, const QString &value) {
-        auto *lbl =
+        auto *name_lbl = new QLabel(label, state->content);
+        QFont nf       = name_lbl->font();
+        nf.setBold(true);
+        name_lbl->setFont(nf);
+        auto *val_lbl =
             new QLabel(value.isEmpty() ? tr("(not set)") : value, state->content);
-        lbl->setWordWrap(true);
-        lbl->setTextInteractionFlags(Qt::TextSelectableByMouse);
-        form->addRow(label, lbl);
+        val_lbl->setWordWrap(true);
+        val_lbl->setTextInteractionFlags(Qt::TextSelectableByMouse);
+        QSizePolicy pol(QSizePolicy::Expanding, QSizePolicy::Preferred);
+        pol.setHeightForWidth(true);
+        val_lbl->setSizePolicy(pol);
+        form->addWidget(name_lbl);
+        form->addWidget(val_lbl);
+        form->addSpacing(4);
       };
       add_row(tr("Author"), e.author);
       add_row(tr("Version"), e.version);
@@ -1689,6 +1683,54 @@ QWidget *SettingsContentWidget::build_workarounds_tab() {
   });
 
   layout->addStretch(1);
+  return page;
+}
+
+// -- Experimental
+// ----------------------------------------------------------------
+
+QWidget *SettingsContentWidget::build_experimental_tab() {
+  auto &s      = Settings::instance();
+  auto *page   = new QWidget(this);
+  auto *layout = new QVBoxLayout(page);
+
+  auto *group =
+      new QGroupBox(tr("Experimental features - may change or be removed"), page);
+  auto *g_layout = new QVBoxLayout(group);
+
+  // Per-instance nesting toggle (moved from the Mod List tab). The key is the
+  // instance-root folder name, same key namespace as modlist_hidden_columns,
+  // so each instance remembers its own value.
+  const QString inst_key =
+      instance_root_.empty()
+          ? QString()
+          : QString::fromStdString(instance_root_.filename().string());
+  auto *nested_box = new QCheckBox(tr("Nested mod list ⚠️ (Experimental)"), group);
+  nested_box->setChecked(!inst_key.isEmpty() && s.modlist_nested(inst_key));
+  if (inst_key.isEmpty()) {
+    nested_box->setEnabled(false);
+  }
+  nested_box->setToolTip(
+      tr("Allows dragging mods onto other mods to nest them. Experimental: "
+         "may change or be removed."));
+  g_layout->addWidget(nested_box);
+
+  auto *wizard_box = new QCheckBox(tr("Use guided instance creation wizard"), group);
+  wizard_box->setChecked(s.instance_creation_wizard());
+  wizard_box->setToolTip(tr("Switches instance creation to the guided wizard."));
+  g_layout->addWidget(wizard_box);
+
+  layout->addWidget(group);
+  layout->addStretch(1);
+
+  connect(nested_box, &QCheckBox::toggled, this, [&s, inst_key](bool on) {
+    if (!inst_key.isEmpty())
+      s.set_modlist_nested(inst_key, on);
+  });
+  connect(wizard_box, &QCheckBox::toggled, this, [&s](bool on) {
+    s.set_instance_creation_wizard(on);
+  });
+
   return page;
 }
 
