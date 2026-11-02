@@ -1360,14 +1360,24 @@ QWidget *SettingsContentWidget::build_plugins_tab() {
         state->content));
 
     if (e.is_plugin) {
-      auto *form = new QFormLayout;
-      form->setFieldGrowthPolicy(QFormLayout::ExpandingFieldsGrow);
+      auto *form = new QVBoxLayout;
+      form->setContentsMargins(0, 0, 0, 0);
+      form->setSpacing(4);
       auto add_row = [&](const QString &label, const QString &value) {
-        auto *lbl =
+        auto *name_lbl = new QLabel(label, state->content);
+        QFont nf       = name_lbl->font();
+        nf.setBold(true);
+        name_lbl->setFont(nf);
+        auto *val_lbl =
             new QLabel(value.isEmpty() ? tr("(not set)") : value, state->content);
-        lbl->setWordWrap(true);
-        lbl->setTextInteractionFlags(Qt::TextSelectableByMouse);
-        form->addRow(label, lbl);
+        val_lbl->setWordWrap(true);
+        val_lbl->setTextInteractionFlags(Qt::TextSelectableByMouse);
+        QSizePolicy pol(QSizePolicy::Expanding, QSizePolicy::Preferred);
+        pol.setHeightForWidth(true);
+        val_lbl->setSizePolicy(pol);
+        form->addWidget(name_lbl);
+        form->addWidget(val_lbl);
+        form->addSpacing(4);
       };
       add_row(tr("Author"), e.author);
       add_row(tr("Version"), e.version);

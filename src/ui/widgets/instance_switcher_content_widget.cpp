@@ -1,6 +1,8 @@
 #include "ui/widgets/instance_switcher_content_widget.h"
 
 #include <QCheckBox>
+#include <QFrame>
+#include <QSizePolicy>
 #include <QFormLayout>
 #include <QHBoxLayout>
 #include <QIcon>
@@ -73,13 +75,9 @@ InstanceSwitcherContentWidget::InstanceSwitcherContentWidget(
   details_layout->addWidget(details_empty_);
 
   details_form_ = new QWidget(details_);
-  auto *form    = new QFormLayout(details_form_);
-  form->setFieldGrowthPolicy(QFormLayout::ExpandingFieldsGrow);
-  form->setLabelAlignment(Qt::AlignTop | Qt::AlignLeft);
-  form->setFormAlignment(Qt::AlignTop);
-  form->setHorizontalSpacing(8);
-  form->setVerticalSpacing(6);
+  auto *form    = new QVBoxLayout(details_form_);
   form->setContentsMargins(0, 0, 0, 0);
+  form->setSpacing(8);
 
   auto make_label = [this](const QString &text) {
     auto *lbl = new QLabel(text, details_form_);
@@ -92,17 +90,32 @@ InstanceSwitcherContentWidget::InstanceSwitcherContentWidget(
     auto *v = new QLabel(initial, details_form_);
     v->setWordWrap(true);
     v->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    QSizePolicy pol(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    pol.setHeightForWidth(true);
+    v->setSizePolicy(pol);
     return v;
+  };
+  auto add_row = [this, form, &make_label](const QString &label_text, QLabel *value) {
+    auto *lbl = make_label(label_text);
+    form->addWidget(lbl);
+    form->addWidget(value);
+    // thin separator between rows
+    auto *sep = new QFrame(details_form_);
+    sep->setFrameShape(QFrame::HLine);
+    sep->setFrameShadow(QFrame::Plain);
+    sep->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    form->addWidget(sep);
+    form->addSpacing(4);
   };
 
   detail_name_value_ = make_value({});
-  form->addRow(make_label(tr("Name")), detail_name_value_);
+  add_row(tr("Name"), detail_name_value_);
   detail_location_value_ = make_value({});
-  form->addRow(make_label(tr("Location")), detail_location_value_);
+  add_row(tr("Location"), detail_location_value_);
   detail_game_value_ = make_value({});
-  form->addRow(make_label(tr("Game")), detail_game_value_);
+  add_row(tr("Game"), detail_game_value_);
   detail_game_dir_value_ = make_value({});
-  form->addRow(make_label(tr("Game directory")), detail_game_dir_value_);
+  add_row(tr("Game directory"), detail_game_dir_value_);
 
   details_layout->addWidget(details_form_);
   details_layout->addStretch(1);
