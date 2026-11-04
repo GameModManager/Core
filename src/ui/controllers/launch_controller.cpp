@@ -38,6 +38,7 @@
 #include <chrono>
 #include <cstdlib>
 #include <fstream>
+#include <iterator>
 #include <sstream>
 #include <thread>
 
@@ -1010,6 +1011,26 @@ void LaunchController::check_running_process() {
       engine::Logger::instance().debug("Watchdog: cgroup empty, game fully exited");
       int supervisor_exit =
           reap_supervisor(static_cast<pid_t>(w_->running_process_pid_));
+      // Surface the real failure to the user-visible log.
+      {
+        std::string tail;
+        auto log_path = w_->cache_dir_path() / ".gmm_overlay_stderr.log";
+        std::error_code lec;
+        if (std::filesystem::exists(log_path, lec)) {
+          std::ifstream f(log_path);
+          std::string content((std::istreambuf_iterator<char>(f)),
+                              std::istreambuf_iterator<char>());
+          if (content.size() > 500)
+            tail = content.substr(content.size() - 500);
+          else
+            tail = content;
+          for (char &c : tail)
+            if (c == '\n' || c == '\r')
+              c = ' ';
+        }
+        engine::Logger::instance().error("game exited code " +
+                                         std::to_string(supervisor_exit) + ": " + tail);
+      }
       w_->queue_->flush_pending_changes();
       hide_game_lock_overlay();
       trace.end_stage("launch", true, "Game exited");
@@ -1104,6 +1125,27 @@ void LaunchController::check_running_process() {
   w_->cgroup_path_.clear();
   if (w_->process_watch_timer_)
     w_->process_watch_timer_->stop();
+  // Surface the real failure to the user-visible log.
+  {
+    int code = WIFEXITED(reap_status) ? WEXITSTATUS(reap_status) : -1;
+    std::string tail;
+    auto log_path = w_->cache_dir_path() / ".gmm_overlay_stderr.log";
+    std::error_code lec;
+    if (std::filesystem::exists(log_path, lec)) {
+      std::ifstream f(log_path);
+      std::string content((std::istreambuf_iterator<char>(f)),
+                          std::istreambuf_iterator<char>());
+      if (content.size() > 500)
+        tail = content.substr(content.size() - 500);
+      else
+        tail = content;
+      for (char &c : tail)
+        if (c == '\n' || c == '\r')
+          c = ' ';
+    }
+      engine::Logger::instance().error("game exited code " + std::to_string(code) + ": " +
+                                     tail);
+  }
   // P1.3 event bus: mirror MO2 onFinishedRun (fallback PGID path).
   engine::EventBus::instance().dispatch(
       engine::events::kGameFinished,

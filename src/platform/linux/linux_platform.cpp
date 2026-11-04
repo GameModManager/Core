@@ -354,7 +354,28 @@ std::filesystem::path LinuxPlatform::resolve_proton_prefix(uint32_t steam_appid)
     return {};
   if (steam_appid == 0)
     return {};
-  return steam_root / "steamapps" / "compatdata" / std::to_string(steam_appid);
+  const std::string appid_str = std::to_string(steam_appid);
+
+  // Steam libraries are not all under the default root: a game (and its
+  // compatdata prefix) may live on a secondary library. Search every
+  // library from libraryfolders.vdf instead of assuming the default root.
+  // 1. Prefer a library whose compatdata/<appid> already exists.
+  for (const auto &lib : steam_library_paths()) {
+    auto compat = lib / "steamapps" / "compatdata" / appid_str;
+    std::error_code ec;
+    if (std::filesystem::exists(compat, ec) &&
+        std::filesystem::is_directory(compat, ec))
+      return compat;
+  }
+  // 2. Else the library that owns the game's appmanifest.
+  for (const auto &lib : steam_library_paths()) {
+    auto manifest = lib / "steamapps" / ("appmanifest_" + appid_str + ".acf");
+    std::error_code ec;
+    if (std::filesystem::exists(manifest, ec))
+      return lib / "steamapps" / "compatdata" / appid_str;
+  }
+  // 3. Fall back to the default Steam root.
+  return steam_root / "steamapps" / "compatdata" / appid_str;
 }
 
 std::vector<std::filesystem::path> LinuxPlatform::steam_library_paths() const {

@@ -9,6 +9,7 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
 #include <limits.h>
 #include <string>
 #include <vector>
@@ -519,23 +520,32 @@ int64_t OverlayFsLauncher::launch(
         if (WIFEXITED(status)) {
           int code = WEXITSTATUS(status);
           reason   = "exited with code " + std::to_string(code);
-          Logger::instance().warn("Overlay: child PID " + std::to_string(pid) + " " +
-                                  reason + " during grace window");
         } else if (WIFSIGNALED(status)) {
           reason = "killed by signal " + std::to_string(WTERMSIG(status));
-          Logger::instance().warn("Overlay: child PID " + std::to_string(pid) + " " +
-                                  reason + " during grace window");
         } else {
           reason = "unknown status";
         }
-        // Log stderr capture location if it exists
+        // Surface the real failure: tail of the captured stderr log.
         auto log_path = upper_dir.parent_path() / "cache" / ".gmm_overlay_stderr.log";
+        std::string stderr_tail;
         std::error_code log_ec;
         auto log_size = std::filesystem::file_size(log_path, log_ec);
         if (!log_ec && log_size > 0) {
-          Logger::instance().warn("Overlay: stderr captured in " + log_path.string() +
-                                  " (" + std::to_string(log_size) + " bytes)");
+          std::ifstream lf(log_path);
+          std::string content((std::istreambuf_iterator<char>(lf)),
+                              std::istreambuf_iterator<char>());
+          if (content.size() > 500)
+            stderr_tail = content.substr(content.size() - 500);
+          else
+            stderr_tail = content;
+          for (char &c : stderr_tail)
+            if (c == '\n' || c == '\r')
+              c = ' ';
         }
+        Logger::instance().warn(
+            "Overlay: child PID " + std::to_string(pid) + " " + reason +
+            " during grace window" +
+            (stderr_tail.empty() ? std::string() : (" - " + stderr_tail)));
         delete[] stack;
         return -1;
       }
