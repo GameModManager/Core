@@ -240,7 +240,7 @@ if(GMM_PLATFORM STREQUAL "linux")
     gmm_catch2_test(mimeapps_test engine/mimeapps_test.cpp
         LIBS gmm_platform)
     gmm_catch2_test(proton_prefix_test engine/proton_prefix_test.cpp
-        LIBS gmm_platform)
+        LIBS gmm_platform gmm_runtime)
 endif()
 
 # ---------------------------------------------------------------------------
