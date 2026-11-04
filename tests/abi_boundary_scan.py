@@ -11,6 +11,9 @@ Checks:
      path containing sdk/include).
   2. No Core CMakeLists.txt references sdk/include.
 
+Submodule trees under external/ are not Core (the SDK's own consumers live
+there) and are skipped.
+
 Exit 0: clean. Exit 1: violations.
 """
 import argparse
@@ -31,7 +34,7 @@ SDK_INCLUDE_PATTERNS = [
 
 def walk(src_dir):
     for dirpath, dirnames, filenames in os.walk(src_dir):
-        dirnames[:] = sorted(d for d in dirnames if d not in ("build", ".git"))
+        dirnames[:] = sorted(d for d in dirnames if d not in ("build", ".git", "external"))
         for name in sorted(filenames):
             if name.endswith((".c", ".cc", ".cpp", ".h", ".hpp", ".cmake")) or name == "CMakeLists.txt":
                 yield os.path.join(dirpath, name)
@@ -89,7 +92,7 @@ def main():
         else:
             cmake_root = "."
     for dirpath, dirnames, filenames in os.walk(cmake_root):
-        dirnames[:] = sorted(d for d in dirnames if d not in ("build", ".git", "src"))
+        dirnames[:] = sorted(d for d in dirnames if d not in ("build", ".git", "src", "external"))
         for name in filenames:
             if name == "CMakeLists.txt" or name.endswith(".cmake"):
                 path = os.path.join(dirpath, name)
