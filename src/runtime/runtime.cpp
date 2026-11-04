@@ -142,6 +142,19 @@ ProtonRuntime::proton_environment_defaults(const Platform *platform,
   if (compat_data.empty())
     return {};
 
+  // The Steam root that OWNS this compatdata may be a secondary library
+  // (resolve_proton_prefix already handles that). Derive it from the
+  // resolved compatdata path so STEAM_COMPAT_CLIENT_INSTALL_PATH points at
+  // the same root Proton uses to locate the client, instead of always the
+  // default root. compatdata = <lib>/steamapps/compatdata/<appid>.
+  auto owning_root = compat_data.parent_path().parent_path().parent_path();
+  // compat_data = <lib>/steamapps/compatdata/<appid>
+  // parent_path() = <lib>/steamapps/compatdata
+  // parent_path() = <lib>/steamapps
+  // parent_path() = <lib>
+  if (owning_root.empty() || !std::filesystem::exists(owning_root))
+    owning_root = steam_root;
+
   // Build library paths - all Steam library folders
   auto libs = platform->steam_library_paths();
   std::string library_paths;
@@ -151,12 +164,12 @@ ProtonRuntime::proton_environment_defaults(const Platform *platform,
     library_paths += lib.string();
   }
   if (library_paths.empty()) {
-    library_paths = steam_root.string();
+    library_paths = owning_root.string();
   }
 
   return {
       {"STEAM_COMPAT_DATA_PATH", compat_data.string()},
-      {"STEAM_COMPAT_CLIENT_INSTALL_PATH", steam_root.string()},
+      {"STEAM_COMPAT_CLIENT_INSTALL_PATH", owning_root.string()},
       {"STEAM_COMPAT_INSTALL_PATH", game_dir.string()},
       {"STEAM_COMPAT_APP_ID", std::to_string(steam_appid)},
       {"STEAM_COMPAT_LIBRARY_PATHS", library_paths},

@@ -2,6 +2,7 @@
 // compatdata prefix on a secondary Steam library, not just the default root.
 
 #include "platform/linux/linux_platform.h"
+#include "runtime/runtime.h"
 
 #include <cstdlib>
 #include <filesystem>
@@ -114,4 +115,20 @@ TEST_CASE("proton prefix default-only root works", "[engine]") {
   // non-existent appid falls back to default root path
   auto p2 = engine::LinuxPlatform().resolve_proton_prefix(999999);
   REQUIRE(p2 == default_root / "steamapps" / "compatdata" / "999999");
+}
+
+TEST_CASE("launch env points STEAM_COMPAT_DATA_PATH at secondary compatdata",
+          "[engine]") {
+  make_layout(true, true);
+  engine::LinuxPlatform platform;
+  auto defaults = engine::ProtonRuntime::proton_environment_defaults(
+      &platform, fs::path("/mnt/HDD/SteamLibrary/steamapps/common/Fallout 4"), 377160);
+  std::string data_path;
+  for (const auto &kv : defaults) {
+    if (kv.first == "STEAM_COMPAT_DATA_PATH")
+      data_path = kv.second;
+  }
+  REQUIRE(data_path == (fs::temp_directory_path() /
+                        ("gmm_proton_prefix_" + std::to_string(::getpid()))) /
+                           "secondary" / "steamapps" / "compatdata" / "377160");
 }
