@@ -101,7 +101,8 @@ bool ProtonRuntime::launch(const std::filesystem::path &executable,
   // No shell fallback: a missing or broken proton runner is a real failure the
   // caller must see as one, not something to paper over by re-running the
   // runner script through /bin/sh.
-  last_pid_ = spawn_detached_process(proton, argv, work_dir, /*shell_fallback=*/false);
+  last_pid_ = spawn_detached_process(proton, argv, work_dir, /*shell_fallback=*/false,
+                                     stderr_log_path_);
   return last_pid_ > 0;
 }
 

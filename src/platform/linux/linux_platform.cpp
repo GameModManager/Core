@@ -1498,9 +1498,10 @@ const char *dlerror_message() {
 }
 
 std::int64_t spawn_detached_process(const std::filesystem::path &executable,
-                                    const std::vector<std::string> &argv,
-                                    const std::filesystem::path &work_dir,
-                                    bool shell_fallback) {
+                                     const std::vector<std::string> &argv,
+                                     const std::filesystem::path &work_dir,
+                                     bool shell_fallback,
+                                     const std::filesystem::path &stderr_log_path) {
   if (argv.empty() || executable.empty())
     return -1;
 
@@ -1525,6 +1526,12 @@ std::int64_t spawn_detached_process(const std::filesystem::path &executable,
       ::chdir(work_dir.c_str());
     // stdin from the null device so the child never inherits our terminal.
     std::freopen("/dev/null", "r", stdin);
+    // Capture stderr to a file when requested (Proton launch path), so a
+    // failed launch leaves a trace instead of vanishing with the detached
+    // process.
+    if (!stderr_log_path.empty()) {
+      std::freopen(stderr_log_path.c_str(), "w", stderr);
+    }
     // execvp, not execv: a bare name is resolved through PATH the way the
     // native launcher always has, and a path containing a separator is exec'd
     // directly, which is what the Proton path needs.
