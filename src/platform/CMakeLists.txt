@@ -5,6 +5,7 @@
 add_library(gmm_platform STATIC
     ${GMM_PLATFORM}/${GMM_PLATFORM}_platform.cpp
     ${GMM_PLATFORM}/${GMM_PLATFORM}_file_type_dispatch.cpp
+    ${PROJECT_SOURCE_DIR}/src/engine/log/logger.cpp
 )
 
 target_include_directories(gmm_platform PUBLIC ${PROJECT_SOURCE_DIR}/src)
