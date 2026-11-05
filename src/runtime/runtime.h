@@ -59,6 +59,12 @@ public:
   void set_runner_override(const std::string &runner) { runner_override_ = runner; }
   [[nodiscard]] const std::string &runner_override() const { return runner_override_; }
 
+  // Optional path for the child's stderr capture (Proton only). Empty = inherit.
+  void set_stderr_log_path(const std::filesystem::path &p) { stderr_log_path_ = p; }
+  [[nodiscard]] const std::filesystem::path &stderr_log_path() const {
+    return stderr_log_path_;
+  }
+
   // Find the Proton binary for a game (respects per-game compat tool
   // override). Returns empty path if none found. All discovery goes through
   // `platform`. `runner_override`, when non-empty, wins over every
@@ -85,6 +91,7 @@ public:
 private:
   const Platform *platform_;
   std::string runner_override_;
+  std::filesystem::path stderr_log_path_;
   int64_t last_pid_ = -1;
 };
 

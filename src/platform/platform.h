@@ -390,7 +390,8 @@ void set_thread_low_priority();
 [[nodiscard]] std::int64_t
 spawn_detached_process(const std::filesystem::path &executable,
                        const std::vector<std::string> &argv,
-                       const std::filesystem::path &work_dir, bool shell_fallback);
+                       const std::filesystem::path &work_dir, bool shell_fallback,
+                       const std::filesystem::path &stderr_log_path = {});
 
 // Set one variable in THIS process's environment, replacing whatever was there
 // (setenv(key, value, 1) / SetEnvironmentVariableW). Set per variable on

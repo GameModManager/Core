@@ -804,6 +804,7 @@ void LaunchController::on_launch_params_prepared(engine::LaunchParams lparams) {
 
   lparams.platform      = w_->platform_;
   lparams.overwrite_dir = w_->overwrite_dir_path();
+  lparams.cache_dir     = w_->cache_dir_path();
 
   // MO2-equivalent plugin order: build + write the game's Plugins.txt (and
   // the instance profile) right before launch. No-op for games without
@@ -869,6 +870,7 @@ void LaunchController::on_launch_params_prepared(engine::LaunchParams lparams) {
   trace.end_stage("launch", true, "Overlay/staging paths ready");
 
   trace.begin_stage("launch", "Launch executable");
+  w_->launch_time_ = std::filesystem::file_time_type::clock::now();
   auto lresult = engine::launch_game(lparams);
 
   if (lresult.pid <= 0) {
@@ -896,7 +898,6 @@ void LaunchController::on_launch_params_prepared(engine::LaunchParams lparams) {
   w_->overlay_launched_    = lresult.overlay_launched;
   w_->running_process_pid_ = lresult.pid;
   w_->cgroup_path_         = lresult.cgroup_path;
-  w_->launch_time_         = std::filesystem::file_time_type::clock::now();
 
   // P1.3 event bus: mirror MO2 onAboutToRun - emitted only once the launch
   // actually succeeded (a PID exists) so a failed launch is not reported.
@@ -1011,26 +1012,43 @@ void LaunchController::check_running_process() {
       engine::Logger::instance().debug("Watchdog: cgroup empty, game fully exited");
       int supervisor_exit =
           reap_supervisor(static_cast<pid_t>(w_->running_process_pid_));
-      // Surface the real failure to the user-visible log.
-      {
-        std::string tail;
-        auto log_path = w_->cache_dir_path() / ".gmm_overlay_stderr.log";
-        std::error_code lec;
-        if (std::filesystem::exists(log_path, lec)) {
-          std::ifstream f(log_path);
-          std::string content((std::istreambuf_iterator<char>(f)),
-                              std::istreambuf_iterator<char>());
-          if (content.size() > 500)
-            tail = content.substr(content.size() - 500);
-          else
-            tail = content;
-          for (char &c : tail)
-            if (c == '\n' || c == '\r')
-              c = ' ';
-        }
-        engine::Logger::instance().error("game exited code " +
-                                         std::to_string(supervisor_exit) + ": " + tail);
-      }
+       // Surface the real failure to the user-visible log. Read both the
+       // overlay and proton stderr captures; only files written this run
+       // (mtime >= launch start) are surfaced, so a stale traceback from a
+       // previous run can never masquerade as this run's error. Newest wins.
+       {
+         std::string tail;
+         std::filesystem::path chosen;
+         std::filesystem::file_time_type chosen_mtime{};
+         for (const char *name :
+              {".gmm_overlay_stderr.log", ".gmm_proton_stderr.log"}) {
+           auto p = w_->cache_dir_path() / name;
+           std::error_code lec;
+           if (!std::filesystem::exists(p, lec))
+             continue;
+           auto mt = std::filesystem::last_write_time(p, lec);
+           if (lec || mt < w_->launch_time_)
+             continue;
+           if (chosen.empty() || mt > chosen_mtime) {
+             chosen = p;
+             chosen_mtime = mt;
+           }
+         }
+         if (!chosen.empty()) {
+           std::ifstream f(chosen);
+           std::string content((std::istreambuf_iterator<char>(f)),
+                               std::istreambuf_iterator<char>());
+           if (content.size() > 500)
+             tail = content.substr(content.size() - 500);
+           else
+             tail = content;
+           for (char &c : tail)
+             if (c == '\n' || c == '\r')
+               c = ' ';
+         }
+         engine::Logger::instance().error("game exited code " +
+                                          std::to_string(supervisor_exit) + ": " + tail);
+       }
       w_->queue_->flush_pending_changes();
       hide_game_lock_overlay();
       trace.end_stage("launch", true, "Game exited");
@@ -1125,27 +1143,41 @@ void LaunchController::check_running_process() {
   w_->cgroup_path_.clear();
   if (w_->process_watch_timer_)
     w_->process_watch_timer_->stop();
-  // Surface the real failure to the user-visible log.
-  {
-    int code = WIFEXITED(reap_status) ? WEXITSTATUS(reap_status) : -1;
-    std::string tail;
-    auto log_path = w_->cache_dir_path() / ".gmm_overlay_stderr.log";
-    std::error_code lec;
-    if (std::filesystem::exists(log_path, lec)) {
-      std::ifstream f(log_path);
-      std::string content((std::istreambuf_iterator<char>(f)),
-                          std::istreambuf_iterator<char>());
-      if (content.size() > 500)
-        tail = content.substr(content.size() - 500);
-      else
-        tail = content;
-      for (char &c : tail)
-        if (c == '\n' || c == '\r')
-          c = ' ';
-    }
-      engine::Logger::instance().error("game exited code " + std::to_string(code) + ": " +
-                                     tail);
-  }
+   // Surface the real failure to the user-visible log.
+   {
+     int code = WIFEXITED(reap_status) ? WEXITSTATUS(reap_status) : -1;
+     std::string tail;
+     std::filesystem::path chosen;
+     std::filesystem::file_time_type chosen_mtime{};
+     for (const char *name :
+          {".gmm_overlay_stderr.log", ".gmm_proton_stderr.log"}) {
+       auto p = w_->cache_dir_path() / name;
+       std::error_code lec;
+       if (!std::filesystem::exists(p, lec))
+         continue;
+       auto mt = std::filesystem::last_write_time(p, lec);
+       if (lec || mt < w_->launch_time_)
+         continue;
+       if (chosen.empty() || mt > chosen_mtime) {
+         chosen = p;
+         chosen_mtime = mt;
+       }
+     }
+     if (!chosen.empty()) {
+       std::ifstream f(chosen);
+       std::string content((std::istreambuf_iterator<char>(f)),
+                           std::istreambuf_iterator<char>());
+       if (content.size() > 500)
+         tail = content.substr(content.size() - 500);
+       else
+         tail = content;
+       for (char &c : tail)
+         if (c == '\n' || c == '\r')
+           c = ' ';
+     }
+     engine::Logger::instance().error("game exited code " + std::to_string(code) + ": " +
+                                    tail);
+   }
   // P1.3 event bus: mirror MO2 onFinishedRun (fallback PGID path).
   engine::EventBus::instance().dispatch(
       engine::events::kGameFinished,

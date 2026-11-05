@@ -550,6 +550,14 @@ static LaunchResult do_launch(const LaunchParams &params) {
       // while the OverlayFS path above honored it.
       auto proton = std::make_unique<ProtonRuntime>(params.platform);
       proton->set_runner_override(params.proton_runner);
+      // Capture the child's stderr (Proton failures) into the instance cache
+      // so a failed launch leaves a trace the watchdog can surface.
+      {
+        std::filesystem::path cache = params.cache_dir;
+        if (cache.empty())
+          cache = capture_dir.parent_path() / "cache";
+        proton->set_stderr_log_path(cache / ".gmm_proton_stderr.log");
+      }
       runtime = std::move(proton);
     }
     if (!runtime)

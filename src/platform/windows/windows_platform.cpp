@@ -779,9 +779,10 @@ void unload_shared_library(void *handle) noexcept {
 }
 
 std::int64_t spawn_detached_process(const std::filesystem::path &executable,
-                                    const std::vector<std::string> &argv,
-                                    const std::filesystem::path &work_dir,
-                                    bool /*shell_fallback*/) {
+                                     const std::vector<std::string> &argv,
+                                     const std::filesystem::path &work_dir,
+                                     bool /*shell_fallback*/,
+                                     const std::filesystem::path &stderr_log_path) {
   if (argv.empty() || executable.empty())
     return -1;
 
@@ -799,16 +800,29 @@ std::int64_t spawn_detached_process(const std::filesystem::path &executable,
   si.cb = sizeof(si);
   PROCESS_INFORMATION pi{};
 
+  HANDLE stderr_handle = nullptr;
+  if (!stderr_log_path.empty()) {
+    stderr_handle = CreateFileW(stderr_log_path.c_str(), GENERIC_WRITE, FILE_SHARE_READ,
+                                nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (stderr_handle != INVALID_HANDLE_VALUE) {
+      si.hStdError = stderr_handle;
+      si.dwFlags |= STARTF_USESTDHANDLES;
+    }
+  }
+
   const std::wstring wdir(work_dir.wstring());
   const wchar_t *cwd = wdir.empty() ? nullptr : wdir.c_str();
 
   // DETACHED_PROCESS so the game outlives us and does not inherit our console;
   // CREATE_NEW_PROCESS_GROUP so Ctrl-C in our terminal does not reach it. The
   // command line is mutable, so cmd.data() is handed over as-is.
-  if (!CreateProcessW(exe.c_str(), cmd.data(), nullptr, nullptr, FALSE,
-                      DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP, nullptr, cwd, &si,
-                      &pi))
+  if (!CreateProcessW(exe.c_str(), cmd.data(), nullptr, nullptr, TRUE,
+                       DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP, nullptr, cwd, &si,
+                       &pi))
     return -1;
+
+  if (stderr_handle && stderr_handle != INVALID_HANDLE_VALUE)
+    CloseHandle(stderr_handle);
 
   CloseHandle(pi.hThread);
   const auto pid = static_cast<std::int64_t>(pi.dwProcessId);

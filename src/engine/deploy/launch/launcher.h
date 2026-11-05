@@ -30,6 +30,10 @@ struct LaunchParams {
   // after the game exits. Empty = default Overwrite capture.
   std::filesystem::path output_capture_dir;
 
+  // Instance cache directory (for stderr capture files etc.). Empty = derive
+  // from capture_dir/overwrite_dir.
+  std::filesystem::path cache_dir;
+
   // OverlayFS mod layer directories (priority order, first = highest).
   // When non-empty, the OverlayFsLauncher layers these over game_dir as
   // additional read-only overlay lowerdirs, enabling mod deployment without

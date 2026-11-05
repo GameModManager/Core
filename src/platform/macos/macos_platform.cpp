@@ -608,9 +608,10 @@ const char *dlerror_message() {
 }
 
 std::int64_t spawn_detached_process(const std::filesystem::path &executable,
-                                    const std::vector<std::string> &argv,
-                                    const std::filesystem::path &work_dir,
-                                    bool shell_fallback) {
+                                     const std::vector<std::string> &argv,
+                                     const std::filesystem::path &work_dir,
+                                     bool shell_fallback,
+                                     const std::filesystem::path &stderr_log_path) {
   if (argv.empty() || executable.empty())
     return -1;
 
@@ -631,6 +632,9 @@ std::int64_t spawn_detached_process(const std::filesystem::path &executable,
     if (!work_dir.empty())
       ::chdir(work_dir.c_str());
     std::freopen("/dev/null", "r", stdin);
+    if (!stderr_log_path.empty()) {
+      std::freopen(stderr_log_path.c_str(), "w", stderr);
+    }
     // execvp, not execv: a bare name resolves through PATH, a path containing
     // a separator is exec'd directly, which is what the Proton path needs.
     ::execvp(exe.c_str(), args.data());
