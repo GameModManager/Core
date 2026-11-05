@@ -2,8 +2,8 @@
 #error "This file should only be compiled on the correct platform"
 #endif
 
+#include "engine/log/logger.h"
 #include "platform/linux/linux_platform.h"
-
 #include "platform/file_type_dispatch.h"
 #include "platform/linux/linux_file_type_dispatch.h"
 
@@ -1525,6 +1525,16 @@ std::int64_t spawn_detached_process(const std::filesystem::path &executable,
       ::chdir(work_dir.c_str());
     // stdin from the null device so the child never inherits our terminal.
     std::freopen("/dev/null", "r", stdin);
+    // Instrumentation: prove what crosses into the proton process.
+    {
+      const char *d = std::getenv("STEAM_COMPAT_DATA_PATH");
+      const char *c = std::getenv("STEAM_COMPAT_CLIENT_INSTALL_PATH");
+      std::string line =
+          "[DBG] spawn_detached_process child: STEAM_COMPAT_DATA_PATH=" +
+          std::string(d ? d : "<unset>") +
+          " STEAM_COMPAT_CLIENT_INSTALL_PATH=" + std::string(c ? c : "<unset>") + "\n";
+      Logger::instance().raw_append(line);
+    }
     // execvp, not execv: a bare name is resolved through PATH the way the
     // native launcher always has, and a path containing a separator is exec'd
     // directly, which is what the Proton path needs.

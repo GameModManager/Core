@@ -87,20 +87,32 @@ void apply_proton_env_defaults(
     const std::vector<std::pair<std::string, std::string>> &defaults,
     const std::vector<std::string> &user_entries) {
   const std::vector<std::string> user_keys = launch_env_keys(user_entries);
+  Logger::instance().debug("apply_proton_env_defaults: defaults count=" +
+                           std::to_string(defaults.size()));
+  {
+    std::string keys;
+    for (const auto &k : user_keys) {
+      if (!keys.empty())
+        keys += ",";
+      keys += k;
+    }
+    Logger::instance().debug("apply_proton_env_defaults: user_entries keys=" + keys);
+  }
   for (const auto &[key, value] : defaults) {
     if (std::find(user_keys.begin(), user_keys.end(), key) != user_keys.end()) {
-      // The user's value is already in this process (apply_launch_env ran
-      // first) and it stays: they asked for this prefix, this install path,
-      // this app id. Saying so is the point - Proton's value points somewhere
-      // else, so a launch that quietly used ours would run a different prefix
-      // than the one on screen, and the log is where that gets noticed.
       Logger::instance().warn(
           "Launch env: " + key +
           " is set by the user for this launch; Proton's default (" + value +
           ") is not applied.");
+      Logger::instance().debug("apply_proton_env_defaults: skipped-because-user " +
+                               key);
       continue;
     }
-    set_process_env_var(key, value);
+    if (set_process_env_var(key, value)) {
+      Logger::instance().debug("apply_proton_env_defaults: set " + key + "=" + value);
+    } else {
+      Logger::instance().warn("Launch env: could not set " + key + " for the launch");
+    }
   }
 }
 
@@ -429,7 +441,14 @@ static LaunchResult do_launch(const LaunchParams &params) {
                                   params.platform, params.game_dir, params.steam_appid),
                               params.environment);
   }
-
+  {
+    const char *d = std::getenv("STEAM_COMPAT_DATA_PATH");
+    const char *c = std::getenv("STEAM_COMPAT_CLIENT_INSTALL_PATH");
+    Logger::instance().debug(
+        "do_launch: post-apply STEAM_COMPAT_DATA_PATH=" +
+        std::string(d ? d : "<unset>") +
+        " STEAM_COMPAT_CLIENT_INSTALL_PATH=" + std::string(c ? c : "<unset>"));
+  }
 #ifdef GMM_PLATFORM_LINUX
   // Priority 1: OverlayFS - kernel VFS level, works for any binary format.
   // Only for overlayfs games (use_overlay): in direct-symlink mode mods are

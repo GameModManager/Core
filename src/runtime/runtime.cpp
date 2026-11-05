@@ -1,7 +1,7 @@
 #include "runtime/runtime.h"
 
+#include "engine/log/logger.h"
 #include "platform/platform.h"
-
 #include <cstdlib>
 #include <filesystem>
 #include <string>
@@ -69,7 +69,7 @@ bool ProtonRuntime::launch(const std::filesystem::path &executable,
   auto proton = find_proton_binary(platform_, steam_appid, runner_override_);
   if (proton.empty())
     return false;
-
+  Logger::instance().debug("ProtonRuntime::launch: proton binary = " + proton.string());
   // Gate, not a second apply: the launch choke point has already put
   // proton_environment_defaults() into this process (it is the side that can
   // honour the launch Environment field), and doing it here as well is what
@@ -96,8 +96,17 @@ bool ProtonRuntime::launch(const std::filesystem::path &executable,
   for (const auto &a : args)
     argv.push_back(a);
 
-  const auto work_dir = cwd.empty() ? game_dir : cwd;
+  {
+    std::string joined;
+    for (const auto &a : argv) {
+      if (!joined.empty())
+        joined += " ";
+      joined += a;
+    }
+    Logger::instance().debug("ProtonRuntime::launch: final argv = " + joined);
+  }
 
+  const auto work_dir = cwd.empty() ? game_dir : cwd;
   // No shell fallback: a missing or broken proton runner is a real failure the
   // caller must see as one, not something to paper over by re-running the
   // runner script through /bin/sh.
@@ -131,17 +140,31 @@ std::vector<std::pair<std::string, std::string>>
 ProtonRuntime::proton_environment_defaults(const Platform *platform,
                                            const std::filesystem::path &game_dir,
                                            uint32_t steam_appid) {
-  if (!platform)
+  if (!platform) {
+    Logger::instance().debug(
+        "ProtonRuntime::proton_environment_defaults: returning empty (platform null)");
     return {};
+  }
+  Logger::instance().debug(
+      "ProtonRuntime::proton_environment_defaults: entry steam_appid=" +
+      std::to_string(steam_appid) + " game_dir=" + game_dir.string());
 
   auto steam_root = platform->find_steam_root();
-  if (steam_root.empty())
+  if (steam_root.empty()) {
+    Logger::instance().debug("ProtonRuntime::proton_environment_defaults: returning "
+                             "empty (steam_root empty)");
     return {};
+  }
 
   auto compat_data = platform->resolve_proton_prefix(steam_appid);
-  if (compat_data.empty())
+  Logger::instance().debug(
+      "ProtonRuntime::proton_environment_defaults: resolved compat_data=" +
+      compat_data.string());
+  if (compat_data.empty()) {
+    Logger::instance().debug("ProtonRuntime::proton_environment_defaults: returning "
+                             "empty (compat_data empty)");
     return {};
-
+  }
   // The Steam root that OWNS this compatdata may be a secondary library
   // (resolve_proton_prefix already handles that). Derive it from the
   // resolved compatdata path so STEAM_COMPAT_CLIENT_INSTALL_PATH points at
@@ -167,13 +190,17 @@ ProtonRuntime::proton_environment_defaults(const Platform *platform,
     library_paths = owning_root.string();
   }
 
-  return {
+  auto result = std::vector<std::pair<std::string, std::string>>{
       {"STEAM_COMPAT_DATA_PATH", compat_data.string()},
       {"STEAM_COMPAT_CLIENT_INSTALL_PATH", owning_root.string()},
       {"STEAM_COMPAT_INSTALL_PATH", game_dir.string()},
       {"STEAM_COMPAT_APP_ID", std::to_string(steam_appid)},
       {"STEAM_COMPAT_LIBRARY_PATHS", library_paths},
   };
+  for (const auto &[k, v] : result)
+    Logger::instance().debug("ProtonRuntime::proton_environment_defaults: " + k + "=" +
+                             v);
+  return result;
 }
 
 bool ProtonRuntime::is_available() const {

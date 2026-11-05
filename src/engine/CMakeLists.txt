@@ -87,7 +87,6 @@ instance/mod_state.cpp
     trace/trace_recorder.cpp
     events/event_bus.cpp
     plugin_host/abi_bridge.cpp
-    log/logger.cpp
     log/crash_handler.cpp
     mod/cache/mod_cache.cpp
     plugin_host/plugin_loader.cpp
